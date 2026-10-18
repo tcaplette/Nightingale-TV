@@ -1,0 +1,301 @@
+import 'dart:convert';
+
+import 'package:flutter_test/flutter_test.dart';
+import 'package:http/http.dart' as http;
+import 'package:http/testing.dart';
+import 'package:nightingale_tv/channels/channel.dart';
+import 'package:nightingale_tv/commercials/commercial_pool.dart';
+import 'package:nightingale_tv/channels/channel_generator.dart';
+import 'package:nightingale_tv/jellyfin/jellyfin_client.dart';
+import 'package:nightingale_tv/library/library_index.dart';
+
+import 'fixtures.dart';
+
+void main() {
+  group('LibraryIndex.fromJellyfinItems', () {
+    test('drops virtual (missing) episodes and dedupes duplicate series', () {
+      final series = [
+        {'Id': 's1', 'Name': 'Show', 'ProductionYear': 2015, 'Genres': ['Comedy']},
+        {'Id': 's2', 'Name': 'Show', 'ProductionYear': 2015, 'Genres': ['Kids'], 'ImageTags': {'Logo': 'x'}},
+      ];
+      final episodes = [
+        {'Id': 'e1', 'Name': 'One', 'SeriesId': 's1', 'SeriesName': 'Show', 'ParentIndexNumber': 1, 'IndexNumber': 1, 'RunTimeTicks': 13200000000, 'LocationType': 'FileSystem'},
+        // Same episode listed under the duplicate series.
+        {'Id': 'e1b', 'Name': 'One', 'SeriesId': 's2', 'SeriesName': 'Show', 'ParentIndexNumber': 1, 'IndexNumber': 1, 'RunTimeTicks': 13200000000, 'LocationType': 'FileSystem'},
+        {'Id': 'e2', 'Name': 'Two', 'SeriesId': 's1', 'SeriesName': 'Show', 'ParentIndexNumber': 1, 'IndexNumber': 2, 'LocationType': 'Virtual'},
+      ];
+      final index = LibraryIndex.fromJellyfinItems(seriesItems: series, episodeItems: episodes, movieItems: const []);
+      expect(index.series, hasLength(1));
+      expect(index.series.single.genres, containsAll(['Comedy', 'Kids']));
+      expect(index.series.single.hasLogo, isTrue);
+      expect(index.series.single.id, 's2', reason: 'prefers the copy with a logo');
+      expect(index.episodes.map((e) => e.id), ['e1']);
+    });
+
+    test('cleans file-name episode titles', () {
+      String clean(String s, [int? n]) => LibraryIndex.cleanEpisodeTitle(s, episode: n);
+      expect(clean('The.Loud.House.S01E29E27-Toads.and.Tiaras+Two.Boys.and.a.Baby'),
+          'Toads and Tiaras / Two Boys and a Baby');
+      expect(clean('Bluey.S03E09', 9), 'Episode 9');
+      expect(clean('Pottery-A-Rooney'), 'Pottery-A-Rooney');
+      expect(clean("Them's the Breaks, Kid"), "Them's the Breaks, Kid");
+      expect(clean('', 4), 'Episode 4');
+    });
+
+    test('round-trips through JSON', () {
+      final index = fakeLibrary(movies: 3);
+      final copy = LibraryIndex.fromJson(index.toJson());
+      expect(copy.episodes.length, index.episodes.length);
+      expect(copy.movies.length, 3);
+      expect(copy['Alpha-e3']!.runtime, const Duration(minutes: 22));
+    });
+
+    test('clip, chapter, Etag and pool fields round-trip through JSON', () {
+      const clip = MediaEntry(
+        id: 'reel@47063',
+        kind: MediaKind.commercial,
+        title: 'Reel',
+        runtime: Duration(seconds: 30),
+        sourceId: 'reel',
+        clipStart: Duration(milliseconds: 47063),
+        etag: 'abc',
+        chapters: [Duration.zero, Duration(minutes: 2, seconds: 29)],
+        poolIds: ['p1', 'p2'],
+      );
+      final copy = MediaEntry.fromJson(clip.toJson());
+      expect(copy.sourceId, 'reel');
+      expect(copy.clipStart, const Duration(milliseconds: 47063));
+      expect(copy.isClip, isTrue);
+      expect(copy.sourceStart, const Duration(milliseconds: 47063));
+      expect(copy.etag, 'abc');
+      expect(copy.chapters, clip.chapters);
+      expect(copy.poolIds, ['p1', 'p2']);
+    });
+
+    test('a library.json from before clips and pools still loads', () {
+      final old = {
+        'fetchedAt': '2026-10-01T12:00:00.000',
+        'series': [
+          {'key': 'show|2000', 'id': 's1', 'name': 'Show', 'year': 2000}
+        ],
+        'episodes': [
+          {'id': 'e1', 'kind': 'episode', 'title': 'One', 'runtimeMs': 1320000, 'seriesKey': 'show|2000'}
+        ],
+        'movies': <Object?>[],
+        'commercials': [
+          {'id': 'ad', 'kind': 'commercial', 'title': 'Ad', 'runtimeMs': 30000}
+        ],
+      };
+      final index = LibraryIndex.fromJson(old);
+      final e = index['e1']!;
+      expect(e.sourceId, 'e1');
+      expect(e.clipStart, isNull);
+      expect(e.isClip, isFalse);
+      expect(e.etag, isNull);
+      expect(e.chapters, isEmpty);
+      expect(index['ad']!.poolIds, isEmpty);
+      expect(e.toJson().containsKey('sourceId'), isFalse, reason: 'whole items do not repeat their id');
+    });
+  });
+
+  group('fetchLibraryIndex with commercial pools', () {
+    // A Movies library with a "Trailers" folder inside, and a Commercials
+    // library holding one 122-minute reel.
+    Map<String, Object?> video(String id, String type, Duration length, {String? series}) => {
+          'Id': id,
+          'Name': id,
+          'Type': type,
+          'RunTimeTicks': length.inMicroseconds * 10,
+          'LocationType': 'FileSystem',
+          'Etag': 'etag-$id',
+          if (series != null) ...{'SeriesId': series, 'SeriesName': series, 'ParentIndexNumber': 1, 'IndexNumber': 1},
+          'Chapters': [
+            {'StartPositionTicks': 0},
+            {'StartPositionTicks': 1493580000},
+          ],
+        };
+    final folders = <String, List<Map<String, Object?>>>{
+      'movies': [
+        video('movie-1', 'Movie', const Duration(minutes: 95)),
+        video('trailer-1', 'Movie', const Duration(minutes: 2)),
+        video('trailer-2', 'Movie', const Duration(seconds: 90)),
+      ],
+      'trailers': [
+        video('trailer-1', 'Movie', const Duration(minutes: 2)),
+        video('trailer-2', 'Movie', const Duration(seconds: 90)),
+      ],
+      'ads': [video('reel', 'Episode', const Duration(minutes: 122), series: 'Favorite Commercials')],
+      'tv': [video('ep-1', 'Episode', const Duration(minutes: 22), series: 'Show')],
+    };
+    final asked = <String>[];
+    JellyfinClient fakeServer() => JellyfinClient(
+          serverUrl: 'https://jf.example',
+          deviceId: 'd',
+          deviceName: 'pc',
+          accessToken: 't',
+          userId: 'u',
+          httpClient: MockClient((r) async {
+            final q = r.url.queryParameters;
+            if (r.url.path == '/UserViews') {
+              return http.Response(
+                  jsonEncode({
+                    'Items': [
+                      {'Id': 'movies', 'Name': 'Movies', 'CollectionType': 'movies'},
+                      {'Id': 'ads', 'Name': 'Commercials', 'CollectionType': 'tvshows'},
+                      {'Id': 'tv', 'Name': 'TV Shows', 'CollectionType': 'tvshows'},
+                    ]
+                  }),
+                  200);
+            }
+            final parent = q['ParentId']!;
+            final types = q['IncludeItemTypes']!.split(',');
+            asked.add('$parent:${q['IncludeItemTypes']}:${q['Fields']}');
+            final items = [
+              for (final i in folders[parent] ?? const <Map<String, Object?>>[])
+                if (types.contains(i['Type'])) i,
+              if (types.contains('Series') && parent == 'tv') {'Id': 'Show', 'Name': 'Show', 'Type': 'Series'},
+            ];
+            return http.Response(jsonEncode({'Items': items, 'TotalRecordCount': items.length}), 200);
+          }),
+        );
+
+    setUp(asked.clear);
+
+    test('a pool folder inside Movies leaves the channel lineups', () async {
+      final pools = [
+        CommercialPool(id: 'trailers', name: 'Trailers', roots: const [
+          PoolRoot(itemId: 'trailers', libraryId: 'movies', label: 'Movies › Trailers'),
+        ]),
+      ];
+      final index = await fetchLibraryIndex(fakeServer(), pools: pools);
+      expect([for (final m in index.movies) m.id], ['movie-1']);
+      expect([for (final c in index.commercials) c.id], ['trailer-1', 'trailer-2']);
+      expect(index.commercials.first.poolIds, ['trailers']);
+      // Folders removed from every pool come back as programs.
+      final again = await fetchLibraryIndex(fakeServer());
+      expect([for (final m in again.movies) m.id], ['movie-1', 'trailer-1', 'trailer-2']);
+      expect(again.commercials, isEmpty);
+    });
+
+    test('an item in two pools carries both pool ids', () async {
+      final pools = [
+        CommercialPool(id: 'p1', name: 'Commercials', roots: const [
+          PoolRoot(itemId: 'trailers', libraryId: 'movies', label: 'Trailers'),
+        ]),
+        CommercialPool(id: 'p2', name: 'Commercials 2', roots: const [
+          PoolRoot(itemId: 'movies', libraryId: 'movies', label: 'Movies'),
+        ]),
+      ];
+      final index = await fetchLibraryIndex(fakeServer(), pools: pools);
+      final trailer = index['trailer-1']!;
+      expect(trailer.kind, MediaKind.commercial);
+      expect(trailer.poolIds, ['p1', 'p2']);
+      expect(index['movie-1']!.poolIds, ['p2']);
+      expect(index.movies, isEmpty);
+      // A library that is itself a pool folder isn't scanned for programs.
+      expect(asked.where((a) => a.startsWith('movies:Movie:Overview')), isEmpty);
+    });
+
+    test('a 122-minute reel is kept as a commercial item; programs get chapters and Etags', () async {
+      final pools = [
+        CommercialPool(id: 'p1', name: 'Commercials', roots: const [
+          PoolRoot(itemId: 'ads', libraryId: 'ads', label: 'Commercials'),
+        ]),
+      ];
+      final index = await fetchLibraryIndex(fakeServer(), pools: pools);
+      final reel = index['reel']!;
+      expect(reel.kind, MediaKind.commercial);
+      expect(reel.runtime, const Duration(minutes: 122));
+      expect(reel.etag, 'etag-reel');
+      expect(index.episodes.map((e) => e.id), ['ep-1']);
+      final ep = index['ep-1']!;
+      expect(ep.etag, 'etag-ep-1');
+      expect(ep.chapters, [Duration.zero, const Duration(milliseconds: 149358)]);
+      expect(asked, contains('ads:Movie,Episode,Video,MusicVideo,Trailer:Chapters,Etag'));
+      expect(asked, contains('tv:Episode:Overview,Chapters,Etag'));
+    });
+
+    test('pool videos under 5 seconds are ignored', () {
+      final index = LibraryIndex.fromJellyfinItems(
+        seriesItems: const [],
+        episodeItems: const [],
+        movieItems: const [],
+        commercialItems: [
+          {'Id': 'a', 'RunTimeTicks': 3 * 10000000, 'LocationType': 'FileSystem'},
+          {'Id': 'b', 'RunTimeTicks': 30 * 10000000, 'LocationType': 'FileSystem'},
+          {'Id': 'c', 'RunTimeTicks': 30 * 10000000, 'LocationType': 'Virtual'},
+        ],
+        poolsByItem: const {'a': ['p'], 'b': ['p'], 'c': ['p']},
+      );
+      expect([for (final c in index.commercials) c.id], ['b']);
+    });
+  });
+
+  group('buildPlaylist', () {
+    test('cyclic keeps each show in airing order and plays every episode once', () {
+      final library = fakeLibrary(shows: {'Big': 175, 'Small': 6});
+      final ids = buildPlaylist(library, const ChannelSource(), PlaybackOrder.cyclic, seed: 1);
+      expect(ids, hasLength(181));
+      expect(ids.toSet(), hasLength(181));
+      final small = ids.where((id) => id.startsWith('Small')).toList();
+      expect(small, ['Small-e1', 'Small-e2', 'Small-e3', 'Small-e4', 'Small-e5', 'Small-e6']);
+      // The small show is spread out, not bunched at the start.
+      final positions = [for (final id in small) ids.indexOf(id)];
+      expect(positions.last - positions.first, greaterThan(100));
+    });
+
+    test('random avoids the same show back to back when possible', () {
+      final library = fakeLibrary(shows: {'A': 20, 'B': 20, 'C': 20});
+      final ids = buildPlaylist(library, const ChannelSource(), PlaybackOrder.random, seed: 7);
+      var repeats = 0;
+      for (var i = 1; i < ids.length; i++) {
+        if (ids[i].split('-').first == ids[i - 1].split('-').first) repeats++;
+      }
+      expect(repeats, lessThanOrEqualTo(1));
+    });
+
+    test('is deterministic for a seed', () {
+      final library = fakeLibrary();
+      expect(buildPlaylist(library, const ChannelSource(), PlaybackOrder.random, seed: 3),
+          buildPlaylist(library, const ChannelSource(), PlaybackOrder.random, seed: 3));
+    });
+  });
+
+  group('ChannelGenerator', () {
+    test('builds mix, genre, show and movie channels without near-duplicates', () {
+      final library = fakeLibrary(
+        shows: {'Toons': 80, 'Sitcom': 40, 'Mystery Kids': 30},
+        genres: {
+          'Toons': ['Animation', 'Comedy', 'Kids'],
+          'Sitcom': ['Comedy', 'Family'],
+          'Mystery Kids': ['Animation', 'Kids', 'Mystery'],
+        },
+        movies: 14,
+      );
+      final channels = ChannelGenerator(library, anchor: DateTime(2026)).generate();
+      final names = channels.map((c) => c.name).toList();
+      expect(names.first, 'All Shows');
+      expect(names, contains('Laugh Track')); // Comedy: Toons + Sitcom
+      // Animation and Kids cover the same two shows: only one of them.
+      expect(names.where((n) => n == 'Toon TV' || n == 'Kids Zone'), hasLength(1));
+      expect(names, contains('Toons')); // marathon for the 80-episode show
+      expect(names, contains('Movie Channel'));
+      // Numbers are unique and sequential from 2.
+      expect(channels.map((c) => c.number), [for (var i = 0; i < channels.length; i++) i + 2]);
+    });
+
+    test('normalizes genre spellings', () {
+      expect(normalizeGenre('Science Fiction'), 'Sci-Fi & Fantasy');
+      expect(normalizeGenre('Action'), 'Action & Adventure');
+      expect(normalizeGenre('Kids'), 'Kids');
+    });
+  });
+
+  group('JellyfinClient.normalizeServerUrl', () {
+    test('adds a scheme, fixes missing slashes, trims trailing slashes', () {
+      expect(JellyfinClient.normalizeServerUrl('example.org:8920'), 'https://example.org:8920');
+      expect(JellyfinClient.normalizeServerUrl('https:example.org:8920/'), 'https://example.org:8920');
+      expect(JellyfinClient.normalizeServerUrl(' http://10.0.0.5:8096// '), 'http://10.0.0.5:8096');
+    });
+  });
+}

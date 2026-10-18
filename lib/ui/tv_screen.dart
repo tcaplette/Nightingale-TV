@@ -1,0 +1,545 @@
+import 'dart:async';
+
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:media_kit_video/media_kit_video.dart';
+
+import '../app_scope.dart';
+import '../channels/channel.dart';
+import '../channels/schedule.dart';
+import '../playback/tuner.dart';
+import '../theme/tv_theme.dart';
+import 'format.dart';
+import 'guide_view.dart';
+import 'menu_screen.dart';
+import 'widgets/channel_logo.dart';
+import 'widgets/tv_focus.dart';
+
+/// Main screen: full-screen TV with channel banner and number entry; the
+/// guide opens on top of it.
+class TvScreen extends StatefulWidget {
+  const TvScreen({super.key});
+
+  @override
+  State<TvScreen> createState() => _TvScreenState();
+}
+
+class _TvScreenState extends State<TvScreen> {
+  static const _bannerDuration = Duration(seconds: 5);
+  static const _digitTimeout = Duration(milliseconds: 1600);
+
+  final _focus = FocusNode(debugLabel: 'tv');
+  bool _guideOpen = false;
+  bool _banner = false;
+  Timer? _bannerTimer;
+  String _digits = '';
+  Timer? _digitTimer;
+  String? _toast;
+  Timer? _toastTimer;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _powerOn());
+  }
+
+  @override
+  void dispose() {
+    _bannerTimer?.cancel();
+    _digitTimer?.cancel();
+    _toastTimer?.cancel();
+    _focus.dispose();
+    super.dispose();
+  }
+
+  /// Like turning on a TV: back to the last channel watched.
+  void _powerOn() {
+    final app = AppScope.read(context);
+    final tuner = AppScope.tunerOf(context);
+    final channels = app.channels;
+    if (channels.isEmpty) {
+      setState(() => _guideOpen = true);
+      return;
+    }
+    if (tuner.channel == null) {
+      final last = channels.where((c) => c.id == app.settings.lastChannelId).firstOrNull;
+      tuner.tune(last ?? channels.first);
+    }
+    _showBanner();
+  }
+
+  void _showBanner() {
+    _bannerTimer?.cancel();
+    setState(() => _banner = true);
+    _bannerTimer = Timer(_bannerDuration, () {
+      if (mounted) setState(() => _banner = false);
+    });
+  }
+
+  void _showToast(String message) {
+    _toastTimer?.cancel();
+    setState(() => _toast = message);
+    _toastTimer = Timer(const Duration(seconds: 3), () {
+      if (mounted) setState(() => _toast = null);
+    });
+  }
+
+  Future<void> _surf(Future<void> Function() action) async {
+    _digits = '';
+    await action();
+    _showBanner();
+  }
+
+  void _typeDigit(int digit) {
+    _digitTimer?.cancel();
+    // Keep the last three digits typed, like a cable box.
+    final typed = '$_digits$digit';
+    setState(() => _digits = typed.length > 3 ? typed.substring(typed.length - 3) : typed);
+    _digitTimer = Timer(_digitTimeout, _commitDigits);
+  }
+
+  Future<void> _commitDigits() async {
+    _digitTimer?.cancel();
+    final number = int.tryParse(_digits);
+    setState(() => _digits = '');
+    if (number == null) return;
+    final ok = await AppScope.tunerOf(context).tuneNumber(number);
+    if (!mounted) return;
+    if (ok) {
+      _showBanner();
+    } else {
+      _showToast('There is no channel $number');
+    }
+  }
+
+  void _openGuide() => setState(() => _guideOpen = true);
+
+  void _closeGuide() {
+    setState(() => _guideOpen = false);
+    _focus.requestFocus();
+    _showBanner();
+  }
+
+  void _watch(Channel ch) {
+    final tuner = AppScope.tunerOf(context);
+    if (tuner.channel?.id != ch.id) tuner.tune(ch);
+    _closeGuide();
+  }
+
+  Future<void> _openMenu() async {
+    await Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const MenuScreen()));
+    if (!mounted) return;
+    // Channels may have been edited, hidden or renumbered.
+    final app = AppScope.read(context);
+    final tuner = AppScope.tunerOf(context);
+    final current = tuner.channel;
+    if (current != null && !app.channels.any((c) => c.id == current.id)) {
+      if (app.channels.isNotEmpty) {
+        await tuner.tune(app.channels.first);
+      } else {
+        await tuner.stop();
+      }
+    }
+    if (_guideOpen) {
+      setState(() {});
+    } else {
+      _focus.requestFocus();
+    }
+  }
+
+  static int? _digitFor(LogicalKeyboardKey key) {
+    const keys = [
+      LogicalKeyboardKey.digit0, LogicalKeyboardKey.digit1, LogicalKeyboardKey.digit2,
+      LogicalKeyboardKey.digit3, LogicalKeyboardKey.digit4, LogicalKeyboardKey.digit5,
+      LogicalKeyboardKey.digit6, LogicalKeyboardKey.digit7, LogicalKeyboardKey.digit8,
+      LogicalKeyboardKey.digit9,
+    ];
+    const numpad = [
+      LogicalKeyboardKey.numpad0, LogicalKeyboardKey.numpad1, LogicalKeyboardKey.numpad2,
+      LogicalKeyboardKey.numpad3, LogicalKeyboardKey.numpad4, LogicalKeyboardKey.numpad5,
+      LogicalKeyboardKey.numpad6, LogicalKeyboardKey.numpad7, LogicalKeyboardKey.numpad8,
+      LogicalKeyboardKey.numpad9,
+    ];
+    final i = keys.indexOf(key);
+    if (i >= 0) return i;
+    final n = numpad.indexOf(key);
+    return n >= 0 ? n : null;
+  }
+
+  KeyEventResult _onKey(FocusNode node, KeyEvent event) {
+    if (event is! KeyDownEvent && event is! KeyRepeatEvent) return KeyEventResult.ignored;
+    final tuner = AppScope.tunerOf(context);
+    final key = event.logicalKey;
+    final digit = _digitFor(key);
+    if (digit != null) {
+      _typeDigit(digit);
+    } else if (_digits.isNotEmpty && isSelectKey(key)) {
+      _commitDigits();
+    } else if (key == LogicalKeyboardKey.arrowUp ||
+        key == LogicalKeyboardKey.pageUp ||
+        key == LogicalKeyboardKey.channelUp) {
+      _surf(tuner.channelUp);
+    } else if (key == LogicalKeyboardKey.arrowDown ||
+        key == LogicalKeyboardKey.pageDown ||
+        key == LogicalKeyboardKey.channelDown) {
+      _surf(tuner.channelDown);
+    } else if (key == LogicalKeyboardKey.backspace || key == LogicalKeyboardKey.keyL) {
+      _surf(tuner.lastChannel);
+    } else if (isSelectKey(key) ||
+        key == LogicalKeyboardKey.keyG ||
+        key == LogicalKeyboardKey.escape ||
+        key == LogicalKeyboardKey.browserBack ||
+        key == LogicalKeyboardKey.goBack) {
+      _openGuide();
+    } else if (key == LogicalKeyboardKey.keyI ||
+        key == LogicalKeyboardKey.info ||
+        key == LogicalKeyboardKey.arrowLeft ||
+        key == LogicalKeyboardKey.arrowRight) {
+      _showBanner();
+    } else if (key == LogicalKeyboardKey.keyC || key == LogicalKeyboardKey.closedCaptionToggle) {
+      tuner.toggleCaptions().then((_) => _showToast(tuner.captions ? 'Captions on' : 'Captions off'));
+    } else if (key == LogicalKeyboardKey.keyM || key == LogicalKeyboardKey.contextMenu) {
+      _openMenu();
+    } else {
+      return KeyEventResult.ignored;
+    }
+    return KeyEventResult.handled;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final tuner = AppScope.tunerOf(context);
+    if (_guideOpen) {
+      return GuideView(onWatch: _watch, onClose: _closeGuide, onMenu: _openMenu);
+    }
+    return Focus(
+      focusNode: _focus,
+      autofocus: true,
+      onKeyEvent: _onKey,
+      child: MouseRegion(
+        // Moving the air mouse brings up the banner and the on-screen
+        // Guide and Menu buttons, like waking a cable box.
+        onHover: (_) => _showBanner(),
+        child: GestureDetector(
+        onTap: _openGuide,
+        onSecondaryTap: _openMenu,
+        child: ColoredBox(
+          color: Colors.black,
+          child: ListenableBuilder(
+            listenable: tuner,
+            builder: (context, _) => Stack(
+              fit: StackFit.expand,
+              children: [
+                Video(controller: tuner.video, controls: NoVideoControls, fill: Colors.black),
+                if (tuner.status == TunerStatus.standby)
+                  _StatusCard(
+                    icon: Icons.schedule,
+                    title: 'PLEASE STAND BY',
+                    message: tuner.program == null
+                        ? null
+                        : 'Up next at ${formatTime((tuner.segment ?? tuner.program!).end)}',
+                  ),
+                if (tuner.status == TunerStatus.ident && tuner.channel != null)
+                  _StationId(
+                    channel: tuner.channel!,
+                    next: tuner.program == null
+                        ? null
+                        : AppScope.read(context).scheduleFor(tuner.channel!)?.next(tuner.program!),
+                  ),
+                if (tuner.status == TunerStatus.offAir)
+                  _StatusCard(
+                    icon: Icons.tv_off,
+                    title: 'OFF THE AIR',
+                    message: switch (_backOnAir(context, tuner)) {
+                      final b? => 'Back on the air ${b.when} with ${b.title}',
+                      null => null,
+                    },
+                  ),
+                if (tuner.status == TunerStatus.error)
+                  _StatusCard(
+                    icon: Icons.signal_cellular_connected_no_internet_0_bar,
+                    title: 'NO SIGNAL',
+                    message: [
+                      if (tuner.error != null) tuner.error!,
+                      if (tuner.program != null)
+                        'Trying again at ${formatTime((tuner.segment ?? tuner.program!).end)}',
+                    ].join('\n'),
+                  ),
+                if (tuner.status == TunerStatus.tuning || _digits.isNotEmpty)
+                  Positioned(
+                    top: 60,
+                    right: 90,
+                    child: _ChannelNumberOsd(
+                        text: _digits.isNotEmpty ? '${_digits}_' : '${tuner.channel?.number ?? ''}'),
+                  ),
+                AnimatedPositioned(
+                  duration: const Duration(milliseconds: 220),
+                  curve: Curves.easeOut,
+                  left: 0,
+                  right: 0,
+                  bottom: _banner && tuner.channel != null ? 0 : -260,
+                  child: tuner.channel == null
+                      ? const SizedBox.shrink()
+                      : _ChannelBanner(
+                          channel: tuner.channel!,
+                          program: tuner.program,
+                          inBreak: tuner.inBreak,
+                          next: tuner.program == null
+                              ? null
+                              : AppScope.read(context).scheduleFor(tuner.channel!)?.next(tuner.program!),
+                          backOnAir: tuner.program?.isOffAir ?? false ? _backOnAir(context, tuner)?.when : null,
+                        ),
+                ),
+                if (_toast != null)
+                  Positioned(top: 60, left: 0, right: 0, child: Center(child: _Toast(_toast!))),
+                Positioned(
+                  top: 48,
+                  left: 60,
+                  child: IgnorePointer(
+                    ignoring: !_banner,
+                    child: AnimatedOpacity(
+                      opacity: _banner ? 1 : 0,
+                      duration: const Duration(milliseconds: 220),
+                      child: Row(
+                        children: [
+                          TvPointerButton(label: 'Guide', icon: Icons.grid_view, onPressed: _openGuide),
+                          const SizedBox(width: 16),
+                          TvPointerButton(label: 'Menu', icon: Icons.settings, onPressed: _openMenu),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+      ),
+    );
+  }
+}
+
+/// When an off-air channel's next block starts: "SAT DEC 5 7:00 AM", or
+/// just the time if it's within the day.
+({String when, String title})? _backOnAir(BuildContext context, Tuner tuner) {
+  final ch = tuner.channel;
+  if (ch == null) return null;
+  final now = DateTime.now();
+  final next = AppScope.read(context).scheduleFor(ch)?.nextBlockAiring(now);
+  if (next == null) return null;
+  final when = next.start.difference(now) < const Duration(hours: 20)
+      ? formatTime(next.start)
+      : '${formatDate(next.start)} ${formatTime(next.start)}';
+  return (when: when, title: next.title);
+}
+
+/// What the banner says during a break.
+const commercialBreakLabel = 'Commercial break';
+
+class _ChannelBanner extends StatelessWidget {
+  const _ChannelBanner(
+      {required this.channel, required this.program, required this.next, this.inBreak = false, this.backOnAir});
+
+  final Channel channel;
+  final ScheduledProgram? program;
+
+  /// A commercial break in [program] is on.
+  final bool inBreak;
+  final ScheduledProgram? next;
+
+  /// When the channel comes back, shown instead of "Next" while it's off
+  /// the air.
+  final String? backOnAir;
+
+  @override
+  Widget build(BuildContext context) {
+    final g = context.guide;
+    final now = DateTime.now();
+    final p = program;
+    return Container(
+      height: 240,
+      padding: const EdgeInsets.fromLTRB(90, 28, 90, 40),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [g.backgroundTop.withValues(alpha: 0.0), g.backgroundBottom.withValues(alpha: 0.95)],
+          stops: const [0, 0.35],
+        ),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: [
+          Container(
+            width: 150,
+            height: 150,
+            decoration: BoxDecoration(color: g.accent, borderRadius: BorderRadius.circular(g.radius * 2)),
+            alignment: Alignment.center,
+            child: Text('${channel.number}', style: g.display(84, weight: FontWeight.w800, color: g.onFocus)),
+          ),
+          const SizedBox(width: 28),
+          ChannelLogo(icon: channel.icon, size: 120, width: 200, fallbackText: channel.name),
+          const SizedBox(width: 32),
+          Expanded(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                    [channel.name, if (p?.blockTitle != null) p!.blockTitle!]
+                        .join('   ·   ')
+                        .toUpperCase(),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: g.display(28, weight: FontWeight.w700, color: g.accent)),
+                Text(p?.title ?? 'Tuning…',
+                    maxLines: 1, overflow: TextOverflow.ellipsis, style: g.display(60, weight: FontWeight.w800)),
+                if (p != null)
+                  Text('${inBreak ? commercialBreakLabel : p.subtitle}   ·   ${formatRange(p.start, p.end)}',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: inBreak ? g.body(26, weight: FontWeight.w600, color: g.accent) : g.body(26, color: g.textDim)),
+              ],
+            ),
+          ),
+          const SizedBox(width: 32),
+          if (p != null)
+            SizedBox(
+              width: 420,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Text(formatTime(now), style: g.display(44, weight: FontWeight.w700)),
+                  const SizedBox(height: 10),
+                  if (!p.isOffAir) ...[
+                    LinearProgressIndicator(
+                      value: p.offsetAt(now).inSeconds / p.duration.inSeconds.clamp(1, 1 << 30),
+                      minHeight: 8,
+                      color: g.accent,
+                      backgroundColor: g.cell,
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                    const SizedBox(height: 10),
+                  ],
+                  Text(
+                    p.isOffAir
+                        ? (backOnAir == null ? 'Off the air' : 'Back on $backOnAir')
+                        : next == null
+                            ? '${formatMinutes(p.end.difference(now))} left'
+                            : 'Next: ${next!.title}',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: g.body(24, color: g.textDim),
+                  ),
+                ],
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+/// The station ID card that closes a commercial break.
+class _StationId extends StatelessWidget {
+  const _StationId({required this.channel, required this.next});
+
+  final Channel channel;
+  final ScheduledProgram? next;
+
+  @override
+  Widget build(BuildContext context) {
+    final g = context.guide;
+    final n = next;
+    return DecoratedBox(
+      decoration: g.backdrop,
+      child: Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ChannelLogo(icon: channel.icon, size: 260, width: 420, fallbackText: channel.name),
+            const SizedBox(height: 36),
+            Text('${channel.number}  ${channel.name.toUpperCase()}',
+                style: g.display(64, weight: FontWeight.w800, color: g.accent)),
+            if (n != null && !n.isOffAir) ...[
+              const SizedBox(height: 20),
+              Text('Up next: ${n.title} at ${formatTime(n.start)}', style: g.body(34, color: g.textDim)),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ChannelNumberOsd extends StatelessWidget {
+  const _ChannelNumberOsd({required this.text});
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    final g = context.guide;
+    return Text(
+      text,
+      style: g.display(110, weight: FontWeight.w800, color: g.accent).copyWith(
+        shadows: const [Shadow(color: Colors.black, blurRadius: 12, offset: Offset(3, 3))],
+      ),
+    );
+  }
+}
+
+class _StatusCard extends StatelessWidget {
+  const _StatusCard({required this.icon, required this.title, this.message});
+
+  final IconData icon;
+  final String title;
+  final String? message;
+
+  @override
+  Widget build(BuildContext context) {
+    final g = context.guide;
+    return DecoratedBox(
+      decoration: g.backdrop,
+      child: Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 140, color: g.accent),
+            const SizedBox(height: 24),
+            Text(title, style: g.display(80, weight: FontWeight.w800)),
+            if (message != null && message!.isNotEmpty) ...[
+              const SizedBox(height: 16),
+              SizedBox(
+                width: 1100,
+                child: Text(message!, textAlign: TextAlign.center, style: g.body(28, color: g.textDim)),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _Toast extends StatelessWidget {
+  const _Toast(this.message);
+
+  final String message;
+
+  @override
+  Widget build(BuildContext context) {
+    final g = context.guide;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 36, vertical: 18),
+      decoration: BoxDecoration(
+        color: g.panel.withValues(alpha: 0.95),
+        borderRadius: BorderRadius.circular(g.radius * 2),
+        border: Border.all(color: g.accent, width: 2),
+      ),
+      child: Text(message, style: g.display(36, weight: FontWeight.w600)),
+    );
+  }
+}
