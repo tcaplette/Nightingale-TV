@@ -7,6 +7,7 @@ import 'package:media_kit_video/media_kit_video.dart';
 import '../app_scope.dart';
 import '../channels/channel.dart';
 import '../channels/schedule.dart';
+import '../library/library_index.dart';
 import '../playback/tuner.dart';
 import '../theme/tv_theme.dart';
 import 'format.dart';
@@ -290,6 +291,19 @@ class _TvScreenState extends State<TvScreen> {
                           backOnAir: tuner.program?.isOffAir ?? false ? _backOnAir(context, tuner)?.when : null,
                         ),
                 ),
+                if ((tuner.status == TunerStatus.playing ? AppScope.read(context).scheduleFor(tuner.channel!) : null)
+                    case final schedule? when tuner.program != null && tuner.segment != null)
+                  Positioned(
+                    right: 90,
+                    bottom: 70,
+                    child: _UpNext(
+                      program: tuner.program!,
+                      segment: tuner.segment!,
+                      next: schedule.next(tuner.program!),
+                      lastPart: schedule.isLastPart(tuner.program!, tuner.segment!),
+                      hidden: _banner,
+                    ),
+                  ),
                 if (_toast != null)
                   Positioned(top: 60, left: 0, right: 0, child: Center(child: _Toast(_toast!))),
                 Positioned(
@@ -428,7 +442,7 @@ class _ChannelBanner extends StatelessWidget {
                         ? (backOnAir == null ? 'Off the air' : 'Back on $backOnAir')
                         : next == null
                             ? '${formatMinutes(p.end.difference(now))} left'
-                            : 'Next: ${next!.title}',
+                            : 'Next ${formatTime(next!.start)}: ${next!.title}',
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: g.body(24, color: g.textDim),
@@ -466,8 +480,132 @@ class _StationId extends StatelessWidget {
             if (n != null && !n.isOffAir) ...[
               const SizedBox(height: 20),
               Text('Up next: ${n.title} at ${formatTime(n.start)}', style: g.body(34, color: g.textDim)),
+              if (n.item?.kind == MediaKind.episode)
+                Text(n.subtitle, style: g.body(28, color: g.textDim)),
             ],
           ],
+        ),
+      ),
+    );
+  }
+}
+
+/// When the "Up next" card is up during [segment] of [program]: from a
+/// minute before the show ends, for 15 seconds, in the part it ends in
+/// ([lastPart]: its last one, or the one a programming block cuts off).
+/// Null when there's nothing to announce.
+({DateTime from, DateTime to})? upNextWindow(
+    ScheduledProgram program, ScheduledProgram segment, ScheduledProgram? next, {required bool lastPart}) {
+  final item = program.item;
+  if (item == null || next == null || next.isOffAir || segment.isBreak || segment.item?.id != item.id) return null;
+  if (item.runtime < _UpNext.minRuntime || !lastPart) return null;
+  final from = segment.end.subtract(_UpNext.lead);
+  return (from: from, to: from.add(_UpNext.showFor));
+}
+
+/// The "Up next" card that slides in near the end of a show, like a cable
+/// network's end-credits promo. When the next program starts a programming
+/// block, it announces the block.
+class _UpNext extends StatefulWidget {
+  const _UpNext(
+      {required this.program, required this.segment, required this.next, required this.lastPart, required this.hidden});
+
+  /// When it comes up: this long before the show ends…
+  static const lead = Duration(seconds: 60);
+
+  /// …for this long.
+  static const showFor = Duration(seconds: 15);
+
+  /// Too short a program to interrupt (cartoon shorts, music videos).
+  static const minRuntime = Duration(minutes: 5);
+
+  final ScheduledProgram program;
+
+  /// What's playing: the program, a part of it, or a break.
+  final ScheduledProgram segment;
+  final ScheduledProgram? next;
+
+  /// [segment] is the last of the show to air.
+  final bool lastPart;
+
+  /// The channel banner is up, and already says what's next.
+  final bool hidden;
+
+  @override
+  State<_UpNext> createState() => _UpNextState();
+}
+
+class _UpNextState extends State<_UpNext> {
+  late final Timer _tick;
+  bool _visible = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _check();
+    _tick = Timer.periodic(const Duration(seconds: 1), (_) => _check());
+  }
+
+  @override
+  void didUpdateWidget(_UpNext old) {
+    super.didUpdateWidget(old);
+    _check();
+  }
+
+  @override
+  void dispose() {
+    _tick.cancel();
+    super.dispose();
+  }
+
+  void _check() {
+    final w = upNextWindow(widget.program, widget.segment, widget.next, lastPart: widget.lastPart);
+    final now = DateTime.now();
+    final visible = w != null && !widget.hidden && !now.isBefore(w.from) && now.isBefore(w.to);
+    if (visible != _visible && mounted) setState(() => _visible = visible);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final g = context.guide;
+    final n = widget.next;
+    final block = n?.blockTitle != null && n!.blockTitle != widget.program.blockTitle ? n.blockTitle : null;
+    return IgnorePointer(
+      child: AnimatedSlide(
+        offset: _visible ? Offset.zero : const Offset(1.3, 0),
+        duration: const Duration(milliseconds: 400),
+        curve: Curves.easeOutCubic,
+        child: AnimatedOpacity(
+          opacity: _visible ? 1 : 0,
+          duration: const Duration(milliseconds: 400),
+          child: n == null
+              ? const SizedBox.shrink()
+              : Container(
+                  width: 560,
+                  padding: const EdgeInsets.fromLTRB(28, 20, 28, 24),
+                  decoration: BoxDecoration(
+                    color: g.panel.withValues(alpha: 0.94),
+                    borderRadius: BorderRadius.circular(g.radius * 2),
+                    border: Border(left: BorderSide(color: g.accent, width: 8)),
+                  ),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('UP NEXT  ·  ${formatTime(n.start)}',
+                          style: g.display(24, weight: FontWeight.w800, color: g.accent)),
+                      const SizedBox(height: 4),
+                      Text(block ?? n.title,
+                          maxLines: 1, overflow: TextOverflow.ellipsis, style: g.display(40, weight: FontWeight.w800)),
+                      Text(
+                        block != null ? 'Starting with ${n.title}' : n.subtitle,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: g.body(24, color: g.textDim),
+                      ),
+                    ],
+                  ),
+                ),
         ),
       ),
     );

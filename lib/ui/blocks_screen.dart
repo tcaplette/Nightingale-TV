@@ -5,6 +5,7 @@ import '../app_state.dart';
 import '../channels/channel.dart';
 import '../channels/channel_generator.dart';
 import '../channels/program_block.dart';
+import '../channels/schedule.dart';
 import '../theme/tv_theme.dart';
 import 'format.dart';
 import 'menu_screen.dart';
@@ -185,6 +186,18 @@ class _BlockEditorScreenState extends State<BlockEditorScreen> {
 
   /// The block gets a new channel of its own when saved.
   bool _newChannel = false;
+
+  /// Plays a lineup rather than a mix (even while the lineup is empty).
+  late bool _lineupMode = _draft.hasLineup;
+
+  /// The lineup while the mix is chosen, so switching back restores it.
+  List<LineupSlot> _setAside = [];
+
+  /// Focus for each lineup row's buttons, by position, so the remote's
+  /// focus can follow a slot as it moves, or land nearby when the button it
+  /// was on turns off or goes away.
+  final _rowFocus = <({FocusNode fewer, FocusNode more, FocusNode up, FocusNode down, FocusNode remove})>[];
+  final _addFocus = FocusNode();
   String? _error;
 
   bool get _isNew => widget.block == null;
@@ -200,7 +213,17 @@ class _BlockEditorScreenState extends State<BlockEditorScreen> {
   @override
   void dispose() {
     _title.dispose();
+    for (final row in _rowFocus) {
+      _disposeRow(row);
+    }
+    _addFocus.dispose();
     super.dispose();
+  }
+
+  static void _disposeRow(({FocusNode fewer, FocusNode more, FocusNode up, FocusNode down, FocusNode remove}) row) {
+    for (final node in [row.fewer, row.more, row.up, row.down, row.remove]) {
+      node.dispose();
+    }
   }
 
   void _update(void Function() change) => setState(() {
@@ -213,7 +236,10 @@ class _BlockEditorScreenState extends State<BlockEditorScreen> {
     final app = AppScope.of(context);
     final g = context.guide;
     final channel = app.channelById(_draft.channelId);
-    final playlist = app.blockPlaylist(_draft);
+    // An empty lineup plays nothing (rather than the mix).
+    final hasContent = !_lineupMode || _draft.hasLineup;
+    final playlist = hasContent ? app.blockPlaylist(_draft) : const <String>[];
+    final preview = hasContent ? app.previewBlock(_draft, _newChannel ? null : _draft.channelId) : null;
 
     return TvPage(
       title: _isNew ? 'New programming block' : 'Edit programming block',
@@ -335,20 +361,40 @@ class _BlockEditorScreenState extends State<BlockEditorScreen> {
                     spacing: 12,
                     runSpacing: 12,
                     children: [
-                      TvButton(
-                        label: 'Choose shows & movies',
-                        icon: Icons.video_library,
-                        onPressed: _pickContent,
-                      ),
-                      for (final order in PlaybackOrder.values)
-                        TvToggle(
-                          label: order.label,
-                          on: _draft.order == order,
-                          radio: true,
-                          onPressed: () => _update(() => _draft.order = order),
-                        ),
+                      TvToggle(label: 'A mix', on: !_lineupMode, radio: true, onPressed: () => _setLineupMode(false)),
+                      TvToggle(label: 'A lineup', on: _lineupMode, radio: true, onPressed: () => _setLineupMode(true)),
                     ],
                   ),
+                  const SizedBox(height: 10),
+                  Text(
+                    _lineupMode
+                        ? 'Your shows in this order, each playing its next episode every airing. '
+                            'If time is left, the lineup starts over.'
+                        : 'Shows and movies you choose, in order or shuffled.',
+                    style: g.body(22, color: g.textDim),
+                  ),
+                  const SizedBox(height: 16),
+                  if (_lineupMode)
+                    ..._lineupEditor(app)
+                  else
+                    Wrap(
+                      spacing: 12,
+                      runSpacing: 12,
+                      children: [
+                        TvButton(
+                          label: 'Choose shows & movies',
+                          icon: Icons.video_library,
+                          onPressed: _pickContent,
+                        ),
+                        for (final order in PlaybackOrder.values)
+                          TvToggle(
+                            label: order.label,
+                            on: _draft.order == order,
+                            radio: true,
+                            onPressed: () => _update(() => _draft.order = order),
+                          ),
+                      ],
+                    ),
                   _section(g, 'ON THE AIR'),
                   TvToggle(
                     label: _draft.enabled ? 'Block is on' : 'Block is off',
@@ -374,13 +420,14 @@ class _BlockEditorScreenState extends State<BlockEditorScreen> {
               ),
             ),
           ),
-          SizedBox(width: 640, child: _summary(context, app, channel, playlist)),
+          SizedBox(width: 640, child: _summary(context, app, channel, playlist, preview)),
         ],
       ),
     );
   }
 
-  Widget _summary(BuildContext context, AppState app, Channel? channel, List<String> playlist) {
+  Widget _summary(BuildContext context, AppState app, Channel? channel, List<String> playlist,
+      ({Airing airing, List<ScheduledProgram> programs})? preview) {
     final g = context.guide;
     final shows = <String>{};
     var movies = 0;
@@ -432,22 +479,46 @@ class _BlockEditorScreenState extends State<BlockEditorScreen> {
           Text('PLAYS', style: g.display(24, weight: FontWeight.w800, color: g.accent)),
           const SizedBox(height: 8),
           if (playlist.isEmpty)
-            Text('Nothing yet. Choose shows or movies.', style: g.body(26, color: g.textDim))
+            Text(_lineupMode ? 'Nothing yet. Add shows to the lineup.' : 'Nothing yet. Choose shows or movies.',
+                style: g.body(26, color: g.textDim))
           else ...[
             Text(
-              [
-                if (shows.isNotEmpty) '${shows.length} show${shows.length == 1 ? '' : 's'}',
-                if (movies > 0) '$movies movie${movies == 1 ? '' : 's'}',
-                '${formatMinutes(runtime)} in all',
-              ].join(' · '),
+              _lineupMode
+                  ? [
+                      '${_draft.lineup.length} slot${_draft.lineup.length == 1 ? '' : 's'}',
+                      '${shows.length} show${shows.length == 1 ? '' : 's'}',
+                    ].join(' · ')
+                  : [
+                      if (shows.isNotEmpty) '${shows.length} show${shows.length == 1 ? '' : 's'}',
+                      if (movies > 0) '$movies movie${movies == 1 ? '' : 's'}',
+                      '${formatMinutes(runtime)} in all',
+                    ].join(' · '),
               style: g.body(26),
+            ),
+            const SizedBox(height: 4),
+            if (_lineupMode && preview != null)
+              Text(_lineupFit(preview), style: g.body(22, color: g.textDim))
+            else if (!_lineupMode)
+              Text(
+                shows.take(6).join(', ') + (shows.length > 6 ? '…' : ''),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: g.body(22, color: g.textDim),
+              ),
+          ],
+          if (preview != null) ...[
+            const SizedBox(height: 28),
+            Text(
+              preview.airing.start.isAfter(DateTime.now())
+                  ? 'NEXT AIRING · ${formatDate(preview.airing.start)}'
+                  : 'ON THE AIR NOW',
+              style: g.display(24, weight: FontWeight.w800, color: g.accent),
             ),
             const SizedBox(height: 8),
             Expanded(
-              child: Text(
-                shows.take(12).join(', ') + (shows.length > 12 ? '…' : ''),
-                overflow: TextOverflow.fade,
-                style: g.body(24, color: g.textDim),
+              child: ListView(
+                primary: false,
+                children: [for (final p in preview.programs) _PreviewRow(program: p)],
               ),
             ),
           ],
@@ -455,6 +526,108 @@ class _BlockEditorScreenState extends State<BlockEditorScreen> {
       ),
     );
   }
+
+  /// How the lineup fills the block: "Runs 1 hr 6 min, then starts over."
+  String _lineupFit(({Airing airing, List<ScheduledProgram> programs}) preview) {
+    final perPass = _draft.lineup.fold(0, (n, s) => n + s.count);
+    final programs = preview.programs;
+    final last = programs.last;
+    final cutOff = last.end == preview.airing.end && last.duration < (last.item?.runtime ?? Duration.zero);
+    if (programs.length < perPass || (programs.length == perPass && cutOff)) {
+      return 'Longer than the block: it ends at ${formatTime(preview.airing.end)}, cutting off ${last.title}.';
+    }
+    if (programs.length == perPass) return 'Fills the block.';
+    return 'Runs ${formatMinutes(programs[perPass - 1].end.difference(preview.airing.start))}, then starts over.';
+  }
+
+  /// The lineup's slots, each with its episode count and moves, then
+  /// "Add a show".
+  List<Widget> _lineupEditor(AppState app) {
+    final slots = _draft.lineup;
+    while (_rowFocus.length < slots.length) {
+      _rowFocus.add((fewer: FocusNode(), more: FocusNode(), up: FocusNode(), down: FocusNode(), remove: FocusNode()));
+    }
+    while (_rowFocus.length > slots.length) {
+      // Disposed after the frame, once the row's buttons let go of them.
+      final row = _rowFocus.removeLast();
+      WidgetsBinding.instance.addPostFrameCallback((_) => _disposeRow(row));
+    }
+    // Changes the lineup, then focuses [focus] (worked out once the rows
+    // are rebuilt).
+    void edit(void Function(List<LineupSlot> slots) change, FocusNode Function() focus) {
+      _update(() {
+        final copy = [for (final s in slots) LineupSlot(seriesKey: s.seriesKey, count: s.count)];
+        change(copy);
+        _draft.lineup = copy;
+      });
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) focus().requestFocus();
+      });
+    }
+
+    final last = slots.length - 1;
+    return [
+      for (final (i, slot) in slots.indexed)
+        Padding(
+          padding: const EdgeInsets.only(bottom: 10),
+          child: _LineupRow(
+            number: i + 1,
+            name: app.library.seriesByKey[slot.seriesKey]?.name ?? 'Missing show',
+            count: slot.count,
+            focus: _rowFocus[i],
+            // At a limit a button turns off; focus moves to its partner.
+            onFewer: slot.count > 1
+                ? () => edit((s) => s[i].count--, () => slot.count - 1 > 1 ? _rowFocus[i].fewer : _rowFocus[i].more)
+                : null,
+            onMore: slot.count < LineupSlot.maxCount
+                ? () => edit((s) => s[i].count++,
+                    () => slot.count + 1 < LineupSlot.maxCount ? _rowFocus[i].more : _rowFocus[i].fewer)
+                : null,
+            onUp: i > 0
+                ? () => edit((s) => s.insert(i - 1, s.removeAt(i)),
+                    () => i - 1 > 0 ? _rowFocus[i - 1].up : _rowFocus[i - 1].down)
+                : null,
+            onDown: i < last
+                ? () => edit((s) => s.insert(i + 1, s.removeAt(i)),
+                    () => i + 1 < last ? _rowFocus[i + 1].down : _rowFocus[i + 1].up)
+                : null,
+            // The row that takes its place, the one above, or "Add a show".
+            onRemove: () => edit((s) => s.removeAt(i),
+                () => last == 0 ? _addFocus : _rowFocus[i < last ? i : i - 1].remove),
+          ),
+        ),
+      Align(
+        alignment: Alignment.centerLeft,
+        child: TvButton(
+          label: slots.isEmpty ? 'Add a show' : 'Add another show',
+          icon: Icons.add,
+          focusNode: _addFocus,
+          onPressed: _addShow,
+        ),
+      ),
+    ];
+  }
+
+  Future<void> _addShow() async {
+    final key = await Navigator.of(context).push<String>(
+      MaterialPageRoute(builder: (_) => const _ShowPickerScreen()),
+    );
+    if (key != null) _update(() => _draft.lineup = [..._draft.lineup, LineupSlot(seriesKey: key)]);
+  }
+
+  void _setLineupMode(bool on) => _update(() {
+        if (on == _lineupMode) return;
+        _lineupMode = on;
+        if (on) {
+          // Start from the mix's shows, so a mix turns into a lineup easily.
+          _draft.lineup = _setAside.isNotEmpty
+              ? _setAside
+              : [for (final key in _draft.source.seriesKeys) LineupSlot(seriesKey: key)];
+        } else {
+          _setAside = _draft.lineup;
+          _draft.lineup = [];
+        }
+      });
 
   static Widget _section(GuideTheme g, String title) => Padding(
         padding: const EdgeInsets.only(top: 36, bottom: 14),
@@ -494,8 +667,12 @@ class _BlockEditorScreenState extends State<BlockEditorScreen> {
       problem = 'The block has to end at a different time than it starts.';
     } else if (!_newChannel && app.channelById(_draft.channelId) == null) {
       problem = 'Choose a channel.';
+    } else if (_lineupMode && !_draft.hasLineup) {
+      problem = 'Add a show to the lineup.';
     } else if (app.blockPlaylist(_draft).isEmpty) {
-      problem = 'Choose some shows or movies for the block to play.';
+      problem = _lineupMode
+          ? "The lineup's shows have no episodes. Pick other shows."
+          : 'Choose some shows or movies for the block to play.';
     } else if (!_newChannel) {
       final clash = app.blockConflict(_draft);
       if (clash != null) {
@@ -583,6 +760,150 @@ class _DateStepper extends StatelessWidget {
         const SizedBox(width: 12),
         TvButton(label: '+ Month', onPressed: () => onChanged(value.addMonths(1))),
       ],
+    );
+  }
+}
+
+/// "1  DuckTales   [−] 2 episodes [+]   [▲] [▼] [Remove]"
+class _LineupRow extends StatelessWidget {
+  const _LineupRow({
+    required this.number,
+    required this.name,
+    required this.count,
+    required this.focus,
+    required this.onFewer,
+    required this.onMore,
+    required this.onUp,
+    required this.onDown,
+    required this.onRemove,
+  });
+
+  final int number;
+  final String name;
+  final int count;
+  final ({FocusNode fewer, FocusNode more, FocusNode up, FocusNode down, FocusNode remove}) focus;
+  final VoidCallback? onFewer;
+  final VoidCallback? onMore;
+  final VoidCallback? onUp;
+  final VoidCallback? onDown;
+  final VoidCallback onRemove;
+
+  @override
+  Widget build(BuildContext context) {
+    final g = context.guide;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+      decoration: BoxDecoration(color: g.cell, borderRadius: BorderRadius.circular(g.radius)),
+      child: Row(
+        children: [
+          SizedBox(width: 48, child: Text('$number', style: g.display(32, weight: FontWeight.w800, color: g.accent))),
+          Expanded(
+            child: Text(name, maxLines: 1, overflow: TextOverflow.ellipsis, style: g.display(30, weight: FontWeight.w600)),
+          ),
+          TvButton(label: '−', focusNode: focus.fewer, onPressed: onFewer),
+          SizedBox(
+            width: 170,
+            child: Text('$count episode${count == 1 ? '' : 's'}',
+                textAlign: TextAlign.center, style: g.body(24, weight: FontWeight.w600)),
+          ),
+          TvButton(label: '+', focusNode: focus.more, onPressed: onMore),
+          const SizedBox(width: 24),
+          TvButton(label: '▲', focusNode: focus.up, onPressed: onUp),
+          const SizedBox(width: 8),
+          TvButton(label: '▼', focusNode: focus.down, onPressed: onDown),
+          const SizedBox(width: 8),
+          TvButton(label: 'Remove', icon: Icons.close, focusNode: focus.remove, onPressed: onRemove),
+        ],
+      ),
+    );
+  }
+}
+
+/// "7:30 AM  DuckTales / S1 · E4 · Duck Blind" in the next-airing preview.
+class _PreviewRow extends StatelessWidget {
+  const _PreviewRow({required this.program});
+
+  final ScheduledProgram program;
+
+  @override
+  Widget build(BuildContext context) {
+    final g = context.guide;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(width: 130, child: Text(formatTime(program.start), style: g.display(24, weight: FontWeight.w700))),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(program.title,
+                    maxLines: 1, overflow: TextOverflow.ellipsis, style: g.body(24, weight: FontWeight.w600)),
+                Text(program.subtitle,
+                    maxLines: 1, overflow: TextOverflow.ellipsis, style: g.body(20, color: g.textDim)),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Pick a show for a lineup slot. Pops with its series key.
+class _ShowPickerScreen extends StatelessWidget {
+  const _ShowPickerScreen();
+
+  @override
+  Widget build(BuildContext context) {
+    final g = context.guide;
+    final library = AppScope.of(context).library;
+    final series = [
+      for (final s in library.series)
+        if (library.episodesBySeries[s.key]?.isNotEmpty ?? false) s,
+    ]..sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+    return TvPage(
+      title: 'Add a show',
+      hints: '▲▼ Move    OK Add    ESC Back',
+      onBack: () => Navigator.of(context).pop(),
+      child: FocusTraversalGroup(
+        child: ListView(
+          padding: const EdgeInsets.fromLTRB(120, 32, 120, 32),
+          children: [
+            for (final (i, s) in series.indexed)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: TvFocusable(
+                  autofocus: i == 0,
+                  onPressed: () => Navigator.of(context).pop(s.key),
+                  builder: (context, focused) => AnimatedContainer(
+                    duration: const Duration(milliseconds: 100),
+                    height: 72,
+                    padding: const EdgeInsets.symmetric(horizontal: 20),
+                    decoration: BoxDecoration(
+                      color: focused ? g.cellBorder : g.cell,
+                      borderRadius: BorderRadius.circular(g.radius),
+                      border: Border.all(color: focused ? g.focus : Colors.transparent, width: 4),
+                    ),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: Text(s.year == null ? s.name : '${s.name} (${s.year})',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: g.display(30, weight: FontWeight.w600)),
+                        ),
+                        Text('${library.episodesBySeries[s.key]!.length} episodes',
+                            style: g.body(22, color: g.textDim)),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+          ],
+        ),
+      ),
     );
   }
 }

@@ -50,12 +50,29 @@ class MonthDay implements Comparable<MonthDay> {
   }
 }
 
+/// One spot in a block's lineup: [count] episodes of a show, back to back.
+class LineupSlot {
+  LineupSlot({required this.seriesKey, this.count = 1});
+
+  static const maxCount = 4;
+
+  /// The show ([SeriesEntry.key]).
+  final String seriesKey;
+  int count;
+
+  Map<String, Object?> toJson() => {'series': seriesKey, 'count': count};
+
+  factory LineupSlot.fromJson(Map<String, Object?> j) =>
+      LineupSlot(seriesKey: j['series'] as String, count: j['count'] as int? ?? 1);
+}
+
 /// A titled stretch of programming ("Saturday Morning Cartoons") that takes
 /// over a channel on chosen days within a time window, optionally only
 /// during a yearly date range ("Christmas Specials", Dec 1–25).
 ///
-/// Each airing picks up the block's playlist where the previous airing
-/// stopped, so a show continues week to week.
+/// A block plays either a mix ([source] in [order]) or, when it has a
+/// [lineup], its shows in that order. Either way each airing picks up where
+/// the previous one stopped, so a show continues week to week.
 class ProgramBlock {
   ProgramBlock({
     required this.id,
@@ -71,7 +88,8 @@ class ProgramBlock {
     this.seasonStart,
     this.seasonEnd,
     this.enabled = true,
-  });
+    List<LineupSlot>? lineup,
+  }) : lineup = lineup ?? [];
 
   final String id;
   String title;
@@ -89,10 +107,18 @@ class ProgramBlock {
   MonthDay? seasonStart;
   MonthDay? seasonEnd;
 
+  /// What a mix plays, and in what order. Kept while a lineup is used, so
+  /// switching back restores it.
   ChannelSource source;
   PlaybackOrder order;
 
-  /// Jellyfin item ids in play order.
+  /// Shows in the order they air each time; empty for a mix. Each airing
+  /// plays every slot's next episodes, then starts the lineup over if time
+  /// is left.
+  List<LineupSlot> lineup;
+
+  /// Jellyfin item ids in play order. For a lineup, every episode of its
+  /// shows, each show's in airing order.
   List<String> playlist;
 
   /// Local midnight of the day airings are counted from. Reset when the
@@ -101,6 +127,8 @@ class ProgramBlock {
   bool enabled;
 
   bool get hasSeason => seasonStart != null && seasonEnd != null;
+
+  bool get hasLineup => lineup.isNotEmpty;
 
   /// Length of one airing (DST changes aside).
   Duration get length {
@@ -143,6 +171,7 @@ class ProgramBlock {
         if (seasonEnd != null) 'seasonEnd': seasonEnd!.toJson(),
         'source': source.toJson(),
         'order': order.name,
+        if (lineup.isNotEmpty) 'lineup': [for (final s in lineup) s.toJson()],
         'playlist': playlist,
         'anchor': anchor.toIso8601String(),
         'enabled': enabled,
@@ -159,6 +188,10 @@ class ProgramBlock {
         seasonEnd: j['seasonEnd'] == null ? null : MonthDay.parse(j['seasonEnd'] as String),
         source: ChannelSource.fromJson(j['source'] as Map<String, Object?>),
         order: PlaybackOrder.values.byName(j['order'] as String),
+        lineup: [
+          for (final s in (j['lineup'] as List?)?.cast<Map<String, Object?>>() ?? const <Map<String, Object?>>[])
+            LineupSlot.fromJson(s),
+        ],
         playlist: (j['playlist'] as List).cast<String>(),
         anchor: DateTime.parse(j['anchor'] as String).toLocal(),
         enabled: j['enabled'] as bool? ?? true,

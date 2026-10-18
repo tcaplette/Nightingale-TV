@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:nightingale_tv/app_state.dart';
 import 'package:nightingale_tv/channels/channel.dart';
+import 'package:nightingale_tv/channels/program_block.dart';
 
 import 'fixtures.dart';
 
@@ -52,6 +53,42 @@ void main() {
     await app.saveBlock(changed);
     expect(app.blocks.single.anchor, isNot(oldAnchor));
     expect(app.blocks.single.playlist, hasLength(8));
+  });
+
+  test('a lineup plays its shows; reordering it restarts it', () async {
+    final block = app.newBlock()
+      ..title = 'Cartoons'
+      ..lineup = [LineupSlot(seriesKey: 'gamma|2000'), LineupSlot(seriesKey: 'alpha|2000', count: 2)];
+    expect(app.blockRestarts(block), isTrue);
+    await app.saveBlock(block);
+    expect(app.blocks.single.playlist, hasLength(16));
+    expect(app.blocks.single.playlist.first, 'Gamma-e1');
+    final oldAnchor = DateTime(2026, 1, 3);
+    block.anchor = oldAnchor;
+
+    expect(app.blockRestarts(block.copy()..title = 'Toons'), isFalse);
+    final reordered = block.copy()..lineup = block.lineup.reversed.toList();
+    expect(app.blockRestarts(reordered), isTrue);
+    await app.saveBlock(reordered);
+    expect(app.blocks.single.anchor, isNot(oldAnchor));
+
+    final reloaded = AppState(app.storage);
+    await reloaded.start();
+    expect([for (final s in reloaded.blocks.single.lineup) s.seriesKey], ['alpha|2000', 'gamma|2000']);
+  });
+
+  test('the preview shows what the next airing plays', () async {
+    final block = app.newBlock()
+      ..title = 'Cartoons'
+      ..days = {1, 2, 3, 4, 5, 6, 7}
+      ..lineup = [LineupSlot(seriesKey: 'gamma|2000'), LineupSlot(seriesKey: 'alpha|2000', count: 2)];
+    final preview = app.previewBlock(block, null)!;
+    expect(preview.airing.end.isAfter(DateTime.now()), isTrue);
+    // Today's airing may be over, so check the lineup's pattern, not
+    // which episodes.
+    expect([for (final p in preview.programs.take(4)) p.item!.seriesName], ['Gamma', 'Alpha', 'Alpha', 'Gamma']);
+    expect(preview.programs.first.start, preview.airing.start);
+    expect(app.previewBlock(app.newBlock(), null), isNull, reason: 'nothing to play');
   });
 
   test('clashing blocks on the same channel are detected', () async {

@@ -10,8 +10,8 @@ It's inspired by NostalgiaTV for Android. It's built for the couch, so everythin
 
 - **Channels made for you.** The app builds a lineup from your library: an all-shows channel, genre channels (comedy, kids, sci-fi…), marathon channels for your biggest shows, and movie channels. You can rename, renumber, hide or favorite any channel, and give it a built-in icon, a station badge, a show logo or your own image.
 - **Always on the air.** Channels run on the clock, so you join a show mid-episode, just like flipping to it on cable.
-- **Program guide.** A scrolling cable-style grid with a live preview window.
-- **Programming blocks.** Set up lineups such as "Saturday Morning Cartoons" on chosen days and times. They can also run only during a date range each year, such as "Christmas Specials, Dec 1–25". Each airing picks up where the last one left off.
+- **Program guide.** A scrolling cable-style grid with a live preview window. Near the end of each show, an "Up next" card says what's on next.
+- **Programming blocks.** Set up lineups such as "Saturday Morning Cartoons" on chosen days and times. They can also run only during a date range each year, such as "Christmas Specials, Dec 1–25". A block plays a mix of shows, or a lineup you program slot by slot (DuckTales, then two Animaniacs, then Rugrats), with each show playing its next episode every airing. Each airing picks up where the last one left off.
 - **Commercial breaks (experimental, off by default).** Make TV feel like TV again, with ads between and during shows:
   - **Your own ads.** Pick the Jellyfin folders that hold your commercials and bumpers. Their videos leave your regular channels and fill the breaks instead.
   - **Ad compilations split automatically.** Long compilations (an hour of '80s ads in one file, say) are cut into individual ads at chapters, or, using ffmpeg, where the picture goes black and silent.

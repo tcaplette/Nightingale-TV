@@ -2,6 +2,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:nightingale_tv/channels/channel.dart';
 import 'package:nightingale_tv/channels/program_block.dart';
 import 'package:nightingale_tv/channels/schedule.dart';
+import 'package:nightingale_tv/commercials/break_plan.dart';
 
 import 'fixtures.dart';
 
@@ -104,6 +105,11 @@ void main() {
       expect(beta, contains(sunday.item!.id));
     });
 
+    test('a program cut off by the block is on its last part', () {
+      final cut = schedule.programAt(_at(6, 59));
+      expect(schedule.isLastPart(cut, schedule.playbackAt(_at(6, 59))), isTrue);
+    });
+
     test('the timeline stays contiguous across a whole day', () {
       final programs = schedule.programsBetween(_at(0, 0), _at(0, 0, dayOffset: 1));
       for (var i = 1; i < programs.length; i++) {
@@ -170,6 +176,90 @@ void main() {
     final off = _block(alpha)..enabled = false;
     expect(ChannelSchedule.build(_channel(beta), library, [off])!.blocks, isEmpty);
     expect(ChannelSchedule.build(_channel(beta), library, [_block(['gone'])])!.blocks, isEmpty);
+  });
+
+  group('lineups', () {
+    String keyOf(String name) => library.series.firstWhere((s) => s.name == name).key;
+    final everything = [...alpha, ...beta, for (var i = 1; i <= 5; i++) 'Short-e$i'];
+    ProgramBlock lineup(List<(String, int)> slots, {int end = 8 * 60 + 6}) => _block(everything, end: end)
+      ..lineup = [for (final (show, count) in slots) LineupSlot(seriesKey: keyOf(show), count: count)];
+    List<String> airing(ChannelSchedule schedule, int week, {int end = 8 * 60 + 6}) => [
+          for (final p in schedule.programsBetween(_at(7, 0, dayOffset: 7 * week), _at(end ~/ 60, end % 60, dayOffset: 7 * week)))
+            p.item!.id,
+        ];
+
+    test("play each slot's next episodes, in lineup order, every airing", () {
+      final schedule = ChannelSchedule.build(_channel(const [], blockOnly: true), library, [
+        lineup([('Alpha', 1), ('Beta', 2)]),
+      ])!;
+      final first = schedule.programsBetween(_at(7, 0), _at(8, 6));
+      expect([for (final p in first) p.item!.id], ['Alpha-e1', 'Beta-e1', 'Beta-e2']);
+      expect([for (final p in first) p.start], [_at(7, 0), _at(7, 22), _at(7, 44)]);
+      expect(first.every((p) => p.blockTitle == 'Saturday Morning Cartoons'), isTrue);
+      expect(airing(schedule, 1), ['Alpha-e2', 'Beta-e3', 'Beta-e4']);
+      // Beta has four episodes, so it starts over.
+      expect(airing(schedule, 2), ['Alpha-e3', 'Beta-e1', 'Beta-e2']);
+    });
+
+    test('a show in two slots keeps counting its episodes', () {
+      final schedule = ChannelSchedule.build(_channel(const [], blockOnly: true), library, [
+        lineup([('Alpha', 1), ('Beta', 1), ('Alpha', 1)]),
+      ])!;
+      expect(airing(schedule, 0), ['Alpha-e1', 'Beta-e1', 'Alpha-e2']);
+      expect(airing(schedule, 1), ['Alpha-e3', 'Beta-e2', 'Alpha-e4']);
+    });
+
+    test('repeat from the top when time is left, and cut off at the end', () {
+      const end = 8 * 60 + 30;
+      final schedule = ChannelSchedule.build(_channel(const [], blockOnly: true), library, [
+        lineup([('Alpha', 1), ('Beta', 1)], end: end),
+      ])!;
+      final programs = schedule.programsBetween(_at(7, 0), _at(8, 30));
+      expect([for (final p in programs) p.item!.id], ['Alpha-e1', 'Beta-e1', 'Alpha-e2', 'Beta-e2', 'Alpha-e3']);
+      expect(programs.last.start, _at(8, 28));
+      expect(programs.last.end, _at(8, 30));
+      // Alpha-e3 only got 2 minutes, so it airs in full next week.
+      expect(airing(schedule, 1, end: end), ['Alpha-e3', 'Beta-e3', 'Alpha-e4', 'Beta-e4', 'Alpha-e5']);
+    });
+
+    test('start on the hour and half hour with Automatic breaks', () {
+      final schedule = ChannelSchedule.build(_channel(const [], blockOnly: true), library,
+          [lineup([('Alpha', 1), ('Beta', 2)], end: 8 * 60 + 30)], const BreakContext(plan: BreakPlan.automatic))!;
+      final programs = schedule.programsBetween(_at(7, 0), _at(8, 30));
+      expect([for (final p in programs) p.item!.id], ['Alpha-e1', 'Beta-e1', 'Beta-e2']);
+      expect([for (final p in programs) p.start], [_at(7, 0), _at(7, 30), _at(8, 0)]);
+    });
+
+    test('with breaks, only the part a show ends in is its last', () {
+      final schedule = ChannelSchedule.build(_channel(const [], blockOnly: true), library,
+          [lineup([('Alpha', 1)])], const BreakContext(plan: BreakPlan.automatic))!;
+      final slot = schedule.programAt(_at(7, 0));
+      final parts = <ScheduledProgram>[];
+      for (var t = slot.start; t.isBefore(slot.end);) {
+        final p = schedule.playbackAt(t);
+        if (!p.isBreak) parts.add(p);
+        t = p.end;
+      }
+      expect(parts.length, greaterThan(1), reason: 'Automatic breaks the show up');
+      expect([for (final p in parts) schedule.isLastPart(slot, p)], [for (final p in parts) p == parts.last]);
+    });
+
+    test('skip shows that are gone, and need one that is not', () {
+      final gone = lineup([('Alpha', 1)])..lineup.insert(0, LineupSlot(seriesKey: 'gone'));
+      final schedule = ChannelSchedule.build(_channel(const [], blockOnly: true), library, [gone])!;
+      expect(airing(schedule, 0), ['Alpha-e1', 'Alpha-e2', 'Alpha-e3']);
+      final none = _block(everything)..lineup = [LineupSlot(seriesKey: 'gone')];
+      expect(ChannelSchedule.build(_channel(beta), library, [none])!.blocks, isEmpty);
+    });
+
+    test('survive a JSON round trip; mixes save no lineup', () {
+      final block = lineup([('Alpha', 1), ('Beta', 2)]);
+      final copy = ProgramBlock.fromJson(block.toJson());
+      expect([for (final s in copy.lineup) (s.seriesKey, s.count)],
+          [(keyOf('Alpha'), 1), (keyOf('Beta'), 2)]);
+      expect(_block(alpha).toJson().containsKey('lineup'), isFalse);
+      expect(ProgramBlock.fromJson(_block(alpha).toJson()).hasLineup, isFalse);
+    });
   });
 
   group('seasons', () {

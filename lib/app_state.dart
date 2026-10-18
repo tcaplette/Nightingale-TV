@@ -455,11 +455,11 @@ class AppState extends ChangeNotifier {
         _schedules.remove(ch.id);
         continue;
       }
-      _rebase(ch, _mergedPlaylist(ch.playlist, ch.source, ch.order, ch.id), now,
+      _rebase(ch, _mergedPlaylist(ch.playlist, buildPlaylist(library, ch.source, ch.order, seed: stableHash(ch.id))), now,
           previous: previous, planBefore: plansBefore[ch.id]);
     }
     for (final b in _blocks) {
-      b.playlist = _mergedPlaylist(b.playlist, b.source, b.order, b.id);
+      b.playlist = _mergedPlaylist(b.playlist, blockPlaylist(b));
     }
     _schedules.clear();
     // Add channels the bigger library now qualifies for.
@@ -474,14 +474,13 @@ class AppState extends ChangeNotifier {
   }
 
   /// Keeps [playlist]'s order, dropping items gone from the library and
-  /// appending new ones.
-  List<String> _mergedPlaylist(
-      List<String> playlist, ChannelSource source, PlaybackOrder order, String seedId) {
+  /// appending the new ones from [fresh].
+  List<String> _mergedPlaylist(List<String> playlist, List<String> fresh) {
     final known = playlist.toSet();
     return [
       for (final id in playlist)
         if (library[id] != null) id,
-      for (final id in buildPlaylist(library, source, order, seed: stableHash(seedId)))
+      for (final id in fresh)
         if (!known.contains(id)) id,
     ];
   }
@@ -868,19 +867,61 @@ class AppState extends ChangeNotifier {
       .where((b) => blocksOverlap(b, block))
       .firstOrNull;
 
-  /// Resolves [source] for a block, so editors can show what it will play.
-  List<String> blockPlaylist(ProgramBlock block) =>
-      buildPlaylist(library, block.source, block.order, seed: stableHash(block.id));
+  /// Resolves what [block] plays, so editors can show it: its mix, or its
+  /// lineup's shows, each show's episodes in airing order.
+  List<String> blockPlaylist(ProgramBlock block) => block.hasLineup
+      ? [
+          for (final key in {for (final s in block.lineup) s.seriesKey})
+            for (final e in library.episodesBySeries[key] ?? const <MediaEntry>[]) e.id,
+        ]
+      : buildPlaylist(library, block.source, block.order, seed: stableHash(block.id));
+
+  /// Whether saving [block] restarts its lineup: new blocks, and blocks
+  /// whose content changed.
+  bool blockRestarts(ProgramBlock block) {
+    final old = _blocks.where((b) => b.id == block.id).firstOrNull;
+    return old == null ||
+        old.order != block.order ||
+        !_sameJson(old.source.toJson(), block.source.toJson()) ||
+        !_sameJson([for (final s in old.lineup) s.toJson()], [for (final s in block.lineup) s.toJson()]);
+  }
+
+  /// What [block]'s next airing (or the one on now) would play once saved,
+  /// on [channelId]'s schedule, or on a new block-only channel when null.
+  ({Airing airing, List<ScheduledProgram> programs})? previewBlock(ProgramBlock block, String? channelId) {
+    final draft = block.copy()..enabled = true;
+    if (blockRestarts(block)) {
+      final today = DateTime.now();
+      draft.playlist = blockPlaylist(draft);
+      draft.anchor = DateTime(today.year, today.month, today.day);
+    }
+    final channel = (channelId == null ? null : channelById(channelId)) ??
+        Channel(
+          id: '',
+          number: 0,
+          name: '',
+          icon: const ChannelIcon.builtin('live_tv'),
+          source: const ChannelSource(),
+          order: PlaybackOrder.cyclic,
+          playlist: const [],
+          anchor: draft.anchor,
+          blockOnly: true,
+        );
+    draft.channelId = channel.id;
+    final schedule = ChannelSchedule.build(channel, library, [draft], _breakContext(planFor(channel)));
+    final blocks = schedule?.blocks.where((b) => b.block.id == draft.id);
+    if (blocks == null || blocks.isEmpty) return null;
+    final now = DateTime.now();
+    final airing = blocks.first.airingsBetween(now, now.add(const Duration(days: 400))).firstOrNull;
+    if (airing == null) return null;
+    return (airing: airing, programs: blocks.first.programsIn(airing));
+  }
 
   /// Adds or replaces [block]. When its content changed, the lineup starts
   /// over from its first program today.
   Future<void> saveBlock(ProgramBlock block) async {
     final existing = _blocks.indexWhere((b) => b.id == block.id);
-    final old = existing < 0 ? null : _blocks[existing];
-    final contentChanged = old == null ||
-        old.order != block.order ||
-        !_sameJson(old.source.toJson(), block.source.toJson());
-    if (contentChanged) {
+    if (blockRestarts(block)) {
       final today = DateTime.now();
       block.playlist = blockPlaylist(block);
       block.anchor = DateTime(today.year, today.month, today.day);

@@ -174,22 +174,30 @@ class LoopSchedule {
 
 typedef Airing = ({DateTime start, DateTime end});
 
-/// Lays out a [ProgramBlock]'s airings. Airing n starts the playlist where
-/// airing n-1 stopped; programs are worked out by replaying airings from the
-/// block's anchor (cached, so this stays cheap).
+/// Lays out a [ProgramBlock]'s airings. Airing n starts where airing n-1
+/// stopped; programs are worked out by replaying airings from the block's
+/// anchor (cached, so this stays cheap).
 class BlockSchedule {
-  BlockSchedule._(this.block, this._items, this._slotOf);
+  BlockSchedule._(this.block, this._items, this._slots, this._showCount, this._slotOf);
 
   final ProgramBlock block;
+
+  /// A mix's programs, in order.
   final List<MediaEntry> _items;
+
+  /// A lineup's slots: the show's episodes in airing order, how many air
+  /// back to back, and which entry of the cursor counts the show's
+  /// episodes (shared by the slots of a show listed twice).
+  final List<({List<MediaEntry> episodes, int count, int show})> _slots;
+  final int _showCount;
   final SlotLength _slotOf;
 
-  /// Airings replayed so far (from the anchor), and the playlist cursor at
-  /// the start of each.
+  /// Airings replayed so far (from the anchor), and where each starts: the
+  /// playlist position for a mix, each show's next episode for a lineup.
   final _airings = <Airing>[];
-  final _cursors = <int>[];
+  final _cursors = <List<int>>[];
   DateTime? _scannedThrough;
-  final _filled = <DateTime, (List<ScheduledProgram>, int)>{};
+  final _filled = <DateTime, (List<ScheduledProgram>, List<int>)>{};
 
   /// [slotOf] gives each program's slot (its runtime plus its breaks).
   static BlockSchedule? build(ProgramBlock block, LibraryIndex library, {SlotLength slotOf = _runtimeOnly}) {
@@ -200,7 +208,21 @@ class BlockSchedule {
             when item.runtime > Duration.zero && item.kind != MediaKind.commercial)
           item,
     ];
-    return items.isEmpty ? null : BlockSchedule._(block, items, slotOf);
+    if (items.isEmpty) return null;
+    if (!block.hasLineup) return BlockSchedule._(block, items, const [], 1, slotOf);
+    // The playlist keeps each show's episodes in airing order, with new
+    // ones appended, so a show's episode numbers stay put.
+    final bySeries = <String, List<MediaEntry>>{};
+    for (final item in items) {
+      if (item.seriesKey case final key?) bySeries.putIfAbsent(key, () => []).add(item);
+    }
+    final shows = <String, int>{};
+    final slots = [
+      for (final s in block.lineup)
+        if (bySeries[s.seriesKey] case final episodes? when s.count > 0)
+          (episodes: episodes, count: s.count, show: shows.putIfAbsent(s.seriesKey, () => shows.length)),
+    ];
+    return slots.isEmpty ? null : BlockSchedule._(block, const [], slots, shows.length, slotOf);
   }
 
   /// Airings overlapping [from, to), in order.
@@ -226,16 +248,20 @@ class BlockSchedule {
 
   /// The program on during [airing] at [t].
   ScheduledProgram programAt(Airing airing, DateTime t) {
-    final programs = _fillAt(airing, _cursorAt(airing)).$1;
+    final programs = programsIn(airing);
     return programs.lastWhere((p) => !p.start.isAfter(t), orElse: () => programs.first);
   }
 
-  (List<ScheduledProgram>, int) _fillAt(Airing airing, int cursor) =>
-      _filled.putIfAbsent(airing.start, () => _fill(airing, cursor));
+  /// Everything [airing] plays, in order.
+  List<ScheduledProgram> programsIn(Airing airing) => _fillAt(airing, _cursorAt(airing)).$1;
 
-  /// Replays airings from the anchor up to [airing] to find where in the
-  /// playlist it starts.
-  int _cursorAt(Airing airing) {
+  (List<ScheduledProgram>, List<int>) _fillAt(Airing airing, List<int> cursor) => _filled.putIfAbsent(
+      airing.start, () => _slots.isEmpty ? _fill(airing, cursor) : _fillLineup(airing, cursor));
+
+  /// Replays airings from the anchor up to [airing] to find where it
+  /// starts.
+  List<int> _cursorAt(Airing airing) {
+    final first = List.filled(_showCount, 0);
     final target = DateTime(airing.start.year, airing.start.month, airing.start.day);
     var d = _scannedThrough ??
         DateTime(block.anchor.year, block.anchor.month, block.anchor.day - 1);
@@ -243,17 +269,18 @@ class BlockSchedule {
       d = DateTime(d.year, d.month, d.day + 1);
       final w = block.windowOn(d);
       if (w == null) continue;
-      _cursors.add(_airings.isEmpty ? 0 : _fillAt(_airings.last, _cursors.last).$2);
+      _cursors.add(_airings.isEmpty ? first : _fillAt(_airings.last, _cursors.last).$2);
       _airings.add(w);
     }
     if (_scannedThrough == null || d.isAfter(_scannedThrough!)) _scannedThrough = d;
     final i = _airings.indexWhere((a) => a.start == airing.start);
-    return i < 0 ? 0 : _cursors[i];
+    return i < 0 ? first : _cursors[i];
   }
 
-  /// Fills one airing starting at playlist position [cursor]. Returns the
-  /// programs and the cursor for the next airing.
-  (List<ScheduledProgram>, int) _fill(Airing airing, int cursor) {
+  /// Fills one airing of a mix starting at playlist position `cursor[0]`.
+  /// Returns the programs and the cursor for the next airing.
+  (List<ScheduledProgram>, List<int>) _fill(Airing airing, List<int> start) {
+    var cursor = start[0];
     final n = _items.length;
     final programs = <ScheduledProgram>[];
     final windowLength = airing.end.difference(airing.start);
@@ -293,7 +320,32 @@ class BlockSchedule {
       // A program longer than the whole block would otherwise air forever.
       if (_slotOf(next) > windowLength) cursor++;
     }
-    return (programs, cursor);
+    return (programs, [cursor]);
+  }
+
+  /// Fills one airing of a lineup: each slot's next episodes in turn, from
+  /// the top again while time is left. [start] holds each show's next
+  /// episode. Returns the programs and where the next airing starts.
+  (List<ScheduledProgram>, List<int>) _fillLineup(Airing airing, List<int> start) {
+    final next = [...start];
+    final programs = <ScheduledProgram>[];
+    final windowLength = airing.end.difference(airing.start);
+    var t = airing.start;
+    while (t.isBefore(airing.end)) {
+      for (final slot in _slots) {
+        for (var k = 0; k < slot.count && t.isBefore(airing.end); k++) {
+          final item = slot.episodes[next[slot.show] % slot.episodes.length];
+          final slotEnd = t.add(_slotOf(item));
+          final cut = slotEnd.isAfter(airing.end);
+          programs.add(ScheduledProgram(item: item, start: t, end: cut ? airing.end : slotEnd, blockTitle: block.title));
+          t = cut ? airing.end : slotEnd;
+          // An episode the block's end cuts off airs in full next time,
+          // unless it's longer than the whole block.
+          if (!cut || _slotOf(item) > windowLength) next[slot.show]++;
+        }
+      }
+    }
+    return (programs, next);
   }
 }
 
@@ -433,6 +485,18 @@ class ChannelSchedule {
       program: segment.isShow ? null : item,
       blockTitle: slot.blockTitle,
     );
+  }
+
+  /// Whether [segment] (from [playbackAt]) is the last of [slot]'s program
+  /// to air: no part of the show plays after it before the slot ends, which
+  /// a programming block can make early.
+  bool isLastPart(ScheduledProgram slot, ScheduledProgram segment) {
+    final item = slot.item;
+    if (item == null || segment.isBreak) return false;
+    if (!slotPlanFor(item).hasBreaks) return true;
+    final after = segment.end.difference(slot.layoutStart);
+    final until = slot.end.difference(slot.layoutStart);
+    return !layoutFor(item, slot.layoutStart).segments.any((s) => s.isShow && s.from >= after && s.from < until);
   }
 
   /// Where [item]'s slot starting at [layoutStart] reaches [position] in the
