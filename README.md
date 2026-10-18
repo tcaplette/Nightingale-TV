@@ -12,7 +12,14 @@ It's inspired by NostalgiaTV for Android. It's built for the couch, so everythin
 - **Always on the air.** Channels run on the clock, so you join a show mid-episode, just like flipping to it on cable.
 - **Program guide.** A scrolling cable-style grid with a live preview window.
 - **Programming blocks.** Set up lineups such as "Saturday Morning Cartoons" on chosen days and times. They can also run only during a date range each year, such as "Christmas Specials, Dec 1–25". Each airing picks up where the last one left off.
-- **Commercial breaks (optional).** Pick the Jellyfin folders that hold your commercials and bumpers; long ad compilations are split into individual ads automatically. Breaks come before, during and after shows and movies, at act breaks when they can be found. Choose **Automatic** for a broadcast-style layout on the half hour, or **Custom** to set each break yourself, for every channel or just one. Breaks are off by default.
+- **Commercial breaks (experimental, off by default).** Make TV feel like TV again, with ads between and during shows:
+  - **Your own ads.** Pick the Jellyfin folders that hold your commercials and bumpers. Their videos leave your regular channels and fill the breaks instead.
+  - **Ad compilations split automatically.** Long compilations (an hour of '80s ads in one file, say) are cut into individual ads at chapters, or, using ffmpeg, where the picture goes black and silent.
+  - **Breaks where they belong.** Ads play before, during and after shows and movies. Mid-show breaks go at act breaks when the show's chapters mark them, and otherwise at a scene change near evenly spaced points.
+  - **Automatic or Custom.** **Automatic** lays breaks out broadcast-style, so shows start on the hour and half hour. **Custom** lets you set how long each break is, how often shows break, and which ads each break uses. Use one setting for every channel, or give a channel its own.
+  - **Same ads for everyone.** Like real TV, tuning away and back shows the same ads at the same spot. Ads never show up in your Jellyfin watch history.
+
+  Being experimental, this feature may change between versions, and splitting a long compilation for the first time can take several minutes. The rest of the app works the same with breaks off.
 - **Profiles.** Everyone gets their own sign-in, channels and blocks. Kid profiles only see content rated for their age. Grown-up profiles and settings can be locked with a PIN.
 - **Phone remote.** Turn it on in the menu, scan the QR code, and your phone's browser becomes the remote. There's nothing to install.
 
