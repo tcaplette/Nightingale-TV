@@ -221,12 +221,27 @@ enum AppPhase { starting, signedOut, syncing, ready }
 
 /// App-wide state: session, library index, channel lineup.
 class AppState extends ChangeNotifier {
-  AppState(this.storage, {this.maxRatingRank, this.runAnalysis = true}) : icons = CustomIconStore(storage.logosDir) {
+  AppState(this.storage, {this.maxRatingRank, this.runAnalysis = true, this._background = false, this.exportBusy})
+      : icons = CustomIconStore(storage.logosDir) {
     playbackActivity.addListener(_pushBudget);
+    playbackBusy.addListener(_updateAnalysisBusy);
+    exportBusy?.addListener(_updateAnalysisBusy);
+    _syncStaleCheck();
   }
 
-  /// Analyze media in the background (off in most tests).
+  /// Analyze media in the background (off in most tests), while on screen.
   final bool runAnalysis;
+
+  /// True while Live TV export is streaming anything; analysis holds off
+  /// meanwhile, as it does while the TV tunes.
+  final ValueListenable<bool>? exportBusy;
+
+  /// Kept loaded for Live TV export while another profile is on screen: no
+  /// analysis, and the library is refreshed on a timer, since nobody opens
+  /// this profile to trigger it.
+  bool get background => _background;
+  bool _background;
+  Timer? _staleCheck;
 
   /// Kid profiles only see content rated at most this (see `ratingRank`).
   final int? maxRatingRank;
@@ -281,6 +296,45 @@ class AppState extends ChangeNotifier {
 
   /// True while the TV is opening a stream; analysis holds off meanwhile.
   final playbackBusy = ValueNotifier(false);
+
+  /// What analysis holds off for: the TV tuning, or Live TV export streaming.
+  late final _analysisBusy = ValueNotifier(_busyNow);
+
+  bool get _busyNow => playbackBusy.value || (exportBusy?.value ?? false);
+
+  void _updateAnalysisBusy() => _analysisBusy.value = _busyNow;
+
+  @visibleForTesting
+  ValueListenable<bool> get analysisBusy => _analysisBusy;
+
+  /// Moves this profile off screen ([on]) or onto it. Off screen, analysis
+  /// stops and the library is kept fresh on a timer.
+  Future<void> setBackground(bool on) async {
+    if (_closed || on == _background) return;
+    _background = on;
+    _syncStaleCheck();
+    if (on) {
+      await _stopAnalysis();
+    } else {
+      _startAnalysis();
+    }
+    notifyListeners();
+  }
+
+  /// How often a background profile checks whether its library is stale.
+  @visibleForTesting
+  static Duration staleCheckInterval = const Duration(minutes: 30);
+
+  void _syncStaleCheck() {
+    _staleCheck?.cancel();
+    _staleCheck = null;
+    if (!_background || _closed) return;
+    _staleCheck = Timer.periodic(staleCheckInterval, (_) {
+      if (phase == AppPhase.ready && DateTime.now().difference(library.fetchedAt) > libraryMaxAge) {
+        unawaited(refreshLibrary(background: true));
+      }
+    });
+  }
 
   /// What the TV is doing (set by the tuner); with a cap, it sets how fast
   /// the analyzer may download (see [analyzerBudget]).
@@ -458,7 +512,7 @@ class AppState extends ChangeNotifier {
     final cache = _analysis;
     _analysis = null;
     cache?.removeListener(_onAnalysis);
-    await cache?.close();
+    if (cache != null) await AnalysisCache.release(cache);
     try {
       await client?.logout();
     } on JellyfinException {
@@ -791,8 +845,11 @@ class AppState extends ChangeNotifier {
 
   Future<void> _openAnalysis(String serverId) async {
     if (_analysis != null) return;
-    final cache = await AnalysisCache.open(storage.analysisDir, serverId);
-    if (_closed) return;
+    final cache = await AnalysisCache.acquire(storage.analysisDir, serverId);
+    if (_closed || _analysis != null) {
+      await AnalysisCache.release(cache);
+      return;
+    }
     _analysis = cache..addListener(_onAnalysis);
   }
 
@@ -810,7 +867,7 @@ class AppState extends ChangeNotifier {
   void _startAnalysis() {
     final cache = _analysis;
     final c = client;
-    if (!runAnalysis || _closed || _analyzer != null || cache == null || c == null || phase != AppPhase.ready) {
+    if (!runAnalysis || _background || _closed || _analyzer != null || cache == null || c == null || phase != AppPhase.ready) {
       return;
     }
     // The analyzer only ever reads the static stream (direct-play spec).
@@ -823,7 +880,7 @@ class AppState extends ChangeNotifier {
       segments: (id) async =>
           [for (final s in await client!.commercialSegments(id)) Span(s.start, s.end)],
       work: _analysisWork,
-      busy: playbackBusy,
+      busy: _analysisBusy,
     )..start();
     notifyListeners();
   }
@@ -901,9 +958,12 @@ class AppState extends ChangeNotifier {
   Future<void> close() async {
     if (_closed) return;
     _closed = true;
+    _staleCheck?.cancel();
+    playbackBusy.removeListener(_updateAnalysisBusy);
+    exportBusy?.removeListener(_updateAnalysisBusy);
     await _stopAnalysis();
     _analysis?.removeListener(_onAnalysis);
-    await _analysis?.close();
+    if (_analysis case final cache?) await AnalysisCache.release(cache);
     client?.close();
   }
 

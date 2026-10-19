@@ -15,6 +15,9 @@ import 'package:nightingale_tv/commercials/analysis/analysis_cache.dart';
 import 'package:nightingale_tv/commercials/analysis/detections.dart';
 import 'package:nightingale_tv/commercials/analysis/reel_cutter.dart';
 import 'package:nightingale_tv/data/app_storage.dart';
+import 'package:nightingale_tv/export/broadcast_art.dart';
+import 'package:nightingale_tv/export/export_service.dart';
+import 'package:nightingale_tv/export/ssdp_responder.dart';
 import 'package:nightingale_tv/library/library_index.dart';
 import 'package:nightingale_tv/main.dart';
 import 'package:nightingale_tv/playback/tuner.dart';
@@ -53,8 +56,12 @@ class UiHarness {
   /// the server work. [reelCuts] seeds analysis results: reel id → clips.
   /// [settings] and [editChannels] change what's saved first (see
   /// [signedInApp]). Background analysis is off.
+  ///
+  /// With [export], Live TV export is set up (off until turned on, with
+  /// discovery kept off the real network).
   static Future<UiHarness> start(WidgetTester tester, LibraryIndex library,
       {bool remote = false,
+      bool export = false,
       FakeItems? server,
       Map<String, List<Span>> reelCuts = const {},
       Map<String, Object?>? settings,
@@ -86,6 +93,12 @@ class UiHarness {
         household.remote = RemoteControl(household,
             wake: () async => tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed));
         await household.remote!.setEnabled(true, port: 0);
+      }
+      if (export) {
+        final service = household.export = ExportService(household,
+            ssdp: () => SsdpResponder()..sendOverride = (_, _, _) {},
+            art: BroadcastArt(Directory('${dir.path}/export_cache')));
+        await service.load();
       }
       return household;
     }))!;
@@ -200,6 +213,8 @@ class UiHarness {
   Future<void> dispose() async {
     await tester.runAsync(() async {
       await household.remote?.stop();
+      await household.export?.stop();
+      await household.setExportedProfiles({});
       await household.app?.close();
       await server?.close();
     });

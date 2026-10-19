@@ -34,8 +34,12 @@ class PlaybackDiagnostics {
     if (file.existsSync() && file.lengthSync() > 20 * 1024 * 1024) file.renameSync('$path.1');
     final d = PlaybackDiagnostics._(file.openWrite(mode: FileMode.append), read, analyzer, path)..playing = playing;
     d._begin();
-    return d;
+    return active = d;
   }
+
+  /// The log being written, for events from outside the tuner (Live TV
+  /// export streams), so a stutter can be lined up against them.
+  static PlaybackDiagnostics? active;
 
   final IOSink _sink;
   final Future<String> Function(String) _read;
@@ -262,6 +266,7 @@ class PlaybackDiagnostics {
   }
 
   Future<void> close() async {
+    if (identical(active, this)) active = null;
     _timer?.cancel();
     _freezeTimer?.cancel();
     SchedulerBinding.instance.removeTimingsCallback(_onTimings);

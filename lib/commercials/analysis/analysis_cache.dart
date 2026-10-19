@@ -154,11 +154,39 @@ class AnalysisCache extends ChangeNotifier implements BreakPointSource {
 
   static const _formatVersion = 1;
 
+  /// Open caches by file path, for [acquire].
+  static final _shared = <String, ({Future<AnalysisCache> cache, int users})>{};
+
+  /// The one cache for [serverId] in this process, shared by every profile
+  /// signed in to that server, so they all see the same results and only
+  /// one copy is ever written. Each [acquire] needs a [release].
+  static Future<AnalysisCache> acquire(Directory dir, String serverId) {
+    final path = _fileFor(dir, serverId).path;
+    final entry = _shared[path];
+    final cache = entry?.cache ?? open(dir, serverId);
+    _shared[path] = (cache: cache, users: (entry?.users ?? 0) + 1);
+    return cache;
+  }
+
+  /// Gives back an [acquire]d cache; the last user closes it.
+  static Future<void> release(AnalysisCache cache) async {
+    final entry = _shared[cache.file.path];
+    if (entry == null) return cache.close();
+    if (entry.users > 1) {
+      _shared[cache.file.path] = (cache: entry.cache, users: entry.users - 1);
+      return;
+    }
+    _shared.remove(cache.file.path);
+    await cache.close();
+  }
+
+  static File _fileFor(Directory dir, String serverId) =>
+      File('${dir.path}/${serverId.replaceAll(RegExp(r'[^A-Za-z0-9_-]'), '_')}.json');
+
   static Future<AnalysisCache> open(Directory dir, String serverId,
       {Duration debounce = const Duration(seconds: 5)}) async {
     await dir.create(recursive: true);
-    final safe = serverId.replaceAll(RegExp(r'[^A-Za-z0-9_-]'), '_');
-    final file = File('${dir.path}/$safe.json');
+    final file = _fileFor(dir, serverId);
     final entries = <String, AnalysisEntry>{};
     try {
       if (await file.exists()) {

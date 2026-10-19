@@ -23,6 +23,7 @@ It's inspired by NostalgiaTV for Android. It's built for the couch, so everythin
 - **Profiles.** Everyone gets their own sign-in, channels and blocks. Kid profiles only see content rated for their age. Grown-up profiles and settings can be locked with a PIN.
 - **Phone remote.** Turn it on in the menu, scan the QR code, and your phone's browser becomes the remote. There's nothing to install.
 - **Always direct play.** Nightingale TV plays your original files and never asks Jellyfin to transcode, unless you turn on *Transcode only if needed*.
+- **Live TV export.** Watch your channels in Plex, Jellyfin or any IPTV app on your home network. Each profile's lineup shows up as a TV tuner with its own guide. See [Live TV export](#live-tv-export).
 
 | Who's watching? | Phone remote | Programming block editor |
 | --- | --- | --- |
@@ -69,6 +70,28 @@ To uninstall it: `sudo apt remove nightingale-tv`. Your settings in `~/.local/sh
 | F11 | Full screen on/off | |
 
 **With an air mouse:** move the pointer while watching, and **Guide** and **Menu** buttons appear in the top-left corner. In the guide, click a channel to watch it, or click **Menu** at the top.
+
+## Live TV export
+
+Live TV export lets the Plex and Jellyfin apps on your other TVs, phones and computers play your channels, guide and all, without installing anything new on them. The schedule, programming blocks and commercial breaks are the same as on this TV, with the same ads at the same moments.
+
+Nightingale TV has to stay open for the exported channels to play. Closing it takes them off the air.
+
+**Turn it on:** Menu → **Live TV export**. Turn on **Live TV export**, then **export this lineup** for each profile you want to share. Each profile gets its own address, for example `http://192.168.1.20:5004`, and the screen shows its links and a QR code.
+
+**Plex** (Live TV needs Plex Pass): Settings → **Live TV & DVR** → **Set up Plex DVR**. Plex usually finds "Nightingale TV (*profile*)" on its own. If it doesn't, choose *Don't see your HDHomeRun device? Enter its network address manually* and type the profile's address. When Plex asks for a guide, choose the XMLTV option and paste the profile's **XMLTV** link.
+
+**Jellyfin:** Dashboard → **Live TV** → add a **Tuner device** of type *HDHomeRun* with the profile's address (or type *M3U Tuner* with its **M3U** link). Then add a **TV Guide Data Provider** of type *XMLTV* with the **XMLTV** link.
+
+**IPTV apps** (VLC, Kodi, TiviMate…): open the profile's **M3U** link.
+
+Good to know:
+
+- Exported channels are converted on this PC, so any player can show them. Nightingale TV uses your graphics card for this when it can. Jellyfin still does no converting. How many channels can be watched elsewhere at once is set under **Streams at once**.
+- Anyone on your home network can watch an exported lineup, just as with a real tuner. Kid profiles' lineups only ever contain what that kid can watch.
+- If the PC's firewall is on, allow the profile's port, and port 1900 so Plex can find it: `sudo ufw allow 5004/tcp` and `sudo ufw allow 1900/udp`.
+- Plex and Jellyfin remember the address, so give this PC a fixed address in your router (a "DHCP reservation").
+- Plex and Jellyfin refresh the guide on their own schedule. After changing channels or blocks, refresh the guide there to see it sooner. What plays is always up to date.
 
 ## Building from source
 

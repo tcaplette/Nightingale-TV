@@ -57,16 +57,21 @@ class FakeClient extends JellyfinClient {
 }
 
 /// What [FakePlayer.open] does with a URL.
-enum OpenResult { plays, throws, errors, hangs }
+/// [noPicture]: mpv says "playing" but no frame comes (yet).
+enum OpenResult { plays, throws, errors, hangs, noPicture }
 
 class FakePlayer implements TunerPlayer {
   FakePlayer(this.log);
 
   final List<String> log;
-  final opens = <({Uri url, Duration? start, Duration? end})>[];
+  final opens = <({Uri url, Duration? start, Duration? end, bool exact})>[];
   OpenResult Function(Uri url) onOpen = (_) => OpenResult.plays;
 
+  /// How far before [start] a keyframe join lands.
+  Duration keyframeEarly = Duration.zero;
+
   final _playing = StreamController<bool>.broadcast();
+  final _position = StreamController<Duration>.broadcast();
   final _error = StreamController<String>.broadcast();
   bool _isPlaying = false;
 
@@ -75,7 +80,7 @@ class FakePlayer implements TunerPlayer {
   @override
   Stream<bool> get bufferingStream => const Stream.empty();
   @override
-  Stream<Duration> get positionStream => const Stream.empty();
+  Stream<Duration> get positionStream => _position.stream;
   @override
   Stream<void> get tracksStream => const Stream.empty();
   @override
@@ -93,13 +98,21 @@ class FakePlayer implements TunerPlayer {
   Duration position = Duration.zero;
 
   @override
-  Future<void> open(Uri url, {required Map<String, String> headers, Duration? start, Duration? end}) async {
-    opens.add((url: url, start: start, end: end));
+  Future<void> open(Uri url,
+      {required Map<String, String> headers, Duration? start, Duration? end, bool exact = true}) async {
+    opens.add((url: url, start: start, end: end, exact: exact));
     log.add('open:${url.path}');
     _isPlaying = false;
     position = Duration.zero;
+    final landed = (start ?? Duration.zero) - (exact ? Duration.zero : keyframeEarly);
     switch (onOpen(url)) {
       case OpenResult.plays:
+        scheduleMicrotask(() {
+          _isPlaying = true;
+          _playing.add(true);
+          showPicture(landed);
+        });
+      case OpenResult.noPicture:
         scheduleMicrotask(() {
           _isPlaying = true;
           _playing.add(true);
@@ -111,6 +124,12 @@ class FakePlayer implements TunerPlayer {
       case OpenResult.hangs:
         break;
     }
+  }
+
+  /// The first frames, from [at]: the position moves on from where it landed.
+  void showPicture(Duration at) {
+    _position.add(at);
+    _position.add(at + const Duration(milliseconds: 40));
   }
 
   /// A playback error some time after starting.
@@ -168,7 +187,9 @@ void main() {
     app.client = client;
     player = FakePlayer(log);
     now = DateTime.now();
-    tuner = Tuner(app, player: player, clock: () => now);
+    // Asking ahead adds requests the counting tests don't expect; the
+    // prefetch tests turn it back on.
+    tuner = Tuner(app, player: player, clock: () => now)..prefetch = false;
   });
 
   tearDown(() async {
@@ -542,6 +563,113 @@ test('rapid surfing over five transcoding channels leaves at most one job runnin
       }
       // Off with a remembered cap is still off.
       expect(analyzerBudget(PlaybackActivity.tuning, const PlaybackSettings(maxBitrateMbps: 8)), const Budget.unlimited());
+    });
+  });
+
+  group('tuning ends at the first frame', () {
+    test('mpv saying "playing" isn\'t tuned in; the picture moving is', () async {
+      player.onOpen = (_) => OpenResult.noPicture;
+      await tuneIntoPart(app.channels.first);
+      expect(tuner.status, TunerStatus.tuning);
+      expect(tuner.changingChannel, isTrue);
+      expect(app.playbackBusy.value, isTrue, reason: 'analysis holds off until the picture comes');
+      player.showPicture(player.opens.last.start!);
+      await settle();
+      expect(tuner.status, TunerStatus.playing);
+      expect(tuner.changingChannel, isFalse);
+    });
+
+    test('the next segment on the same channel isn\'t a channel change', () async {
+      await app.setGlobalPlan(BreakPlan.automatic);
+      await tuneIntoPart(app.channels.first);
+      player.onOpen = (_) => OpenResult.noPicture;
+      await advance();
+      expect(tuner.status, TunerStatus.tuning);
+      expect(tuner.changingChannel, isFalse);
+    });
+
+    test('a transcode that shows no picture in time times out, though mpv says "playing"', () async {
+      await setPlayback(mbps: 8);
+      tuner.transcodeStartup = const Duration(milliseconds: 50);
+      player.onOpen = (_) => OpenResult.noPicture;
+      await tuneIntoPart(app.channels.first);
+      expect(isTranscode(player.opens.single.url), isTrue);
+      await Future<void>.delayed(const Duration(milliseconds: 120));
+      expect(tuner.status, TunerStatus.error);
+      expect(client.stopped, hasLength(1), reason: 'the job is stopped');
+    });
+  });
+
+  group('keyframe joins', () {
+    /// A program part at least a minute long on [ch], from now on.
+    ScheduledProgram longPart(Channel ch) {
+      final s = scheduleOf(ch);
+      var seg = s.playbackAt(now);
+      for (var i = 0; i < 200; i++) {
+        if (isPart(seg) && seg.duration > const Duration(minutes: 1)) return seg;
+        seg = s.playbackAt(seg.end);
+      }
+      throw StateError('no long part');
+    }
+
+    test('joining mid-show opens at a keyframe; segments starting on schedule open exactly', () async {
+      await app.setGlobalPlan(BreakPlan.automatic);
+      final ch = app.channels.first;
+      final part = longPart(ch);
+      now = part.start.add(const Duration(seconds: 30));
+      await tuner.tune(ch);
+      await settle();
+      expect(player.opens.last.exact, isFalse);
+      await advance();
+      expect(player.opens.last.exact, isTrue);
+    });
+
+    test('a join just after a part starts is exact, so the part before can\'t show', () async {
+      final ch = app.channels.first;
+      final part = longPart(ch);
+      now = part.start.add(const Duration(seconds: 5));
+      await tuner.tune(ch);
+      await settle();
+      expect(player.opens.last.exact, isTrue);
+    });
+
+    test('a keyframe join that starts early ends its part that much later', () async {
+      final ch = app.channels.first;
+      final part = longPart(ch);
+      player.keyframeEarly = const Duration(seconds: 3);
+      now = part.start.add(const Duration(seconds: 30));
+      await tuner.tune(ch);
+      await settle();
+      expect(tuner.status, TunerStatus.playing);
+      expect(tuner.segmentEndsAt, part.end.add(const Duration(seconds: 3)));
+    });
+  });
+
+  group('decisions asked ahead', () {
+    test('with a cap, the neighbours\' programs are asked for once tuned in, and tuning there asks nothing', () async {
+      tuner.prefetch = true;
+      await setPlayback(mbps: 8);
+      for (final e in library.episodes) {
+        client.bitrates[e.id] = 5000000;
+      }
+      final channels = app.channels;
+      await tuneIntoPart(channels.first);
+      await settle();
+      final neighbour = app.scheduleFor(channels[1])!.programAt(now).item!;
+      expect([for (final d in client.decisions) d.id], contains(neighbour.sourceId));
+      final asked = client.decisions.length;
+      await tuner.channelUp();
+      await settle();
+      expect([for (final d in client.decisions.skip(asked)) d.id], isNot(contains(neighbour.sourceId)));
+    });
+
+    test('with the setting off, nothing is asked ahead', () async {
+      tuner.prefetch = true;
+      for (var i = 0; i < 3; i++) {
+        await tuner.channelUp();
+        await settle();
+      }
+      expect(client.decisions, isEmpty);
     });
   });
 }

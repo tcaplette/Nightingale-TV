@@ -11,6 +11,7 @@ import 'channel_editor_screen.dart';
 import 'commercials_screen.dart';
 import 'format.dart';
 import 'phone_remote_screen.dart';
+import 'live_tv_export_screen.dart';
 import 'playback_screen.dart';
 import 'profiles_screen.dart';
 import 'widgets/tv_focus.dart';
@@ -112,6 +113,16 @@ class _MenuScreenState extends State<MenuScreen> {
                       onPressed: guard(() => Navigator.of(context)
                           .push(MaterialPageRoute<void>(builder: (_) => const ProfilesScreen()))),
                     ),
+                    if (household.export != null) ...[
+                      const SizedBox(height: 18),
+                      TvButton(
+                        label: 'Live TV export',
+                        icon: locked ? Icons.lock : Icons.cast_connected,
+                        expand: true,
+                        onPressed: guard(() => Navigator.of(context)
+                            .push(MaterialPageRoute<void>(builder: (_) => const LiveTvExportScreen()))),
+                      ),
+                    ],
                     if (household.remote != null) ...[
                       const SizedBox(height: 18),
                       TvButton(

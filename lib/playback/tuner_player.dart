@@ -22,8 +22,10 @@ abstract class TunerPlayer {
   /// Position in the media opened last (0-based, like mpv's playback time).
   Duration get position;
 
-  /// Opens [url], from [start], stopping at [end].
-  Future<void> open(Uri url, {required Map<String, String> headers, Duration? start, Duration? end});
+  /// Opens [url], from [start], stopping at [end]. [exact]: start exactly at
+  /// [start]; else at the keyframe before it, which shows a picture sooner.
+  Future<void> open(Uri url,
+      {required Map<String, String> headers, Duration? start, Duration? end, bool exact = true});
   Future<void> stop();
   Future<void> showCaptions(bool on);
   Future<void> dispose();
@@ -33,7 +35,8 @@ abstract class TunerPlayer {
 }
 
 /// mpv through media_kit. Its configuration is the same whatever the
-/// playback mode (direct-play spec): nothing here reads settings.
+/// playback mode (direct-play spec): nothing here reads settings. Only seek
+/// precision is chosen per open, by the kind of open (see [open]).
 class MediaKitTunerPlayer implements TunerPlayer {
   MediaKitTunerPlayer() {
     player = Player(configuration: configuration);
@@ -68,8 +71,13 @@ class MediaKitTunerPlayer implements TunerPlayer {
   Duration get position => player.state.position;
 
   @override
-  Future<void> open(Uri url, {required Map<String, String> headers, Duration? start, Duration? end}) =>
-      player.open(Media(url.toString(), httpHeaders: headers, start: start, end: end));
+  Future<void> open(Uri url,
+      {required Map<String, String> headers, Duration? start, Duration? end, bool exact = true}) async {
+    // mpv's own default (precise for a start position), or keyframes.
+    final native = player.platform;
+    if (native is NativePlayer) await native.setProperty('hr-seek', exact ? 'default' : 'no');
+    await player.open(Media(url.toString(), httpHeaders: headers, start: start, end: end));
+  }
 
   @override
   Future<void> stop() => player.stop();

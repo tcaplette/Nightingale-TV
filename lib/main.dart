@@ -4,12 +4,15 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:media_kit/media_kit.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:window_manager/window_manager.dart';
 
 import 'app_exit.dart';
 import 'app_scope.dart';
 import 'app_state.dart';
 import 'data/app_storage.dart';
+import 'export/broadcast_art.dart';
+import 'export/export_service.dart';
 import 'playback/tuner.dart';
 import 'profiles/household.dart';
 import 'remote/remote_control.dart';
@@ -66,6 +69,12 @@ Future<void> main() async {
   runApp(NightingaleTvApp(household: household));
   await household.start();
   await household.remote!.load();
+  // Live TV export: its cards and logos are a cache, not settings.
+  final cache = await getApplicationCacheDirectory();
+  final export = household.export =
+      ExportService(household, art: BroadcastArt(Directory('${cache.path}/live_tv_export')));
+  exitHooks.add(export.stop);
+  await export.load();
 }
 
 /// Runs [exitHooks] before the window closes.

@@ -4,13 +4,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
 import '../../app_scope.dart';
+import '../../app_state.dart';
 import '../../channels/channel.dart';
 import '../../icons/icon_catalog.dart';
 import '../../theme/tv_theme.dart';
 
 /// Renders any [ChannelIcon] kind, centered in a [width]×[size] box.
 class ChannelLogo extends StatelessWidget {
-  const ChannelLogo({super.key, required this.icon, required this.size, this.width, this.fallbackText});
+  const ChannelLogo({super.key, required this.icon, required this.size, this.width, this.fallbackText, this.app});
 
   final ChannelIcon icon;
 
@@ -22,9 +23,13 @@ class ChannelLogo extends StatelessWidget {
   /// Shown in a badge if an image fails to load.
   final String? fallbackText;
 
+  /// Where show logos and uploads come from; the [AppScope]'s by default
+  /// (offscreen rendering has no scope).
+  final AppState? app;
+
   @override
   Widget build(BuildContext context) {
-    final app = AppScope.of(context);
+    final app = this.app ?? AppScope.of(context);
     final Widget child = switch (icon.kind) {
       ChannelIconKind.builtin =>
         Icon(iconForKey(icon.value), size: size * 0.82, color: Color(icon.color)),

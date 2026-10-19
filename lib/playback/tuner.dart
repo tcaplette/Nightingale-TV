@@ -45,19 +45,9 @@ class Tuner extends ChangeNotifier {
         app.storage.root, media.debugProperty, app.analyzerDebugState, () => status == TunerStatus.playing);
     if (_diagnostics != null) debugPrint('Playback diagnostics: ${_diagnostics!.path}');
     _subscriptions.addAll([
-      media.playingStream.listen((playing) {
-        if (playing && !media.buffering) _setStatus(TunerStatus.playing);
-      }),
-      media.bufferingStream.listen((buffering) {
-        if (!buffering && media.playing) _setStatus(TunerStatus.playing);
-      }),
-      // Switching files doesn't always toggle playing/buffering, so the first
-      // position tick of a playing stream also counts as "tuned in".
-      media.positionStream.listen((_) {
-        if (status == TunerStatus.tuning && media.playing && !media.buffering) {
-          _setStatus(TunerStatus.playing);
-        }
-      }),
+      // Tuned in once the picture moves: mpv reports "playing" (and not
+      // "buffering") right after an open, seconds before the first frame.
+      media.positionStream.listen(_onPosition),
       // mpv auto-selects "default" subtitle tracks on every new file; keep
       // them off unless captions are on.
       media.tracksStream.listen((_) => _applyCaptions()),
@@ -108,6 +98,10 @@ class Tuner extends ChangeNotifier {
 
   /// A commercial break (or its station ID) is on.
   bool get inBreak => segment?.isBreak ?? false;
+
+  /// Tuning a channel (a tune, or the first one at startup), not just opening
+  /// the next segment on it: the TV screen shows the channel number meanwhile.
+  bool get changingChannel => status == TunerStatus.tuning && _changingChannel;
   TunerStatus status = TunerStatus.idle;
   String? error;
 
@@ -133,6 +127,37 @@ class Tuner extends ChangeNotifier {
   /// fall back to a transcode.
   bool _mayFallBack = false;
   Timer? _startup;
+
+  /// Decisions being asked for ahead of time.
+  final _prefetching = <String>{};
+
+  /// Ask Jellyfin for decisions ahead of time (tests that count requests
+  /// turn it off).
+  @visibleForTesting
+  bool prefetch = true;
+
+  // ---- Opening -------------------------------------------------------------
+
+  /// The open now hasn't shown its first frame yet (see [_onPosition]).
+  bool _awaitingFirstFrame = false;
+
+  /// Where the open now should land: the join position, or 0 for a transcode
+  /// (Jellyfin seeks).
+  Duration _landing = Duration.zero;
+  Duration? _lastTick;
+
+  /// The open now joins its program at the keyframe before [startAt].
+  ({Duration startAt, DateTime end, int generation})? _keyframeJoin;
+
+  /// A join must be this far into its part to start at a keyframe, so that
+  /// keyframe can't be in the part before (they're rarely further apart).
+  static const _keyframeJoinMargin = Duration(seconds: 15);
+
+  /// When the segment on now hands over to the next.
+  DateTime? _segmentEnd;
+
+  /// The channel itself is changing, not just the segment on it.
+  bool _changingChannel = false;
 
   Future<void> tune(Channel ch) async {
     // How far the program on the channel being left got.
@@ -169,11 +194,7 @@ class Tuner extends ChangeNotifier {
     if (report != null && report.viewing.itemId == slot.item?.id && report.viewing.channelId == ch.id) {
       report.viewing = (channelId: ch.id, itemId: report.viewing.itemId, layoutStart: slot.layoutStart);
     }
-    _programEnd?.cancel();
-    final generation = _generation;
-    _programEnd = Timer(current.end.difference(now), () {
-      if (generation == _generation) _playCurrent(generation, atSegmentEnd: true);
-    });
+    _endSegmentAt(current.end, _generation);
     notifyListeners();
   }
 
@@ -213,6 +234,8 @@ class Tuner extends ChangeNotifier {
   /// segment played to its end.
   Future<void> _playCurrent(int generation, {bool atSegmentEnd = false}) async {
     _programEnd?.cancel();
+    _awaitingFirstFrame = false;
+    _keyframeJoin = null;
     _noteReached(atSegmentEnd: atSegmentEnd);
     final ch = channel;
     final client = app.client;
@@ -242,10 +265,7 @@ class Tuner extends ChangeNotifier {
     program = schedule.programAt(current.start.isAfter(now) ? current.start : now);
     error = null;
 
-    final untilEnd = current.end.difference(now);
-    _programEnd = Timer(untilEnd, () {
-      if (generation == _generation) _playCurrent(generation, atSegmentEnd: true);
-    });
+    _endSegmentAt(current.end, generation);
 
     // Whatever was transcoding stops before anything else opens.
     _stopTranscode();
@@ -255,6 +275,7 @@ class Tuner extends ChangeNotifier {
       await media.stop();
       return;
     }
+    _changingChannel = !atSegmentEnd;
     _setStatus(TunerStatus.tuning);
     final startAt = current.positionAt(now);
 
@@ -294,12 +315,19 @@ class Tuner extends ChangeNotifier {
     } else {
       _startup?.cancel();
       _mayFallBack = transcodable;
+      // Joining a show mid-way starts at the keyframe before the join point,
+      // so the picture comes without decoding up to the exact second.
+      // Whatever must start exactly keeps a precise seek: commercial clips
+      // cut from reels, and segments starting on schedule.
+      final keyframe = !atSegmentEnd && _isProgramPart(current) && startAt - current.itemFrom > _keyframeJoinMargin;
+      _expectFirstFrame(startAt);
+      _keyframeJoin = keyframe ? (startAt: startAt, end: current.end, generation: generation) : null;
       try {
         // A part of the show, or a clip inside a reel: mpv stops exactly at
         // the segment's end even if the timer runs late.
         final url = client.streamUri(item.sourceId);
         _diagnostics?.opened(current.isCommercial ? 'direct-commercial' : 'direct', url, start: startAt, end: current.itemTo);
-        await media.open(url, headers: client.authHeaders, start: startAt, end: current.itemTo);
+        await media.open(url, headers: client.authHeaders, start: startAt, end: current.itemTo, exact: !keyframe);
       } on Object catch (e) {
         if (generation != _generation) return;
         _onPlaybackError('$e');
@@ -313,6 +341,112 @@ class Tuner extends ChangeNotifier {
       _startReport(client, ch, current, startAt);
     } else if (step == ReportStep.keep && !current.isBreak) {
       _report?.reached = startAt;
+    }
+  }
+
+  /// Hands over to the next segment at [end].
+  void _endSegmentAt(DateTime end, int generation) {
+    _programEnd?.cancel();
+    _segmentEnd = end;
+    _programEnd = Timer(end.difference(_clock()), () {
+      if (generation == _generation) _playCurrent(generation, atSegmentEnd: true);
+    });
+  }
+
+  /// When the segment on now hands over to the next (tests).
+  @visibleForTesting
+  DateTime? get segmentEndsAt => _segmentEnd;
+
+  /// Called just before each open; [landing] is where its position starts.
+  void _expectFirstFrame(Duration landing) {
+    _awaitingFirstFrame = true;
+    _landing = landing;
+    _lastTick = null;
+    _keyframeJoin = null;
+  }
+
+  /// The open's first frame: two position ticks in a row, near where the
+  /// open should land, moving forward by less than a second. Seeks and resets
+  /// jump or stand still, and a late tick from the file before is far away.
+  void _onPosition(Duration position) {
+    if (!_awaitingFirstFrame) return;
+    if ((position - _landing).abs() > const Duration(seconds: 30)) {
+      _lastTick = null;
+      return;
+    }
+    final last = _lastTick;
+    _lastTick = position;
+    if (last == null) return;
+    final moved = position - last;
+    if (moved <= Duration.zero || moved >= const Duration(seconds: 1)) return;
+    _awaitingFirstFrame = false;
+    _onFirstFrame(last);
+  }
+
+  /// Playback of the open now started at [startedAt] in its media.
+  void _onFirstFrame(Duration startedAt) {
+    // An open that reported an error but plays all the same counts too.
+    if (status != TunerStatus.tuning && status != TunerStatus.error) return;
+    final join = _keyframeJoin;
+    _keyframeJoin = null;
+    if (join != null && join.generation == _generation) {
+      // The keyframe was before the join point: the part ends that much
+      // later, so its ending isn't cut. The next segment opens at its
+      // scheduled position, so the difference comes out of its start.
+      final early = join.startAt - startedAt;
+      if (early > const Duration(milliseconds: 500) && early < const Duration(seconds: 30)) {
+        _endSegmentAt(join.end.add(early), join.generation);
+        _diagnostics?.event('keyframe join ${early.inMilliseconds} ms early; the part ends that much later');
+      }
+    }
+    _setStatus(TunerStatus.playing);
+    if (prefetch) _prefetchDecisions();
+  }
+
+  /// Asks Jellyfin ahead of time for the decisions the next tunes are likely
+  /// to need, so they don't wait for PlaybackInfo: the next program on this
+  /// channel and what's on the channels one up and one down. Jellyfin still
+  /// decides (design D1). Only with a cap set; off, nothing is asked.
+  void _prefetchDecisions() {
+    final playback = app.settings.playback;
+    final cap = playback.capBitsPerSecond;
+    final client = app.client;
+    final ch = channel;
+    if (!playback.transcodeIfNeeded || cap == null || client == null || ch == null) return;
+    if (_decisionsFor != playback) {
+      _decisions.clear();
+      _decisionsFor = playback;
+    }
+    final now = _clock();
+    final programs = <ScheduledProgram?>[];
+    final schedule = app.scheduleFor(ch);
+    final current = program;
+    if (schedule != null && current != null) programs.add(schedule.next(current));
+    final list = app.channels;
+    final index = list.indexWhere((c) => c.id == ch.id);
+    if (index >= 0 && list.length > 1) {
+      for (final delta in const [1, -1]) {
+        programs.add(app.scheduleFor(list[(index + delta) % list.length])?.programAt(now));
+      }
+    }
+    for (final p in programs) {
+      final item = p?.item;
+      if (item == null || item.kind == MediaKind.commercial) continue;
+      final source = item.sourceId;
+      if (_decisions.containsKey(source) || !_prefetching.add(source)) continue;
+      unawaited(() async {
+        try {
+          // The join position doesn't matter: opening sets the real one.
+          final decision = await client.playbackInfo(source, maxBitrate: cap);
+          if (_decisionsFor == playback) _decisions[source] = decision.transcodeTemplate;
+          _diagnostics?.event('prefetched decision for $source: ${decision.transcode ? 'transcode' : 'direct'}');
+        } on Object catch (e) {
+          // Tuning there asks again.
+          debugPrint('Playback decision prefetch failed: $e');
+        } finally {
+          _prefetching.remove(source);
+        }
+      }());
     }
   }
 
@@ -410,6 +544,7 @@ class Tuner extends ChangeNotifier {
     try {
       final url = JellyfinClient.transcodeUri(template, playSessionId: job.playSessionId, startAt: startAt);
       _diagnostics?.opened(fallback ? 'transcode-fallback' : 'transcode', url, end: current.itemTo - startAt);
+      _expectFirstFrame(Duration.zero);
       await media.open(url, headers: client.authHeaders, end: current.itemTo - startAt);
     } on Object catch (e) {
       if (generation != _generation) return false;
@@ -527,6 +662,9 @@ class Tuner extends ChangeNotifier {
   Future<void> stop() async {
     _generation++;
     _programEnd?.cancel();
+    _segmentEnd = null;
+    _awaitingFirstFrame = false;
+    _keyframeJoin = null;
     _noteReached(atSegmentEnd: false);
     await _finishReport();
     _stopTranscode();

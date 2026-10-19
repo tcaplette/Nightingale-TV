@@ -7,12 +7,12 @@ import 'package:media_kit_video/media_kit_video.dart';
 import '../app_scope.dart';
 import '../channels/channel.dart';
 import '../channels/schedule.dart';
-import '../library/library_index.dart';
 import '../playback/tuner.dart';
 import '../theme/tv_theme.dart';
 import 'format.dart';
 import 'guide_view.dart';
 import 'menu_screen.dart';
+import 'widgets/broadcast_cards.dart';
 import 'widgets/channel_logo.dart';
 import 'widgets/tv_focus.dart';
 
@@ -233,7 +233,7 @@ class _TvScreenState extends State<TvScreen> {
               children: [
                 Video(controller: tuner.video, controls: NoVideoControls, fill: Colors.black),
                 if (tuner.status == TunerStatus.standby)
-                  _StatusCard(
+                  StatusCard(
                     icon: Icons.schedule,
                     title: 'PLEASE STAND BY',
                     message: tuner.program == null
@@ -241,14 +241,14 @@ class _TvScreenState extends State<TvScreen> {
                         : 'Up next at ${formatTime((tuner.segment ?? tuner.program!).end)}',
                   ),
                 if (tuner.status == TunerStatus.ident && tuner.channel != null)
-                  _StationId(
+                  StationId(
                     channel: tuner.channel!,
                     next: tuner.program == null
                         ? null
                         : AppScope.read(context).scheduleFor(tuner.channel!)?.next(tuner.program!),
                   ),
                 if (tuner.status == TunerStatus.offAir)
-                  _StatusCard(
+                  StatusCard(
                     icon: Icons.tv_off,
                     title: 'OFF THE AIR',
                     message: switch (_backOnAir(context, tuner)) {
@@ -257,7 +257,7 @@ class _TvScreenState extends State<TvScreen> {
                     },
                   ),
                 if (tuner.status == TunerStatus.error)
-                  _StatusCard(
+                  StatusCard(
                     icon: Icons.signal_cellular_connected_no_internet_0_bar,
                     title: 'NO SIGNAL',
                     message: [
@@ -266,11 +266,11 @@ class _TvScreenState extends State<TvScreen> {
                         'Trying again at ${formatTime((tuner.segment ?? tuner.program!).end)}',
                     ].join('\n'),
                   ),
-                if (tuner.status == TunerStatus.tuning || _digits.isNotEmpty)
+                if (tuner.changingChannel || _digits.isNotEmpty)
                   Positioned(
                     top: 60,
                     right: 90,
-                    child: _ChannelNumberOsd(
+                    child: ChannelNumberOsd(
                         text: _digits.isNotEmpty ? '${_digits}_' : '${tuner.channel?.number ?? ''}'),
                   ),
                 AnimatedPositioned(
@@ -457,39 +457,6 @@ class _ChannelBanner extends StatelessWidget {
 }
 
 /// The station ID card that closes a commercial break.
-class _StationId extends StatelessWidget {
-  const _StationId({required this.channel, required this.next});
-
-  final Channel channel;
-  final ScheduledProgram? next;
-
-  @override
-  Widget build(BuildContext context) {
-    final g = context.guide;
-    final n = next;
-    return DecoratedBox(
-      decoration: g.backdrop,
-      child: Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ChannelLogo(icon: channel.icon, size: 260, width: 420, fallbackText: channel.name),
-            const SizedBox(height: 36),
-            Text('${channel.number}  ${channel.name.toUpperCase()}',
-                style: g.display(64, weight: FontWeight.w800, color: g.accent)),
-            if (n != null && !n.isOffAir) ...[
-              const SizedBox(height: 20),
-              Text('Up next: ${n.title} at ${formatTime(n.start)}', style: g.body(34, color: g.textDim)),
-              if (n.item?.kind == MediaKind.episode)
-                Text(n.subtitle, style: g.body(28, color: g.textDim)),
-            ],
-          ],
-        ),
-      ),
-    );
-  }
-}
-
 /// When the "Up next" card is up during [segment] of [program]: from a
 /// minute before the show ends, for 15 seconds, in the part it ends in
 /// ([lastPart]: its last one, or the one a programming block cuts off).
@@ -606,56 +573,6 @@ class _UpNextState extends State<_UpNext> {
                     ],
                   ),
                 ),
-        ),
-      ),
-    );
-  }
-}
-
-class _ChannelNumberOsd extends StatelessWidget {
-  const _ChannelNumberOsd({required this.text});
-
-  final String text;
-
-  @override
-  Widget build(BuildContext context) {
-    final g = context.guide;
-    return Text(
-      text,
-      style: g.display(110, weight: FontWeight.w800, color: g.accent).copyWith(
-        shadows: const [Shadow(color: Colors.black, blurRadius: 12, offset: Offset(3, 3))],
-      ),
-    );
-  }
-}
-
-class _StatusCard extends StatelessWidget {
-  const _StatusCard({required this.icon, required this.title, this.message});
-
-  final IconData icon;
-  final String title;
-  final String? message;
-
-  @override
-  Widget build(BuildContext context) {
-    final g = context.guide;
-    return DecoratedBox(
-      decoration: g.backdrop,
-      child: Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(icon, size: 140, color: g.accent),
-            const SizedBox(height: 24),
-            Text(title, style: g.display(80, weight: FontWeight.w800)),
-            if (message != null && message!.isNotEmpty) ...[
-              const SizedBox(height: 16),
-              SizedBox(
-                width: 1100,
-                child: Text(message!, textAlign: TextAlign.center, style: g.body(28, color: g.textDim)),
-              ),
-            ],
-          ],
         ),
       ),
     );

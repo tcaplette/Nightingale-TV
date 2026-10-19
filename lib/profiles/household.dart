@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart';
 
 import '../app_state.dart';
 import '../data/app_storage.dart';
+import '../export/export_service.dart';
 import '../jellyfin/jellyfin_client.dart';
 import '../remote/remote_control.dart';
 import 'profile.dart';
@@ -36,10 +37,24 @@ class Household extends ChangeNotifier {
 
   /// The phone remote, when the app runs one (not in most tests).
   RemoteControl? remote;
+
+  /// Live TV export, when the app runs it (not in most tests).
+  ExportService? export;
   List<Profile> _profiles = [];
   Profile? _current;
   AppState? _app;
   bool _started = false;
+
+  /// True while Live TV export is streaming anything (set by the export
+  /// service); every profile's analysis holds off meanwhile.
+  final exportStreaming = ValueNotifier(false);
+
+  /// Profiles whose lineups Live TV export serves.
+  Set<String> _exported = const {};
+
+  /// The [AppState]s of exported profiles that aren't on screen. With the
+  /// one on screen, there is never more than one per profile.
+  final _offScreen = <String, AppState>{};
 
   bool get started => _started;
   List<Profile> get profiles => _profiles;
@@ -81,6 +96,56 @@ class Household extends ChangeNotifier {
     }
   }
 
+  /// [p]'s state, on screen or kept for Live TV export; null when neither.
+  AppState? appFor(String profileId) =>
+      _current?.id == profileId ? _app : _offScreen[profileId];
+
+  Profile? profileById(String id) => _profiles.where((p) => p.id == id).firstOrNull;
+
+  /// Keeps the [AppState]s of the profiles in [ids] loaded, on screen or
+  /// not, and lets go of the others' off-screen states.
+  Future<void> setExportedProfiles(Set<String> ids) async {
+    _exported = {...ids};
+    for (final id in [..._offScreen.keys]) {
+      if (!ids.contains(id)) await _offScreen.remove(id)!.close();
+    }
+    for (final id in ids) {
+      final p = profileById(id);
+      if (p == null || id == _current?.id || _offScreen.containsKey(id)) continue;
+      _startOffScreen(p, await _newApp(p, background: true));
+    }
+    notifyListeners();
+  }
+
+  void _startOffScreen(Profile p, AppState app) {
+    _offScreen[p.id] = app;
+    unawaited(() async {
+      try {
+        await app.start();
+        if (p.needsRescan && identical(_offScreen[p.id], app)) {
+          p.needsRescan = false;
+          await _save();
+          await app.refreshLibrary(background: true);
+        }
+      } on Object catch (e) {
+        debugPrint('Couldn\'t load ${p.name} for Live TV export: $e');
+      }
+    }());
+  }
+
+  Future<AppState> _newApp(Profile p, {bool background = false}) async => AppState(await storageFor(p),
+      maxRatingRank: p.maxRatingRank, runAnalysis: runAnalysis, background: background, exportBusy: exportStreaming);
+
+  /// [app] (of [p]) leaves the screen: kept for Live TV export, else closed.
+  Future<void> _putAway(Profile p, AppState app) async {
+    if (_exported.contains(p.id)) {
+      _offScreen[p.id] = app;
+      await app.setBackground(true);
+    } else {
+      await app.close();
+    }
+  }
+
   Future<AppStorage> storageFor(Profile p) =>
       AppStorage.at(Directory('${root.root.path}/profiles/${p.id}'),
           logosDir: root.logosDir, analysisDir: root.analysisDir);
@@ -88,12 +153,26 @@ class Household extends ChangeNotifier {
   /// Switches to [p]. PINs are checked by the caller.
   Future<void> select(Profile p) async {
     final previous = _app;
-    if (previous != null) await previous.close();
-    final app = AppState(await storageFor(p), maxRatingRank: p.maxRatingRank, runAnalysis: runAnalysis);
+    final previousProfile = _current;
+    _app = null;
+    _current = null;
+    if (previous != null && previousProfile != null) await _putAway(previousProfile, previous);
+    var app = _offScreen.remove(p.id);
+    if (app != null && app.maxRatingRank != p.maxRatingRank) {
+      // The rating limit changed: the library has to be filtered again.
+      await app.close();
+      app = null;
+    }
+    final reused = app != null;
+    app ??= await _newApp(p);
     _current = p;
     _app = app;
     notifyListeners();
-    await app.start();
+    if (reused) {
+      await app.setBackground(false);
+    } else {
+      await app.start();
+    }
     lastServerUrl = app.session?.serverUrl ?? lastServerUrl;
     if (p.needsRescan) {
       p.needsRescan = false;
@@ -105,9 +184,10 @@ class Household extends ChangeNotifier {
   /// Back to "Who's watching?".
   void leave() {
     final previous = _app;
-    if (previous != null) unawaited(previous.close());
+    final previousProfile = _current;
     _app = null;
     _current = null;
+    if (previous != null && previousProfile != null) unawaited(_putAway(previousProfile, previous));
     notifyListeners();
   }
 
@@ -160,6 +240,10 @@ class Household extends ChangeNotifier {
       } else {
         _current = draft;
       }
+    } else if (_offScreen.remove(draft.id) case final app?) {
+      // Kept for Live TV export: reload it under the new limit.
+      await app.close();
+      _startOffScreen(draft, await _newApp(draft, background: true));
     }
     notifyListeners();
   }
@@ -168,6 +252,8 @@ class Household extends ChangeNotifier {
   Future<void> deleteProfile(Profile p) async {
     final problem = problemDeleting(p);
     if (problem != null) throw StateError(problem);
+    _exported = {..._exported}..remove(p.id);
+    await _offScreen.remove(p.id)?.close();
     final storage = await storageFor(p);
     final session = await storage.readJson('session.json');
     if (session is Map<String, Object?>) {
