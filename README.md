@@ -23,7 +23,13 @@ It's inspired by NostalgiaTV for Android. It's built for the couch, so everythin
 - **Profiles.** Everyone gets their own sign-in, channels and blocks. Kid profiles only see content rated for their age. Grown-up profiles and settings can be locked with a PIN.
 - **Phone remote.** Turn it on in the menu, scan the QR code, and your phone's browser becomes the remote. There's nothing to install.
 - **Always direct play.** Nightingale TV plays your original files and never asks Jellyfin to transcode, unless you turn on *Transcode only if needed*.
-- **Live TV export.** Watch your channels in Plex, Jellyfin or any IPTV app on your home network. Each profile's lineup shows up as a TV tuner with its own guide. See [Live TV export](#live-tv-export).
+- **Live TV export (HDHomeRun, M3U and XMLTV).** Watch your channels in Jellyfin Live TV, Plex or any IPTV app on your home network. Turn it on for each profile you want to share:
+  - **HDHomeRun tuner.** Each exported profile shows up as its own network TV tuner. Add it in Jellyfin or Plex by its address, or let Plex find it on the network.
+  - **M3U playlist.** A playlist of the profile's channels, with numbers, names and logos, for Jellyfin's M3U tuner and IPTV apps such as VLC, Kodi and TiviMate.
+  - **XMLTV guide.** Three days of listings from the same schedule as the on-screen guide, with episode titles, season and episode numbers, descriptions, posters and programming blocks.
+  - **Plays like this TV.** Each channel is one continuous stream that joins mid-show, with the same breaks and the same ads at the same moments.
+
+  See [Live TV export](#live-tv-export) for setup.
 
 | Who's watching? | Phone remote | Programming block editor |
 | --- | --- | --- |
