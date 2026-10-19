@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:window_manager/window_manager.dart';
 
+import '../app_exit.dart';
 import '../app_scope.dart';
 import '../theme/tv_theme.dart';
 import 'blocks_screen.dart';
@@ -10,6 +11,7 @@ import 'channel_editor_screen.dart';
 import 'commercials_screen.dart';
 import 'format.dart';
 import 'phone_remote_screen.dart';
+import 'playback_screen.dart';
 import 'profiles_screen.dart';
 import 'widgets/tv_focus.dart';
 
@@ -96,6 +98,14 @@ class _MenuScreenState extends State<MenuScreen> {
                     ),
                     const SizedBox(height: 18),
                     TvButton(
+                      label: 'Playback',
+                      icon: locked ? Icons.lock : Icons.high_quality,
+                      expand: true,
+                      onPressed: guard(() => Navigator.of(context)
+                          .push(MaterialPageRoute<void>(builder: (_) => const PlaybackScreen()))),
+                    ),
+                    const SizedBox(height: 18),
+                    TvButton(
                       label: 'Profiles',
                       icon: locked ? Icons.lock : Icons.people,
                       expand: true,
@@ -171,6 +181,8 @@ class _MenuScreenState extends State<MenuScreen> {
                       expand: true,
                       danger: true,
                       onPressed: guard(() async {
+                        await runExitHooks();
+                        if (!context.mounted) return;
                         await AppScope.tunerOf(context).stop();
                         await windowManager.destroy();
                       }),

@@ -22,6 +22,7 @@ It's inspired by NostalgiaTV for Android. It's built for the couch, so everythin
   Being experimental, this feature may change between versions, and splitting a long compilation for the first time can take several minutes. The rest of the app works the same with breaks off.
 - **Profiles.** Everyone gets their own sign-in, channels and blocks. Kid profiles only see content rated for their age. Grown-up profiles and settings can be locked with a PIN.
 - **Phone remote.** Turn it on in the menu, scan the QR code, and your phone's browser becomes the remote. There's nothing to install.
+- **Always direct play.** Nightingale TV plays your original files and never asks Jellyfin to transcode, unless you turn on *Transcode only if needed*.
 
 | Who's watching? | Phone remote | Programming block editor |
 | --- | --- | --- |

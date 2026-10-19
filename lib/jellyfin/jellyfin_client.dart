@@ -443,10 +443,101 @@ class JellyfinClient {
   }
 
   /// Direct (no transcode) stream. mpv handles virtually any container/codec.
+  ///
+  /// Must stay static-only (the direct-play spec): every segment that isn't
+  /// a transcoded program part, and every analyzer read, comes from here.
+  /// Transcode URLs come only from [playbackInfo].
   Uri streamUri(String itemId) => uri('/Videos/$itemId/stream', {
         'static': 'true',
         'mediaSourceId': itemId,
       });
+
+  /// The device profile sent with [playbackInfo]: direct play accepts every
+  /// container and codec (mpv decodes them all), so Jellyfin only chooses a
+  /// transcode for bitrate, or when told to. The transcode is a progressive
+  /// MPEG-TS stream (H.264, stereo AAC): on Jellyfin 10.11 it honors
+  /// `StartTimeTicks` with one server-side seek, where HLS needs a second
+  /// ffmpeg start to join mid-file.
+  static Map<String, Object?> deviceProfile(int? maxBitrate) => {
+        'Name': clientName,
+        'MaxStreamingBitrate': ?maxBitrate,
+        'DirectPlayProfiles': [
+          {'Type': 'Video'},
+          {'Type': 'Audio'},
+        ],
+        'TranscodingProfiles': [
+          {
+            'Container': 'ts',
+            'Type': 'Video',
+            'VideoCodec': 'h264',
+            'AudioCodec': 'aac',
+            'Protocol': 'http',
+            'Context': 'Streaming',
+            'MaxAudioChannels': '2',
+            'BreakOnNonKeyFrames': false,
+          },
+        ],
+        'ContainerProfiles': const [],
+        'CodecProfiles': const [],
+        'SubtitleProfiles': [
+          for (final format in const ['srt', 'subrip', 'ass', 'ssa', 'vtt']) {'Format': format, 'Method': 'External'},
+        ],
+      };
+
+  /// Asks Jellyfin whether [itemId] can be direct-played under [maxBitrate]
+  /// (bits per second; null for no limit). With [forceTranscode], direct
+  /// play and stream copy are ruled out, so the answer is always a full
+  /// transcode.
+  Future<PlaybackDecision> playbackInfo(String itemId,
+      {int? maxBitrate, bool forceTranscode = false, Duration startAt = Duration.zero}) async {
+    final json = await _send('POST', '/Items/$itemId/PlaybackInfo', body: {
+      'UserId': userId,
+      'MediaSourceId': itemId,
+      'MaxStreamingBitrate': ?maxBitrate,
+      'StartTimeTicks': startAt.inMicroseconds * 10,
+      'AutoOpenLiveStream': false,
+      'EnableDirectPlay': !forceTranscode,
+      'EnableDirectStream': !forceTranscode,
+      'EnableTranscoding': true,
+      'AllowVideoStreamCopy': !forceTranscode,
+      'AllowAudioStreamCopy': !forceTranscode,
+      'DeviceProfile': deviceProfile(maxBitrate),
+    }) as Map<String, Object?>;
+    final sources = (json['MediaSources'] as List? ?? const []).cast<Map<String, Object?>>();
+    final source = sources.where((s) => s['Id'] == itemId).firstOrNull ?? sources.firstOrNull;
+    if (source == null) throw JellyfinException('The server has no playable version of this item.');
+    final url = source['TranscodingUrl'] as String?;
+    if (!forceTranscode && source['SupportsDirectPlay'] == true) return const PlaybackDecision.direct();
+    if (url == null) throw JellyfinException('The server would not convert this item.');
+    return PlaybackDecision.transcode(transcodeTemplate(url));
+  }
+
+  /// [TranscodingUrl] made absolute against [serverUrl], without the access
+  /// token Jellyfin puts in it (auth goes in headers, like every request).
+  Uri transcodeTemplate(String transcodingUrl) {
+    final relative = Uri.parse(transcodingUrl);
+    final query = <String, String>{
+      for (final e in relative.queryParameters.entries)
+        if (e.key.isNotEmpty && !_tokenParams.contains(e.key.toLowerCase())) e.key: e.value,
+    };
+    return Uri.parse('$serverUrl${relative.path}').replace(queryParameters: query);
+  }
+
+  static const _tokenParams = {'apikey', 'api_key'};
+
+  /// One transcode job's URL: [template] (see [transcodeTemplate]) joined at
+  /// [startAt], under its own [playSessionId].
+  static Uri transcodeUri(Uri template, {required String playSessionId, required Duration startAt}) =>
+      template.replace(queryParameters: {
+        for (final e in template.queryParameters.entries)
+          if (e.key.toLowerCase() != 'starttimeticks' && e.key.toLowerCase() != 'playsessionid') e.key: e.value,
+        'PlaySessionId': playSessionId,
+        'StartTimeTicks': '${startAt.inMicroseconds * 10}',
+      });
+
+  /// Stops the transcode job [playSessionId] started by this device.
+  Future<void> stopEncoding(String playSessionId) => _send('DELETE', '/Videos/ActiveEncodings',
+      query: {'deviceId': deviceId, 'playSessionId': playSessionId});
 
   Uri imageUri(String itemId, String imageType, {int? maxHeight, String? tag}) =>
       uri('/Items/$itemId/Images/$imageType', {
@@ -467,18 +558,41 @@ class JellyfinClient {
   void close() => _http.close();
 }
 
+/// What [JellyfinClient.playbackInfo] decided: direct play (from
+/// [JellyfinClient.streamUri]), or a transcode whose URL template is
+/// [transcodeTemplate].
+class PlaybackDecision {
+  const PlaybackDecision.direct() : transcodeTemplate = null;
+  const PlaybackDecision.transcode(Uri this.transcodeTemplate);
+
+  final Uri? transcodeTemplate;
+
+  bool get transcode => transcodeTemplate != null;
+}
+
+enum PlayMethod {
+  directPlay('DirectPlay'),
+  transcode('Transcode');
+
+  const PlayMethod(this.json);
+
+  final String json;
+}
+
 class PlaybackReport {
   const PlaybackReport({
     required this.itemId,
     required this.playSessionId,
     required this.position,
     this.isPaused = false,
+    this.playMethod = PlayMethod.directPlay,
   });
 
   final String itemId;
   final String playSessionId;
   final Duration position;
   final bool isPaused;
+  final PlayMethod playMethod;
 
   Map<String, Object?> toJson() => {
         'ItemId': itemId,
@@ -487,6 +601,6 @@ class PlaybackReport {
         'PositionTicks': position.inMicroseconds * 10,
         'IsPaused': isPaused,
         'CanSeek': false,
-        'PlayMethod': 'DirectPlay',
+        'PlayMethod': playMethod.json,
       };
 }

@@ -125,4 +125,129 @@ void main() {
     expect(JellyfinSession.fromJson(known.toJson()).serverId, 'srv');
     expect(known.withDeviceId('d2').serverId, 'srv');
   });
+
+  group('transcoding', () {
+    test('streamUri is the static stream', () {
+      final u = _client((r) async => _json(null)).streamUri('item1');
+      expect(u.toString(), 'https://jf.example/Videos/item1/stream?static=true&mediaSourceId=item1');
+    });
+
+    test('playbackInfo sends the cap and a profile that direct-plays anything', () async {
+      late Map<String, Object?> body;
+      late http.Request sent;
+      final client = _client((r) async {
+        sent = r;
+        body = jsonDecode(r.body) as Map<String, Object?>;
+        return _json({
+          'PlaySessionId': 'srv',
+          'MediaSources': [
+            {'Id': 'item1', 'SupportsDirectPlay': true, 'SupportsDirectStream': true},
+          ],
+        });
+      });
+      final decision = await client.playbackInfo('item1', maxBitrate: 8000000, startAt: const Duration(minutes: 10));
+      expect(decision.transcode, isFalse);
+      expect(sent.method, 'POST');
+      expect(sent.url.path, '/Items/item1/PlaybackInfo');
+      expect(sent.headers['Authorization'], contains('Token="secret-token"'));
+      expect(body['UserId'], 'u1');
+      expect(body['MaxStreamingBitrate'], 8000000);
+      expect(body['StartTimeTicks'], const Duration(minutes: 10).inMicroseconds * 10);
+      expect([body['EnableDirectPlay'], body['EnableDirectStream'], body['AllowVideoStreamCopy'], body['AllowAudioStreamCopy']],
+          everyElement(isTrue));
+      final profile = body['DeviceProfile'] as Map<String, Object?>;
+      expect(profile['MaxStreamingBitrate'], 8000000);
+      expect(profile['DirectPlayProfiles'], [
+        {'Type': 'Video'},
+        {'Type': 'Audio'},
+      ], reason: 'no container or codec limits');
+      final transcoding = (profile['TranscodingProfiles'] as List).single as Map<String, Object?>;
+      expect(transcoding, containsPair('Protocol', 'http'));
+      expect(transcoding, containsPair('Container', 'ts'));
+      expect(transcoding, containsPair('VideoCodec', 'h264'));
+      expect(transcoding, containsPair('AudioCodec', 'aac'));
+    });
+
+    test('a transcode answer gives an absolute URL without the token in it', () async {
+      final client = _client((r) async => _json({
+            'PlaySessionId': 'srv',
+            'MediaSources': [
+              {
+                'Id': 'item1',
+                'SupportsDirectPlay': false,
+                'TranscodingUrl': '/videos/item1/stream.ts?&DeviceId=d&MediaSourceId=item1&VideoCodec=h264'
+                    '&ApiKey=secret-token&PlaySessionId=srv&TranscodeReasons=ContainerBitrateExceedsLimit',
+                'TranscodingSubProtocol': 'http',
+              },
+            ],
+          }));
+      final decision = await client.playbackInfo('item1', maxBitrate: 2000000);
+      final template = decision.transcodeTemplate!;
+      expect(template.origin, 'https://jf.example');
+      expect(template.path, '/videos/item1/stream.ts');
+      expect(template.toString(), isNot(contains('secret-token')));
+      expect(template.queryParameters['VideoCodec'], 'h264');
+      expect(template.queryParameters.containsKey(''), isFalse);
+
+      final job = JellyfinClient.transcodeUri(template, playSessionId: 'job1', startAt: const Duration(seconds: 90));
+      expect(job.queryParameters['PlaySessionId'], 'job1');
+      expect(job.queryParameters['StartTimeTicks'], '900000000');
+      expect(job.queryParameters['DeviceId'], 'd');
+      expect(job.toString(), isNot(contains('srv')));
+    });
+
+    test('a server under a base path keeps it', () {
+      final client = JellyfinClient(serverUrl: 'https://jf.example/jellyfin', deviceId: 'd', deviceName: 'pc');
+      expect(client.transcodeTemplate('/videos/x/stream.ts?api_key=k&a=1').toString(),
+          'https://jf.example/jellyfin/videos/x/stream.ts?a=1');
+    });
+
+    test('forcing a transcode rules out direct play and stream copy', () async {
+      late Map<String, Object?> body;
+      final client = _client((r) async {
+        body = jsonDecode(r.body) as Map<String, Object?>;
+        return _json({
+          'MediaSources': [
+            {'Id': 'item1', 'SupportsDirectPlay': true, 'TranscodingUrl': '/videos/item1/stream.ts?a=1'},
+          ],
+        });
+      });
+      final decision = await client.playbackInfo('item1', forceTranscode: true);
+      expect(decision.transcode, isTrue);
+      expect([body['EnableDirectPlay'], body['EnableDirectStream'], body['AllowVideoStreamCopy'], body['AllowAudioStreamCopy']],
+          everyElement(isFalse));
+      expect(body.containsKey('MaxStreamingBitrate'), isFalse, reason: 'no cap');
+      expect(body['EnableTranscoding'], isTrue);
+    });
+
+    test('no transcode URL when one is needed is an error', () async {
+      final client = _client((r) async => _json({
+            'MediaSources': [
+              {'Id': 'item1', 'SupportsDirectPlay': false},
+            ],
+          }));
+      expect(client.playbackInfo('item1', maxBitrate: 2000000), throwsA(isA<JellyfinException>()));
+    });
+
+    test('stopEncoding deletes the job by device and session', () async {
+      late http.Request sent;
+      final client = _client((r) async {
+        sent = r;
+        return http.Response('', 204);
+      });
+      await client.stopEncoding('job1');
+      expect(sent.method, 'DELETE');
+      expect(sent.url.path, '/Videos/ActiveEncodings');
+      expect(sent.url.queryParameters, {'deviceId': 'd', 'playSessionId': 'job1'});
+    });
+
+    test('reports say how the item plays', () {
+      const direct = PlaybackReport(itemId: 'i', playSessionId: 's', position: Duration(seconds: 1));
+      expect(direct.toJson()['PlayMethod'], 'DirectPlay');
+      const transcoded = PlaybackReport(
+          itemId: 'i', playSessionId: 'job1', position: Duration(seconds: 1), playMethod: PlayMethod.transcode);
+      expect(transcoded.toJson(), containsPair('PlayMethod', 'Transcode'));
+      expect(transcoded.toJson(), containsPair('PlaySessionId', 'job1'));
+    });
+  });
 }

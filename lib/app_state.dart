@@ -22,12 +22,107 @@ import 'icons/custom_icons.dart';
 import 'jellyfin/jellyfin_client.dart';
 import 'library/library_index.dart';
 
+/// A choice for the maximum streaming bitrate.
+typedef BitratePreset = ({String label, int? mbps});
+
+/// "Transcode only if needed": off unless the user turns it on. Per PC, not
+/// per profile, since it's about this machine and its network.
+class PlaybackSettings {
+  const PlaybackSettings({this.transcodeIfNeeded = false, this.maxBitrateMbps});
+
+  static const off = PlaybackSettings();
+
+  /// Convert a program when it's over the cap or won't direct-play.
+  final bool transcodeIfNeeded;
+
+  /// The cap, kept while the toggle is off; null is Original (no limit).
+  final int? maxBitrateMbps;
+
+  /// In this order, Original first (the default).
+  static const presets = <BitratePreset>[
+    (label: 'Original (no limit)', mbps: null),
+    (label: '40 Mbps · 4K', mbps: 40),
+    (label: '20 Mbps · 1080p high', mbps: 20),
+    (label: '12 Mbps · 1080p', mbps: 12),
+    (label: '8 Mbps · 1080p', mbps: 8),
+    (label: '4 Mbps · 720p', mbps: 4),
+    (label: '2 Mbps · 480p', mbps: 2),
+  ];
+
+  /// [mbps] as a preset: the nearest one at or below it, at least 2 Mbps.
+  static int? snap(int? mbps) {
+    if (mbps == null) return null;
+    for (final p in presets) {
+      if (p.mbps != null && p.mbps! <= mbps) return p.mbps;
+    }
+    return presets.last.mbps;
+  }
+
+  BitratePreset get preset => presets.firstWhere((p) => p.mbps == snap(maxBitrateMbps));
+
+  /// The cap in effect, in bits per second: null when off or Original.
+  int? get capBitsPerSecond => transcodeIfNeeded && maxBitrateMbps != null ? maxBitrateMbps! * 1000000 : null;
+
+  PlaybackSettings copyWith({bool? transcodeIfNeeded, int? Function()? maxBitrateMbps}) => PlaybackSettings(
+        transcodeIfNeeded: transcodeIfNeeded ?? this.transcodeIfNeeded,
+        maxBitrateMbps: maxBitrateMbps == null ? this.maxBitrateMbps : maxBitrateMbps(),
+      );
+
+  Map<String, Object?> toJson() => {
+        'transcodeIfNeeded': transcodeIfNeeded,
+        'maxBitrateMbps': maxBitrateMbps,
+      };
+
+  /// A missing or unreadable setting is off; a hand-edited cap snaps to a
+  /// preset.
+  factory PlaybackSettings.fromJson(Object? json) {
+    if (json is! Map<String, Object?>) return off;
+    return PlaybackSettings(
+      transcodeIfNeeded: json['transcodeIfNeeded'] == true,
+      maxBitrateMbps: snap((json['maxBitrateMbps'] as num?)?.floor()),
+    );
+  }
+
+  @override
+  bool operator ==(Object other) =>
+      other is PlaybackSettings && other.transcodeIfNeeded == transcodeIfNeeded && other.maxBitrateMbps == maxBitrateMbps;
+
+  @override
+  int get hashCode => Object.hash(transcodeIfNeeded, maxBitrateMbps);
+}
+
+/// What the TV is doing, as far as bandwidth goes.
+enum PlaybackActivity {
+  /// Nothing is streaming (idle, off air, standby, station ID, error).
+  none,
+
+  /// A stream is opening.
+  tuning,
+
+  /// A segment is playing.
+  playing,
+}
+
+/// The analyzer's download budget while the TV plays: playback comes
+/// first when the user has said their network is limited (a cap is set).
+Budget analyzerBudget(PlaybackActivity activity, PlaybackSettings playback) {
+  final cap = playback.capBitsPerSecond;
+  if (cap == null) return const Budget.unlimited();
+  return switch (activity) {
+    PlaybackActivity.tuning => const Budget.paused(),
+    // A quarter of the cap, in bytes per second.
+    PlaybackActivity.playing => Budget.limited(cap ~/ 4 ~/ 8),
+    PlaybackActivity.none => const Budget.unlimited(),
+  };
+}
+
 class AppSettings {
   AppSettings({
     required this.installId,
     this.commercialPlan = BreakPlan.off,
     List<CommercialPool>? commercialPools,
     this.lastChannelId,
+    this.playback = PlaybackSettings.off,
     this.migrated = false,
   }) : commercialPools = commercialPools ?? [];
 
@@ -41,6 +136,9 @@ class AppSettings {
   /// Where commercials come from.
   List<CommercialPool> commercialPools;
   String? lastChannelId;
+
+  /// Transcode only if needed (off by default).
+  PlaybackSettings playback;
 
   /// Loaded from an older format; save to finish upgrading it.
   final bool migrated;
@@ -62,6 +160,7 @@ class AppSettings {
               if (r.isWholeLibrary) r.itemId,
         }.toList(),
         if (lastChannelId != null) 'lastChannelId': lastChannelId,
+        'playback': playback.toJson(),
       };
 
   /// Jellyfin device IDs start with this.
@@ -78,6 +177,7 @@ class AppSettings {
   factory AppSettings.fromJson(Map<String, Object?> j) {
     final installId = migrateDeviceId(j['installId'] as String);
     final lastChannelId = j['lastChannelId'] as String?;
+    final playback = PlaybackSettings.fromJson(j['playback']);
     if (j['commercialPlan'] case final Map<String, Object?> plan) {
       return AppSettings(
         installId: installId,
@@ -87,6 +187,7 @@ class AppSettings {
             CommercialPool.fromJson(p)
         ],
         lastChannelId: lastChannelId,
+        playback: playback,
       );
     }
     // Saved before break plans: an on/off switch and whole libraries.
@@ -104,6 +205,7 @@ class AppSettings {
           ),
       ],
       lastChannelId: lastChannelId,
+      playback: playback,
       migrated: j.containsKey('commercialsEnabled') || j.containsKey('commercialLibraryIds'),
     );
   }
@@ -119,7 +221,9 @@ enum AppPhase { starting, signedOut, syncing, ready }
 
 /// App-wide state: session, library index, channel lineup.
 class AppState extends ChangeNotifier {
-  AppState(this.storage, {this.maxRatingRank, this.runAnalysis = true}) : icons = CustomIconStore(storage.logosDir);
+  AppState(this.storage, {this.maxRatingRank, this.runAnalysis = true}) : icons = CustomIconStore(storage.logosDir) {
+    playbackActivity.addListener(_pushBudget);
+  }
 
   /// Analyze media in the background (off in most tests).
   final bool runAnalysis;
@@ -177,6 +281,17 @@ class AppState extends ChangeNotifier {
 
   /// True while the TV is opening a stream; analysis holds off meanwhile.
   final playbackBusy = ValueNotifier(false);
+
+  /// What the TV is doing (set by the tuner); with a cap, it sets how fast
+  /// the analyzer may download (see [analyzerBudget]).
+  final playbackActivity = ValueNotifier(PlaybackActivity.none);
+
+  LoopbackStreamProxy? _proxy;
+
+  /// The analyzer's download budget right now.
+  Budget get analyzerBudgetNow => analyzerBudget(playbackActivity.value, settings.playback);
+
+  void _pushBudget() => unawaited(_proxy?.setBudget(analyzerBudgetNow));
 
   /// One ffmpeg for the whole app (so it's looked for once per launch).
   static final ffmpeg = FfmpegRunner();
@@ -605,6 +720,19 @@ class AppState extends ChangeNotifier {
     await _saveSettings();
   }
 
+  // ---- Playback ----------------------------------------------------------
+
+  /// Changes "Transcode only if needed". What's playing plays on; the tuner
+  /// uses the new setting from the next segment it opens. The analyzer's
+  /// budget follows right away.
+  Future<void> setPlayback(PlaybackSettings playback) async {
+    if (playback == settings.playback) return;
+    settings.playback = playback;
+    _pushBudget();
+    notifyListeners();
+    await _saveSettings();
+  }
+
   // ---- Commercials -------------------------------------------------------
 
   /// Sets the main break plan, for every channel that follows it, keeping
@@ -685,10 +813,13 @@ class AppState extends ChangeNotifier {
     if (!runAnalysis || _closed || _analyzer != null || cache == null || c == null || phase != AppPhase.ready) {
       return;
     }
+    // The analyzer only ever reads the static stream (direct-play spec).
+    final proxy = _proxy = LoopbackStreamProxy(upstream: (id) => client!.streamUri(id), headers: () => client!.authHeaders)
+      ..budget = analyzerBudgetNow;
     _analyzer = MediaAnalyzer(
       cache: cache,
       scanner: ffmpeg,
-      proxy: LoopbackStreamProxy(upstream: (id) => client!.streamUri(id), headers: () => client!.authHeaders),
+      proxy: proxy,
       segments: (id) async =>
           [for (final s in await client!.commercialSegments(id)) Span(s.start, s.end)],
       work: _analysisWork,
@@ -697,9 +828,24 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// The proxy the analyzer reads through (tests check its upstream).
+  @visibleForTesting
+  LoopbackStreamProxy? get analyzerProxy => _proxy;
+
+  /// What the analyzer is doing, for playback diagnostics.
+  Future<({String job, String budget, int proxyBytes})> analyzerDebugState() async {
+    final proxy = _proxy;
+    return (
+      job: _analyzer == null ? 'not running' : (_analyzer!.progress.value.current ?? 'idle'),
+      budget: '${proxy?.budget ?? 'no proxy'}',
+      proxyBytes: proxy == null ? 0 : await proxy.bytesServed(),
+    );
+  }
+
   Future<void> _stopAnalysis() async {
     final analyzer = _analyzer;
     _analyzer = null;
+    _proxy = null;
     await analyzer?.stop();
   }
 

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -5,6 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:media_kit/media_kit.dart';
 import 'package:window_manager/window_manager.dart';
 
+import 'app_exit.dart';
 import 'app_scope.dart';
 import 'app_state.dart';
 import 'data/app_storage.dart';
@@ -40,6 +42,10 @@ Future<void> main() async {
     },
   );
 
+  // Closing the window first stops anything the app started on the server.
+  windowManager.addListener(_CloseHandler());
+  await windowManager.setPreventClose(true);
+
   final household = Household(await AppStorage.open());
   household.remote = RemoteControl(household, wake: () async {
     // A phone button should reach the TV even if another window has focus.
@@ -60,6 +66,15 @@ Future<void> main() async {
   runApp(NightingaleTvApp(household: household));
   await household.start();
   await household.remote!.load();
+}
+
+/// Runs [exitHooks] before the window closes.
+class _CloseHandler with WindowListener {
+  @override
+  void onWindowClose() => unawaited(() async {
+        await runExitHooks();
+        await windowManager.destroy();
+      }());
 }
 
 class NightingaleTvApp extends StatelessWidget {
@@ -113,10 +128,12 @@ class _ProfileSessionState extends State<ProfileSession> {
   void initState() {
     super.initState();
     _remote?.tuner = _tuner;
+    exitHooks.add(_tuner.stopTranscodeForExit);
   }
 
   @override
   void dispose() {
+    exitHooks.remove(_tuner.stopTranscodeForExit);
     if (_remote?.tuner == _tuner) _remote?.tuner = null;
     final tuner = _tuner;
     tuner.stop().whenComplete(tuner.dispose);
