@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../app_scope.dart';
 import '../jellyfin/jellyfin_client.dart';
+import '../platform/platform_info.dart';
 import '../theme/tv_theme.dart';
 import 'widgets/tv_focus.dart';
 
@@ -139,7 +140,7 @@ class _LoginScreenState extends State<LoginScreen> {
         children: [
           Expanded(
             flex: 5,
-            child: Padding(
+            child: _fitAboveKeyboard(Padding(
               padding: const EdgeInsets.fromLTRB(120, 80, 60, 80),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -157,11 +158,11 @@ class _LoginScreenState extends State<LoginScreen> {
                   ),
                 ],
               ),
-            ),
+            )),
           ),
           Expanded(
             flex: 4,
-            child: Padding(
+            child: _fitAboveKeyboard(Padding(
               padding: const EdgeInsets.fromLTRB(40, 80, 120, 80),
               child: FocusTraversalGroup(
                 child: Column(
@@ -181,9 +182,20 @@ class _LoginScreenState extends State<LoginScreen> {
                   ],
                 ),
               ),
-            ),
+            )),
           ),
         ],
+      ),
+    );
+  }
+
+  /// Android: centered as usual, but scrollable when the on-screen keyboard
+  /// leaves too little room, so the field being typed in stays in view.
+  static Widget _fitAboveKeyboard(Widget child) {
+    if (!PlatformInfo.isAndroid) return child;
+    return LayoutBuilder(
+      builder: (context, constraints) => SingleChildScrollView(
+        child: ConstrainedBox(constraints: BoxConstraints(minHeight: constraints.maxHeight), child: child),
       ),
     );
   }

@@ -1,7 +1,10 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:http/http.dart' as http;
+
+import '../playback/playback_diagnostics.dart';
 
 class JellyfinException implements Exception {
   JellyfinException(this.message, {this.statusCode});
@@ -195,7 +198,8 @@ class JellyfinClient {
     this.userId,
     http.Client? httpClient,
   })  : serverUrl = normalizeServerUrl(serverUrl),
-        _http = httpClient ?? http.Client();
+        // Diagnostics builds log every request (see DiagnosticHttpClient).
+        _http = httpClient ?? (PlaybackDiagnostics.enabled ? DiagnosticHttpClient(http.Client()) : http.Client());
 
   factory JellyfinClient.fromSession(JellyfinSession session, {required String deviceName}) =>
       JellyfinClient(
@@ -485,15 +489,19 @@ class JellyfinClient {
       };
 
   /// Asks Jellyfin whether [itemId] can be direct-played under [maxBitrate]
-  /// (bits per second; null for no limit). With [forceTranscode], direct
-  /// play and stream copy are ruled out, so the answer is always a full
-  /// transcode.
+  /// (bits per second; null for no limit) on a device described by
+  /// [profile] (the Linux one, [deviceProfile], when null). With
+  /// [forceTranscode], direct play and stream copy are ruled out, so the
+  /// answer is always a full transcode.
   Future<PlaybackDecision> playbackInfo(String itemId,
-      {int? maxBitrate, bool forceTranscode = false, Duration startAt = Duration.zero}) async {
+      {int? maxBitrate,
+      bool forceTranscode = false,
+      Duration startAt = Duration.zero,
+      Map<String, Object?>? profile}) async {
     final json = await _send('POST', '/Items/$itemId/PlaybackInfo', body: {
       'UserId': userId,
       'MediaSourceId': itemId,
-      'MaxStreamingBitrate': ?maxBitrate,
+      'MaxStreamingBitrate': ?(maxBitrate ?? profile?['MaxStreamingBitrate']),
       'StartTimeTicks': startAt.inMicroseconds * 10,
       'AutoOpenLiveStream': false,
       'EnableDirectPlay': !forceTranscode,
@@ -501,7 +509,7 @@ class JellyfinClient {
       'EnableTranscoding': true,
       'AllowVideoStreamCopy': !forceTranscode,
       'AllowAudioStreamCopy': !forceTranscode,
-      'DeviceProfile': deviceProfile(maxBitrate),
+      'DeviceProfile': profile ?? deviceProfile(maxBitrate),
     }) as Map<String, Object?>;
     final sources = (json['MediaSources'] as List? ?? const []).cast<Map<String, Object?>>();
     final source = sources.where((s) => s['Id'] == itemId).firstOrNull ?? sources.firstOrNull;
@@ -509,7 +517,37 @@ class JellyfinClient {
     final url = source['TranscodingUrl'] as String?;
     if (!forceTranscode && source['SupportsDirectPlay'] == true) return const PlaybackDecision.direct();
     if (url == null) throw JellyfinException('The server would not convert this item.');
-    return PlaybackDecision.transcode(transcodeTemplate(url));
+    final template = transcodeTemplate(url);
+    final video = (source['MediaStreams'] as List? ?? const [])
+        .cast<Map<String, Object?>>()
+        .where((m) => m['Type'] == 'Video')
+        .firstOrNull;
+    return PlaybackDecision.transcode(template,
+        directStream: !forceTranscode && keepsVideo(template, source),
+        sourceBitrate: ((video?['BitRate'] ?? source['Bitrate']) as num?)?.toInt(),
+        sourceCodec: video?['Codec'] as String?);
+  }
+
+  /// Whether a conversion copies the video (only the container, audio or
+  /// subtitles need converting): Jellyfin's reasons for it, from
+  /// [template]'s `TranscodeReasons` (or [source]'s), name nothing about
+  /// the video.
+  @visibleForTesting
+  static bool keepsVideo(Uri template, Map<String, Object?> source) {
+    final query = {for (final e in template.queryParameters.entries) e.key.toLowerCase(): e.value};
+    final raw = query['transcodereasons'] ?? switch (source['TranscodeReasons']) {
+      final List<Object?> l => l.join(','),
+      final String s => s,
+      _ => null,
+    };
+    final reasons = [for (final r in (raw ?? '').split(',')) if (r.trim().isNotEmpty) r.trim()];
+    if (reasons.isEmpty) return false;
+    return reasons.every((r) =>
+        (r.startsWith('Container') && r != 'ContainerBitrateExceedsLimit') ||
+        r.startsWith('Audio') ||
+        r.startsWith('SecondaryAudio') ||
+        r.startsWith('Subtitle') ||
+        r == 'UnknownAudioStreamInfo');
   }
 
   /// [TranscodingUrl] made absolute against [serverUrl], without the access
@@ -559,19 +597,34 @@ class JellyfinClient {
 }
 
 /// What [JellyfinClient.playbackInfo] decided: direct play (from
-/// [JellyfinClient.streamUri]), or a transcode whose URL template is
-/// [transcodeTemplate].
+/// [JellyfinClient.streamUri]), or a conversion whose URL template is
+/// [transcodeTemplate]: a direct stream when it keeps the video
+/// ([directStream]), a transcode otherwise.
 class PlaybackDecision {
-  const PlaybackDecision.direct() : transcodeTemplate = null;
-  const PlaybackDecision.transcode(Uri this.transcodeTemplate);
+  const PlaybackDecision.direct()
+      : transcodeTemplate = null,
+        directStream = false,
+        sourceBitrate = null,
+        sourceCodec = null;
+  const PlaybackDecision.transcode(Uri this.transcodeTemplate,
+      {this.directStream = false, this.sourceBitrate, this.sourceCodec});
 
   final Uri? transcodeTemplate;
+
+  /// The conversion copies the video (remux, or audio only).
+  final bool directStream;
+
+  /// The original video's bitrate (bits per second) and codec, as Jellyfin
+  /// knows them; null when it doesn't.
+  final int? sourceBitrate;
+  final String? sourceCodec;
 
   bool get transcode => transcodeTemplate != null;
 }
 
 enum PlayMethod {
   directPlay('DirectPlay'),
+  directStream('DirectStream'),
   transcode('Transcode');
 
   const PlayMethod(this.json);

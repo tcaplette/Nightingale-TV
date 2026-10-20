@@ -13,7 +13,7 @@ typedef SlotLength = Duration Function(MediaEntry item);
 Duration _runtimeOnly(MediaEntry item) => item.runtime;
 
 /// One slot in a channel's timeline, or (from [ChannelSchedule.playbackAt])
-/// one segment of it: a part of the show, a commercial, the station ID.
+/// one segment of it: a part of the show or a commercial.
 class ScheduledProgram {
   ScheduledProgram({
     required this.item,
@@ -22,14 +22,13 @@ class ScheduledProgram {
     DateTime? layoutStart,
     Duration? itemFrom,
     this.blockTitle,
-    this.isIdent = false,
     this.role,
     this.program,
   })  : layoutStart = layoutStart ?? start,
         itemFrom = itemFrom ?? start.difference(layoutStart ?? start);
 
-  /// Null while the channel is off the air or showing its station ID. A
-  /// commercial clip during breaks.
+  /// Null while the channel is off the air. A commercial clip during
+  /// breaks.
   final MediaEntry? item;
   final DateTime start;
   final DateTime end;
@@ -44,9 +43,6 @@ class ScheduledProgram {
   /// had no breaks.
   final Duration itemFrom;
 
-  /// The station ID card that fills the last seconds of a break.
-  final bool isIdent;
-
   /// Which break this segment is part of; null for the program itself.
   final BreakRole? role;
 
@@ -56,9 +52,9 @@ class ScheduledProgram {
   /// The programming block this slot belongs to, if any.
   final String? blockTitle;
 
-  bool get isOffAir => item == null && !isIdent;
+  bool get isOffAir => item == null;
 
-  /// A commercial break (or its station ID) rather than the program.
+  /// A commercial break rather than the program.
   bool get isBreak => role != null;
 
   bool get isCommercial => item?.kind == MediaKind.commercial;
@@ -452,8 +448,8 @@ class ChannelSchedule {
     );
   }
 
-  /// What actually plays at [t]: a part of the program, a commercial, the
-  /// station ID, or "Off Air". [programAt] gives the whole slot instead,
+  /// What actually plays at [t]: a part of the program, a commercial, or
+  /// "Off Air". [programAt] gives the whole slot instead,
   /// which is what the guide shows.
   ScheduledProgram playbackAt(DateTime t) {
     final slot = programAt(t);
@@ -475,12 +471,11 @@ class ChannelSchedule {
     final start = segmentStart.isAfter(slot.start) ? segmentStart : slot.start;
     final end = segmentEnd.isBefore(slot.end) ? segmentEnd : slot.end;
     return ScheduledProgram(
-      item: segment.ident ? null : segment.item,
+      item: segment.item,
       start: start,
       end: end,
       layoutStart: slot.layoutStart,
       itemFrom: segment.itemFrom + start.difference(segmentStart),
-      isIdent: segment.ident,
       role: segment.role,
       program: segment.isShow ? null : item,
       blockTitle: slot.blockTitle,

@@ -32,9 +32,6 @@ void main() {
     expect(reportStep(null, 'ch', first), ReportStep.start);
     final viewing = viewingOf('ch', first)!;
     expect(reportStep(viewing, 'ch', commercial()), ReportStep.keep);
-    expect(reportStep(viewing, 'ch', ScheduledProgram(
-        item: null, start: slot, end: slot, layoutStart: slot, isIdent: true, role: BreakRole.fallback, program: episode)),
-        ReportStep.keep, reason: 'the station ID inside its break');
     expect(reportStep(viewing, 'ch', part(7, 14)), ReportStep.keep);
   });
 

@@ -1,11 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../channels/channel.dart';
-import '../../channels/schedule.dart';
-import '../../library/library_index.dart';
 import '../../theme/tv_theme.dart';
-import '../format.dart';
-import 'channel_logo.dart';
 
 /// The full-screen cards a channel shows instead of a picture: on the TV,
 /// and drawn into Live TV export streams.
@@ -54,44 +50,6 @@ class StatusCard extends StatelessWidget {
                 width: 1100,
                 child: Text(message!, textAlign: TextAlign.center, style: g.body(28, color: g.textDim)),
               ),
-            ],
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-/// The station ID at the end of a commercial break.
-class StationId extends StatelessWidget {
-  const StationId({super.key, required this.channel, required this.next, this.logo});
-
-  final Channel channel;
-  final ScheduledProgram? next;
-
-  /// Drawn instead of the channel's [ChannelLogo] (offscreen, where the
-  /// logo is decoded ahead of time).
-  final Widget? logo;
-
-  @override
-  Widget build(BuildContext context) {
-    final g = context.guide;
-    final n = next;
-    return DecoratedBox(
-      decoration: g.backdrop,
-      child: Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            logo ?? ChannelLogo(icon: channel.icon, size: 260, width: 420, fallbackText: channel.name),
-            const SizedBox(height: 36),
-            Text('${channel.number}  ${channel.name.toUpperCase()}',
-                style: g.display(64, weight: FontWeight.w800, color: g.accent)),
-            if (n != null && !n.isOffAir) ...[
-              const SizedBox(height: 20),
-              Text('Up next: ${n.title} at ${formatTime(n.start)}', style: g.body(34, color: g.textDim)),
-              if (n.item?.kind == MediaKind.episode)
-                Text(n.subtitle, style: g.body(28, color: g.textDim)),
             ],
           ],
         ),

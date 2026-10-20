@@ -9,147 +9,12 @@ import 'package:nightingale_tv/channels/schedule.dart';
 import 'package:nightingale_tv/commercials/analysis/stream_proxy.dart';
 import 'package:nightingale_tv/commercials/break_plan.dart';
 import 'package:nightingale_tv/jellyfin/jellyfin_client.dart';
+import 'package:nightingale_tv/library/library_index.dart';
 import 'package:nightingale_tv/playback/tuner.dart';
 import 'package:nightingale_tv/playback/tuner_player.dart';
 
+import 'fake_playback.dart';
 import 'fixtures.dart';
-
-/// A Jellyfin that decides on bitrate the way the real one does, and logs
-/// every call the tuner makes as it's made.
-class FakeClient extends JellyfinClient {
-  FakeClient(this.log) : super(serverUrl: 'https://jf.example', deviceId: 'dev', deviceName: 'pc', accessToken: 't');
-
-  /// Shared with the player, so the order of calls and opens shows.
-  final List<String> log;
-
-  /// Source bitrates (bits per second); 25 Mbps unless set.
-  final bitrates = <String, int>{};
-  final decisions = <({String id, int? maxBitrate, bool force})>[];
-  final stopped = <String>[];
-  final reports = <(String kind, PlaybackReport report)>[];
-
-  /// Answers [playbackInfo] only once this completes (when set).
-  Completer<void>? holdDecisions;
-
-  @override
-  Future<PlaybackDecision> playbackInfo(String itemId,
-      {int? maxBitrate, bool forceTranscode = false, Duration startAt = Duration.zero}) async {
-    decisions.add((id: itemId, maxBitrate: maxBitrate, force: forceTranscode));
-    log.add('decide:$itemId');
-    await holdDecisions?.future;
-    final over = maxBitrate != null && (bitrates[itemId] ?? 25000000) > maxBitrate;
-    if (!forceTranscode && !over) return const PlaybackDecision.direct();
-    return PlaybackDecision.transcode(transcodeTemplate('/videos/$itemId/stream.ts?DeviceId=dev&ApiKey=t&MediaSourceId=$itemId'));
-  }
-
-  @override
-  Future<void> stopEncoding(String playSessionId) async {
-    stopped.add(playSessionId);
-    log.add('stop:$playSessionId');
-  }
-
-  @override
-  Future<void> reportPlaybackStart(PlaybackReport report) async => reports.add(('start', report));
-  @override
-  Future<void> reportPlaybackProgress(PlaybackReport report) async => reports.add(('progress', report));
-  @override
-  Future<void> reportPlaybackStopped(PlaybackReport report) async => reports.add(('stopped', report));
-}
-
-/// What [FakePlayer.open] does with a URL.
-/// [noPicture]: mpv says "playing" but no frame comes (yet).
-enum OpenResult { plays, throws, errors, hangs, noPicture }
-
-class FakePlayer implements TunerPlayer {
-  FakePlayer(this.log);
-
-  final List<String> log;
-  final opens = <({Uri url, Duration? start, Duration? end, bool exact})>[];
-  OpenResult Function(Uri url) onOpen = (_) => OpenResult.plays;
-
-  /// How far before [start] a keyframe join lands.
-  Duration keyframeEarly = Duration.zero;
-
-  final _playing = StreamController<bool>.broadcast();
-  final _position = StreamController<Duration>.broadcast();
-  final _error = StreamController<String>.broadcast();
-  bool _isPlaying = false;
-
-  @override
-  Stream<bool> get playingStream => _playing.stream;
-  @override
-  Stream<bool> get bufferingStream => const Stream.empty();
-  @override
-  Stream<Duration> get positionStream => _position.stream;
-  @override
-  Stream<void> get tracksStream => const Stream.empty();
-  @override
-  Stream<bool> get completedStream => const Stream.empty();
-  @override
-  Stream<String> get errorStream => _error.stream;
-  @override
-  Stream<String> get logStream => const Stream.empty();
-
-  @override
-  bool get playing => _isPlaying;
-  @override
-  bool get buffering => false;
-  @override
-  Duration position = Duration.zero;
-
-  @override
-  Future<void> open(Uri url,
-      {required Map<String, String> headers, Duration? start, Duration? end, bool exact = true}) async {
-    opens.add((url: url, start: start, end: end, exact: exact));
-    log.add('open:${url.path}');
-    _isPlaying = false;
-    position = Duration.zero;
-    final landed = (start ?? Duration.zero) - (exact ? Duration.zero : keyframeEarly);
-    switch (onOpen(url)) {
-      case OpenResult.plays:
-        scheduleMicrotask(() {
-          _isPlaying = true;
-          _playing.add(true);
-          showPicture(landed);
-        });
-      case OpenResult.noPicture:
-        scheduleMicrotask(() {
-          _isPlaying = true;
-          _playing.add(true);
-        });
-      case OpenResult.throws:
-        throw Exception('could not open');
-      case OpenResult.errors:
-        scheduleMicrotask(() => _error.add('could not open'));
-      case OpenResult.hangs:
-        break;
-    }
-  }
-
-  /// The first frames, from [at]: the position moves on from where it landed.
-  void showPicture(Duration at) {
-    _position.add(at);
-    _position.add(at + const Duration(milliseconds: 40));
-  }
-
-  /// A playback error some time after starting.
-  void failNow() => _error.add('stream broke');
-
-  @override
-  Future<void> stop() async {
-    _isPlaying = false;
-    log.add('stop-player');
-  }
-
-  @override
-  Future<void> showCaptions(bool on) async {}
-
-  @override
-  Future<void> dispose() async {}
-
-  @override
-  Future<String> debugProperty(String name) async => '';
-}
 
 bool isStatic(Uri u) => u.path.endsWith('/stream') && u.queryParameters['static'] == 'true';
 bool isTranscode(Uri u) => u.path.endsWith('/stream.ts');
@@ -189,7 +54,13 @@ void main() {
     now = DateTime.now();
     // Asking ahead adds requests the counting tests don't expect; the
     // prefetch tests turn it back on.
-    tuner = Tuner(app, player: player, clock: () => now)..prefetch = false;
+    tuner = Tuner(app, player: player, clock: () => now)
+      ..prefetch = false
+      // Preloading adds playlist calls the counting tests don't expect; the
+      // hand-over tests turn it back on.
+      ..preload = false
+      // Tests take the samples themselves (debugSample).
+      ..sampleEvery = const Duration(hours: 1);
   });
 
   tearDown(() async {
@@ -203,21 +74,33 @@ void main() {
   Future<void> settle() => pumpEventQueue();
 
   Future<void> setPlayback({bool on = true, int? mbps}) =>
-      app.setPlayback(PlaybackSettings(transcodeIfNeeded: on, maxBitrateMbps: mbps));
+      app.setPlayback(PlaybackSettings(transcodeIfNeeded: on, maxKbps: mbps == null ? null : mbps * 1000));
 
   ChannelSchedule scheduleOf(Channel ch) => app.scheduleFor(ch)!;
 
   bool isPart(ScheduledProgram s) => !s.isBreak && s.item != null && !s.isCommercial;
 
-  /// The next program part on [ch] from [from] (one a commercial break
-  /// follows, when [ch] has breaks).
+  /// The next program part on [ch] from [from] (when [ch] has breaks, one a
+  /// mid-program commercial break follows: the same program comes back
+  /// after it, whatever the time of day the test runs).
   ScheduledProgram partBeforeBreak(Channel ch, DateTime from) {
     final s = scheduleOf(ch);
     final breaks = app.breaksFor(ch);
+
+    /// The part after the break that starts at [t].
+    ScheduledProgram partAfter(DateTime t) {
+      var seg = s.playbackAt(t);
+      for (var i = 0; i < 50 && seg.isBreak; i++) {
+        seg = s.playbackAt(seg.end);
+      }
+      return seg;
+    }
+
     var seg = s.playbackAt(from);
     for (var i = 0; i < 200; i++) {
       final next = s.playbackAt(seg.end);
-      if (isPart(seg) && (!breaks || next.isBreak && next.isCommercial) && seg.duration > const Duration(seconds: 30)) {
+      final midBreak = next.isBreak && next.isCommercial && partAfter(next.start).item?.id == seg.item?.id;
+      if (isPart(seg) && (!breaks || midBreak) && seg.duration > const Duration(seconds: 30)) {
         return seg;
       }
       seg = next;
@@ -254,6 +137,23 @@ void main() {
       expect(client.decisions, isEmpty, reason: 'no PlaybackInfo');
       expect(client.stopped, isEmpty, reason: 'no ActiveEncodings');
       expect(player.opens.every((o) => isStatic(o.url)), isTrue);
+    });
+
+    test('waiting for data asks nothing and transcodes nothing; only the buffer is read', () async {
+      expect(app.settings.playback, PlaybackSettings.off);
+      player.buffered = 1.0;
+      await tuneIntoPart(app.channels.first);
+      expect(tuner.debugSampling, isTrue, reason: 'sampled whenever the TV plays');
+      for (var i = 0; i < 10; i++) {
+        await tuner.debugSample();
+      }
+      expect(player.bufferedReads, 10);
+      await settle();
+      expect(client.decisions, isEmpty);
+      expect(player.opens, hasLength(1), reason: 'nothing reopens what plays');
+      expect(player.opens.every((o) => isStatic(o.url)), isTrue);
+      await tuner.stop();
+      expect(tuner.debugSampling, isFalse);
     });
 
     test('a failed open shows the error without a transcode retry', () async {
@@ -555,14 +455,76 @@ test('rapid surfing over five transcoding channels leaves at most one job runnin
       expect(app.analyzerBudgetNow, const Budget.unlimited());
     });
 
-    test('without a cap, nothing is ever paused or limited', () async {
-      for (final playback in const [PlaybackSettings.off, PlaybackSettings(transcodeIfNeeded: true)]) {
-        for (final activity in PlaybackActivity.values) {
-          expect(analyzerBudget(activity, playback), const Budget.unlimited());
-        }
+    test('with the setting off: paused while tuning and until the file\'s bitrate is known, then a quarter of it',
+        () async {
+      player.fileBitrate = 8000000;
+      expect(app.analyzerBudgetNow, const Budget.unlimited());
+      player.onOpen = (_) => OpenResult.noPicture;
+      await tuneIntoPart(app.channels.first);
+      expect(app.analyzerBudgetNow, const Budget.paused());
+      player.showPicture(player.opens.last.start!);
+      await settle();
+      expect(tuner.status, TunerStatus.playing);
+      expect(app.analyzerBudgetNow, const Budget.paused(), reason: 'the bitrate isn\'t read yet');
+      await tuner.debugSample();
+      expect(app.playingBitrate.value, 8000000);
+      expect(app.analyzerBudgetNow, const Budget.limited(250000), reason: '2 Mbps of an 8 Mbps file');
+      // The next open reads its own file's bitrate.
+      player.onOpen = (_) => OpenResult.plays;
+      player.fileBitrate = 4000000;
+      await advance();
+      expect(app.playingBitrate.value, isNull);
+      await tuner.debugSample();
+      expect(app.analyzerBudgetNow, const Budget.limited(125000));
+      await tuner.stop();
+      expect(app.analyzerBudgetNow, const Budget.unlimited());
+    });
+
+    test('Original with the toggle on uses the file\'s bitrate too; a cap ignores it', () async {
+      player.fileBitrate = 8000000;
+      await setPlayback();
+      await tuneIntoPart(app.channels.first);
+      await tuner.debugSample();
+      expect(app.analyzerBudgetNow, const Budget.limited(250000));
+      await setPlayback(mbps: 4);
+      expect(app.analyzerBudgetNow, const Budget.limited(125000), reason: 'a quarter of 4 Mbps, at once');
+    });
+
+    test('a bitrate mpv can\'t tell comes from the library\'s size and runtime', () async {
+      final items = fakeItems(shows: const {'Alpha': 20, 'Beta': 20});
+      // 22 minutes at 2 Mbps.
+      const size = 2000000 * 22 * 60 ~/ 8;
+      for (final e in items.episodes) {
+        e['MediaSources'] = [
+          {'Size': size},
+        ];
       }
-      // Off with a remembered cap is still off.
-      expect(analyzerBudget(PlaybackActivity.tuning, const PlaybackSettings(maxBitrateMbps: 8)), const Budget.unlimited());
+      final sized = LibraryIndex.fromJellyfinItems(
+        seriesItems: items.series,
+        episodeItems: items.episodes,
+        movieItems: items.movies,
+        commercialItems: items.commercials,
+        poolsByItem: const {},
+        fetchedAt: DateTime(2026),
+      );
+      final dir2 = await Directory.systemTemp.createTemp('nightingale_tv_tuner_sized');
+      final app2 = await signedInApp(dir2, sized);
+      app2.client = client;
+      final tuner2 = Tuner(app2, player: FakePlayer(log), clock: () => now)
+        ..prefetch = false
+        ..sampleEvery = const Duration(hours: 1);
+      addTearDown(() async {
+        tuner2.dispose();
+        await app2.close();
+        await Future<void>.delayed(const Duration(milliseconds: 100));
+        await dir2.delete(recursive: true);
+      });
+      await tuner2.tune(app2.channels.first);
+      await settle();
+      expect(tuner2.status, TunerStatus.playing);
+      await tuner2.debugSample();
+      expect(app2.playingBitrate.value, 2000000);
+      expect(app2.analyzerBudgetNow, const Budget.limited(62500));
     });
   });
 
@@ -655,6 +617,11 @@ test('rapid surfing over five transcoding channels leaves at most one job runnin
       final channels = app.channels;
       await tuneIntoPart(channels.first);
       await settle();
+      expect(client.decisions, hasLength(1), reason: 'nothing asked ahead at the picture itself');
+      // mpv has 10 s buffered.
+      player.buffered = 12.0;
+      await tuner.debugSample();
+      await settle();
       final neighbour = app.scheduleFor(channels[1])!.programAt(now).item!;
       expect([for (final d in client.decisions) d.id], contains(neighbour.sourceId));
       final asked = client.decisions.length;
@@ -670,6 +637,504 @@ test('rapid surfing over five transcoding channels leaves at most one job runnin
         await settle();
       }
       expect(client.decisions, isEmpty);
+    });
+  });
+  group('a fixed cap is the cap in effect; nothing lowers it', () {
+    /// One second of playback with mpv waiting for data (or not).
+    Future<void> tick({bool waiting = false, double buffered = 2}) async {
+      now = now.add(const Duration(seconds: 1));
+      player.buffered = waiting ? 0 : buffered;
+      await tuner.debugSample();
+      await settle();
+    }
+
+    test('a direct play waiting for data plays on, and the next part opens under the same cap', () async {
+      await setPlayback(mbps: 8);
+      for (final e in library.episodes) {
+        client.bitrates[e.id] = 5000000;
+      }
+      await tuneIntoPart(app.channels.first);
+      expect(isStatic(player.opens.single.url), isTrue, reason: '5 Mbps is under 8 Mbps');
+      for (var i = 0; i < 30; i++) {
+        await tick(waiting: i.isEven);
+      }
+      expect(player.opens, hasLength(1), reason: 'never reopened mid-part');
+      expect(client.decisions.every((d) => d.maxBitrate == 8000000), isTrue);
+      expect(app.capInEffect, 8000);
+      final first = tuner.segment!.item!.id;
+      while (tuner.segment!.item!.id == first) {
+        await advance();
+      }
+      expect(client.decisions.last.maxBitrate, 8000000);
+      expect(isStatic(player.opens.last.url), isTrue);
+    });
+
+    test('a program over the cap transcodes at the cap and stays there', () async {
+      await setPlayback(mbps: 8);
+      for (final e in library.episodes) {
+        client.bitrates[e.id] = 25000000;
+      }
+      await tuneIntoPart(app.channels.first);
+      expect(client.decisions.single.maxBitrate, 8000000);
+      expect(isTranscode(player.opens.single.url), isTrue);
+      for (var i = 0; i < 60; i++) {
+        await tick(waiting: i % 3 == 0);
+      }
+      expect(player.opens, hasLength(1));
+      expect(client.decisions, hasLength(1));
+      expect(app.capInEffect, 8000);
+    });
+
+    test('Original asks nothing while tuning, whatever playback does', () async {
+      await setPlayback();
+      for (var i = 0; i < 3; i++) {
+        await tuner.channelUp();
+        await settle();
+        for (var j = 0; j < 5; j++) {
+          await tick(waiting: true);
+        }
+      }
+      expect(client.decisions, isEmpty, reason: 'no PlaybackInfo');
+      expect(player.opens.every((o) => isStatic(o.url)), isTrue);
+    });
+
+    test('decisions asked ahead use the chosen cap', () async {
+      await setPlayback(mbps: 4);
+      tuner.prefetch = true;
+      await tuneIntoPart(app.channels.first);
+      await tick(buffered: 12);
+      final ahead = client.decisions.skip(1).toList();
+      expect(ahead, isNotEmpty);
+      expect(ahead.every((d) => d.maxBitrate == 4000000), isTrue);
+      final asked = client.decisions.length;
+      await tuner.channelUp();
+      await settle();
+      expect(client.decisions, hasLength(asked), reason: 'kept under 4 Mbps, found under 4 Mbps');
+    });
+  });
+
+  group('the launch channel\'s decision', () {
+    test('is asked during start-up, once, and the first tune uses it', () async {
+      await setPlayback(mbps: 4);
+      final ch = app.channels[1];
+      await app.setLastChannel(ch);
+      tuner.dispose();
+      await app.close();
+      client.decisions.clear();
+      client.holdDecisions = Completer();
+      app = AppState(app.storage, sessionClient: (_) => client);
+      await app.start();
+      expect(client.decisions, hasLength(1), reason: 'asked as soon as the lineup is ready');
+      final launched = client.decisions.single.id;
+      expect(launched, app.scheduleFor(ch)!.playbackAt(DateTime.now()).item!.sourceId);
+      player = FakePlayer(log);
+      now = DateTime.now();
+      // Not preloading: within a minute of the hand-over, that asks the next
+      // segment's decision.
+      tuner = Tuner(app, player: player, clock: () => now)
+        ..prefetch = false
+        ..preload = false
+        ..sampleEvery = const Duration(hours: 1);
+      unawaited(tuner.tune(ch));
+      await settle();
+      expect(player.opens, isEmpty, reason: 'the tune awaits the request in flight');
+      client.holdDecisions!.complete();
+      await settle();
+      expect(player.opens, hasLength(1));
+      expect(client.decisions, hasLength(1), reason: 'no second PlaybackInfo');
+    });
+
+    test('isn\'t asked with the setting off, or on with Original', () async {
+      for (final playback in const [PlaybackSettings.off, PlaybackSettings(transcodeIfNeeded: true)]) {
+        await app.setPlayback(playback);
+        tuner.dispose();
+        await app.close();
+        client.decisions.clear();
+        app = AppState(app.storage, sessionClient: (_) => client);
+        await app.start();
+        await settle();
+        expect(client.decisions, isEmpty, reason: '$playback');
+        tuner = Tuner(app, player: player, clock: () => now)
+          ..prefetch = false
+          ..sampleEvery = const Duration(hours: 1);
+      }
+    });
+  });
+
+  group('decisions are kept for the session only', () {
+    /// The app and tuner as after a restart, with the same server.
+    Future<void> restart() async {
+      tuner.dispose();
+      await app.close();
+      // The same server: the launch's early decision goes to it too.
+      app = AppState(app.storage, sessionClient: (_) => client);
+      await app.start();
+      player = FakePlayer(log);
+      tuner = Tuner(app, player: player, clock: () => now)
+        ..prefetch = false
+        ..sampleEvery = const Duration(hours: 1);
+    }
+
+    test('re-tuning the same program asks nothing new', () async {
+      await setPlayback(mbps: 8);
+      final part = await tuneIntoPart(app.channels.first);
+      expect(client.decisions, hasLength(1));
+      await tuner.channelUp();
+      await settle();
+      final asked = client.decisions.length;
+      now = part.start.add(const Duration(seconds: 20));
+      await tuner.tune(app.channels.first);
+      await settle();
+      expect(client.decisions, hasLength(asked));
+      expect(isTranscode(player.opens.last.url), isTrue);
+    });
+
+    test('after a restart, the decision is asked again, and nothing is saved to disk', () async {
+      await setPlayback(mbps: 8);
+      final part = await tuneIntoPart(app.channels.first);
+      expect(client.decisions, hasLength(1));
+      client.decisions.clear();
+      now = part.start.add(const Duration(seconds: 20));
+      await restart();
+      expect(await app.storage.readJson(AppState.legacyDecisionsFile), isNull);
+      await tuner.tune(app.channels.first);
+      await settle();
+      expect(client.decisions.where((d) => d.id == part.item!.sourceId), isNotEmpty,
+          reason: 'asked again (at launch or by the tune)');
+      expect(isTranscode(player.opens.single.url), isTrue);
+      expect(player.opens.single.url.queryParameters['StartTimeTicks'], '${part.positionAt(now).inMicroseconds * 10}');
+    });
+
+    test('changing the setting clears the session\'s decisions', () async {
+      await setPlayback(mbps: 8);
+      final part = await tuneIntoPart(app.channels.first);
+      expect(app.savedDecision(part.item!.sourceId, 8000), isNotNull);
+      await setPlayback(mbps: 4);
+      await setPlayback(mbps: 8);
+      expect(app.savedDecision(part.item!.sourceId, 8000), isNull);
+      client.decisions.clear();
+      now = part.start.add(const Duration(seconds: 20));
+      await tuner.tune(app.channels.first);
+      await settle();
+      expect(client.decisions.where((d) => d.id == part.item!.sourceId), hasLength(1), reason: 'asked again, once');
+    });
+  });
+
+  group('a schedule change while tuned in', () {
+    /// A time when [ch] airs the same program with breaks off and on
+    /// (same), or another one (!same), from parts of each, with the plan
+    /// changed at [change]: a minute into the program on air, in a part of
+    /// it with breaks on or off, so changing back and forth always gives
+    /// the same schedules (and never at the very end of a slot, after which
+    /// the two loops never air the same program again).
+    Future<({DateTime change, DateTime at})> findTime(Channel ch, {required bool same}) async {
+      final off = scheduleOf(ch);
+      final change = off.programAt(now).start.add(const Duration(minutes: 1));
+      await app.setGlobalPlan(BreakPlan.automatic, now: change);
+      final on = scheduleOf(ch);
+      await app.setGlobalPlan(BreakPlan.off, now: change);
+      var t = change;
+      for (var i = 0; i < 2000; i++, t = t.add(const Duration(minutes: 3))) {
+        final a = off.playbackAt(t), b = on.playbackAt(t);
+        if (!isPart(a) || !isPart(b) || a.end.difference(t) < const Duration(minutes: 1)) continue;
+        if ((off.programAt(t).item?.id == on.programAt(t).item?.id) == same) return (change: change, at: t);
+      }
+      throw StateError('no such time');
+    }
+
+    test('the program on air plays on, and the new plan takes over when its segment ends', () async {
+      final ch = app.channels.first;
+      final found = await findTime(ch, same: true);
+      now = found.at;
+      await tuner.tune(ch);
+      await settle();
+      final playing = tuner.segment!;
+      await app.setGlobalPlan(BreakPlan.automatic, now: found.change);
+      await tuner.reschedule();
+      await settle();
+      expect(player.opens, hasLength(1), reason: 'not reopened');
+      expect(tuner.segment, same(playing));
+      expect(tuner.segmentEndsAt, playing.end);
+    });
+
+    test('another program on air now is tuned in, not the old one played on under the new guide', () async {
+      final ch = app.channels.first;
+      final found = await findTime(ch, same: false);
+      now = found.at;
+      await tuner.tune(ch);
+      await settle();
+      final before = tuner.program!.item!.id;
+      await app.setGlobalPlan(BreakPlan.automatic, now: found.change);
+      await tuner.reschedule();
+      await settle();
+      final onAir = scheduleOf(ch).programAt(now).item!.id;
+      expect(onAir, isNot(before));
+      expect(player.opens, hasLength(2));
+      expect(tuner.program?.item?.id, onAir);
+      expect(player.opens.last.url.path, contains(tuner.segment!.item!.sourceId));
+    });
+  });
+
+  group('preloaded hand-overs (segment-handover spec)', () {
+    setUp(() => tuner.preload = true);
+
+    /// Tunes to [ch] [before] the end of a part (one a break follows, when
+    /// the channel has breaks).
+    Future<ScheduledProgram> tuneBeforeEnd(Channel ch, Duration before) async {
+      final part = partBeforeBreak(ch, now);
+      now = part.end.subtract(before);
+      await tuner.tune(ch);
+      await settle();
+      return part;
+    }
+
+    /// The statuses the tuner goes through from now on.
+    List<TunerStatus> watchStatus() {
+      final seen = <TunerStatus>[];
+      tuner.addListener(() => seen.add(tuner.status));
+      return seen;
+    }
+
+    test('the next segment is added 30 s before the hand-over, with its clip start and end', () async {
+      await app.setGlobalPlan(BreakPlan.automatic);
+      final ch = app.channels.first;
+      final part = await tuneBeforeEnd(ch, const Duration(seconds: 90));
+      expect(tuner.status, TunerStatus.playing);
+      expect(player.enqueued, isEmpty, reason: 'a minute and a half before');
+
+      now = part.end.subtract(const Duration(seconds: 20));
+      await tuner.retune();
+      await settle();
+      final ad = scheduleOf(ch).playbackAt(part.end);
+      expect(ad.isCommercial, isTrue);
+      final queued = player.enqueued.single;
+      expect(isStatic(queued.url), isTrue);
+      expect(queued.start, ad.itemFrom, reason: 'exactly from the clip\'s start');
+      expect(queued.end, ad.itemTo);
+      expect(tuner.preloadedSegment?.start, ad.start);
+    });
+
+    test('the player moves on by itself: no open, no tuning, no channel number, and the break is on', () async {
+      await app.setGlobalPlan(BreakPlan.automatic);
+      final ch = app.channels.first;
+      final part = await tuneBeforeEnd(ch, const Duration(seconds: 20));
+      final ad = tuner.preloadedSegment!;
+      final seen = watchStatus();
+      now = ad.start;
+      player.reachEnd();
+      await settle();
+      expect(player.opens, hasLength(1));
+      expect(tuner.segment?.start, ad.start);
+      expect(tuner.inBreak, isTrue);
+      expect(tuner.program?.item?.id, part.item!.id, reason: 'the break belongs to the program');
+      expect(seen, isNot(contains(TunerStatus.tuning)));
+      expect(tuner.status, TunerStatus.playing);
+      expect(tuner.changingChannel, isFalse);
+      // The schedule's hand-over came after: nothing more happens to it.
+      expect(log.where((l) => l == 'advance'), isEmpty);
+    });
+
+    test('the tuner moves the player on at the scheduled time when it hasn\'t yet', () async {
+      await app.setGlobalPlan(BreakPlan.automatic);
+      await tuneBeforeEnd(app.channels.first, const Duration(seconds: 20));
+      final ad = tuner.preloadedSegment!;
+      final seen = watchStatus();
+      now = ad.start;
+      await tuner.debugSegmentEnded();
+      await settle();
+      expect(log.where((l) => l == 'advance'), hasLength(1));
+      expect(player.opens, hasLength(1));
+      expect(tuner.segment?.start, ad.start);
+      expect(player.position, ad.itemFrom, reason: 'the next segment starts at its own start');
+      expect(seen, isNot(contains(TunerStatus.tuning)));
+      expect(tuner.status, TunerStatus.playing);
+    });
+
+    test('a part after a part preloads; a next program that converts doesn\'t, and opens at the hand-over', () async {
+      // No breaks: one program follows another.
+      final ch = app.channels.first;
+      final part = await tuneBeforeEnd(ch, const Duration(seconds: 20));
+      final next = scheduleOf(ch).playbackAt(part.end);
+      expect(isPart(next), isTrue);
+      expect(tuner.preloadedSegment?.start, next.start, reason: 'direct play, setting off');
+      expect(player.enqueued.single.start, next.itemFrom);
+
+      await tuner.stop();
+      player.enqueued.clear();
+      await setPlayback(mbps: 8);
+      final part2 = await tuneBeforeEnd(ch, const Duration(seconds: 20));
+      expect(isTranscode(player.opens.last.url), isTrue);
+      expect(player.enqueued, isEmpty, reason: 'its decision is a conversion');
+      final next2 = scheduleOf(ch).playbackAt(part2.end);
+      now = next2.start.add(const Duration(milliseconds: 500));
+      await tuner.debugSegmentEnded();
+      await settle();
+      expect(isTranscode(player.opens.last.url), isTrue);
+      expect(tuner.segment?.start, next2.start);
+    });
+
+    /// An app whose only commercial is [clip] long, on Automatic, and its
+    /// tuner.
+    Future<(AppState, Tuner)> oneClipApp(Duration clip) async {
+      final dir = await Directory.systemTemp.createTemp('nightingale_tv_one_clip');
+      final oneApp = await signedInApp(
+          dir,
+          fakeLibrary(
+              shows: {'Alpha': 20, 'Beta': 20},
+              genres: {'Alpha': ['Comedy'], 'Beta': ['Comedy']},
+              commercials: [clip]));
+      oneApp.client = client;
+      final oneTuner = Tuner(oneApp, player: player, clock: () => now)
+        ..prefetch = false
+        ..sampleEvery = const Duration(hours: 1);
+      addTearDown(() async {
+        oneTuner.dispose();
+        await oneApp.close();
+        await Future<void>.delayed(const Duration(milliseconds: 100));
+        await dir.delete(recursive: true);
+      });
+      await oneApp.setGlobalPlan(BreakPlan.automatic);
+      return (oneApp, oneTuner);
+    }
+
+    test('a slot\'s last clip is cut to end on time, and hands over to what follows', () async {
+      // One 50 s clip: the post-roll repeats it and cuts the last one short.
+      final (oneApp, oneTuner) = await oneClipApp(const Duration(seconds: 50));
+      final ch = oneApp.channels.first;
+      final s = oneApp.scheduleFor(ch)!;
+      // The last clip of a slot, cut short.
+      var seg = s.playbackAt(now);
+      for (var i = 0; i < 3000 && !(seg.isCommercial && s.programAt(seg.start).end == seg.end); i++) {
+        seg = s.playbackAt(seg.end);
+      }
+      expect(seg.isCommercial, isTrue);
+      expect(seg.duration, lessThan(const Duration(seconds: 50)), reason: 'cut short');
+      expect(s.programAt(seg.start).end, seg.end, reason: 'ends with its slot');
+      final after = s.playbackAt(seg.end);
+      expect(after.item, isNotNull);
+      expect(after.isBreak, isFalse, reason: 'the next program, no card in between');
+      now = seg.end.subtract(const Duration(seconds: 6));
+      await oneTuner.tune(ch);
+      await settle();
+      expect(oneTuner.status, TunerStatus.playing);
+      expect(oneTuner.preloadedSegment?.start, after.start);
+      expect(player.enqueued.single.start, after.itemFrom);
+      now = after.start;
+      await oneTuner.debugSegmentEnded();
+      await settle();
+      expect(player.opens, hasLength(1), reason: 'no open');
+      expect(oneTuner.segment?.start, after.start);
+      expect(oneTuner.status, TunerStatus.playing);
+    });
+
+    test('a clip cut to under 4 s is skipped: what follows it is preloaded', () async {
+      // 53 s clips: the post-roll's last one is cut to 3 s.
+      final (oneApp, oneTuner) = await oneClipApp(const Duration(seconds: 53));
+      final ch = oneApp.channels.first;
+      final s = oneApp.scheduleFor(ch)!;
+      // A clip that a clip of under 4 s follows, and then something to play.
+      var seg = s.playbackAt(now);
+      bool shortNext(ScheduledProgram p) {
+        final next = s.playbackAt(p.end);
+        return p.isCommercial &&
+            next.isCommercial &&
+            next.duration < const Duration(seconds: 4) &&
+            s.playbackAt(next.end).item != null;
+      }
+
+      for (var i = 0; i < 3000 && !shortNext(seg); i++) {
+        seg = s.playbackAt(seg.end);
+      }
+      expect(shortNext(seg), isTrue, reason: 'the schedule has one');
+      final after = s.playbackAt(s.playbackAt(seg.end).end);
+      now = seg.end.subtract(const Duration(seconds: 6));
+      await oneTuner.tune(ch);
+      await settle();
+      expect(oneTuner.preloadedSegment?.start, after.start);
+      expect(player.enqueued.single.start, after.itemFrom);
+      now = seg.end;
+      await oneTuner.debugSegmentEnded();
+      await settle();
+      expect(player.opens, hasLength(1), reason: 'no open');
+      expect(oneTuner.segment?.start, after.start);
+      expect(oneTuner.status, TunerStatus.playing);
+    });
+
+    test('a commercial that ends early holds its last picture; a program part shows stand-by', () async {
+      await app.setGlobalPlan(BreakPlan.automatic);
+      final ch = app.channels.first;
+      final part = await tuneBeforeEnd(ch, const Duration(seconds: 90));
+      // In the break, its first commercial's file ends 2 s early.
+      now = part.end.add(const Duration(milliseconds: 500));
+      await tuner.debugSegmentEnded();
+      await settle();
+      final ad = tuner.segment!;
+      expect(ad.isCommercial, isTrue);
+      now = ad.end.subtract(const Duration(seconds: 2));
+      final seen = watchStatus();
+      player.complete();
+      await settle();
+      expect(tuner.status, TunerStatus.playing, reason: 'the last picture stays up');
+      expect(seen, isNot(contains(TunerStatus.standby)));
+      // On to the next segment at the hand-over.
+      final next = await advance();
+      expect(next.start, ad.end);
+      expect(tuner.status, TunerStatus.playing);
+
+      // A program part whose file ends early still shows PLEASE STAND BY.
+      final show = await tuneIntoPart(ch);
+      expect(tuner.segment?.start, show.start);
+      player.complete();
+      await settle();
+      expect(tuner.status, TunerStatus.standby);
+    });
+
+    test('a channel change drops the preloaded segment before the new channel opens', () async {
+      await app.setGlobalPlan(BreakPlan.automatic);
+      await tuneBeforeEnd(app.channels.first, const Duration(seconds: 20));
+      expect(player.queued, isNotNull);
+      log.clear();
+      await tuner.channelUp();
+      await settle();
+      expect(log.indexOf('clear-queue'), greaterThanOrEqualTo(0));
+      expect(log.indexOf('clear-queue'), lessThan(log.indexWhere((l) => l.startsWith('open:'))));
+      expect(tuner.channel, app.channels[1]);
+      // What's queued now, if anything, is the new channel's.
+      final queued = tuner.preloadedSegment;
+      if (queued != null) expect(scheduleOf(app.channels[1]).playbackAt(queued.start).start, queued.start);
+      expect(player.opens, hasLength(2));
+    });
+
+    test('through a break and back, the program is one viewing', () async {
+      await app.setGlobalPlan(BreakPlan.automatic);
+      final ch = app.channels.first;
+      final part = await tuneBeforeEnd(ch, const Duration(seconds: 20));
+      final program = part.item!.id;
+      var handedOver = 0;
+      var preloaded = false;
+      for (var i = 0; i < 50; i++) {
+        final next = tuner.preloadedSegment;
+        preloaded = next != null;
+        if (next != null) {
+          now = next.start;
+          player.reachEnd();
+          handedOver++;
+        } else {
+          now = scheduleOf(ch).playbackAt(tuner.segment!.end).start.add(const Duration(milliseconds: 500));
+          await tuner.debugSegmentEnded();
+        }
+        await settle();
+        if (isPart(tuner.segment!)) break;
+      }
+      expect(handedOver, greaterThan(0));
+      final after = tuner.segment!;
+      expect(after.item!.id, program, reason: 'back from the break');
+      // Preloaded, or opened at the hand-over.
+      final from = preloaded ? player.position : player.opens.last.start;
+      expect(from, after.positionAt(now), reason: 'at its scheduled position');
+      final reports = client.reports.where((r) => r.$2.itemId == program).toList();
+      expect(reports.where((r) => r.$1 == 'start'), hasLength(1));
+      expect(reports.where((r) => r.$1 == 'stopped'), isEmpty);
     });
   });
 }

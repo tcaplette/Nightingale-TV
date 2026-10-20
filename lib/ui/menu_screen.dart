@@ -5,6 +5,7 @@ import 'package:window_manager/window_manager.dart';
 
 import '../app_exit.dart';
 import '../app_scope.dart';
+import '../platform/platform_info.dart';
 import '../theme/tv_theme.dart';
 import 'blocks_screen.dart';
 import 'channel_editor_screen.dart';
@@ -159,14 +160,16 @@ class _MenuScreenState extends State<MenuScreen> {
                         if (context.mounted) back();
                       }),
                     ),
-                    const SizedBox(height: 18),
-                    TvButton(
-                      label: 'Full screen on/off (F11)',
-                      icon: Icons.fullscreen,
-                      expand: true,
-                      onPressed: () async =>
-                          windowManager.setFullScreen(!await windowManager.isFullScreen()),
-                    ),
+                    if (PlatformInfo.isDesktop) ...[
+                      const SizedBox(height: 18),
+                      TvButton(
+                        label: 'Full screen on/off (F11)',
+                        icon: Icons.fullscreen,
+                        expand: true,
+                        onPressed: () async =>
+                            windowManager.setFullScreen(!await windowManager.isFullScreen()),
+                      ),
+                    ],
                     const SizedBox(height: 18),
                     TvButton(
                       label: 'Sign out',
@@ -192,10 +195,8 @@ class _MenuScreenState extends State<MenuScreen> {
                       expand: true,
                       danger: true,
                       onPressed: guard(() async {
-                        await runExitHooks();
-                        if (!context.mounted) return;
-                        await AppScope.tunerOf(context).stop();
-                        await windowManager.destroy();
+                        final tuner = AppScope.tunerOf(context);
+                        await quitApp(beforeClosing: tuner.stop);
                       }),
                     ),
                   ],

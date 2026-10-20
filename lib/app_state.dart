@@ -1,5 +1,5 @@
 import 'dart:async';
-import 'dart:io';
+import 'dart:convert';
 import 'dart:math';
 
 import 'package:flutter/foundation.dart';
@@ -21,79 +21,98 @@ import 'data/app_storage.dart';
 import 'icons/custom_icons.dart';
 import 'jellyfin/jellyfin_client.dart';
 import 'library/library_index.dart';
+import 'platform/platform_info.dart';
+import 'playback/android_device_profile.dart';
+import 'playback/playback_diagnostics.dart';
 
-/// A choice for the maximum streaming bitrate.
-typedef BitratePreset = ({String label, int? mbps});
+/// A choice for the maximum streaming bitrate: Original (no [kbps]) or a
+/// fixed cap.
+typedef BitratePreset = ({String label, int? kbps});
+
+/// A playback decision kept for the session: the conversion's URL template
+/// (null: direct play), and whether that conversion keeps the video (a
+/// direct stream).
+typedef Decision = ({Uri? template, bool directStream});
 
 /// "Transcode only if needed": off unless the user turns it on. Per PC, not
 /// per profile, since it's about this machine and its network.
 class PlaybackSettings {
-  const PlaybackSettings({this.transcodeIfNeeded = false, this.maxBitrateMbps});
+  /// A fixed [maxKbps] cap, or Original when it's null.
+  const PlaybackSettings({this.transcodeIfNeeded = false, this.maxKbps});
 
+  /// A setting never saved: off, with Original chosen.
   static const off = PlaybackSettings();
 
   /// Convert a program when it's over the cap or won't direct-play.
   final bool transcodeIfNeeded;
 
-  /// The cap, kept while the toggle is off; null is Original (no limit).
-  final int? maxBitrateMbps;
+  /// The fixed cap in kbps, kept while the toggle is off; null is Original
+  /// (no limit).
+  final int? maxKbps;
 
-  /// In this order, Original first (the default).
+  /// In this order, Original first.
   static const presets = <BitratePreset>[
-    (label: 'Original (no limit)', mbps: null),
-    (label: '40 Mbps · 4K', mbps: 40),
-    (label: '20 Mbps · 1080p high', mbps: 20),
-    (label: '12 Mbps · 1080p', mbps: 12),
-    (label: '8 Mbps · 1080p', mbps: 8),
-    (label: '4 Mbps · 720p', mbps: 4),
-    (label: '2 Mbps · 480p', mbps: 2),
+    (label: 'Original (no limit)', kbps: null),
+    (label: '40 Mbps · 4K', kbps: 40000),
+    (label: '20 Mbps · 1080p high', kbps: 20000),
+    (label: '12 Mbps · 1080p', kbps: 12000),
+    (label: '8 Mbps · 1080p', kbps: 8000),
+    (label: '4 Mbps · 720p', kbps: 4000),
   ];
 
-  /// [mbps] as a preset: the nearest one at or below it, at least 2 Mbps.
-  static int? snap(int? mbps) {
-    if (mbps == null) return null;
-    for (final p in presets) {
-      if (p.mbps != null && p.mbps! <= mbps) return p.mbps;
-    }
-    return presets.last.mbps;
+  /// The preset cap at or below [kbps], never below the lowest (4 Mbps).
+  static int capAtOrBelow(num kbps) {
+    final caps = [for (final p in presets) ?p.kbps];
+    return caps.firstWhere((c) => c <= kbps, orElse: () => caps.last);
   }
 
-  BitratePreset get preset => presets.firstWhere((p) => p.mbps == snap(maxBitrateMbps));
+  BitratePreset get preset => presets.firstWhere((p) => p.kbps == maxKbps);
 
-  /// The cap in effect, in bits per second: null when off or Original.
-  int? get capBitsPerSecond => transcodeIfNeeded && maxBitrateMbps != null ? maxBitrateMbps! * 1000000 : null;
+  /// The cap in effect, in kbps: the chosen cap, or null when off or
+  /// Original. Nothing observed during playback lowers it.
+  int? capKbps() => transcodeIfNeeded ? maxKbps : null;
 
-  PlaybackSettings copyWith({bool? transcodeIfNeeded, int? Function()? maxBitrateMbps}) => PlaybackSettings(
+  PlaybackSettings copyWith({bool? transcodeIfNeeded, BitratePreset? bitrate}) => PlaybackSettings(
         transcodeIfNeeded: transcodeIfNeeded ?? this.transcodeIfNeeded,
-        maxBitrateMbps: maxBitrateMbps == null ? this.maxBitrateMbps : maxBitrateMbps(),
+        maxKbps: bitrate == null ? maxKbps : bitrate.kbps,
       );
 
   Map<String, Object?> toJson() => {
         'transcodeIfNeeded': transcodeIfNeeded,
-        'maxBitrateMbps': maxBitrateMbps,
+        'bitrate': maxKbps ?? 'original',
       };
 
-  /// A missing or unreadable setting is off; a hand-edited cap snaps to a
-  /// preset.
+  /// A missing or unreadable setting is off with Original chosen. A saved
+  /// "auto" (removed) is Original, with the toggle as it was; a saved cap
+  /// snaps to the preset at or below it (4 Mbps for anything lower). Saved
+  /// before Auto (as `maxBitrateMbps`), the same rules apply.
   factory PlaybackSettings.fromJson(Object? json) {
     if (json is! Map<String, Object?>) return off;
-    return PlaybackSettings(
-      transcodeIfNeeded: json['transcodeIfNeeded'] == true,
-      maxBitrateMbps: snap((json['maxBitrateMbps'] as num?)?.floor()),
-    );
+    final on = json['transcodeIfNeeded'] == true;
+    final bitrate = json['bitrate'];
+    if (bitrate is num) return PlaybackSettings(transcodeIfNeeded: on, maxKbps: capAtOrBelow(bitrate));
+    if (!json.containsKey('bitrate')) {
+      if (json['maxBitrateMbps'] case final num mbps) {
+        return PlaybackSettings(transcodeIfNeeded: on, maxKbps: capAtOrBelow(mbps * 1000));
+      }
+    }
+    return PlaybackSettings(transcodeIfNeeded: on);
   }
 
   @override
   bool operator ==(Object other) =>
-      other is PlaybackSettings && other.transcodeIfNeeded == transcodeIfNeeded && other.maxBitrateMbps == maxBitrateMbps;
+      other is PlaybackSettings && other.transcodeIfNeeded == transcodeIfNeeded && other.maxKbps == maxKbps;
 
   @override
-  int get hashCode => Object.hash(transcodeIfNeeded, maxBitrateMbps);
+  int get hashCode => Object.hash(transcodeIfNeeded, maxKbps);
+
+  @override
+  String toString() => 'PlaybackSettings(${transcodeIfNeeded ? 'on' : 'off'}, ${preset.label})';
 }
 
 /// What the TV is doing, as far as bandwidth goes.
 enum PlaybackActivity {
-  /// Nothing is streaming (idle, off air, standby, station ID, error).
+  /// Nothing is streaming (idle, off air, standby, error).
   none,
 
   /// A stream is opening.
@@ -103,17 +122,22 @@ enum PlaybackActivity {
   playing,
 }
 
-/// The analyzer's download budget while the TV plays: playback comes
-/// first when the user has said their network is limited (a cap is set).
-Budget analyzerBudget(PlaybackActivity activity, PlaybackSettings playback) {
-  final cap = playback.capBitsPerSecond;
-  if (cap == null) return const Budget.unlimited();
-  return switch (activity) {
-    PlaybackActivity.tuning => const Budget.paused(),
-    // A quarter of the cap, in bytes per second.
-    PlaybackActivity.playing => Budget.limited(cap ~/ 4 ~/ 8),
-    PlaybackActivity.none => const Budget.unlimited(),
-  };
+/// The analyzer's download budget while the TV plays, whatever the
+/// setting: nothing while a stream opens; while one plays, a quarter of the
+/// cap in effect, or with no cap, of the playing file's average bitrate
+/// ([fileBitsPerSecond]), paused until that's known. Unlimited otherwise.
+Budget analyzerBudget(PlaybackActivity activity, PlaybackSettings playback, {int? fileBitsPerSecond}) {
+  switch (activity) {
+    case PlaybackActivity.tuning:
+      return const Budget.paused();
+    case PlaybackActivity.none:
+      return const Budget.unlimited();
+    case PlaybackActivity.playing:
+      final cap = playback.capKbps();
+      final rate = cap == null ? fileBitsPerSecond : cap * 1000;
+      // A quarter of it, in bytes per second.
+      return rate == null ? const Budget.paused() : Budget.limited(rate ~/ 4 ~/ 8);
+  }
 }
 
 class AppSettings {
@@ -221,16 +245,89 @@ enum AppPhase { starting, signedOut, syncing, ready }
 
 /// App-wide state: session, library index, channel lineup.
 class AppState extends ChangeNotifier {
-  AppState(this.storage, {this.maxRatingRank, this.runAnalysis = true, this._background = false, this.exportBusy})
+  AppState(this.storage,
+      {this.maxRatingRank,
+      this.runAnalysis = true,
+      this._background = false,
+      this.exportBusy,
+      @visibleForTesting this._sessionClient})
       : icons = CustomIconStore(storage.logosDir) {
     playbackActivity.addListener(_pushBudget);
+    playingBitrate.addListener(_pushBudget);
     playbackBusy.addListener(_updateAnalysisBusy);
     exportBusy?.addListener(_updateAnalysisBusy);
     _syncStaleCheck();
   }
 
+  // ---- Launch: background requests wait for the first picture --------------
+
+  /// Background requests at launch (a stale library re-scan, one-time
+  /// sign-in upgrades) start this long after the first picture…
+  @visibleForTesting
+  static Duration launchAfterPicture = const Duration(seconds: 10);
+
+  /// …or this long after the lineup is ready if nothing has tuned by then.
+  @visibleForTesting
+  static Duration launchIdleWait = const Duration(seconds: 15);
+
+  final _afterLaunch = <void Function()>[];
+  bool _launchSettled = false;
+  bool _launchDue = false;
+  bool _launchPicture = false;
+  Timer? _launchTimer;
+
+  /// Runs [action] once the launch's tune has its picture (fast-tune spec:
+  /// the stream has the network to itself while tuning).
+  void _afterLaunchTune(void Function() action) {
+    if (_launchSettled) {
+      action();
+    } else {
+      _afterLaunch.add(action);
+    }
+  }
+
+  /// Starts counting once the lineup is ready.
+  void _armLaunchGate() {
+    if (_launchSettled || _launchTimer != null) return;
+    _launchTimer = Timer(launchIdleWait, _onLaunchDue);
+    playbackActivity.addListener(_onLaunchActivity);
+    _onLaunchActivity();
+  }
+
+  void _onLaunchDue() {
+    _launchDue = true;
+    _onLaunchActivity();
+  }
+
+  void _onLaunchActivity() {
+    final activity = playbackActivity.value;
+    if (!_launchDue && !_launchPicture && activity == PlaybackActivity.playing) {
+      _launchPicture = true;
+      _launchTimer?.cancel();
+      _launchTimer = Timer(launchAfterPicture, _onLaunchDue);
+    }
+    // A tune under way when the time comes still goes first.
+    if (_launchDue && activity != PlaybackActivity.tuning) _settleLaunch();
+  }
+
+  void _settleLaunch() {
+    if (_launchSettled) return;
+    _launchSettled = true;
+    _launchTimer?.cancel();
+    playbackActivity.removeListener(_onLaunchActivity);
+    final actions = [..._afterLaunch];
+    _afterLaunch.clear();
+    if (_closed) return;
+    for (final action in actions) {
+      action();
+    }
+  }
+
   /// Analyze media in the background (off in most tests), while on screen.
   final bool runAnalysis;
+
+  /// Builds the client for a saved sign-in at [start] (tests give a fake).
+  final JellyfinClient Function(JellyfinSession session)? _sessionClient;
 
   /// True while Live TV export is streaming anything; analysis holds off
   /// meanwhile, as it does while the TV tunes.
@@ -269,7 +366,7 @@ class AppState extends ChangeNotifier {
   List<ProgramBlock> _blocks = [];
   final Map<String, ChannelSchedule?> _schedules = {};
 
-  String get deviceName => Platform.localHostname;
+  String get deviceName => PlatformInfo.deviceName;
 
   /// All channels sorted by number, including hidden ones.
   List<Channel> get allChannels => _channels;
@@ -342,8 +439,132 @@ class AppState extends ChangeNotifier {
 
   LoopbackStreamProxy? _proxy;
 
+  /// The playing file's average bitrate in bits per second, once the tuner
+  /// knows it (null while it doesn't): with no cap, it sets the analyzer's
+  /// budget.
+  final playingBitrate = ValueNotifier<int?>(null);
+
   /// The analyzer's download budget right now.
-  Budget get analyzerBudgetNow => analyzerBudget(playbackActivity.value, settings.playback);
+  Budget get analyzerBudgetNow =>
+      analyzerBudget(playbackActivity.value, settings.playback, fileBitsPerSecond: playingBitrate.value);
+
+  // ---- Playback decisions ----------------------------------------------------
+
+  /// Decisions saved by an older version; deleted at start-up.
+  static const legacyDecisionsFile = 'playback_decisions.json';
+
+  /// This session's decisions by source and cap (`template` null for direct
+  /// play); cleared when the setting changes.
+  final _decisions = <(String, int?), Decision>{};
+
+  /// The cap opens and decisions use, in kbps (null for none): the chosen
+  /// cap.
+  int? get capInEffect => settings.playback.capKbps();
+
+  /// On Android every segment's method is Jellyfin's decision for the
+  /// device (android-playback), whatever the setting.
+  bool get decidesEverySegment => PlatformInfo.isAndroid;
+
+  /// `PlaybackInfo` requests in flight, by source and cap: a tune, a
+  /// prefetch and the launch's early request share one.
+  final _deciding = <(String, int?), Future<Decision>>{};
+
+  /// Whether a decision for [source] under [capKbps] is being asked.
+  bool deciding(String source, int? capKbps) => _deciding.containsKey((source, capKbps));
+
+  /// The decision for [source] under [capKbps] (null: no cap; `template`
+  /// null for direct play): this session's, the request already in flight,
+  /// or a new request, kept once Jellyfin answers. Jellyfin decides.
+  Future<Decision> decide(String source, int? capKbps, {Duration startAt = Duration.zero}) {
+    final saved = savedDecision(source, capKbps);
+    if (saved != null) return Future.value(saved);
+    final key = (source, capKbps);
+    if (_deciding[key] case final inFlight?) return inFlight;
+    final c = client;
+    if (c == null) return Future.error(StateError('Not signed in.'));
+    final playback = settings.playback;
+    final request = () async {
+      try {
+        final maxBitrate = capKbps == null ? null : capKbps * 1000;
+        // Only Android waits for its profile: elsewhere the request goes at
+        // once, as it always has.
+        final profile = PlatformInfo.isAndroid ? await deviceProfile(capKbps) : null;
+        final decision = await c.playbackInfo(source, maxBitrate: maxBitrate, startAt: startAt, profile: profile);
+        var template = decision.transcodeTemplate;
+        // On Android a re-encode with no cap asks for what keeps the original
+        // picture, not Jellyfin's ceiling.
+        if (PlatformInfo.isAndroid && capKbps == null && template != null && !decision.directStream) {
+          template = limitConversion(template, sourceBitrate: decision.sourceBitrate, sourceCodec: decision.sourceCodec);
+        }
+        final kept = (template: template, directStream: decision.directStream);
+        // A setting changed meanwhile cleared the decisions; this one
+        // was asked under the old one.
+        if (settings.playback == playback) _decisions[key] = kept;
+        return kept;
+      } finally {
+        _deciding.remove(key);
+      }
+    }();
+    _deciding[key] = request;
+    return request;
+  }
+
+  /// At launch, asks the decision for what's on the channel the TV will
+  /// tune: the tune then awaits this request instead of starting its own
+  /// after the TV screen shows. With a cap in effect for a program part, or
+  /// on Android for any segment.
+  void _askLaunchDecision() {
+    final cap = capInEffect;
+    final android = decidesEverySegment;
+    final visible = channels;
+    if ((cap == null && !android) || visible.isEmpty) return;
+    // As the TV screen picks it.
+    final ch = visible.where((c) => c.id == settings.lastChannelId).firstOrNull ?? visible.first;
+    final now = DateTime.now();
+    final on = scheduleFor(ch)?.playbackAt(now);
+    final item = on?.item;
+    if (on == null || item == null) return;
+    final program = !on.isBreak && !on.isCommercial;
+    if (!program && !android) return;
+    // The cap is only ever for program parts.
+    final segmentCap = program ? cap : null;
+    if (savedDecision(item.sourceId, segmentCap) != null) return;
+    PlaybackDiagnostics.mark('launch decision asked');
+    unawaited(decide(item.sourceId, segmentCap, startAt: on.positionAt(now))
+        .then((_) {}, onError: (Object e) => debugPrint('Launch playback decision failed: $e')));
+  }
+
+  /// This session's decision for [source] under [capKbps] (`template` null
+  /// for direct play), or null if there's none.
+  Decision? savedDecision(String source, int? capKbps) => _decisions[(source, capKbps)];
+
+  void saveDecision(String source, int? capKbps, Uri? template, {bool directStream = false}) =>
+      _decisions[(source, capKbps)] = (template: template, directStream: directStream);
+
+  // ---- The device profile (android-playback) ---------------------------------
+
+  Future<DeviceCapabilities?>? _capabilities;
+
+  /// The device profile decisions under [capKbps] send: on Android, built
+  /// from what the device decodes (asked once); elsewhere null, for the
+  /// Linux profile.
+  Future<Map<String, Object?>?> deviceProfile(int? capKbps) async {
+    if (!PlatformInfo.isAndroid) return null;
+    final caps = await (_capabilities ??= _queryCapabilities()) ?? DeviceCapabilities.fallback;
+    return androidDeviceProfile(caps, maxBitrate: capKbps == null ? null : capKbps * 1000);
+  }
+
+  static Future<DeviceCapabilities?> _queryCapabilities() async {
+    final caps = await DeviceCapabilities.query();
+    if (PlaybackDiagnostics.enabled) {
+      for (final d in caps?.decoders ?? const <String>[]) {
+        PlaybackDiagnostics.note('DECODER', d);
+      }
+      PlaybackDiagnostics.note('DEVICE', '${caps ?? 'unknown: ${DeviceCapabilities.fallback}'}');
+      PlaybackDiagnostics.note('DEVICE', 'profile ${jsonEncode(androidDeviceProfile(caps ?? DeviceCapabilities.fallback))}');
+    }
+    return caps;
+  }
 
   void _pushBudget() => unawaited(_proxy?.setBudget(analyzerBudgetNow));
 
@@ -383,12 +604,20 @@ class AppState extends ChangeNotifier {
   Channel? channelById(String id) => _channels.where((c) => c.id == id).firstOrNull;
 
   Future<void> start() async {
+    // What the device decodes, for every decision's device profile; asked
+    // now so the launch's decision doesn't wait for it.
+    if (PlatformInfo.isAndroid) _capabilities ??= _queryCapabilities();
     final settingsJson = await storage.readJson(_settingsFile);
     settings = settingsJson is Map<String, Object?>
         ? AppSettings.fromJson(settingsJson)
         : AppSettings.fresh();
     final renamed = settingsJson is Map<String, Object?> && settingsJson['installId'] != settings.installId;
     if (settingsJson == null || renamed || settings.migrated) await _saveSettings();
+    PlaybackDiagnostics.mark('settings read');
+    // Decisions and a connection measurement saved by an older version.
+    unawaited(storage.delete(legacyDecisionsFile).catchError((Object e) {
+      debugPrint('Could not delete $legacyDecisionsFile: $e');
+    }));
 
     final sessionJson = await storage.readJson(_sessionFile);
     if (sessionJson is! Map<String, Object?>) {
@@ -396,14 +625,19 @@ class AppState extends ChangeNotifier {
       return;
     }
     session = JellyfinSession.fromJson(sessionJson);
-    client = JellyfinClient.fromSession(session!, deviceName: deviceName);
-    unawaited(_renameDevice());
-    unawaited(_recordServerId());
+    client = _sessionClient?.call(session!) ?? JellyfinClient.fromSession(session!, deviceName: deviceName);
+    // One-time sign-in upgrades; they wait for the launch's picture.
+    _afterLaunchTune(() {
+      unawaited(_renameDevice());
+      unawaited(_recordServerId());
+    });
 
     final libraryJson = await storage.readJson(_libraryFile);
     final channelsJson = await storage.readJson(_channelsFile);
+    PlaybackDiagnostics.mark('library and channels read');
     if (libraryJson is Map<String, Object?> && channelsJson is List) {
       library = LibraryIndex.fromJson(libraryJson);
+      PlaybackDiagnostics.mark('library parsed');
       // A kid's limit may have been tightened since this was saved.
       final limit = maxRatingRank;
       if (limit != null) library = library.restrictedTo(limit);
@@ -414,16 +648,25 @@ class AppState extends ChangeNotifier {
       // Clips (and so which channels have breaks) must be known before the
       // lineup is, or every launch would shift the guide.
       if (session!.serverId case final id?) await _openAnalysis(id);
+      PlaybackDiagnostics.mark('analysis cache open');
       _updateCatalog(rebase: false);
       _setChannels([for (final c in channelsJson.cast<Map<String, Object?>>()) Channel.fromJson(c)]);
+      _askLaunchDecision();
       _setPhase(AppPhase.ready);
+      PlaybackDiagnostics.mark('ready (channels set)');
       _startAnalysis();
-      if (DateTime.now().difference(library.fetchedAt) > libraryMaxAge) {
-        refreshLibrary(background: true);
+      final age = DateTime.now().difference(library.fetchedAt);
+      if (age > libraryMaxAge) {
+        // It downloads the whole library: after the launch's picture.
+        _afterLaunchTune(() {
+          PlaybackDiagnostics.mark('library refresh started (cache ${age.inHours} h old)');
+          unawaited(refreshLibrary(background: true));
+        });
       }
     } else {
       await refreshLibrary();
     }
+    _armLaunchGate();
   }
 
   /// Sign-ins from before the rename identify this PC to Jellyfin as
@@ -501,6 +744,7 @@ class AppState extends ChangeNotifier {
   Future<void> completeSignIn(JellyfinSession newSession, JellyfinClient newClient) async {
     session = newSession;
     client = newClient;
+    _decisions.clear();
     await storage.writeJson(_sessionFile, newSession.toJson(), private: true);
     await _recordServerId();
     await refreshLibrary();
@@ -521,6 +765,7 @@ class AppState extends ChangeNotifier {
     client?.close();
     client = null;
     session = null;
+    _decisions.clear();
     library = LibraryIndex.empty;
     _updateCatalog(rebase: false);
     _blocks = [];
@@ -676,7 +921,7 @@ class AppState extends ChangeNotifier {
     final playing = oldSchedule.playbackAt(now);
     // In a show part: keep the position in the show. In a break: keep the
     // slot's start.
-    final position = playing.isBreak || playing.isIdent ? null : playing.positionAt(now);
+    final position = playing.isBreak ? null : playing.positionAt(now);
 
     final plan = planFor(ch);
     final fresh = ChannelSchedule.build(ch, library, const [], _breakContext(plan));
@@ -778,10 +1023,11 @@ class AppState extends ChangeNotifier {
 
   /// Changes "Transcode only if needed". What's playing plays on; the tuner
   /// uses the new setting from the next segment it opens. The analyzer's
-  /// budget follows right away.
+  /// budget follows right away. This session's decisions are cleared.
   Future<void> setPlayback(PlaybackSettings playback) async {
     if (playback == settings.playback) return;
     settings.playback = playback;
+    _decisions.clear();
     _pushBudget();
     notifyListeners();
     await _saveSettings();
@@ -959,6 +1205,8 @@ class AppState extends ChangeNotifier {
     if (_closed) return;
     _closed = true;
     _staleCheck?.cancel();
+    _launchTimer?.cancel();
+    playbackActivity.removeListener(_onLaunchActivity);
     playbackBusy.removeListener(_updateAnalysisBusy);
     exportBusy?.removeListener(_updateAnalysisBusy);
     await _stopAnalysis();

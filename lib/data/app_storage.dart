@@ -3,6 +3,8 @@ import 'dart:io';
 
 import 'package:path_provider/path_provider.dart';
 
+import '../platform/platform_info.dart';
+
 /// Reads and writes the app's JSON state files and custom logos under
 /// `~/.local/share/<app id>/`.
 class AppStorage {
@@ -93,7 +95,8 @@ class AppStorage {
     final tmp = File('${file.path}.${pid}_${_tmpCounter++}.tmp');
     try {
       await tmp.writeAsString(text, flush: true);
-      if (private) {
+      // On Android the app's folder is already private to the app.
+      if (private && !PlatformInfo.isAndroid) {
         await Process.run('chmod', ['600', tmp.path]);
       }
       await tmp.rename(file.path);

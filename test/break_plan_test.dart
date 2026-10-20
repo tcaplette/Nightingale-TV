@@ -18,12 +18,10 @@ void main() {
             midLength: Duration(seconds: 90),
             postRoll: Duration(minutes: 4),
             tailGrid: Duration(minutes: 60),
-            fallback: FallbackKind.pool,
             prePool: 'bumpers',
             midPool: 'ads',
             postPool: 'ads',
             tailPool: 'promos',
-            fallbackPool: 'bumpers',
           ),
         ),
       ];
@@ -42,6 +40,39 @@ void main() {
       expect(auto.withMode(BreakMode.custom), custom);
     });
 
+    test('a saved plan with a fallback loads with it ignored, and saves without it', () {
+      final plan = BreakPlan.fromJson({
+        'mode': 'custom',
+        'roles': {
+          'preMs': 30000,
+          'midIntervalMs': 480000,
+          'midMs': 90000,
+          'postMs': 120000,
+          'tailMs': 1800000,
+          'fallback': 'idCard',
+          'pools': {'pre': 'bumpers', 'mid': 'ads', 'fallback': 'bumpers'},
+        },
+      });
+      expect(
+          plan,
+          const BreakPlan(
+            mode: BreakMode.custom,
+            roles: CustomRoles(
+              preRoll: Duration(seconds: 30),
+              midInterval: Duration(minutes: 8),
+              midLength: Duration(seconds: 90),
+              postRoll: Duration(minutes: 2),
+              tailGrid: Duration(minutes: 30),
+              prePool: 'bumpers',
+              midPool: 'ads',
+            ),
+          ));
+      final saved = plan.toJson()['roles'] as Map<String, Object?>;
+      expect(saved.containsKey('fallback'), isFalse);
+      expect((saved['pools'] as Map).containsKey('fallback'), isFalse);
+      expect(BreakPlan.fromJson({'mode': 'custom', 'roles': {'fallback': 'pool'}}).poolsUsed, isEmpty);
+    });
+
     test('unknown or missing values fall back to defaults', () {
       final plan = BreakPlan.fromJson({'mode': 'someday'});
       expect(plan.mode, BreakMode.off);
@@ -58,7 +89,9 @@ void main() {
   });
 
   group('Automatic', () {
-    test('22-minute sitcom', () {
+    Iterable<Duration> breaks(SlotPlan s) => [s.preRoll, for (var i = 0; i < s.midCount; i++) s.midLength, s.postRoll];
+
+    test('22-minute sitcom: a half-hour slot, as before', () {
       final s = resolve(BreakPlan.automatic, _min(22));
       expect(s.slotLength, _min(30));
       expect(s.preRoll, const Duration(seconds: 15));
@@ -68,32 +101,76 @@ void main() {
       expect(s.tail, Duration.zero);
     });
 
-    test('100-minute movie', () {
+    test('a show just under the half hour shrinks its ads to fit', () {
+      // Californication: 28.2 minutes, 1.8 minutes of ads.
+      final s = resolve(BreakPlan.automatic, _min(28.2));
+      expect(s.slotLength, _min(30));
+      expect(s.adTime, _min(1.8));
+      expect(s.preRoll, const Duration(seconds: 15));
+      expect(s.midCount, 2);
+      expect(s.midLength, const Duration(seconds: 30));
+      expect(s.postRoll, const Duration(seconds: 33));
+    });
+
+    test('a show just over the half hour gets the quarter hour, not the hour', () {
+      final s = resolve(BreakPlan.automatic, _min(31));
+      expect(s.slotLength, _min(45));
+      expect(s.adTime, _min(14));
+      expect(breaks(s), everyElement(lessThanOrEqualTo(_min(5))));
+    });
+
+    test('little ad time: fewer mid-rolls, each at least 30 s', () {
+      // A 118-minute movie in a 120-minute slot.
+      final s = resolve(BreakPlan.automatic, _min(118));
+      expect(s.slotLength, _min(120));
+      expect(s.preRoll, const Duration(seconds: 15));
+      expect(s.midCount, 2);
+      expect(s.midLength, const Duration(seconds: 30));
+      expect(s.postRoll, const Duration(seconds: 45));
+    });
+
+    test('100-minute movie: a long post-roll is spread over the mid-rolls', () {
       final s = resolve(BreakPlan.automatic, _min(100));
       expect(s.midCount, 8);
       expect(s.slotLength, _min(120));
       // 19:45 of ads after the pre-roll; 80 % over 8 breaks is 1:58.5,
-      // rounded down to 1:45.
-      expect(s.midLength, _min(1.75));
-      expect(s.postRoll, _min(19.75) - _min(1.75) * 8);
+      // rounded down to 1:45, which would leave a 5:45 post-roll.
+      expect(s.midLength, _min(2));
+      expect(s.postRoll, _min(3.75));
     });
 
-    test('programs under 12 minutes use the 15-minute grid', () {
+    test('short programs: the quarter hour, then the 5-minute grid', () {
       final s = resolve(BreakPlan.automatic, _min(11));
       expect(s.midCount, 1);
       expect(s.slotLength, _min(15));
-      expect(resolve(BreakPlan.automatic, _min(7)).slotLength, _min(15));
-      expect(resolve(BreakPlan.automatic, _min(12)).slotLength, _min(30));
+      expect(resolve(BreakPlan.automatic, _min(12)).slotLength, _min(15));
+      // 15 minutes would mean an 8-minute post-roll.
+      expect(resolve(BreakPlan.automatic, _min(7)).slotLength, _min(10));
+      // 16 minutes: the half hour and the quarter hour both break the limit.
+      expect(resolve(BreakPlan.automatic, _min(16)).slotLength, _min(20));
     });
 
-    test('mid-rolls are never longer than 4 minutes, and always 15-second steps', () {
-      for (var m = 1; m <= 200; m++) {
-        final s = resolve(BreakPlan.automatic, _min(m));
-        expect(s.midLength, lessThanOrEqualTo(_min(4)));
-        expect(s.midLength.inMilliseconds % 15000, 0);
-        expect(s.postRoll, greaterThanOrEqualTo(Duration.zero));
-        expect(s.slotLength.inMinutes % 15, 0, reason: '$m min');
-        expect(s.slotLength, s.runtime + s.preRoll + s.midLength * s.midCount + s.postRoll);
+    test('no grid keeps the limit: mid-rolls are added on the 5-minute grid', () {
+      // 4:40 + 30 s rounds up to 10 minutes: 5:20 of ads, and no mid-roll.
+      final s = resolve(BreakPlan.automatic, _min(4) + const Duration(seconds: 40));
+      expect(s.slotLength, _min(10));
+      expect(s.midCount, 1);
+      expect(breaks(s), everyElement(lessThanOrEqualTo(_min(5))));
+    });
+
+    test('every runtime from 1 to 180 minutes keeps every break within 5 minutes', () {
+      for (var ms = 60000; ms <= 180 * 60000; ms += 6000) {
+        final runtime = Duration(milliseconds: ms);
+        final s = resolve(BreakPlan.automatic, runtime);
+        final why = '$runtime';
+        expect(breaks(s), everyElement(lessThanOrEqualTo(_min(5))), reason: why);
+        expect(breaks(s), everyElement(greaterThanOrEqualTo(Duration.zero)), reason: why);
+        if (s.midCount > 0) expect(s.midLength, greaterThanOrEqualTo(const Duration(seconds: 30)), reason: why);
+        expect(s.midLength.inMilliseconds % 15000, 0, reason: why);
+        expect(s.slotLength, greaterThanOrEqualTo(runtime + const Duration(seconds: 30)), reason: why);
+        expect(s.slotLength.inMilliseconds % (5 * 60000), 0, reason: why);
+        expect(s.slotLength, s.runtime + s.preRoll + s.midLength * s.midCount + s.postRoll, reason: why);
+        expect(resolve(BreakPlan.automatic, runtime).slotLength, s.slotLength, reason: why);
       }
     });
 

@@ -1,9 +1,13 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../app_scope.dart';
 import '../channels/channel.dart';
 import '../icons/custom_icons.dart';
 import '../icons/icon_catalog.dart';
+import '../platform/device_images.dart';
+import '../platform/platform_info.dart';
+import 'device_image_picker_screen.dart';
 import '../theme/tv_theme.dart';
 import 'menu_screen.dart';
 import 'widgets/channel_logo.dart';
@@ -68,13 +72,31 @@ class _IconPickerScreenState extends State<IconPickerScreen> {
   Future<void> _upload() async {
     setState(() => _error = null);
     try {
-      final name = await AppScope.read(context).icons.pickAndImport();
+      final icons = AppScope.read(context).icons;
+      final name = PlatformInfo.isAndroid && !await DeviceImages.hasDocumentPicker()
+          ? await _pickOnDevice(icons)
+          : await icons.pickAndImport();
       if (name == null) return;
       await _loadCustom();
       _choose(ChannelIcon(kind: ChannelIconKind.custom, value: name));
     } on CustomIconException catch (e) {
       setState(() => _error = e.message);
     }
+  }
+
+  /// Android TVs have no document picker: choose from the device's own
+  /// pictures in the app instead.
+  Future<String?> _pickOnDevice(CustomIconStore icons) async {
+    final image = await Navigator.of(context)
+        .push<DeviceImage>(MaterialPageRoute(builder: (_) => const DeviceImagePickerScreen()));
+    if (image == null) return null;
+    final Uint8List bytes;
+    try {
+      bytes = await DeviceImages.read(image, limit: CustomIconStore.maxSourceBytes);
+    } on PlatformException {
+      throw CustomIconException('Couldn\'t read that picture. Try another one.');
+    }
+    return icons.importBytes(bytes, image.name);
   }
 
   static String _callLetters(String name) {

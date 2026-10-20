@@ -59,11 +59,11 @@ void main() {
     await h.choose('8 Mbps · 1080p', LogicalKeyboardKey.arrowDown);
     await h.snap('pb3-8mbps');
     await tester.scrollUntilVisible(find.text(PlaybackScreen.bitrateHelp), 200, scrollable: find.byType(Scrollable).last);
-    expect(h.app.settings.playback, const PlaybackSettings(transcodeIfNeeded: true, maxBitrateMbps: 8));
+    expect(h.app.settings.playback, const PlaybackSettings(transcodeIfNeeded: true, maxKbps: 8000));
 
     // Saved for next time.
     final saved = await tester.runAsync(() => h.app.storage.readJson('settings.json')) as Map<String, Object?>;
-    expect(saved['playback'], {'transcodeIfNeeded': true, 'maxBitrateMbps': 8});
+    expect(saved['playback'], {'transcodeIfNeeded': true, 'bitrate': 8000});
 
     await h.press(LogicalKeyboardKey.escape, after: const Duration(seconds: 1));
     expect(find.byType(MenuScreen), findsOneWidget);

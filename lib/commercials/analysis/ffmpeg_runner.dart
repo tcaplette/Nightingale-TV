@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import '../../platform/platform_info.dart';
 import 'detections.dart';
 
 /// Starts a process (replaceable in tests).
@@ -43,9 +44,11 @@ class FfmpegRunner implements SceneScanner {
   Process? _process;
   bool _paused = false;
 
-  /// Whether ffmpeg is installed (checked once).
+  /// Whether ffmpeg is installed (checked once). Never on Android, which
+  /// has no programs to start.
   @override
   Future<bool> available() => _available ??= () async {
+        if (PlatformInfo.isAndroid) return false;
         try {
           final r = await _run('ffmpeg', const ['-version']);
           return r.exitCode == 0;

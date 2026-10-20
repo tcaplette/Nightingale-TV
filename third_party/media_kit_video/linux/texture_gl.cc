@@ -394,13 +394,15 @@ void texture_gl_release(TextureGL* self) {
       mpv_render_context_free(self->render_context);
       self->render_context = NULL;
     }
-    gl_switch_back(&previous, self->display);
+    // While this context is current: libepoxy finds eglDestroyImageKHR
+    // through the current context, and aborts the process when none is.
     for (gint i = 0; i < 2; i++) {
       if (self->images[i] != EGL_NO_IMAGE_KHR) {
         eglDestroyImageKHR(self->display, self->images[i]);
         self->images[i] = EGL_NO_IMAGE_KHR;
       }
     }
+    gl_switch_back(&previous, self->display);
     // Flutter's textures of the images can only be deleted in Flutter's
     // context, which isn't current here; they go when Flutter's does.
     texture_gl_destroy_context(self);

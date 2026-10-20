@@ -26,7 +26,7 @@ class PlaybackScreen extends StatelessWidget {
     final g = context.guide;
     final playback = app.settings.playback;
     final on = playback.transcodeIfNeeded;
-    final selected = playback.preset.mbps;
+    final selected = playback.preset;
 
     return TvPage(
       title: 'Playback',
@@ -61,9 +61,9 @@ class PlaybackScreen extends StatelessWidget {
                   child: TvToggle(
                     label: preset.label,
                     radio: true,
-                    on: preset.mbps == selected,
+                    on: preset == selected,
                     // Shown but not selectable while converting is off.
-                    onPressed: on ? () => app.setPlayback(playback.copyWith(maxBitrateMbps: () => preset.mbps)) : null,
+                    onPressed: on ? () => app.setPlayback(playback.copyWith(bitrate: preset)) : null,
                   ),
                 ),
               ),

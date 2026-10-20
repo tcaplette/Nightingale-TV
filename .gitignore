@@ -33,8 +33,11 @@ migrate_working_dir/
 /build/
 /coverage/
 
-# Installer builds from tool/build_deb.sh
-/dist/*.deb
+# Installer builds (tool/build_deb.sh, APK builds) - never commit packages
+/dist/
+*.apk
+*.aab
+*.deb
 
 # Symbolication related
 app.*.symbols
@@ -51,5 +54,9 @@ app.*.map.json
 .widget_preview/
 
 # Claude Code project notes and OpenSpec planning (kept local)
-/CLAUDE.md
+CLAUDE.md
+.claude/
 /openspec/
+
+# Test server details (kept local)
+/test-data.md

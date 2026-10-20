@@ -232,6 +232,7 @@ class _Session {
       recordStartup: (d) => owner._recordStartup(profileId, d),
       isSilent: owner._silent.contains,
       markSilent: owner._silent.add,
+      log: (line) => owner.onEvent?.call('channel ${channel.number}: $line'),
     );
     final s = stream = ChannelStream(ctx);
     await s.start();

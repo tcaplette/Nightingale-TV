@@ -113,14 +113,15 @@ Future<AppState> signedInApp(Directory dir, LibraryIndex fake,
     void Function(List<Map<String, Object?>> channels)? editChannels,
     String? serverId,
     String serverUrl = 'http://127.0.0.1:9',
-    bool runAnalysis = false}) async {
+    bool runAnalysis = false,
+    Duration libraryAge = Duration.zero}) async {
   final storage = await AppStorage.at(dir);
   final library = LibraryIndex(
       series: fake.series,
       episodes: fake.episodes,
       movies: fake.movies,
       commercials: fake.commercials,
-      fetchedAt: DateTime.now());
+      fetchedAt: DateTime.now().subtract(libraryAge));
   // A library with commercials comes with the pool that holds them.
   await storage.writeJson(
       'settings.json',

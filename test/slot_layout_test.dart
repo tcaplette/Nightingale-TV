@@ -2,6 +2,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:nightingale_tv/channels/channel.dart';
 import 'package:nightingale_tv/channels/program_block.dart';
 import 'package:nightingale_tv/channels/schedule.dart';
+import 'package:nightingale_tv/channels/slot_layout.dart';
 import 'package:nightingale_tv/commercials/analysis/break_points.dart';
 import 'package:nightingale_tv/commercials/analysis/detections.dart';
 import 'package:nightingale_tv/commercials/break_plan.dart';
@@ -67,8 +68,8 @@ List<ScheduledProgram> _segments(ChannelSchedule s, DateTime from, DateTime to) 
 List<String> _outline(List<ScheduledProgram> segments) {
   final out = <(String, int, int)>[];
   for (final p in segments) {
-    final role = p.isBreak ? (p.role == BreakRole.fallback ? 'fill' : p.role!.name) : 'show';
-    if (role != 'show' && out.isNotEmpty && (out.last.$1 == role || role == 'fill')) {
+    final role = p.isBreak ? p.role!.name : 'show';
+    if (role != 'show' && out.isNotEmpty && out.last.$1 == role) {
       final last = out.removeLast();
       out.add((last.$1, last.$2, last.$3 + p.duration.inSeconds));
       continue;
@@ -170,33 +171,143 @@ void main() {
     expect({for (final p in firstBreak) p.item!.id}, hasLength(firstBreak.length));
   });
 
-  group('leftover seconds', () {
-    // A 50-second post-roll of 30-second clips leaves 20 seconds.
-    final thirty = [for (var i = 0; i < 4; i++) _clip('ad$i', _s(30))];
-    const roles = CustomRoles(postRoll: Duration(seconds: 50));
+  group('best fit', () {
+    // 242 clips of 10–35 s, to the millisecond.
+    final varied = [for (var i = 0; i < 242; i++) _clip('v$i', Duration(milliseconds: 10000 + (i * 7919) % 25000))];
+    final pool = FixedClips(varied, byPool: {'ads': varied});
+    final show = MediaEntry(id: 'show', kind: MediaKind.episode, title: 'Show', runtime: _m(22));
+    SlotLayout layout(BreakPlan plan, {MediaEntry? item, ClipSource? source, DateTime? at}) {
+      final program = item ?? show;
+      return SlotLayout.build(
+        item: program,
+        plan: resolve(plan, program.runtime),
+        layoutStart: at ?? _at(18, 0),
+        info: ProgramBreakInfo.unknown,
+        clips: source ?? pool,
+        seed: 7,
+      );
+    }
 
-    test('go to the station ID', () {
-      final s = schedule(const BreakPlan(mode: BreakMode.custom, roles: roles), source: FixedClips(thirty));
-      final ident = s.playbackAt(_at(18, 22, 40));
-      expect(ident.isIdent, isTrue);
-      expect(ident.role, BreakRole.fallback);
-      expect((ident.start, ident.end), (_at(18, 22, 30), _at(18, 22, 50)));
-      expect(ident.item, isNull);
+    Duration total(Iterable<LayoutSegment> s) => s.fold(Duration.zero, (t, x) => t + x.length);
+
+    /// The breaks, each its run of clips.
+    List<List<LayoutSegment>> breaksOf(SlotLayout l) {
+      final out = <List<LayoutSegment>>[];
+      for (final (i, s) in l.segments.indexed) {
+        if (s.isShow) continue;
+        if (i == 0 || l.segments[i - 1].isShow) out.add([]);
+        out.last.add(s);
+      }
+      return out;
+    }
+
+    test('a break is filled to within 1 s, and its shortfall carries to the next', () {
+      const plan = BreakPlan(
+          mode: BreakMode.custom,
+          roles: CustomRoles(midInterval: Duration(minutes: 10), midLength: Duration(seconds: 93), postRoll: Duration(minutes: 1)));
+      final l = layout(plan);
+      final breaks = breaksOf(l);
+      expect(breaks, hasLength(3));
+      final first = total(breaks[0]), second = total(breaks[1]);
+      expect(first, lessThanOrEqualTo(_s(93)));
+      expect(first, greaterThan(_s(92)));
+      final carried = _s(93) - first;
+      expect(second, lessThanOrEqualTo(_s(93) + carried));
+      expect(second, greaterThan(_s(92) + carried));
+      expect(l.length, resolve(plan, show.runtime).slotLength, reason: 'the post-roll makes up the rest');
     });
 
-    test('or to a pool clip cut short', () {
-      final bumpers = [_clip('bumper', _s(40), pools: ['bumpers'])];
-      final s = schedule(
-        BreakPlan(
-            mode: BreakMode.custom,
-            roles: roles.copyWith(fallback: FallbackKind.pool).withPool(BreakRole.fallback, 'bumpers')),
-        source: FixedClips(thirty, byPool: {'bumpers': bumpers}),
+    test('the show resumes early by the shortfall; the next break makes it up', () {
+      // Two 59.2 s clips are the best fit for 2 minutes: 118.4 s.
+      final clips = [for (var i = 0; i < 4; i++) _clip('c$i', _s(59.2))];
+      const plan = BreakPlan(
+          mode: BreakMode.custom, roles: CustomRoles(midInterval: Duration(minutes: 10), midLength: Duration(minutes: 2)));
+      final l = layout(plan, source: FixedClips(clips));
+      final shows = l.segments.where((s) => s.isShow).toList();
+      final breaks = breaksOf(l);
+      expect(total(breaks[0]), _s(118.4));
+      expect(shows[1].from, shows[0].to + _s(118.4), reason: 'resumes 1.6 s early');
+      expect(total(breaks[1]), _s(121.6), reason: 'its own 2 minutes plus 1.6 s');
+      expect(l.length, _m(26), reason: 'the slot still ends on time');
+      expect(shows.last.to, _m(26));
+    });
+
+    test('the last break ends the slot exactly, its last clip cut by the excess', () {
+      // 30 + 17.5 = 47.5 s is the least reaching 47.3 s.
+      final clips = [_clip('a', _s(30)), _clip('b', _s(17.5)), _clip('c', _s(40)), _clip('d', _s(25))];
+      const plan = BreakPlan(mode: BreakMode.custom, roles: CustomRoles(postRoll: Duration(milliseconds: 47300)));
+      final l = layout(plan, source: FixedClips(clips));
+      final post = breaksOf(l).single;
+      expect({for (final s in post) s.item!.id}, {'a', 'b'});
+      expect(post.last.length, post.last.item!.runtime - _s(0.2));
+      expect(l.length, _m(22) + _s(47.3));
+      expect(post.last.to, l.length);
+    });
+
+    test('too few clips: one repeats, the last time cut short, and no card', () {
+      final one = [_clip('only', _s(30))];
+      const plan = BreakPlan(mode: BreakMode.custom, roles: CustomRoles(postRoll: Duration(seconds: 45)));
+      final l = layout(plan, source: FixedClips(one));
+      final post = breaksOf(l).single;
+      expect([for (final s in post) s.item!.id], ['only', 'only']);
+      expect([for (final s in post) s.length], [_s(30), _s(15)]);
+      expect(l.segments.every((s) => s.item != null), isTrue);
+    });
+
+    test('a role whose pool has no clips draws from all pools', () {
+      final plan = BreakPlan(
+        mode: BreakMode.custom,
+        roles: const CustomRoles(midInterval: Duration(minutes: 10), postRoll: Duration(minutes: 1))
+            .withPool(BreakRole.mid, 'empty')
+            .withPool(BreakRole.post, 'ads'),
       );
-      final fill = s.playbackAt(_at(18, 22, 40));
-      expect(fill.item!.id, 'bumper');
-      expect(fill.role, BreakRole.fallback);
-      expect((fill.start, fill.end), (_at(18, 22, 30), _at(18, 22, 50)));
-      expect(fill.itemTo, _s(20), reason: 'the bumper, cut off after 20 seconds');
+      final l = layout(plan, source: FixedClips(varied, byPool: {'ads': varied, 'empty': const []}));
+      final mids = l.segments.where((s) => s.role == BreakRole.mid).toList();
+      expect(mids, isNotEmpty);
+      expect(mids.every((s) => s.item != null), isTrue);
+    });
+
+    test('every layout tiles its slot exactly, with no gaps or overlaps', () {
+      for (var seconds = 60; seconds <= 150 * 60; seconds += 397) {
+        final item = MediaEntry(id: 'p$seconds', kind: MediaKind.episode, title: 'P', runtime: _s(seconds));
+        for (final plan in [BreakPlan.automatic, BreakPlan.legacy]) {
+          final l = layout(plan, item: item, at: _at(18, 0).add(Duration(minutes: seconds)));
+          final why = '$plan ${item.runtime}';
+          expect(l.segments.first.from, Duration.zero, reason: why);
+          for (var i = 1; i < l.segments.length; i++) {
+            expect(l.segments[i].from, l.segments[i - 1].to, reason: why);
+          }
+          expect(l.segments.every((s) => s.length > Duration.zero), isTrue, reason: why);
+          expect(l.length, resolve(plan, item.runtime).slotLength, reason: why);
+          expect(total(l.segments.where((s) => s.isShow)), item.runtime, reason: why);
+        }
+      }
+    });
+
+    test('the same inputs give the same fill', () {
+      List<(String?, Duration, Duration)> fill(SlotLayout l) => [for (final s in l.segments) (s.item?.id, s.from, s.to)];
+      expect(fill(layout(BreakPlan.automatic)), fill(layout(BreakPlan.automatic)));
+      expect(fill(layout(BreakPlan.automatic, at: _at(18, 30))), isNot(fill(layout(BreakPlan.automatic))),
+          reason: 'another slot gets other clips');
+    });
+
+    test('no clip repeats within a slot while unused clips fit', () {
+      for (final runtime in [_m(22), _m(28, 12), _m(44), _m(100)]) {
+        final item = MediaEntry(id: 'r', kind: MediaKind.episode, title: 'R', runtime: runtime);
+        final ids = [for (final s in layout(BreakPlan.automatic, item: item).segments) if (!s.isShow) s.item!.id];
+        expect(ids.toSet(), hasLength(ids.length), reason: '$runtime');
+      }
+    });
+
+    test('one BREAKFILL line per break', () {
+      final lines = <String>[];
+      SlotLayout.log = lines.add;
+      addTearDown(() => SlotLayout.log = null);
+      final l = layout(BreakPlan.automatic);
+      expect(lines, hasLength(breaksOf(l).length));
+      expect(lines.last, contains('post target '));
+      expect(lines.last, contains('trimmed 0.'));
+      expect(lines.first, contains('carried '));
     });
   });
 
@@ -211,7 +322,7 @@ void main() {
     );
     final s = schedule(plan, source: FixedClips([...ads, ...bumpers], byPool: {'ads': ads, 'bumpers': bumpers}));
     final segments = _segments(s, _at(18, 0), s.programAt(_at(18, 0)).end);
-    for (final p in segments.where((p) => p.isBreak && !p.isIdent)) {
+    for (final p in segments.where((p) => p.isBreak)) {
       expect(p.item!.poolIds.single, p.role == BreakRole.pre ? 'bumpers' : 'ads');
     }
   });

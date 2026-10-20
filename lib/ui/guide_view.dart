@@ -2,12 +2,13 @@ import 'dart:async';
 
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/physics.dart';
 import 'package:flutter/services.dart';
-import 'package:media_kit_video/media_kit_video.dart';
 
 import '../app_scope.dart';
 import '../channels/channel.dart';
 import '../channels/schedule.dart';
+import '../platform/platform_info.dart';
 import '../playback/tuner.dart';
 import '../theme/tv_theme.dart';
 import 'format.dart';
@@ -26,7 +27,7 @@ class GuideView extends StatefulWidget {
   State<GuideView> createState() => _GuideViewState();
 }
 
-class _GuideViewState extends State<GuideView> {
+class _GuideViewState extends State<GuideView> with SingleTickerProviderStateMixin {
   static const _window = Duration(minutes: 90);
   static const _slot = Duration(minutes: 30);
   static const _rows = 6;
@@ -49,6 +50,13 @@ class _GuideViewState extends State<GuideView> {
   /// first channel gets there).
   bool _menuFocused = false;
 
+  /// Touch (Android): how far a drag has gone toward the next row, and a
+  /// fling's travel (in canvas units) and the rows it has moved so far.
+  double _dragged = 0;
+  late final _fling = AnimationController.unbounded(vsync: this)..addListener(_onFling);
+  int _flungRows = 0;
+  int _flingCount = 0;
+
   @override
   void initState() {
     super.initState();
@@ -67,6 +75,7 @@ class _GuideViewState extends State<GuideView> {
   @override
   void dispose() {
     _clock?.cancel();
+    _fling.dispose();
     _focus.dispose();
     super.dispose();
   }
@@ -87,6 +96,44 @@ class _GuideViewState extends State<GuideView> {
     if (_row < _firstRow) _firstRow = _row;
     if (_row >= _firstRow + _rows) _firstRow = _row - _rows + 1;
     _firstRow = _firstRow.clamp(0, (count - _rows).clamp(0, count));
+  }
+
+  /// Moves the cursor [delta] rows, as the mouse wheel and touch do.
+  void _scrollRows(int delta, int count) => setState(() => _setRow(_row + delta, count));
+
+  void _dragStart(DragStartDetails _) {
+    _fling.stop();
+    _dragged = 0;
+  }
+
+  /// Dragging up moves to later channels, a row per row height dragged.
+  void _dragUpdate(DragUpdateDetails details, int count) {
+    _dragged -= details.delta.dy;
+    final rows = (_dragged / _rowHeight).truncate();
+    if (rows == 0) return;
+    _dragged -= rows * _rowHeight;
+    _scrollRows(rows, count);
+  }
+
+  /// A fling keeps going and slows down, a whole row at a time.
+  void _dragEnd(DragEndDetails details, int count) {
+    // The velocity is in screen units; the rows are on the scaled canvas.
+    final box = context.findRenderObject() as RenderBox?;
+    final scale = box == null ? 1.0 : box.getTransformTo(null).getMaxScaleOnAxis();
+    final velocity = -(details.primaryVelocity ?? 0) / scale;
+    if (velocity.abs() < kMinFlingVelocity / scale) return;
+    _flungRows = 0;
+    _flingCount = count;
+    _fling.value = 0;
+    _fling.animateWith(FrictionSimulation(0.135, 0, velocity));
+  }
+
+  void _onFling() {
+    final rows = (_fling.value / _rowHeight).truncate();
+    if (rows == _flungRows) return;
+    final step = rows - _flungRows;
+    _flungRows = rows;
+    _scrollRows(step, _flingCount);
   }
 
   ScheduledProgram? _focusedProgram(List<Channel> channels) {
@@ -124,6 +171,11 @@ class _GuideViewState extends State<GuideView> {
     if (event is! KeyDownEvent && event is! KeyRepeatEvent) return KeyEventResult.ignored;
     final key = event.logicalKey;
     void row(int delta) => setState(() => _setRow(_row + delta, channels.length));
+    // The remote's Guide button closes it again (Android).
+    if (PlatformInfo.isAndroid && key == LogicalKeyboardKey.guide) {
+      widget.onClose();
+      return KeyEventResult.handled;
+    }
     if (_menuFocused) {
       if (isSelectKey(key)) {
         widget.onMenu();
@@ -183,6 +235,8 @@ class _GuideViewState extends State<GuideView> {
       child: GestureDetector(
         behavior: HitTestBehavior.translucent,
         onSecondaryTap: widget.onMenu,
+        // Touch: long-press is right-click.
+        onLongPress: PlatformInfo.isAndroid ? widget.onMenu : null,
         child: DecoratedBox(
         decoration: g.backdrop,
         child: Column(
@@ -220,12 +274,19 @@ class _GuideViewState extends State<GuideView> {
               child: Listener(
                 onPointerSignal: (signal) {
                   if (signal is PointerScrollEvent) {
-                    setState(
-                      () => _setRow(_row + (signal.scrollDelta.dy > 0 ? 1 : -1), channels.length),
-                    );
+                    _scrollRows(signal.scrollDelta.dy > 0 ? 1 : -1, channels.length);
                   }
                 },
-                child: Stack(
+                // Touch (Android): drag the channel list.
+                child: GestureDetector(
+                  // Count the drag from where the finger went down, so the
+                  // rows keep up with it.
+                  dragStartBehavior: DragStartBehavior.down,
+                  onVerticalDragStart: PlatformInfo.isAndroid ? _dragStart : null,
+                  onVerticalDragUpdate:
+                      PlatformInfo.isAndroid ? (d) => _dragUpdate(d, channels.length) : null,
+                  onVerticalDragEnd: PlatformInfo.isAndroid ? (d) => _dragEnd(d, channels.length) : null,
+                  child: Stack(
                   children: [
                     Column(
                       children: [
@@ -265,6 +326,7 @@ class _GuideViewState extends State<GuideView> {
                               (_now.difference(_windowStart).inSeconds / _window.inSeconds),
                     ),
                   ],
+                ),
                 ),
               ),
             ),
@@ -464,7 +526,7 @@ class _Preview extends StatelessWidget {
           child: Stack(
             fit: StackFit.expand,
             children: [
-              Video(controller: tuner.video, controls: NoVideoControls, fill: Colors.black),
+              tuner.media.buildVideo(),
               ListenableBuilder(
                 listenable: tuner,
                 builder: (context, _) => tuner.status == TunerStatus.playing
@@ -473,7 +535,6 @@ class _Preview extends StatelessWidget {
                         child: Text(switch (tuner.status) {
                           TunerStatus.error => 'NO SIGNAL',
                           TunerStatus.offAir => 'OFF AIR',
-                          TunerStatus.ident => 'STATION BREAK',
                           TunerStatus.standby => 'PLEASE STAND BY',
                           _ => 'TUNING…',
                         }, style: g.display(40, weight: FontWeight.w800, color: g.textDim)),

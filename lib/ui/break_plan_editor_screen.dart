@@ -28,7 +28,7 @@ class _BreakPlanEditorScreenState extends State<BreakPlanEditorScreen> {
   /// The rows, top to bottom. ▲▼ move between them, landing on each row's
   /// chosen option (Flutter's own ▲▼ go by position, and would skip rows
   /// from a button at the far end of one).
-  static const _rows = ['pre', 'every', 'length', 'post', 'tail', 'fallback', 'actions'];
+  static const _rows = ['pre', 'every', 'length', 'post', 'tail', 'actions'];
   final _selected = <String, FocusNode>{};
   final _nodes = <String, FocusNode>{};
   FocusNode _node(String key) => _nodes.putIfAbsent(key, () => FocusNode(debugLabel: key));
@@ -212,16 +212,6 @@ class _BreakPlanEditorScreenState extends State<BreakPlanEditorScreen> {
               (v) => _roles.copyWith(tailGrid: () => v),
               pool: BreakRole.tail,
               poolEnabled: _roles.tailGrid != null,
-            ),
-            _section(g, 'FALLBACK', 'Fills the last seconds of a break that no clip fits'),
-            choices(
-              'fallback',
-              FallbackKind.values,
-              _roles.fallback,
-              (v) => v == FallbackKind.idCard ? 'Station ID card' : 'Clips, cut short',
-              (v) => _roles.copyWith(fallback: v),
-              pool: BreakRole.fallback,
-              poolEnabled: _roles.fallback == FallbackKind.pool,
             ),
             const SizedBox(height: 40),
             Focus(

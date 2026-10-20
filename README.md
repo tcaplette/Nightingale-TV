@@ -1,8 +1,8 @@
 # Nightingale TV
 
-Nightingale TV turns your Jellyfin library into always-on cable TV channels, with a program guide, for a Linux PC hooked up to a TV. Like real TV, every channel is always mid-broadcast. You tune in to whatever is on, flip channels, and check the guide to see what's coming up.
+Nightingale TV turns your Jellyfin library into always-on cable TV channels, with a program guide, for a Linux PC hooked up to a TV, an Android TV (Google TV, Fire TV and other Android TV boxes), or an Android phone or tablet. Like real TV, every channel is always mid-broadcast. You tune in to whatever is on, flip channels, and check the guide to see what's coming up.
 
-It's inspired by NostalgiaTV for Android. It's built for the couch, so everything works with a keyboard, a mouse, an air mouse, or your phone.
+It's inspired by NostalgiaTV for Android. It's built for the couch, so everything works with a keyboard, a mouse, an air mouse, a TV remote, a touchscreen, or your phone.
 
 ![The program guide, with a programming block on channel 2](docs/screenshots/guide.png)
 
@@ -23,6 +23,7 @@ It's inspired by NostalgiaTV for Android. It's built for the couch, so everythin
 - **Profiles.** Everyone gets their own sign-in, channels and blocks. Kid profiles only see content rated for their age. Grown-up profiles and settings can be locked with a PIN.
 - **Phone remote.** Turn it on in the menu, scan the QR code, and your phone's browser becomes the remote. There's nothing to install.
 - **Always direct play.** Nightingale TV plays your original files and never asks Jellyfin to transcode, unless you turn on *Transcode only if needed*.
+- **Bitrate cap.** With *Transcode only if needed* on, pick a maximum bitrate from 40 Mbps down to 4 Mbps for Wi-Fi or a remote connection. Your server converts a show only when it's over the cap you picked, and nothing lowers it while you watch. *Original* (the default) never converts because of bitrate.
 - **Live TV export (HDHomeRun, M3U and XMLTV).** Watch your channels in Jellyfin Live TV, Plex or any IPTV app on your home network. Turn it on for each profile you want to share:
   - **HDHomeRun tuner.** Each exported profile shows up as its own network TV tuner. Add it in Jellyfin or Plex by its address, or let Plex find it on the network.
   - **M3U playlist.** A playlist of the profile's channels, with numbers, names and logos, for Jellyfin's M3U tuner and IPTV apps such as VLC, Kodi and TiviMate.
@@ -47,6 +48,33 @@ sudo apt install ./dist/nightingale-tv_*_amd64.deb
 `apt` also installs the libraries Nightingale TV needs. Afterward, open **Nightingale TV** from your app menu, or run `nightingale-tv`.
 
 To uninstall it: `sudo apt remove nightingale-tv`. Your settings in `~/.local/share/com.coffeehauslabs.nightingale_tv` are kept.
+
+### On Android
+
+There is one app for Android TVs, phones and tablets (Android 7.0 or newer). Build the APKs as described in [Building for Android](#building-for-android), then install the one for the device:
+
+| APK | For |
+| --- | --- |
+| `nightingale-tv_<version>_arm64-v8a.apk` | Most TVs, TV boxes and phones from the last several years (Google TV, NVIDIA Shield, Fire TV Stick 4K and newer, Pixel, Galaxy…) |
+| `nightingale-tv_<version>_armeabi-v7a.apk` | Older or cheaper TV sticks and boxes (Fire TV Stick Lite and older, many no-name boxes) |
+| `nightingale-tv_<version>_universal.apk` | Any of them, if you're not sure. It's several times larger. |
+| `nightingale-tv_<version>_x86_64.apk` | Android Studio emulators on a PC |
+
+Ways to install it:
+
+- **From a PC, over the network or USB:** turn on *Developer options* and *USB debugging* (or *Network debugging*) on the device, then `adb install nightingale-tv_<version>_arm64-v8a.apk`.
+- **On an Android TV or Google TV:** put the APK on a web server or cloud drive, open it with an app such as *Downloader*, and allow that app to *Install unknown apps* when asked.
+- **On a Fire TV:** Settings → My Fire TV → Developer options → *Install unknown apps* → turn on *Downloader*, then download the APK in Downloader and install it.
+- **On a phone or tablet:** open the APK from the browser's downloads or a file manager, and allow *Install unknown apps* when asked.
+
+It shows up in the TV's apps row and the phone's app drawer as **Nightingale TV**. Updates install over it, keeping your profiles, as long as they're built with the same release key.
+
+On Android the app always fills the screen, runs sideways on phones, and keeps the screen from turning off while it's in front. Going to the home screen stops playback, and coming back tunes in to the same channel live.
+
+**Not on Android:**
+
+- **Live TV export.** It needs ffmpeg and a PC that stays on. It's not in the menu on Android.
+- **Splitting ad compilations by picture and sound.** Without ffmpeg, compilations are split at their chapters (or Jellyfin's media segments) only. A long compilation without chapters isn't split, and the commercials screen says so.
 
 ### What you need
 
@@ -74,6 +102,10 @@ To uninstall it: `sudo apt remove nightingale-tv`. Your settings in `~/.local/sh
 | C | Captions on/off | |
 | M / right-click | Menu | Menu |
 | F11 | Full screen on/off | |
+
+**With an Android TV remote:** the D-pad, OK, Channel Up/Down, Info, Captions, Menu and number keys work as their keyboard keys do above. The remote's **Guide** button opens and closes the guide, and **Last** (or Recall) flips back to the previous channel. **Back** works as Esc does on every screen, except on the TV picture itself: there it shows "Press Back again to exit", and a second Back within 3 seconds closes the app.
+
+**On a phone or tablet:** tap where you'd click and long-press where you'd right-click (the TV picture or the guide opens the menu). Drag to scroll the guide and lists. The back gesture works as the Back button does.
 
 **With an air mouse:** move the pointer while watching, and **Guide** and **Menu** buttons appear in the top-left corner. In the guide, click a channel to watch it, or click **Menu** at the top.
 
@@ -114,6 +146,34 @@ tool/install.sh             # build and install for the current user
 tool/build_deb.sh           # build dist/nightingale-tv_<version>_amd64.deb
 ```
 
+### Building for Android
+
+You need the Android SDK (Android Studio installs it) as well as Flutter. To try it on a connected device or a running emulator, `flutter run` is enough. For APKs you can install anywhere, build them signed with a release key.
+
+Create the key once, and keep it and its passwords somewhere safe outside this repository. Every update must be signed with the same key, or Android won't install it over the old version:
+
+```bash
+keytool -genkey -v -keystore ~/nightingale-tv-release.jks \
+  -keyalg RSA -keysize 2048 -validity 10000 -alias nightingale-tv
+```
+
+Then create `android/key.properties` (it's git-ignored):
+
+```properties
+storeFile=/home/<you>/nightingale-tv-release.jks
+keyAlias=nightingale-tv
+storePassword=<keystore password>
+keyPassword=<key password>
+```
+
+You can leave the two password lines out and pass them when building instead: `NIGHTINGALE_TV_STORE_PASSWORD=… NIGHTINGALE_TV_KEY_PASSWORD=… tool/build_apk.sh`.
+
+```bash
+tool/build_apk.sh           # build the four APKs in dist/ and print their sizes
+```
+
+Release builds stop with these instructions if there's no key. They never fall back to a debug key, because Android won't install a properly signed update over a debug-signed app without uninstalling it, and that loses your profiles.
+
 ## License
 
 Nightingale TV is **free and open source software**, licensed under the [GNU General Public License, version 3](LICENSE) or (at your option) any later version.
@@ -128,7 +188,7 @@ Nightingale TV is built with software that keeps its own licenses:
 
 - The [Barlow](https://github.com/jpt/barlow) fonts are under the SIL Open Font License 1.1 ([`assets/fonts/OFL.txt`](assets/fonts/OFL.txt)).
 - [Flutter](https://flutter.dev), [media_kit](https://github.com/media-kit/media-kit), [qr_flutter](https://pub.dev/packages/qr_flutter) and the other packages listed in [`pubspec.yaml`](pubspec.yaml) are under their own open-source licenses.
-- Video playback uses [mpv](https://mpv.io) (libmpv), installed from your Linux distribution's packages.
+- On a PC, video playback uses [mpv](https://mpv.io) (libmpv), installed from your Linux distribution's packages. On Android it uses [AndroidX Media3](https://developer.android.com/media/media3) (ExoPlayer) with [OkHttp](https://square.github.io/okhttp/), both under the Apache License 2.0.
 
 Nightingale TV is an independent project. It isn't affiliated with or endorsed by Jellyfin or NostalgiaTV. It doesn't include any TV network logos or other trademarks.
 # Nightingale-TV

@@ -2,11 +2,13 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:media_kit_video/media_kit_video.dart';
 
+import '../app_exit.dart';
 import '../app_scope.dart';
 import '../channels/channel.dart';
 import '../channels/schedule.dart';
+import '../platform/platform_info.dart';
+import '../playback/playback_diagnostics.dart';
 import '../playback/tuner.dart';
 import '../theme/tv_theme.dart';
 import 'format.dart';
@@ -21,6 +23,9 @@ import 'widgets/tv_focus.dart';
 class TvScreen extends StatefulWidget {
   const TvScreen({super.key});
 
+  /// Android: shown after Back on the TV screen.
+  static const exitPrompt = 'Press Back again to exit';
+
   @override
   State<TvScreen> createState() => _TvScreenState();
 }
@@ -28,6 +33,7 @@ class TvScreen extends StatefulWidget {
 class _TvScreenState extends State<TvScreen> {
   static const _bannerDuration = Duration(seconds: 5);
   static const _digitTimeout = Duration(milliseconds: 1600);
+  static const _exitWindow = Duration(seconds: 3);
 
   final _focus = FocusNode(debugLabel: 'tv');
   bool _guideOpen = false;
@@ -37,6 +43,9 @@ class _TvScreenState extends State<TvScreen> {
   Timer? _digitTimer;
   String? _toast;
   Timer? _toastTimer;
+
+  /// Android: Back was pressed once; another within [_exitWindow] quits.
+  Timer? _exitTimer;
 
   @override
   void initState() {
@@ -49,12 +58,14 @@ class _TvScreenState extends State<TvScreen> {
     _bannerTimer?.cancel();
     _digitTimer?.cancel();
     _toastTimer?.cancel();
+    _exitTimer?.cancel();
     _focus.dispose();
     super.dispose();
   }
 
   /// Like turning on a TV: back to the last channel watched.
   void _powerOn() {
+    PlaybackDiagnostics.mark('TV screen shown');
     final app = AppScope.read(context);
     final tuner = AppScope.tunerOf(context);
     final channels = app.channels;
@@ -115,6 +126,31 @@ class _TvScreenState extends State<TvScreen> {
 
   void _openGuide() => setState(() => _guideOpen = true);
 
+  /// Android's Back on the TV screen: the first asks, the second quits.
+  void _back() {
+    if (_digits.isNotEmpty) {
+      _digitTimer?.cancel();
+      setState(() => _digits = '');
+    } else if (_exitTimer?.isActive ?? false) {
+      _exitTimer!.cancel();
+      final tuner = AppScope.tunerOf(context);
+      quitApp(beforeClosing: tuner.stop);
+    } else {
+      _showToast(TvScreen.exitPrompt);
+      _exitTimer = Timer(_exitWindow, () {});
+    }
+  }
+
+  /// Anything but a second Back cancels the exit prompt.
+  void _cancelExit() {
+    if (!(_exitTimer?.isActive ?? false)) return;
+    _exitTimer!.cancel();
+    if (_toast == TvScreen.exitPrompt) {
+      _toastTimer?.cancel();
+      setState(() => _toast = null);
+    }
+  }
+
   void _closeGuide() {
     setState(() => _guideOpen = false);
     _focus.requestFocus();
@@ -171,6 +207,24 @@ class _TvScreenState extends State<TvScreen> {
     if (event is! KeyDownEvent && event is! KeyRepeatEvent) return KeyEventResult.ignored;
     final tuner = AppScope.tunerOf(context);
     final key = event.logicalKey;
+    if (PlatformInfo.isAndroid) {
+      // Back leaves the app, as Android expects (Escape from a keyboard
+      // still opens the guide). Held down, it doesn't repeat into quitting.
+      if (key == LogicalKeyboardKey.goBack || key == LogicalKeyboardKey.browserBack) {
+        if (event is KeyDownEvent) _back();
+        return KeyEventResult.handled;
+      }
+      _cancelExit();
+      // The remote's own Guide and Last Channel buttons.
+      if (key == LogicalKeyboardKey.guide) {
+        _openGuide();
+        return KeyEventResult.handled;
+      }
+      if (key == LogicalKeyboardKey.mediaLast) {
+        _surf(tuner.lastChannel);
+        return KeyEventResult.handled;
+      }
+    }
     final digit = _digitFor(key);
     if (digit != null) {
       _typeDigit(digit);
@@ -222,8 +276,13 @@ class _TvScreenState extends State<TvScreen> {
         // Guide and Menu buttons, like waking a cable box.
         onHover: (_) => _showBanner(),
         child: GestureDetector(
-        onTap: _openGuide,
+        onTap: () {
+          _cancelExit();
+          _openGuide();
+        },
         onSecondaryTap: _openMenu,
+        // Touch: long-press is right-click.
+        onLongPress: PlatformInfo.isAndroid ? _openMenu : null,
         child: ColoredBox(
           color: Colors.black,
           child: ListenableBuilder(
@@ -231,7 +290,7 @@ class _TvScreenState extends State<TvScreen> {
             builder: (context, _) => Stack(
               fit: StackFit.expand,
               children: [
-                Video(controller: tuner.video, controls: NoVideoControls, fill: Colors.black),
+                tuner.media.buildVideo(),
                 if (tuner.status == TunerStatus.standby)
                   StatusCard(
                     icon: Icons.schedule,
@@ -239,13 +298,6 @@ class _TvScreenState extends State<TvScreen> {
                     message: tuner.program == null
                         ? null
                         : 'Up next at ${formatTime((tuner.segment ?? tuner.program!).end)}',
-                  ),
-                if (tuner.status == TunerStatus.ident && tuner.channel != null)
-                  StationId(
-                    channel: tuner.channel!,
-                    next: tuner.program == null
-                        ? null
-                        : AppScope.read(context).scheduleFor(tuner.channel!)?.next(tuner.program!),
                   ),
                 if (tuner.status == TunerStatus.offAir)
                   StatusCard(
@@ -456,7 +508,6 @@ class _ChannelBanner extends StatelessWidget {
   }
 }
 
-/// The station ID card that closes a commercial break.
 /// When the "Up next" card is up during [segment] of [program]: from a
 /// minute before the show ends, for 15 seconds, in the part it ends in
 /// ([lastPart]: its last one, or the one a programming block cuts off).

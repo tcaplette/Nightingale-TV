@@ -40,7 +40,7 @@ List<ScheduledProgram> _segments(ChannelSchedule s, DateTime from, DateTime to) 
 BreakContext _legacy(LibraryIndex library) => BreakContext(plan: BreakPlan.legacy, clips: FixedClips(library.commercials));
 
 void main() {
-  // 45-second ads: an 8-minute break holds ten, leaving 30 s for the ID card.
+  // 45-second ads: an 8-minute tail takes eleven, the last cut to 30 s.
   final library = fakeLibrary(
     shows: {'Alpha': 10},
     commercials: List.filled(4, const Duration(seconds: 45)),
@@ -69,7 +69,7 @@ void main() {
       expect(schedule.programAt(_at(18, 31)).start, _at(18, 30));
     });
 
-    test('the show plays, then commercials, then the station ID', () {
+    test('the show plays, then commercials to the end of the slot', () {
       final show = schedule.playbackAt(_at(18, 10));
       expect(show.item!.id, 'Alpha-e1');
       expect(show.end, _at(18, 22));
@@ -79,12 +79,12 @@ void main() {
       for (var i = 1; i < segments.length; i++) {
         expect(segments[i].start, segments[i - 1].end);
       }
-      expect(segments.where((s) => s.isCommercial), hasLength(10));
-      expect(segments.every((s) => s.isBreak), isTrue);
+      expect(segments, hasLength(11));
+      expect(segments.every((s) => s.isBreak && s.isCommercial), isTrue, reason: 'no card');
       expect(segments.first.program!.id, 'Alpha-e1', reason: 'breaks know their program');
-      expect(segments.last.isIdent, isTrue);
       expect(segments.last.start, _at(18, 29, 30));
       expect(segments.last.end, _at(18, 30));
+      expect(segments.last.itemTo - segments.last.itemFrom, const Duration(seconds: 30), reason: 'cut short');
       expect(schedule.playbackAt(_at(18, 30)).item!.id, 'Alpha-e2');
     });
 
@@ -121,6 +121,28 @@ void main() {
       expect(s.playbackAt(_at(7, 55)).isCommercial, isTrue);
       expect(s.programAt(DateTime(2026, 10, 17, 7, 1)).item!.id, 'Alpha-e3');
     });
+  });
+
+  test('Automatic: a show just under the half hour keeps the half hour, its ads shrunk to fit', () {
+    // Californication: 28.2 minutes.
+    final cali = fakeLibrary(
+      shows: {'Cali': 4},
+      episodeLength: const Duration(minutes: 28, seconds: 12),
+      commercials: [for (var i = 0; i < 40; i++) Duration(milliseconds: 10000 + (i * 7919) % 25000)],
+    );
+    final s = ChannelSchedule.build(_channel([for (var i = 1; i <= 4; i++) 'Cali-e$i']), cali, const [],
+        BreakContext(plan: BreakPlan.automatic, clips: FixedClips(cali.commercials)))!;
+    final slot = s.programAt(_at(18, 5));
+    expect((slot.start, slot.end), (_at(18, 0), _at(18, 30)));
+    expect(s.programAt(_at(18, 31)).item!.id, 'Cali-e2');
+    expect(s.programAt(_at(18, 31)).start, _at(18, 30), reason: 'the next program starts on the half hour');
+    final segments = _segments(s, _at(18, 0), _at(18, 30));
+    for (var i = 1; i < segments.length; i++) {
+      expect(segments[i].start, segments[i - 1].end);
+    }
+    expect(segments.last.end, _at(18, 30));
+    expect(segments.every((p) => p.item != null), isTrue, reason: 'no card');
+    expect(s.playbackAt(_at(18, 30)).start, _at(18, 30));
   });
 
   test('without commercials nothing is padded', () {

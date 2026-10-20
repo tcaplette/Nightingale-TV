@@ -27,6 +27,7 @@ class StreamContext {
     void Function(Duration)? recordStartup,
     bool Function(String sourceId)? isSilent,
     void Function(String sourceId)? markSilent,
+    this.log,
   })  : expectedStartup = expectedStartup ?? (() => const Duration(seconds: 3)),
         recordStartup = recordStartup ?? ((_) {}),
         isSilent = isSilent ?? ((_) => false),
@@ -59,6 +60,9 @@ class StreamContext {
   /// Items found to have no audio track.
   final bool Function(String sourceId) isSilent;
   final void Function(String sourceId) markSilent;
+
+  /// Diagnostics: what the stream plans and how its encoders start.
+  final void Function(String line)? log;
 }
 
 /// One exported channel as a never-ending MPEG-TS stream (design D3/D4):
@@ -187,6 +191,7 @@ class ChannelStream {
   _Plan? _plan(DateTime t, {bool allowReanchor = true}) {
     final now = ctx.clock();
     if (allowReanchor && now.difference(t) > reanchorAfter) {
+      ctx.log?.call('rejoined the schedule ${now.difference(t).inMilliseconds} ms behind');
       _anchor = now.subtract(_streamTime);
       t = now;
     }
@@ -199,9 +204,6 @@ class ChannelStream {
     }
     final remaining = segment.end.difference(t);
     final item = segment.item;
-    if (segment.isIdent) {
-      return _CardPlan(StationIdCard(ctx.channel, schedule.next(schedule.programAt(t))), remaining);
-    }
     if (item == null) {
       return _CardPlan(OffAirCard.at(schedule, t), remaining > offAirPiece ? offAirPiece : remaining);
     }
@@ -273,6 +275,9 @@ class ChannelStream {
 
   Future<void> _startEncoder(_ProgramPlan plan) async {
     final started = ctx.clock();
+    ctx.log?.call('encoder ${plan.sourceId} for ${plan.t.toIso8601String()} from ${plan.from} '
+        '${plan.frames} frames${plan.segment.isCommercial ? ' (commercial, held)' : ''}, '
+        '${plan.t.difference(started).inMilliseconds} ms ahead');
     try {
       final url = await ctx.openSource(plan.sourceId);
       plan.opened = true;
@@ -286,6 +291,7 @@ class ChannelStream {
           quality: ctx.quality,
           encoder: plan.encoder = ctx.encoder,
           audio: !ctx.isSilent(plan.sourceId),
+          hold: plan.segment.isCommercial,
         ),
       );
       plan.process = process;
@@ -303,7 +309,10 @@ class ChannelStream {
       });
       plan.first = plan.output!.moveNext().then((has) {
         plan.ready = true;
-        if (has) ctx.recordStartup(ctx.clock().difference(started));
+        final took = ctx.clock().difference(started);
+        if (has) ctx.recordStartup(took);
+        ctx.log?.call('encoder ${plan.sourceId} first output after ${took.inMilliseconds} ms'
+            '${has ? '' : ' (none)'}; due ${plan.t.difference(ctx.clock()).inMilliseconds} ms from now');
         return has;
       });
     } on Object catch (e) {
@@ -315,9 +324,12 @@ class ChannelStream {
 
   Future<void> _playProgram(_ProgramPlan plan) async {
     // A source that isn't ready yet: black until it is.
+    var black = 0;
     while (!_stopped && !plan.ready) {
       await _writeCard(const BlackCard(), 1);
+      black++;
     }
+    if (black > 0) ctx.log?.call('black ${black}s waiting for ${plan.sourceId}');
     final output = plan.output;
     final has = await plan.first!;
     if (has && output != null && !_stopped) {
@@ -346,8 +358,11 @@ class ChannelStream {
       }
       return;
     }
+    ctx.log?.call('encoder ${plan.sourceId} done: ${plan.produced}/${plan.frames} frames, exit $code');
     if (!_splicer.sawAudio && !ctx.isSilent(plan.sourceId)) ctx.markSilent(plan.sourceId);
-    if (plan.produced < plan.frames - 15) {
+    // Commercials are padded with their last picture, so only a program
+    // part ends early.
+    if (!plan.segment.isCommercial && plan.produced < plan.frames - 15) {
       _endedEarly = (sourceId: plan.sourceId, end: plan.segment.end);
     }
   }

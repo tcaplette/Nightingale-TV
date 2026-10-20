@@ -38,11 +38,13 @@ abstract final class EncodeArgs {
   /// Scaled into the frame, at 29.97 fps from 0, exactly [frames] long: the
   /// cut is made in each track's own filter chain (`trim`, `atrim`), since
   /// an output-wide -frames:v or -t ends the file early or a frame short.
-  static String _filters(ExportQuality q, VideoEncoder e, int frames) {
+  /// With [hold], a source that ends sooner repeats its last picture up to
+  /// [frames].
+  static String _filters(ExportQuality q, VideoEncoder e, int frames, {bool hold = false}) {
     final w = q.width, h = q.height;
     final f =
         'scale=$w:$h:force_original_aspect_ratio=decrease,pad=$w:$h:(ow-iw)/2:(oh-ih)/2:black,setsar=1,'
-        'fps=$frameRate:start_time=0,trim=end_frame=$frames';
+        'fps=$frameRate:start_time=0,${hold ? 'tpad=stop=-1:stop_mode=clone,' : ''}trim=end_frame=$frames';
     return e == VideoEncoder.vaapi ? '$f,format=nv12,hwupload' : '$f,format=yuv420p';
   }
 
@@ -96,7 +98,9 @@ abstract final class EncodeArgs {
   static const _out = ['-f', 'mpegts', '-muxdelay', '0', '-muxpreload', '0'];
 
   /// One program part or commercial: [frames] frames of [input] from
-  /// [from], to stdout. [audio] false gives it silence.
+  /// [from], to stdout. [audio] false gives it silence. With [hold] (a
+  /// commercial), a file that ends early holds its last picture, with
+  /// silence, for the frames left.
   static List<String> segment({
     required Uri input,
     required Duration from,
@@ -104,6 +108,7 @@ abstract final class EncodeArgs {
     required ExportQuality quality,
     required VideoEncoder encoder,
     bool audio = true,
+    bool hold = false,
   }) => [
     ..._nice,
     ..._device(encoder),
@@ -117,7 +122,7 @@ abstract final class EncodeArgs {
     '-map',
     audio ? '0:a:0?' : '1:a:0',
     '-vf',
-    _filters(quality, encoder, frames),
+    _filters(quality, encoder, frames, hold: hold),
     ..._video(quality, encoder),
     ..._audio(frames),
     '-progress',

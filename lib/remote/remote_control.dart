@@ -60,8 +60,12 @@ class RemoteControl extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// The port [_start] was last asked for.
+  int _port = defaultPort;
+
   Future<void> _start({int port = defaultPort}) async {
     if (_server != null) return;
+    _port = port;
     error = null;
     // Try a few ports in case something else is using ours.
     for (var p = port; p < port + 10; p++) {
@@ -81,6 +85,12 @@ class RemoteControl extends ChangeNotifier {
     server.listen(_handle);
     url = Uri(scheme: 'http', host: await lanAddress() ?? 'localhost', port: server.port);
     notifyListeners();
+  }
+
+  /// Starts the remote again after [stop] (the app coming back to the
+  /// front on Android), if it's turned on.
+  Future<void> resume() async {
+    if (enabled) await _start(port: _port);
   }
 
   Future<void> stop() async {

@@ -29,6 +29,8 @@ class MediaEntry {
     String? sourceId,
     this.clipStart,
     this.etag,
+    this.container,
+    this.size,
     this.chapters = const [],
     this.poolIds = const [],
   }) : sourceId = sourceId ?? id;
@@ -61,6 +63,11 @@ class MediaEntry {
   /// Jellyfin's Etag, which changes when the file is replaced.
   final String? etag;
 
+  /// The file's container (mp4, mkv, …) and size in bytes, when Jellyfin
+  /// said (the index cache's key; libraries saved before don't have them).
+  final String? container;
+  final int? size;
+
   /// Chapter start times, in order.
   final List<Duration> chapters;
 
@@ -91,6 +98,8 @@ class MediaEntry {
         sourceId: sourceId,
         clipStart: clipStart,
         etag: etag,
+        container: container,
+        size: size,
         chapters: chapters,
         poolIds: pools,
       );
@@ -126,6 +135,8 @@ class MediaEntry {
         if (sourceId != id) 'sourceId': sourceId,
         if (clipStart != null) 'clipStartMs': clipStart!.inMilliseconds,
         if (etag != null) 'etag': etag,
+        if (container != null) 'container': container,
+        if (size != null) 'size': size,
         if (chapters.isNotEmpty) 'chaptersMs': [for (final c in chapters) c.inMilliseconds],
         if (poolIds.isNotEmpty) 'poolIds': poolIds,
       };
@@ -149,6 +160,8 @@ class MediaEntry {
         sourceId: j['sourceId'] as String?,
         clipStart: switch (j['clipStartMs']) { final int ms => Duration(milliseconds: ms), _ => null },
         etag: j['etag'] as String?,
+        container: j['container'] as String?,
+        size: j['size'] as int?,
         chapters: [
           for (final ms in (j['chaptersMs'] as List? ?? const []).cast<int>()) Duration(milliseconds: ms)
         ],
@@ -370,6 +383,8 @@ class LibraryIndex {
         year: e['ProductionYear'] as int?,
         overview: e['Overview'] as String?,
         etag: e['Etag'] as String?,
+        container: _container(e),
+        size: _size(e),
         chapters: _chapters(e),
       ));
     }
@@ -391,6 +406,8 @@ class LibraryIndex {
         genres: _strings(m['Genres']),
         officialRating: m['OfficialRating'] as String?,
         etag: m['Etag'] as String?,
+        container: _container(m),
+        size: _size(m),
         chapters: _chapters(m),
       ));
     }
@@ -412,6 +429,8 @@ class LibraryIndex {
         runtime: runtime,
         year: c['ProductionYear'] as int?,
         etag: c['Etag'] as String?,
+        container: _container(c),
+        size: _size(c),
         chapters: _chapters(c),
         poolIds: poolsByItem[id] ?? const [],
       ));
@@ -454,6 +473,15 @@ class LibraryIndex {
 
   /// Pool videos up to this long are one clip; longer ones are reels.
   static const maxClip = Duration(minutes: 3);
+
+  /// The container Jellyfin reports for [item] ("mkv", "mov,mp4,m4a,…").
+  static String? _container(Map<String, Object?> item) => item['Container'] as String?;
+
+  /// The file size of [item]'s first media source, when Jellyfin sent it.
+  static int? _size(Map<String, Object?> item) => switch (item['MediaSources']) {
+        [final Map<String, Object?> source, ...] => (source['Size'] as num?)?.toInt(),
+        _ => null,
+      };
 
   static List<Duration> _chapters(Map<String, Object?> item) {
     final starts = [

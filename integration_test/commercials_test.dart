@@ -223,10 +223,8 @@ void main() {
     await down();
     await pick('To :30');
     await pool('Commercials');
-    await down();
-    await pick('Clips, cut short');
-    await pool('Commercials');
     await h.snap('c9-break-settings');
+    expect(find.text('FALLBACK'), findsNothing, reason: 'no fallback setting');
     await h.choose('Save', LogicalKeyboardKey.arrowDown);
     final pid = app.settings.commercialPools.single.id;
     final roles = app.settings.commercialPlan.roles;
@@ -236,7 +234,6 @@ void main() {
     expect(roles.midLength, const Duration(seconds: 90));
     expect(roles.postRoll, const Duration(minutes: 2));
     expect(roles.tailGrid, const Duration(minutes: 30));
-    expect(roles.fallback, FallbackKind.pool);
     for (final role in BreakRole.values) {
       expect(roles.poolFor(role), pid, reason: role.name);
     }

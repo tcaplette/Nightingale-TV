@@ -6,7 +6,7 @@ import '../library/library_index.dart';
 typedef Viewing = ({String channelId, String itemId, DateTime layoutStart});
 
 /// The viewing [segment] is part of, if it is a part of a program (not a
-/// break, a commercial, the station ID or off the air).
+/// break, a commercial or off the air).
 Viewing? viewingOf(String channelId, ScheduledProgram segment) {
   final item = segment.item;
   if (segment.isBreak || item == null || item.kind == MediaKind.commercial) return null;
@@ -24,7 +24,7 @@ enum ReportStep {
   /// The viewing ends and a new one starts.
   finishAndStart,
 
-  /// The viewing ends (a break in another slot, the station ID, off air).
+  /// The viewing ends (a break in another slot, off air).
   finish,
 
   /// Nothing to report.
@@ -39,7 +39,7 @@ ReportStep reportStep(Viewing? active, String channelId, ScheduledProgram next) 
     return active == null ? ReportStep.start : ReportStep.finishAndStart;
   }
   if (active == null) return ReportStep.none;
-  // A break (or its station ID) inside the program's own slot is part of
+  // A break inside the program's own slot is part of
   // the viewing.
   final inSameSlot = next.isBreak &&
       channelId == active.channelId &&

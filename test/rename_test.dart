@@ -76,6 +76,13 @@ void main() {
 
     tearDown(() => jellyfin.close(force: true));
 
+    // Nothing tunes here; the upgrade waits that long for a launch's picture.
+    setUp(() {
+      final wait = AppState.launchIdleWait;
+      AppState.launchIdleWait = const Duration(milliseconds: 50);
+      addTearDown(() => AppState.launchIdleWait = wait);
+    });
+
     Future<AppState> appWithOldSession() async {
       final app = await signedInApp(dir, fakeLibrary());
       await app.storage.writeJson('session.json', {

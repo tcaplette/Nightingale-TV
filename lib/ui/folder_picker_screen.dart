@@ -73,7 +73,7 @@ class _FolderPickerScreenState extends State<FolderPickerScreen> {
         return;
       }
       final current = FocusManager.instance.primaryFocus;
-      final idle = current == null || current is FocusScopeNode || current.debugLabel == 'page';
+      final idle = current == null || current is FocusScopeNode || isTvPageFocus(current);
       if (!onlyIfIdle || idle) node.requestFocus();
     });
     WidgetsBinding.instance.scheduleFrame();

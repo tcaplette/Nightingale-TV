@@ -1,7 +1,10 @@
 import 'dart:async';
+import 'dart:math';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+
+import '../../platform/platform_info.dart';
 
 /// Lays the UI out on a fixed 1920×1080 canvas and scales it to the window,
 /// so the guide looks identical on any TV resolution.
@@ -14,22 +17,42 @@ class TvCanvas extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final media = MediaQuery.of(context);
+    // Material supplies default text styles and what TextField needs;
+    // transparent so screens paint their own backgrounds.
+    Widget content = ClipRect(child: Material(type: MaterialType.transparency, child: child));
+    var data = media.copyWith(size: size);
+    if (PlatformInfo.isAndroid) {
+      // The on-screen keyboard and system insets arrive in screen units;
+      // screens lay out on the canvas. Screens sit above the keyboard, so a
+      // focused field scrolls into view, and the keyboard counts as used up
+      // (as a Scaffold does) so dialogs don't move up twice.
+      final scale = canvasScale(media.size);
+      final insets = media.viewInsets / scale;
+      data = data.copyWith(
+        viewInsets: insets.copyWith(bottom: 0),
+        viewPadding: media.viewPadding / scale,
+        padding: media.padding / scale,
+      );
+      content = Padding(padding: EdgeInsets.only(bottom: insets.bottom), child: content);
+    }
     return ColoredBox(
       color: Colors.black,
       child: Center(
         child: FittedBox(
           child: SizedBox.fromSize(
             size: size,
-            child: MediaQuery(
-              data: MediaQuery.of(context).copyWith(size: size),
-              // Material supplies default text styles and what TextField
-              // needs; transparent so screens paint their own backgrounds.
-              child: ClipRect(child: Material(type: MaterialType.transparency, child: child)),
-            ),
+            child: MediaQuery(data: data, child: content),
           ),
         ),
       ),
     );
+  }
+
+  /// How much the canvas is scaled to fit a [screen] of this size.
+  static double canvasScale(Size screen) {
+    final scale = min(screen.width / size.width, screen.height / size.height);
+    return scale > 0 ? scale : 1;
   }
 }
 

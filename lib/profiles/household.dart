@@ -8,6 +8,7 @@ import '../app_state.dart';
 import '../data/app_storage.dart';
 import '../export/export_service.dart';
 import '../jellyfin/jellyfin_client.dart';
+import '../platform/platform_info.dart';
 import '../remote/remote_control.dart';
 import 'profile.dart';
 
@@ -258,7 +259,7 @@ class Household extends ChangeNotifier {
     final session = await storage.readJson('session.json');
     if (session is Map<String, Object?>) {
       final client = JellyfinClient.fromSession(JellyfinSession.fromJson(session),
-          deviceName: Platform.localHostname);
+          deviceName: PlatformInfo.deviceName);
       try {
         await client.logout();
       } on Object {

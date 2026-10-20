@@ -254,8 +254,17 @@ class TvPage extends StatefulWidget {
   State<TvPage> createState() => _TvPageState();
 }
 
+/// Whether [node] is a [TvPage]'s own focus: the page holds focus, but no
+/// control on it does. (A type check, since `debugLabel` is dropped in
+/// release builds.)
+bool isTvPageFocus(FocusNode? node) => node is _PageFocusNode;
+
+class _PageFocusNode extends FocusNode {
+  _PageFocusNode() : super(debugLabel: 'page', skipTraversal: true);
+}
+
 class _TvPageState extends State<TvPage> {
-  final _node = FocusNode(debugLabel: 'page', skipTraversal: true);
+  final _node = _PageFocusNode();
 
   @override
   void initState() {

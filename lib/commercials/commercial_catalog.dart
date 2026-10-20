@@ -114,6 +114,8 @@ class CommercialCatalog extends ChangeNotifier implements ClipSource {
           sourceId: item.id,
           clipStart: cut.start,
           etag: item.etag,
+          container: item.container,
+          size: item.size,
           poolIds: item.poolIds,
         ),
     ];

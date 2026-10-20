@@ -141,6 +141,9 @@ class _Process implements Process {
   Duration get from => Duration(microseconds: (double.parse(arg('-ss')) * 1e6).round());
   int get frames => int.parse(RegExp(r'trim=end_frame=(\d+)').firstMatch(arg('-vf'))!.group(1)!);
   bool get silent => arguments.contains('anullsrc=r=48000:cl=stereo');
+
+  /// Pads a short file with its last picture.
+  bool get holds => arg('-vf').contains('tpad=stop=-1:stop_mode=clone');
 }
 
 /// How a fake encoder behaves for a source.
@@ -183,7 +186,8 @@ class _Harness {
         p.finish(1);
         return;
       }
-      final n = p.frames - b.shortBy;
+      // Held to the end (tpad clone), as ffmpeg does.
+      final n = p.holds ? p.frames : p.frames - b.shortBy;
       for (final f in _frames('src:${p.source}', n, audio: b.audio && !p.silent)) {
         p.out.add(f);
       }
@@ -226,7 +230,6 @@ class _Harness {
         BlackCard() => 'black',
         OffAirCard() => 'offair',
         StandByCard(:final text) => 'standby:$text',
-        StationIdCard() => 'ident',
       };
 
   /// The labels in order, each with how many frames it ran.
@@ -432,7 +435,7 @@ void main() {
     });
   });
 
-  test('breaks play the same clips as the TV, with the station ID', () async {
+  Future<void> makeWithBreaks() async {
     final settings = (AppSettings.fresh()
           ..commercialPools = [
             CommercialPool(id: fakePoolId, name: 'Commercials', roots: const [
@@ -442,6 +445,10 @@ void main() {
           ..commercialPlan = BreakPlan.automatic)
         .toJson();
     await make(settings: settings, episode: const Duration(minutes: 8));
+  }
+
+  test('breaks play the same clips as the TV, and go straight back to the show', () async {
+    await makeWithBreaks();
     final channel = app.channels.first;
     expect(app.breaksFor(channel), isTrue);
     fakeAsync((async) {
@@ -457,11 +464,30 @@ void main() {
         final at = h.start.add(Duration(microseconds: f.pts * 100 ~/ 9));
         expect(schedule.playbackAt(at.add(const Duration(milliseconds: 200))).item?.sourceId, e.p.source);
       }
-      final hasIdent = [
-        for (var t = h.start; t.isBefore(h.start.add(const Duration(minutes: 20))); t = t.add(const Duration(seconds: 1)))
-          schedule.playbackAt(t).isIdent,
-      ].contains(true);
-      if (hasIdent) expect(h.runs.map((r) => r.$1), contains('ident'));
+      // Only video between the breaks and the show: no card of any kind.
+      expect(h.runs.where((r) => r.$1.startsWith('standby') || r.$1 == 'offair'), isEmpty);
+      h.expectContinuous();
+      unawaited(h.stream.stop());
+      async.flushTimers();
+    });
+  });
+
+  test('a commercial shorter than its listed length holds its last picture, with no card', () async {
+    await makeWithBreaks();
+    final channel = app.channels.first;
+    fakeAsync((async) {
+      final h = _Harness(async, app, channel);
+      final commercials = {for (final c in app.library.commercials) c.sourceId};
+      for (final id in commercials) {
+        h.behaviors[id] = const _Behavior(shortBy: 60);
+      }
+      h.run(const Duration(minutes: 20));
+      final ads = h.encoders.where((e) => commercials.contains(e.p.source)).toList();
+      expect(ads, isNotEmpty);
+      expect(ads.every((e) => e.p.holds), isTrue, reason: 'commercials are padded with their last picture');
+      expect(h.encoders.where((e) => !commercials.contains(e.p.source)).any((e) => e.p.holds), isFalse,
+          reason: 'program parts are not');
+      expect(h.runs.where((r) => r.$1.startsWith('standby')), isEmpty);
       h.expectContinuous();
       unawaited(h.stream.stop());
       async.flushTimers();
@@ -537,6 +563,10 @@ void main() {
           expect(line.contains('-vaapi_device'), e == VideoEncoder.vaapi);
           expect(line.contains('hwupload'), e == VideoEncoder.vaapi);
           expect(args, isNot(contains('-frames:v')));
+          expect(line, isNot(contains('tpad')));
+          final held = EncodeArgs.segment(
+              input: url, from: Duration.zero, frames: 300, quality: q, encoder: e, hold: true).join(' ');
+          expect(held, contains('fps=30000/1001:start_time=0,tpad=stop=-1:stop_mode=clone,trim=end_frame=300'));
         });
       }
     }

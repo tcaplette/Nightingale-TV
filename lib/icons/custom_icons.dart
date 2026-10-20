@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:crypto/crypto.dart';
 import 'package:file_selector/file_selector.dart';
@@ -50,13 +51,15 @@ class CustomIconStore {
   /// Raster images are scaled to fit 512×512 and re-encoded as PNG, so the
   /// guide never decodes a huge photo. SVGs are kept as-is. Content-addressed
   /// names make re-uploading the same image a no-op.
-  Future<String> import(File source) async {
-    final bytes = await source.readAsBytes();
+  Future<String> import(File source) async => importBytes(await source.readAsBytes(), source.path);
+
+  /// [import] for an image already read, named [fileName] (for its type).
+  Future<String> importBytes(Uint8List bytes, String fileName) async {
     if (bytes.length > maxSourceBytes) {
       throw CustomIconException('That image is over 20 MB. Please pick a smaller one.');
     }
     final hash = sha1.convert(bytes).toString().substring(0, 16);
-    final ext = source.path.split('.').last.toLowerCase();
+    final ext = fileName.split('.').last.toLowerCase();
 
     if (ext == 'svg') {
       final head = String.fromCharCodes(bytes.take(2048));

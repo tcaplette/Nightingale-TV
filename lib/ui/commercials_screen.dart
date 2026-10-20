@@ -5,6 +5,7 @@ import '../app_state.dart';
 import '../commercials/analysis/media_analyzer.dart';
 import '../commercials/break_plan.dart';
 import '../commercials/commercial_pool.dart';
+import '../platform/platform_info.dart';
 import '../theme/tv_theme.dart';
 import 'break_plan_editor_screen.dart';
 import 'pool_editor_screen.dart';
@@ -17,6 +18,18 @@ class CommercialsScreen extends StatelessWidget {
 
   /// Shown when a reel can't be split for lack of ffmpeg.
   static const ffmpegWarning = 'Install ffmpeg to split long commercial videos';
+
+  /// Shown instead of [ffmpegWarning] on Android, which can't run ffmpeg.
+  static const androidFfmpegNote = 'Long commercial videos without chapters can\'t be split on this device';
+
+  /// What the screen says when reels can't be split for lack of ffmpeg,
+  /// with [waiting] of them waiting.
+  static String ffmpegMissingText(int waiting) {
+    final count = waiting > 0 ? ' ($waiting waiting).' : '.';
+    return PlatformInfo.isAndroid
+        ? '$androidFfmpegNote$count'
+        : '$ffmpegWarning$count Break points also land more naturally with it.';
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -187,9 +200,7 @@ class _AnalysisStatus extends StatelessWidget {
               const SizedBox(width: 12),
               Expanded(
                 child: Text(
-                  '${CommercialsScreen.ffmpegWarning}'
-                  '${p.reelsNeedingFfmpeg > 0 ? ' (${p.reelsNeedingFfmpeg} waiting).' : '.'} '
-                  'Break points also land more naturally with it.',
+                  CommercialsScreen.ffmpegMissingText(p.reelsNeedingFfmpeg),
                   style: g.body(24, color: g.nowLine),
                 ),
               ),
@@ -218,7 +229,7 @@ class _HowItWorks extends StatelessWidget {
           'Every show fills a half-hour slot (an hour or more for long ones), so the guide stays on the clock.',
           'A short bumper before the show, a break every 10 minutes inside it (12 for movies), at act breaks '
               'when they can be found, and the rest after it.',
-          'Any seconds left over show the channel\'s station ID card.',
+          'Ads shrink to fit the slot, and no break runs over 5 minutes.',
         ],
       BreakMode.custom => const [
           'Choose how long each break is, how often shows break, and which pool each break draws from.',

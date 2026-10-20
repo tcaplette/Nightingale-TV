@@ -128,10 +128,10 @@ void main() {
     // The first position report can come before mpv has jumped to the
     // start position; give it a moment.
     await wait(const Duration(seconds: 2));
-    final p1 = tuner.player.state.position;
+    final p1 = tuner.media.position;
     final expected = tuner.segment!.positionAt(DateTime.now());
     await wait(const Duration(seconds: 3));
-    expect(tuner.player.state.position, greaterThan(p1), reason: 'video is advancing');
+    expect(tuner.media.position, greaterThan(p1), reason: 'video is advancing');
     expect((p1 - expected).abs(), lessThan(const Duration(seconds: 15)),
         reason: 'joined mid-program at the scheduled offset');
     await snap('1-watch-banner');
@@ -361,7 +361,7 @@ void main() {
     expect(tuner.status, TunerStatus.playing, reason: 'the clip plays: ${tuner.error}');
     final clip = tuner.segment!;
     await wait(const Duration(seconds: 2));
-    final position = tuner.player.state.position;
+    final position = tuner.media.position;
     final scheduled = clip.positionAt(DateTime.now());
     debugPrint('Clip ${clip.item!.id}: ${clip.itemFrom}–${clip.itemTo}, playing at $position, scheduled $scheduled');
     expect(position >= clip.itemFrom && position <= clip.itemTo, isTrue,

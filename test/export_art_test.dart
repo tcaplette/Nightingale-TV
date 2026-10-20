@@ -61,7 +61,6 @@ void main() {
         const OffAirCard(),
         StandByCard.upNext(DateTime(2026, 1, 1, 19, 30)),
         const StandByCard.rightBack(),
-        StationIdCard(ch, null),
       ];
       for (final card in cards) {
         for (final height in [1080, 720]) {

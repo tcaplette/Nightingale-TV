@@ -75,22 +75,6 @@ class StandByCard extends BroadcastCard {
   String get key => 'standby|$text';
 }
 
-/// The station ID at the end of a break.
-class StationIdCard extends BroadcastCard {
-  const StationIdCard(this.channel, this.next);
-  final Channel channel;
-  final ScheduledProgram? next;
-
-  String get _nextKey {
-    final n = next;
-    if (n == null || n.isOffAir) return '';
-    return '${n.title}|${formatTime(n.start)}|${n.subtitle}';
-  }
-
-  @override
-  String get key => 'ident|${channel.number}|${channel.name}|${jsonEncode(channel.icon.toJson())}|$_nextKey';
-}
-
 /// Draws the cards and channel logos Live TV export uses, and keeps them:
 /// card PNGs on disk (they're encoded once each, D3), logos in memory.
 class BroadcastArt implements LogoSource {
@@ -111,7 +95,7 @@ class BroadcastArt implements LogoSource {
     final file = File('${cacheDir.path}/card-$name.png');
     if (await file.exists()) return file;
     await cacheDir.create(recursive: true);
-    final widget = await _cardWidget(card, app);
+    final widget = _cardWidget(card);
     final png = await OffscreenRenderer.renderPng(widget,
         logicalSize: TvCanvas.size, pixelRatio: height / TvCanvas.size.height);
     final tmp = File('${file.path}.$pid.tmp');
@@ -120,23 +104,11 @@ class BroadcastArt implements LogoSource {
     return file;
   }
 
-  Future<Widget> _cardWidget(BroadcastCard card, AppState app) async => switch (card) {
+  Widget _cardWidget(BroadcastCard card) => switch (card) {
         TuningCardSpec(:final channel) => TuningCard(channel: channel),
         BlackCard() => const ColoredBox(color: Colors.black),
         OffAirCard() => StatusCard(icon: Icons.tv_off, title: 'OFF THE AIR', message: card.message),
         StandByCard() => StatusCard(icon: Icons.schedule, title: 'PLEASE STAND BY', message: card.text),
-        StationIdCard(:final channel, :final next) => StationId(
-            channel: channel,
-            next: next,
-            logo: SizedBox(
-              width: 420,
-              height: 260,
-              child: switch (await pngFor(app, channel)) {
-                final png? => RawImage(image: await OffscreenRenderer.decode(png), fit: BoxFit.contain),
-                null => null,
-              },
-            ),
-          ),
       };
 
   @override

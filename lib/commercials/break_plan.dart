@@ -12,7 +12,7 @@ enum BreakMode {
       };
 }
 
-/// The five parts of a slot that hold commercials (the ErsatzTV / Tunarr
+/// The parts of a slot that hold commercials (the ErsatzTV / Tunarr
 /// convention).
 enum BreakRole {
   /// Before the program.
@@ -25,27 +25,14 @@ enum BreakRole {
   post,
 
   /// Pads the slot out to the next clock boundary.
-  tail,
-
-  /// Whatever is left of a break when no clip fits.
-  fallback;
+  tail;
 
   String get label => switch (this) {
         pre => 'Pre-roll',
         mid => 'Mid-roll',
         post => 'Post-roll',
         tail => 'Tail',
-        fallback => 'Fallback',
       };
-}
-
-/// What fills the seconds of a break that no clip fits into.
-enum FallbackKind {
-  /// The channel's station-ID card.
-  idCard,
-
-  /// A pool clip, cut short.
-  pool,
 }
 
 /// The settings of a Custom plan. Every role is a length (not a count of
@@ -57,12 +44,10 @@ class CustomRoles {
     this.midLength = const Duration(minutes: 2),
     this.postRoll = Duration.zero,
     this.tailGrid,
-    this.fallback = FallbackKind.idCard,
     this.prePool,
     this.midPool,
     this.postPool,
     this.tailPool,
-    this.fallbackPool,
   });
 
   final Duration preRoll;
@@ -74,14 +59,12 @@ class CustomRoles {
 
   /// Pads each slot to the next multiple of this; null for no tail.
   final Duration? tailGrid;
-  final FallbackKind fallback;
 
   /// Pool ids per role; null means all pools.
   final String? prePool;
   final String? midPool;
   final String? postPool;
   final String? tailPool;
-  final String? fallbackPool;
 
   static const preRollChoices = [
     Duration.zero,
@@ -133,7 +116,6 @@ class CustomRoles {
         BreakRole.mid => midPool,
         BreakRole.post => postPool,
         BreakRole.tail => tailPool,
-        BreakRole.fallback => fallbackPool,
       };
 
   CustomRoles copyWith({
@@ -142,7 +124,6 @@ class CustomRoles {
     Duration? midLength,
     Duration? postRoll,
     Duration? Function()? tailGrid,
-    FallbackKind? fallback,
   }) =>
       CustomRoles(
         preRoll: preRoll ?? this.preRoll,
@@ -150,12 +131,10 @@ class CustomRoles {
         midLength: midLength ?? this.midLength,
         postRoll: postRoll ?? this.postRoll,
         tailGrid: tailGrid != null ? tailGrid() : this.tailGrid,
-        fallback: fallback ?? this.fallback,
         prePool: prePool,
         midPool: midPool,
         postPool: postPool,
         tailPool: tailPool,
-        fallbackPool: fallbackPool,
       );
 
   /// A copy drawing [role]'s clips from [poolId] (null: all pools).
@@ -165,12 +144,10 @@ class CustomRoles {
         midLength: midLength,
         postRoll: postRoll,
         tailGrid: tailGrid,
-        fallback: fallback,
         prePool: role == BreakRole.pre ? poolId : prePool,
         midPool: role == BreakRole.mid ? poolId : midPool,
         postPool: role == BreakRole.post ? poolId : postPool,
         tailPool: role == BreakRole.tail ? poolId : tailPool,
-        fallbackPool: role == BreakRole.fallback ? poolId : fallbackPool,
       );
 
   /// A copy where every role that drew from [poolId] uses all pools.
@@ -188,13 +165,14 @@ class CustomRoles {
         'midMs': midLength.inMilliseconds,
         'postMs': postRoll.inMilliseconds,
         if (tailGrid != null) 'tailMs': tailGrid!.inMilliseconds,
-        'fallback': fallback.name,
         'pools': {
           for (final role in BreakRole.values)
             if (poolFor(role) != null) role.name: poolFor(role),
         },
       };
 
+  /// Plans saved with a fallback (`fallback`, `pools.fallback`) load with it
+  /// ignored: breaks fill to the second, so nothing is left for one.
   factory CustomRoles.fromJson(Map<String, Object?> j) {
     Duration? ms(String key) => switch (j[key]) { final int v => Duration(milliseconds: v), _ => null };
     final pools = (j['pools'] as Map?)?.cast<String, Object?>() ?? const {};
@@ -205,12 +183,10 @@ class CustomRoles {
       midLength: ms('midMs') ?? const Duration(minutes: 2),
       postRoll: ms('postMs') ?? Duration.zero,
       tailGrid: ms('tailMs'),
-      fallback: FallbackKind.values.asNameMap()[j['fallback']] ?? FallbackKind.idCard,
       prePool: pool(BreakRole.pre),
       midPool: pool(BreakRole.mid),
       postPool: pool(BreakRole.post),
       tailPool: pool(BreakRole.tail),
-      fallbackPool: pool(BreakRole.fallback),
     );
   }
 
@@ -222,16 +198,14 @@ class CustomRoles {
       other.midLength == midLength &&
       other.postRoll == postRoll &&
       other.tailGrid == tailGrid &&
-      other.fallback == fallback &&
       other.prePool == prePool &&
       other.midPool == midPool &&
       other.postPool == postPool &&
-      other.tailPool == tailPool &&
-      other.fallbackPool == fallbackPool;
+      other.tailPool == tailPool;
 
   @override
-  int get hashCode => Object.hash(preRoll, midInterval, midLength, postRoll, tailGrid, fallback, prePool,
-      midPool, postPool, tailPool, fallbackPool);
+  int get hashCode =>
+      Object.hash(preRoll, midInterval, midLength, postRoll, tailGrid, prePool, midPool, postPool, tailPool);
 }
 
 /// A break plan: the mode, plus the Custom settings (kept while another mode
@@ -243,8 +217,7 @@ class BreakPlan {
   static const automatic = BreakPlan(mode: BreakMode.automatic);
 
   /// Breaks as they worked before break plans: nothing before, during or
-  /// after the program, padded to the quarter hour from all pools, with the
-  /// station ID for the last seconds.
+  /// after the program, padded to the quarter hour from all pools.
   static const legacy = BreakPlan(
     mode: BreakMode.custom,
     roles: CustomRoles(tailGrid: Duration(minutes: 15)),
@@ -259,7 +232,7 @@ class BreakPlan {
   BreakPlan withRoles(CustomRoles r) => BreakPlan(mode: mode, roles: r);
 
   /// The roles in effect: the Custom settings, or Automatic's (every role
-  /// from all pools, the station ID as fallback).
+  /// from all pools).
   CustomRoles get effectiveRoles => mode == BreakMode.custom ? roles : const CustomRoles();
 
   /// The clock boundary a channel's anchor lines up on, so its slots stay on
@@ -280,16 +253,18 @@ class BreakPlan {
       if (r.midInterval != null) r.midPool,
       if (r.postRoll > Duration.zero) r.postPool,
       if (r.tailGrid != null) r.tailPool,
-      if (r.fallback == FallbackKind.pool) r.fallbackPool,
     };
   }
 
   // ---- Automatic -----------------------------------------------------------
 
+  /// Slots round up to the first of these grids whose ad time keeps every
+  /// break within [automaticMaxBreak].
   static const automaticGrid = Duration(minutes: 30);
   static const automaticShortGrid = Duration(minutes: 15);
+  static const automaticFineGrid = Duration(minutes: 5);
 
-  /// Programs shorter than this use [automaticShortGrid].
+  /// Programs shorter than this start from [automaticShortGrid].
   static const automaticShortUnder = Duration(minutes: 12);
   static const automaticInterval = Duration(minutes: 10);
   static const automaticLongInterval = Duration(minutes: 12);
@@ -297,15 +272,17 @@ class BreakPlan {
   /// Programs longer than this use [automaticLongInterval].
   static const automaticLongOver = Duration(minutes: 60);
 
-  /// Ad time reserved for each mid-roll, plus [automaticBaseAdTime] once,
-  /// before rounding up to the grid.
-  static const automaticAdTimePerMid = Duration(minutes: 1);
-  static const automaticBaseAdTime = Duration(minutes: 1);
+  /// The least ad time in a slot, added to the runtime before rounding up.
+  static const automaticMinAdTime = Duration(seconds: 30);
   static const automaticPreRoll = Duration(seconds: 15);
 
   /// Share of the ad time (after the pre-roll) that goes to mid-rolls.
   static const automaticMidShare = 0.8;
   static const automaticMaxMid = Duration(minutes: 4);
+  static const automaticMinMid = Duration(seconds: 30);
+
+  /// No break is planned longer than this.
+  static const automaticMaxBreak = Duration(minutes: 5);
 
   /// Mid-roll lengths are rounded down to this.
   static const automaticStep = Duration(seconds: 15);
@@ -359,7 +336,7 @@ class SlotPlan {
   /// Padding after the post-roll, up to the clock boundary.
   final Duration tail;
 
-  /// Which pools the roles draw from, and the fallback.
+  /// Which pools the roles draw from.
   final CustomRoles roles;
 
   Duration get adTime => preRoll + midLength * midCount + postRoll + tail;
@@ -374,27 +351,25 @@ SlotPlan resolve(BreakPlan plan, Duration runtime) {
     case BreakMode.off:
       return SlotPlan.none(runtime);
     case BreakMode.automatic:
-      final grid = runtime < BreakPlan.automaticShortUnder ? BreakPlan.automaticShortGrid : BreakPlan.automaticGrid;
       final interval =
           runtime > BreakPlan.automaticLongOver ? BreakPlan.automaticLongInterval : BreakPlan.automaticInterval;
       final mids = midRollCount(runtime, interval);
-      final slot = _roundUp(runtime + BreakPlan.automaticAdTimePerMid * mids + BreakPlan.automaticBaseAdTime, grid);
-      const pre = BreakPlan.automaticPreRoll;
-      final remaining = slot - runtime - pre;
-      var mid = Duration.zero;
-      if (mids > 0) {
-        final share = Duration(microseconds: (remaining.inMicroseconds * BreakPlan.automaticMidShare) ~/ mids);
-        mid = _roundDown(share < BreakPlan.automaticMaxMid ? share : BreakPlan.automaticMaxMid, BreakPlan.automaticStep);
+      final grids = [
+        if (runtime >= BreakPlan.automaticShortUnder) BreakPlan.automaticGrid,
+        BreakPlan.automaticShortGrid,
+        BreakPlan.automaticFineGrid,
+      ];
+      // Ads shrink to fit: the first grid whose ad time keeps the limit.
+      for (final grid in grids) {
+        final split = _automaticSplit(plan, runtime, _roundUp(runtime + BreakPlan.automaticMinAdTime, grid), mids);
+        if (split != null) return split;
       }
-      return SlotPlan(
-        runtime: runtime,
-        preRoll: pre,
-        midCount: mids,
-        midLength: mid,
-        postRoll: remaining - mid * mids,
-        tail: Duration.zero,
-        roles: plan.effectiveRoles,
-      );
+      // Only a short program on the 5-minute grid gets here: more mid-rolls.
+      final slot = _roundUp(runtime + BreakPlan.automaticMinAdTime, BreakPlan.automaticFineGrid);
+      for (var more = mids + 1;; more++) {
+        final split = _automaticSplit(plan, runtime, slot, more);
+        if (split != null) return split;
+      }
     case BreakMode.custom:
       final r = plan.roles;
       final mids = r.midInterval == null ? 0 : midRollCount(runtime, r.midInterval!);
@@ -410,6 +385,41 @@ SlotPlan resolve(BreakPlan plan, Duration runtime) {
         roles: r,
       );
   }
+}
+
+/// Splits an Automatic [slot]'s ad time: the pre-roll, [mids] mid-rolls
+/// taking [BreakPlan.automaticMidShare] of the rest, the post-roll the
+/// remainder. Null when a break would be over [BreakPlan.automaticMaxBreak].
+SlotPlan? _automaticSplit(BreakPlan plan, Duration runtime, Duration slot, int mids) {
+  const step = BreakPlan.automaticStep, maxBreak = BreakPlan.automaticMaxBreak;
+  final ads = slot - runtime;
+  final pre = ads < BreakPlan.automaticPreRoll ? ads : BreakPlan.automaticPreRoll;
+  final remaining = ads - pre;
+  final midTime = remaining.inMicroseconds * BreakPlan.automaticMidShare;
+  // A mid-roll is at least 30 s: fewer of them when the time is short.
+  final minMid = BreakPlan.automaticMinMid.inMicroseconds;
+  var count = mids;
+  if (count > 0 && midTime / count < minMid) count = midTime ~/ minMid;
+  var mid = Duration.zero;
+  if (count > 0) {
+    final share = Duration(microseconds: midTime ~/ count);
+    mid = _roundDown(share < BreakPlan.automaticMaxMid ? share : BreakPlan.automaticMaxMid, step);
+    // A long post-roll is spread over the mid-rolls.
+    while (remaining - mid * count > maxBreak && mid + step <= maxBreak && mid + step <= remaining ~/ count) {
+      mid += step;
+    }
+  }
+  final post = remaining - mid * count;
+  if (post > maxBreak || mid > maxBreak) return null;
+  return SlotPlan(
+    runtime: runtime,
+    preRoll: pre,
+    midCount: count,
+    midLength: mid,
+    postRoll: post,
+    tail: Duration.zero,
+    roles: plan.effectiveRoles,
+  );
 }
 
 /// One mid-roll fewer than [runtime] / [interval], rounded up.
