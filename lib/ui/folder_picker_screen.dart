@@ -5,6 +5,7 @@ import '../app_scope.dart';
 import '../commercials/commercial_pool.dart';
 import '../jellyfin/jellyfin_client.dart';
 import '../theme/tv_theme.dart';
+import 'widgets/screen_layout.dart';
 import 'widgets/tv_focus.dart';
 
 /// Pick the Jellyfin folders a pool draws from: libraries on the left, the
@@ -161,15 +162,8 @@ class _FolderPickerScreenState extends State<FolderPickerScreen> {
           if (libraries == null) {
             return Center(child: Text('Loading libraries…', style: g.body(30, color: g.textDim)));
           }
-          return Row(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              SizedBox(
-                width: 640,
-                child: FocusTraversalGroup(
-                  child: ListView(
-                    padding: const EdgeInsets.fromLTRB(100, 32, 24, 32),
-                    children: [
+          final layout = ScreenLayout.of(context);
+          final librariesColumn = [
                       Text('LIBRARIES', style: g.display(26, weight: FontWeight.w800, color: g.accent)),
                       const SizedBox(height: 12),
                       for (final (i, lib) in libraries.indexed)
@@ -206,7 +200,29 @@ class _FolderPickerScreenState extends State<FolderPickerScreen> {
                           TvButton(label: 'Cancel', onPressed: () => Navigator.of(context).pop()),
                         ],
                       ),
-                    ],
+          ];
+          // Upright, the libraries, then the open one's folders, in one list.
+          if (layout.isPortrait) {
+            return ListView(
+              padding: layout.pagePadding(EdgeInsets.zero),
+              children: [
+                FocusTraversalGroup(
+                  child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: librariesColumn),
+                ),
+                const SizedBox(height: 32),
+                FocusTraversalGroup(child: _folders(g, inline: true)),
+              ],
+            );
+          }
+          return Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              SizedBox(
+                width: 640,
+                child: FocusTraversalGroup(
+                  child: ListView(
+                    padding: const EdgeInsets.fromLTRB(100, 32, 24, 32),
+                    children: librariesColumn,
                   ),
                 ),
               ),
@@ -218,11 +234,12 @@ class _FolderPickerScreenState extends State<FolderPickerScreen> {
     );
   }
 
-  Widget _folders(GuideTheme g) {
+  /// The open library's folders; [inline] in a list that scrolls already.
+  Widget _folders(GuideTheme g, {bool inline = false}) {
     final lib = _library;
     if (lib == null) {
       return Padding(
-        padding: const EdgeInsets.fromLTRB(24, 56, 100, 32),
+        padding: inline ? EdgeInsets.zero : const EdgeInsets.fromLTRB(24, 56, 100, 32),
         child: Text('Press ▶ on a library to see its folders.', style: g.body(26, color: g.textDim)),
       );
     }
@@ -233,15 +250,13 @@ class _FolderPickerScreenState extends State<FolderPickerScreen> {
         final top = snapshot.data;
         if (top == null) {
           return Padding(
-            padding: const EdgeInsets.fromLTRB(24, 56, 100, 32),
+            padding: inline ? EdgeInsets.zero : const EdgeInsets.fromLTRB(24, 56, 100, 32),
             child: Text('Loading folders…', style: g.body(26, color: g.textDim)),
           );
         }
         final folders = _path.isEmpty ? top : _path.last.children;
         final covered = _coveredByParent(lib, _path);
-        return ListView(
-          padding: const EdgeInsets.fromLTRB(24, 16, 100, 32),
-          children: [
+        final rows = [
             Text(_label(lib, _path).toUpperCase(),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
@@ -275,7 +290,11 @@ class _FolderPickerScreenState extends State<FolderPickerScreen> {
                   onFocus: () => setState(() => _inFolders = true),
                 ),
               ),
-          ],
+        ];
+        if (inline) return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: rows);
+        return ListView(
+          padding: const EdgeInsets.fromLTRB(24, 16, 100, 32),
+          children: rows,
         );
       },
     );
@@ -283,13 +302,21 @@ class _FolderPickerScreenState extends State<FolderPickerScreen> {
 
   Widget _error(GuideTheme g, Object error) {
     _focusWhenBuilt(_nodeFor('try-again'), onlyIfIdle: true);
+    final layout = ScreenLayout.of(context);
+    final buttons = [
+      TvButton(label: 'Try again', icon: Icons.refresh, focusNode: _nodeFor('try-again'), onPressed: _retry),
+      TvButton(label: 'Cancel', onPressed: () => Navigator.of(context).pop()),
+    ];
     return Center(
-        child: Column(
+        child: SingleChildScrollView(
+          padding: layout.isPortrait ? EdgeInsets.symmetric(horizontal: layout.gutter, vertical: 32) : null,
+          child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             Icon(Icons.cloud_off, size: 110, color: g.accent),
             const SizedBox(height: 20),
-            Text('Couldn\'t reach the server', style: g.display(52, weight: FontWeight.w800)),
+            Text('Couldn\'t reach the server',
+                textAlign: TextAlign.center, style: g.display(layout.isPortrait ? 40 : 52, weight: FontWeight.w800)),
             const SizedBox(height: 10),
             SizedBox(
               width: 1000,
@@ -297,15 +324,15 @@ class _FolderPickerScreenState extends State<FolderPickerScreen> {
                   textAlign: TextAlign.center, style: g.body(26, color: g.textDim)),
             ),
             const SizedBox(height: 28),
-            Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                TvButton(label: 'Try again', icon: Icons.refresh, focusNode: _nodeFor('try-again'), onPressed: _retry),
-                const SizedBox(width: 16),
-                TvButton(label: 'Cancel', onPressed: () => Navigator.of(context).pop()),
-              ],
-            ),
+            if (layout.isPortrait)
+              Wrap(alignment: WrapAlignment.center, spacing: 16, runSpacing: 16, children: buttons)
+            else
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [buttons[0], const SizedBox(width: 16), buttons[1]],
+              ),
           ],
+        ),
         ),
       );
   }

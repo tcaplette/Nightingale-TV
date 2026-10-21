@@ -1,6 +1,7 @@
 package com.coffeehauslabs.nightingale_tv
 
 import android.app.UiModeManager
+import android.content.Intent
 import android.content.res.Configuration
 import android.os.Build
 import android.os.Bundle
@@ -36,6 +37,28 @@ class MainActivity : FlutterActivity() {
 
     private val deviceImages = DeviceImages(this)
 
+    private val backupFiles = BackupFiles(this)
+
+    // Lazy: its sensor listener needs the activity attached.
+    private val fullScreen by lazy { FullScreenOrientation(this) }
+
+    override fun onResume() {
+        super.onResume()
+        fullScreen.onResume()
+    }
+
+    override fun onPause() {
+        fullScreen.onPause()
+        super.onPause()
+    }
+
+    @Deprecated("Flutter's embedding still delivers results here")
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        if (!backupFiles.onActivityResult(requestCode, resultCode, data)) {
+            super.onActivityResult(requestCode, resultCode, data)
+        }
+    }
+
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
         if (!deviceImages.onPermissionResult(requestCode, grantResults)) {
             super.onRequestPermissionsResult(requestCode, permissions, grantResults)
@@ -58,6 +81,12 @@ class MainActivity : FlutterActivity() {
         // Pictures on the device, for icons where there's no document picker.
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "nightingale_tv/images")
             .setMethodCallHandler(deviceImages)
+        // Saving backup files with the document picker, where there is one.
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "nightingale_tv/files")
+            .setMethodCallHandler(backupFiles)
+        // Full screen from the portrait watch screen (phones and tablets).
+        fullScreen.channel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "nightingale_tv/orientation")
+            .also { it.setMethodCallHandler(fullScreen) }
         // The players (lib/playback/exo_tuner_player.dart).
         val host = ExoTunerHost(applicationContext, flutterEngine.renderer, flutterEngine.dartExecutor.binaryMessenger)
         players = host

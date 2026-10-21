@@ -20,15 +20,19 @@ typedef FakeItems = ({
 LibraryIndex fakeLibrary({
   Map<String, int> shows = const {'Alpha': 10, 'Beta': 4},
   Map<String, List<String>> genres = const {},
+  Map<String, String> ratings = const {},
   Map<String, Duration> lengths = const {},
   int movies = 0,
   Duration episodeLength = const Duration(minutes: 22),
   List<Duration> commercials = const [],
   String commercialPool = fakePoolId,
+  List<Map<String, Object?>> songs = const [],
+  List<Map<String, Object?>> musicVideos = const [],
 }) {
   final items = fakeItems(
       shows: shows,
       genres: genres,
+      ratings: ratings,
       lengths: lengths,
       movies: movies,
       episodeLength: episodeLength,
@@ -38,15 +42,45 @@ LibraryIndex fakeLibrary({
       episodeItems: items.episodes,
       movieItems: items.movies,
       commercialItems: items.commercials,
+      songItems: songs,
+      musicVideoItems: musicVideos,
       poolsByItem: {for (final c in items.commercials) c['Id'] as String: [commercialPool]},
       fetchedAt: DateTime(2026));
 }
+
+/// Jellyfin JSON for [count] songs (or music videos), `<prefix>-1` …, by
+/// [artists] artists in turn, from [year], tagged [genres], 3:30 each.
+List<Map<String, Object?>> fakeMusic(int count,
+        {String prefix = 'song',
+        int artists = 10,
+        int year = 1985,
+        List<String> genres = const ['Rock'],
+        bool videos = false,
+        String? rating}) =>
+    [
+      for (var i = 1; i <= count; i++)
+        {
+          'Id': '$prefix-$i',
+          'Name': '${videos ? 'Video' : 'Song'} $i',
+          'Type': videos ? 'MusicVideo' : 'Audio',
+          'RunTimeTicks': const Duration(minutes: 3, seconds: 30).inMicroseconds * 10,
+          'ProductionYear': year,
+          'Genres': genres,
+          'Artists': ['$prefix artist ${i % artists}'],
+          'Album': '$prefix album ${i % artists}',
+          'AlbumId': '$prefix-album-${i % artists}',
+          'OfficialRating': ?rating,
+          'Container': 'mp3',
+          'LocationType': 'FileSystem',
+        },
+    ];
 
 /// The Jellyfin JSON for the items of a [fakeLibrary] with the same
 /// arguments (for a fake server).
 FakeItems fakeItems({
   Map<String, int> shows = const {'Alpha': 10, 'Beta': 4},
   Map<String, List<String>> genres = const {},
+  Map<String, String> ratings = const {},
   Map<String, Duration> lengths = const {},
   int movies = 0,
   Duration episodeLength = const Duration(minutes: 22),
@@ -56,7 +90,14 @@ FakeItems fakeItems({
   final episodes = <Map<String, Object?>>[];
   shows.forEach((name, count) {
     final id = 'series-$name';
-    series.add({'Id': id, 'Name': name, 'Type': 'Series', 'ProductionYear': 2000, 'Genres': genres[name] ?? const []});
+    series.add({
+      'Id': id,
+      'Name': name,
+      'Type': 'Series',
+      'ProductionYear': 2000,
+      'Genres': genres[name] ?? const [],
+      'OfficialRating': ?ratings[name],
+    });
     for (var i = 1; i <= count; i++) {
       episodes.add({
         'Id': '$name-e$i',
@@ -114,13 +155,16 @@ Future<AppState> signedInApp(Directory dir, LibraryIndex fake,
     String? serverId,
     String serverUrl = 'http://127.0.0.1:9',
     bool runAnalysis = false,
-    Duration libraryAge = Duration.zero}) async {
+    Duration libraryAge = Duration.zero,
+    int? maxRatingRank}) async {
   final storage = await AppStorage.at(dir);
   final library = LibraryIndex(
       series: fake.series,
       episodes: fake.episodes,
       movies: fake.movies,
       commercials: fake.commercials,
+      songs: fake.songs,
+      musicVideos: fake.musicVideos,
       fetchedAt: DateTime.now().subtract(libraryAge));
   // A library with commercials comes with the pool that holds them.
   await storage.writeJson(
@@ -146,7 +190,7 @@ Future<AppState> signedInApp(Directory dir, LibraryIndex fake,
   final channels = [for (final c in ChannelGenerator(library).generate()) c.toJson()];
   editChannels?.call(channels);
   await storage.writeJson('channels.json', channels);
-  final app = AppState(storage, runAnalysis: runAnalysis);
+  final app = AppState(storage, runAnalysis: runAnalysis, maxRatingRank: maxRatingRank);
   await app.start();
   return app;
 }

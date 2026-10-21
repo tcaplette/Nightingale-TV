@@ -14,6 +14,7 @@ import 'package:nightingale_tv/export/broadcast_art.dart';
 import 'package:nightingale_tv/export/channel_stream.dart';
 import 'package:nightingale_tv/export/encode_args.dart';
 import 'package:nightingale_tv/export/export_settings.dart';
+import 'package:nightingale_tv/library/library_index.dart';
 
 import 'fixtures.dart';
 
@@ -136,14 +137,27 @@ class _Process implements Process {
 
   String arg(String flag) => arguments[arguments.indexOf(flag) + 1];
 
-  /// The source id in the loopback URL.
-  String get source => Uri.parse(arg('-i')).pathSegments.last;
+  /// The source id in the loopback URL (the one input that's a URL).
+  String get source => Uri.parse([
+        for (var i = 0; i + 1 < arguments.length; i++)
+          if (arguments[i] == '-i' && arguments[i + 1].startsWith('http')) arguments[i + 1],
+      ].first)
+          .pathSegments
+          .last;
+
+  /// A song's Now Playing card is the picture.
+  bool get songCard => arguments.contains('/cache/song.png');
   Duration get from => Duration(microseconds: (double.parse(arg('-ss')) * 1e6).round());
-  int get frames => int.parse(RegExp(r'trim=end_frame=(\d+)').firstMatch(arg('-vf'))!.group(1)!);
+  /// The video filters, with or without a logo laid over.
+  String get filters => arguments.contains('-vf') ? arg('-vf') : arg('-filter_complex');
+  int get frames => int.parse(RegExp(r'trim=end_frame=(\d+)').firstMatch(filters)!.group(1)!);
   bool get silent => arguments.contains('anullsrc=r=48000:cl=stereo');
 
   /// Pads a short file with its last picture.
-  bool get holds => arg('-vf').contains('tpad=stop=-1:stop_mode=clone');
+  bool get holds => filters.contains('tpad=stop=-1:stop_mode=clone');
+
+  /// The channel logo is an input.
+  bool get logo => arguments.contains('/cache/logo.png');
 }
 
 /// How a fake encoder behaves for a source.
@@ -156,12 +170,13 @@ class _Behavior {
 }
 
 class _Harness {
-  _Harness(this.async, this.app, this.channel, {this.encoder = VideoEncoder.x264});
+  _Harness(this.async, this.app, this.channel, {this.encoder = VideoEncoder.x264, this.logo = LogoMode.off});
 
   final FakeAsync async;
   final AppState app;
   final Channel channel;
   final VideoEncoder encoder;
+  final LogoMode logo;
   final start = DateTime(2026, 10, 18, 20, 0, 7);
   late final muxer = _Muxer(() => async.elapsed);
   final encoders = <({_Process p, Duration startedAt})>[];
@@ -220,6 +235,9 @@ class _Harness {
       recordStartup: startups.add,
       isSilent: silent.contains,
       markSilent: silent.add,
+      logoMode: () => logo,
+      logoPng: () async => '/cache/logo.png',
+      songCard: (_) async => '/cache/song.png',
     ));
     unawaited(stream.start());
     async.elapse(d);
@@ -292,6 +310,61 @@ void main() {
       final t1 = h.start.add(const Duration(seconds: 3));
       expect(first.from, h.schedule.playbackAt(t1).positionAt(t1));
       expect(runs[1].$1, 'src:${first.source}');
+      h.expectContinuous();
+      unawaited(h.stream.stop());
+      async.flushTimers();
+    });
+  });
+
+  for (final mode in LogoMode.values) {
+    test('the channel logo (${mode.name}) is laid over program parts as on the TV', () async {
+      await make(settings: (AppSettings.fresh()
+            ..commercialPlan = BreakPlan.automatic
+            ..commercialPools = [
+              CommercialPool(id: fakePoolId, name: 'Commercials', roots: const [
+                PoolRoot(itemId: 'ads', libraryId: 'ads', label: 'Commercials'),
+              ]),
+            ])
+          .toJson());
+      final channel = app.channels.first;
+      fakeAsync((async) {
+        final h = _Harness(async, app, channel, logo: mode);
+        h.run(const Duration(minutes: 4));
+        expect(h.encoders.where((e) => app.library[e.p.source]?.kind == MediaKind.commercial), isNotEmpty);
+        expect(h.encoders.where((e) => app.library[e.p.source]?.kind == MediaKind.episode), isNotEmpty);
+        for (final e in h.encoders) {
+          final commercial = app.library[e.p.source]?.kind == MediaKind.commercial;
+          if (commercial || mode == LogoMode.off) {
+            expect(e.p.logo, isFalse, reason: '${e.p.source}: no logo input');
+          }
+        }
+        if (mode == LogoMode.always) {
+          expect(h.encoders.where((e) => app.library[e.p.source]?.kind == MediaKind.episode).every((e) => e.p.logo), isTrue);
+          expect(h.encoders.any((e) => e.p.filters.contains('fade')), isFalse);
+        }
+        if (mode == LogoMode.nowAndThen) {
+          // Parts joined at their start show it from their first frame.
+          expect(h.encoders.any((e) => e.p.logo && e.p.filters.contains('fade=t=in:st=0.000')), isTrue);
+        }
+        unawaited(h.stream.stop());
+        async.flushTimers();
+      });
+    });
+  }
+
+  test('a radio channel streams each song with its Now Playing card and no logo', () async {
+    app = await signedInApp(dir, fakeLibrary(shows: const {'Alpha': 6}, songs: fakeMusic(160)));
+    final radio = app.channels.firstWhere((c) => c.name == 'Music Radio');
+    fakeAsync((async) {
+      final h = _Harness(async, app, radio, logo: LogoMode.always);
+      h.run(const Duration(minutes: 8));
+      expect(h.encoders.length, greaterThan(1));
+      for (final e in h.encoders) {
+        expect(e.p.songCard, isTrue, reason: e.p.source);
+        expect(e.p.logo, isFalse, reason: 'songs carry no logo');
+        expect(e.p.arguments.join(' '), contains('-map 0:v:0 -map 1:a:0?'));
+        expect(app.library[e.p.source]!.kind, MediaKind.song);
+      }
       h.expectContinuous();
       unawaited(h.stream.stop());
       async.flushTimers();

@@ -10,6 +10,8 @@ import 'package:window_manager/window_manager.dart';
 import 'app_exit.dart';
 import 'app_scope.dart';
 import 'app_state.dart';
+import 'backup/backup_scheduler.dart';
+import 'backup/backup_store.dart';
 import 'channels/channel.dart';
 import 'channels/slot_layout.dart';
 import 'data/app_storage.dart';
@@ -22,6 +24,7 @@ import 'playback/tuner.dart';
 import 'profiles/household.dart';
 import 'remote/remote_control.dart';
 import 'theme/tv_theme.dart';
+import 'ui/backup_screen.dart';
 import 'ui/login_screen.dart';
 import 'ui/profiles_screen.dart';
 import 'ui/sync_screen.dart';
@@ -39,22 +42,28 @@ Future<void> main() async {
   if (PlatformInfo.isDesktop) {
     await _setUpWindow();
   } else if (PlatformInfo.isAndroid) {
-    // Like a TV: the whole screen, sideways on phones.
-    await SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
-    await SystemChrome.setPreferredOrientations(
-        const [DeviceOrientation.landscapeLeft, DeviceOrientation.landscapeRight]);
+    // Phones and tablets turn with the user's auto-rotate setting; the
+    // canvas picks the layout and the system bars for the window
+    // (portrait-layout).
     // TVs have a remote and maybe an air mouse, never touch: focus always
     // shows, and pointing at a button focuses it (Flutter's automatic mode
     // would treat an Android device as touch until a key is pressed).
     if (PlatformInfo.isTelevision) FocusManager.instance.highlightStrategy = FocusHighlightStrategy.alwaysTraditional;
-    // Before runApp, so it sees Back before the Navigator does.
-    WidgetsBinding.instance.addObserver(AndroidBackBridge());
+    // Before runApp, so it sees Back before the Navigator does; and the
+    // Back key itself, which some remotes send as well as the pop.
+    final back = androidBack = AndroidBackBridge();
+    WidgetsBinding.instance.addObserver(back);
+    HardwareKeyboard.instance.addHandler(back.handleKey);
   }
 
   PlaybackDiagnostics.mark('platform ready');
   final household = Household(await AppStorage.open());
+  household.backups = BackupScheduler(household, BackupStore(Directory('${household.root.root.path}/backups')));
   PlaybackDiagnostics.mark('storage open');
-  final remote = household.remote = RemoteControl(household, wake: PlatformInfo.isDesktop ? _wakeWindow : null);
+  // The phone remote is for a TV or a PC across the room; on a phone or
+  // tablet the app is already in hand, so there's none (portrait-layout).
+  final remote = household.remote =
+      hasPhoneRemote ? RemoteControl(household, wake: PlatformInfo.isDesktop ? _wakeWindow : null) : null;
   if (PlatformInfo.isDesktop) {
     HardwareKeyboard.instance.addHandler((event) {
       if (event is KeyDownEvent && event.logicalKey == LogicalKeyboardKey.f11) {
@@ -63,7 +72,7 @@ Future<void> main() async {
       }
       return false;
     });
-  } else if (PlatformInfo.isAndroid) {
+  } else if (remote != null) {
     // Android may keep the process after the app closes; the remote's port
     // mustn't stay open.
     exitHooks.add(remote.stop);
@@ -73,9 +82,11 @@ Future<void> main() async {
   runApp(NightingaleTvApp(household: household));
   await household.start();
   PlaybackDiagnostics.mark('profile started');
-  await remote.load();
+  await remote?.load();
   await startExport(household);
   PlaybackDiagnostics.mark('remote and export loaded');
+  // The daily backup check waits for the launch's picture.
+  household.backups!.start();
 }
 
 /// Sets up Live TV export, which needs ffmpeg and an always-on PC: on
@@ -91,6 +102,14 @@ Future<void> startExport(Household household, {Future<Directory> Function() cach
   exitHooks.add(export.stop);
   await export.load();
 }
+
+/// Android's Back handling (main() sets it up), whose watcher goes above
+/// every screen.
+AndroidBackBridge? androidBack;
+
+/// Whether this device offers the phone remote: TVs and PCs, not phones or
+/// tablets.
+bool get hasPhoneRemote => !PlatformInfo.isAndroid || PlatformInfo.isTelevision;
 
 /// Android: the phone remote's port is closed while the app is in the
 /// background, and opens again (if it's on) when the app is back in front.
@@ -154,7 +173,12 @@ class NightingaleTvApp extends StatelessWidget {
         builder: (context, _) {
           final app = household.app;
           if (app == null) {
-            return _shell(household.started ? const ProfilePickerScreen() : const ColoredBox(color: Colors.black));
+            final welcome = household.welcomeBack;
+            return _shell(!household.started
+                ? const ColoredBox(color: Colors.black)
+                : welcome != null
+                    ? WelcomeBackScreen(backup: welcome)
+                    : const ProfilePickerScreen());
           }
           // A new session (and screen stack) per profile.
           return ProfileSession(key: ObjectKey(app), app: app, child: _shell(const _Root()));
@@ -163,12 +187,19 @@ class NightingaleTvApp extends StatelessWidget {
     );
   }
 
-  static Widget _shell(Widget home) => MaterialApp(
+  Widget _shell(Widget home) => MaterialApp(
         title: 'Nightingale TV',
         debugShowCheckedModeBanner: false,
         theme: GuideTheme.cableGuide.toThemeData(),
         onNavigationNotification: PlatformInfo.isAndroid ? AndroidBackBridge.alwaysHandleBack : null,
-        builder: (context, child) => TvCanvas(child: AutoHidePointer(child: child!)),
+        builder: (context, child) => TvCanvas(
+            child: AutoHidePointer(
+                child: HouseholdNotice(
+                    household: household,
+                    child: switch (androidBack) {
+                      final back? => BackKeyWatcher(bridge: back, child: child!),
+                      null => child!,
+                    }))),
         home: home,
       );
 }

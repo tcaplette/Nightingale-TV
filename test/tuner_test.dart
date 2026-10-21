@@ -15,6 +15,7 @@ import 'package:nightingale_tv/playback/tuner_player.dart';
 
 import 'fake_playback.dart';
 import 'fixtures.dart';
+import 'media_files.dart';
 
 bool isStatic(Uri u) => u.path.endsWith('/stream') && u.queryParameters['static'] == 'true';
 bool isTranscode(Uri u) => u.path.endsWith('/stream.ts');
@@ -67,7 +68,7 @@ void main() {
     tuner.dispose();
     await app.close();
     // Tuning saves the last channel in the background.
-    await Future<void>.delayed(const Duration(milliseconds: 100));
+    await app.storage.flush();
     await dir.delete(recursive: true);
   });
 
@@ -823,16 +824,20 @@ test('rapid surfing over five transcoding channels leaves at most one job runnin
   group('a schedule change while tuned in', () {
     /// A time when [ch] airs the same program with breaks off and on
     /// (same), or another one (!same), from parts of each, with the plan
-    /// changed at [change]: a minute into the program on air, in a part of
-    /// it with breaks on or off, so changing back and forth always gives
-    /// the same schedules (and never at the very end of a slot, after which
-    /// the two loops never air the same program again).
+    /// changed at [change]: a minute into the program on air (and never at
+    /// the very end of a slot, after which the two loops never air the same
+    /// program again). Changing the plan back doesn't always give the first
+    /// schedule again (the program on air keeps its place, not always its
+    /// position), so the channels' anchors are put back after the trial.
     Future<({DateTime change, DateTime at})> findTime(Channel ch, {required bool same}) async {
+      final anchors = {for (final c in app.channels) c: c.anchor};
       final off = scheduleOf(ch);
       final change = off.programAt(now).start.add(const Duration(minutes: 1));
       await app.setGlobalPlan(BreakPlan.automatic, now: change);
       final on = scheduleOf(ch);
       await app.setGlobalPlan(BreakPlan.off, now: change);
+      anchors.forEach((c, anchor) => c.anchor = anchor);
+      expect(scheduleOf(ch).programAt(now).start, off.programAt(now).start, reason: 'back where it was');
       var t = change;
       for (var i = 0; i < 2000; i++, t = t.add(const Duration(minutes: 3))) {
         final a = off.playbackAt(t), b = on.playbackAt(t);
@@ -990,7 +995,8 @@ test('rapid surfing over five transcoding channels leaves at most one job runnin
       addTearDown(() async {
         oneTuner.dispose();
         await oneApp.close();
-        await Future<void>.delayed(const Duration(milliseconds: 100));
+        // Tuning saves the last channel in the background.
+        await oneApp.storage.flush();
         await dir.delete(recursive: true);
       });
       await oneApp.setGlobalPlan(BreakPlan.automatic);
@@ -1135,6 +1141,145 @@ test('rapid surfing over five transcoding channels leaves at most one job runnin
       final reports = client.reports.where((r) => r.$2.itemId == program).toList();
       expect(reports.where((r) => r.$1 == 'start'), hasLength(1));
       expect(reports.where((r) => r.$1 == 'stopped'), isEmpty);
+    });
+  });
+
+  group('volume leveling (volume-leveling spec)', () {
+    test('the player gets the setting at start-up and at every change; Linux doesn\'t re-tune', () async {
+      expect(player.leveling, [false]);
+      await tuneIntoPart(app.channels.first);
+      await app.setPlayback(const PlaybackSettings(volumeLeveling: true));
+      await settle();
+      expect(player.leveling, [false, true]);
+      await app.setPlayback(const PlaybackSettings(transcodeIfNeeded: true, volumeLeveling: true));
+      await settle();
+      expect(player.leveling, [false, true], reason: 'other settings don\'t touch it');
+      await app.setPlayback(PlaybackSettings.off);
+      await settle();
+      expect(player.leveling, [false, true, false]);
+      expect(player.opens, hasLength(1), reason: 'what plays is leveled in place');
+    });
+
+    test('saved on, the player starts with it on', () async {
+      await app.setPlayback(const PlaybackSettings(volumeLeveling: true));
+      final again = FakePlayer([]);
+      final second = Tuner(app, player: again, clock: () => now);
+      expect(again.leveling, [true]);
+      second.dispose();
+    });
+  });
+
+  group('volume leveling on mpv\'s decks', () {
+    late File video;
+    late bool ffmpeg;
+    late MediaKitTunerPlayer mpv;
+    late List<String> errors;
+
+    setUpAll(() async {
+      MediaKit.ensureInitialized();
+      try {
+        video = (await testVideos()).mkv;
+        ffmpeg = true;
+      } on Object {
+        ffmpeg = false;
+      }
+    });
+
+    setUp(() {
+      mpv = MediaKitTunerPlayer(verboseLog: false, video: false);
+      errors = [];
+      mpv.errorStream.listen(errors.add);
+    });
+
+    tearDown(() => mpv.dispose());
+
+    Future<String> prop(Player p, String name) => (p.platform as NativePlayer).getProperty(name);
+
+    /// Silent decks that still decode video (no window in tests).
+    Future<void> quiet() async {
+      for (final p in mpv.debugDecks) {
+        final native = p.platform as NativePlayer;
+        await native.setProperty('ao', 'null');
+        await native.setProperty('vo', 'null');
+        await native.setProperty('vid', 'auto');
+      }
+    }
+
+    /// Waits for [p]'s audio to be playing through its filters.
+    Future<String> audioOut(Player p) async {
+      for (var i = 0; i < 50; i++) {
+        final format = await prop(p, 'audio-out-params/format');
+        if (format.isNotEmpty) return format;
+        await Future<void>.delayed(const Duration(milliseconds: 100));
+      }
+      return '';
+    }
+
+    test('both decks, and a deck made later, get the chain; off clears it', () async {
+      if (!ffmpeg) return markTestSkipped('ffmpeg is not installed');
+      await mpv.setVolumeLeveling(true);
+      final onAir = mpv.debugDecks.single;
+      expect(await prop(onAir, 'af'), allOf(contains('acompressor='), contains('alimiter='), contains('level=disabled')));
+      // The spare deck is made at the first enqueue, after the change.
+      await quiet();
+      await mpv.enqueue(Uri.file(video.path), headers: const {});
+      final spare = mpv.debugDecks.last;
+      expect(mpv.debugDecks, hasLength(2));
+      expect(await prop(spare, 'af'), await prop(onAir, 'af'));
+      await mpv.setVolumeLeveling(false);
+      expect([await prop(onAir, 'af'), await prop(spare, 'af')], ['', '']);
+      await mpv.setVolumeLeveling(true);
+      expect(await prop(onAir, 'af'), contains('acompressor='));
+      expect(await prop(spare, 'af'), contains('acompressor='));
+    });
+
+    test('mpv plays through the chain', () async {
+      if (!ffmpeg) return markTestSkipped('ffmpeg is not installed');
+      await quiet();
+      await mpv.setVolumeLeveling(true);
+      await mpv.open(Uri.file(video.path), headers: const {});
+      final deck = mpv.debugDecks.single;
+      expect(await audioOut(deck), isNotEmpty, reason: 'audio plays');
+      expect(await prop(deck, 'af'), contains('acompressor='));
+      expect(errors, isEmpty);
+    });
+
+    test('turned on and off while playing: the same file plays on, through the chain and then without', () async {
+      if (!ffmpeg) return markTestSkipped('ffmpeg is not installed');
+      await quiet();
+      await mpv.open(Uri.file(video.path), headers: const {});
+      final deck = mpv.debugDecks.single;
+      expect(await audioOut(deck), isNotEmpty);
+      Future<double> position() async => double.parse(await prop(deck, 'time-pos'));
+      final before = await position();
+      await mpv.setVolumeLeveling(true);
+      await Future<void>.delayed(const Duration(milliseconds: 500));
+      expect(await prop(deck, 'af'), contains('acompressor='));
+      expect(await audioOut(deck), isNotEmpty, reason: 'audio flows through the filters');
+      final on = await position();
+      expect(on, greaterThan(before), reason: 'no re-open: the position moves on');
+      await mpv.setVolumeLeveling(false);
+      await Future<void>.delayed(const Duration(milliseconds: 500));
+      expect(await prop(deck, 'af'), '');
+      expect(await audioOut(deck), isNotEmpty);
+      expect(await position(), greaterThan(on));
+      expect(errors, isEmpty);
+    });
+
+    test('a refused chain plays on unleveled, and isn\'t a playback error', () async {
+      if (!ffmpeg) return markTestSkipped('ffmpeg is not installed');
+      await quiet();
+      mpv.levelingAf = 'lavfi=[nosuchfilter=1]';
+      await mpv.setVolumeLeveling(true);
+      await mpv.open(Uri.file(video.path), headers: const {});
+      final deck = mpv.debugDecks.single;
+      expect(await audioOut(deck), isNotEmpty, reason: 'the audio came back');
+      expect(await prop(deck, 'af'), '');
+      expect(await prop(deck, 'aid'), isNot('no'));
+      expect(errors, isEmpty, reason: 'the tuner never hears of it');
+      // Stays off for later decks until the setting changes again.
+      await mpv.enqueue(Uri.file(video.path), headers: const {});
+      expect(await prop(mpv.debugDecks.last, 'af'), '');
     });
   });
 }

@@ -5,6 +5,10 @@ import 'dart:math';
 import 'package:flutter/foundation.dart';
 
 import '../app_state.dart';
+import '../backup/backup_archive.dart';
+import '../backup/backup_restorer.dart';
+import '../backup/backup_scheduler.dart';
+import '../backup/backup_store.dart';
 import '../data/app_storage.dart';
 import '../export/export_service.dart';
 import '../jellyfin/jellyfin_client.dart';
@@ -41,6 +45,22 @@ class Household extends ChangeNotifier {
 
   /// Live TV export, when the app runs it (not in most tests).
   ExportService? export;
+
+  /// Automatic and safety backups, when the app makes them (not in most
+  /// tests).
+  BackupScheduler? backups;
+
+  /// A message for whatever screen is showing ("Restored the backup
+  /// from…"), cleared once shown.
+  final notice = ValueNotifier<String?>(null);
+
+  /// The newest backup, offered on a first run that finds one (D14); null
+  /// otherwise, and once Restore it or Start fresh is chosen.
+  StoredBackup? welcomeBack;
+
+  /// This start made the first profile from nothing: a new install, where
+  /// sign-in also offers to restore a backup from a file or another device.
+  bool firstRun = false;
   List<Profile> _profiles = [];
   Profile? _current;
   AppState? _app;
@@ -71,13 +91,56 @@ class Household extends ChangeNotifier {
   String? lastServerUrl;
 
   Future<void> start() async {
+    // A restore cut short by a crash or power cut is finished, or a staged
+    // one that never began swapping is thrown away.
+    await BackupRestorer.recover(root.root);
     final json = await root.readJson(_profilesFile);
     if (json is List) {
       _profiles = [for (final p in json.cast<Map<String, Object?>>()) Profile.fromJson(p)];
     }
+    if (_profiles.isEmpty && json == null && backups != null && !await _hasLegacySetup()) {
+      // A first run with backups here (Android brought one back, or a copied
+      // data folder): offer the newest before making a profile.
+      final newest = await backups!.store.newest();
+      if (newest != null) {
+        welcomeBack = newest;
+        _started = true;
+        notifyListeners();
+        return;
+      }
+    }
+    await _finishStart();
+  }
+
+  /// Nothing set up yet, so a restore needs no backup first: no profiles,
+  /// or a new install's first profile that hasn't signed in.
+  Future<bool> hasNothingToKeep() async {
+    if (!await File('${root.root.path}/$_profilesFile').exists()) return true;
+    if (!firstRun || _profiles.length != 1) return false;
+    final storage = AppStorage.existing(Directory('${root.root.path}/profiles/${_profiles.single.id}'));
+    return await storage.readRaw('session.json') == null && await storage.readRaw('channels.json') == null;
+  }
+
+  Future<bool> _hasLegacySetup() async {
+    for (final f in _legacyFiles) {
+      if (await File('${root.root.path}/$f').exists()) return true;
+    }
+    return false;
+  }
+
+  /// Start fresh on the Welcome back screen: today's first run, with the
+  /// backups kept for Backup & restore.
+  Future<void> startFresh() async {
+    welcomeBack = null;
+    await _finishStart();
+  }
+
+  Future<void> _finishStart() async {
+    firstRun = false;
     if (_profiles.isEmpty) {
       // First run, or an install from before profiles: the existing setup
       // becomes the first profile.
+      firstRun = !await _hasLegacySetup();
       final session = await root.readJson('session.json');
       final userName = session is Map<String, Object?> ? session['userName'] as String? : null;
       final first = Profile(id: _newId(), name: _displayName(userName) ?? 'Me');
@@ -135,7 +198,51 @@ class Household extends ChangeNotifier {
   }
 
   Future<AppState> _newApp(Profile p, {bool background = false}) async => AppState(await storageFor(p),
-      maxRatingRank: p.maxRatingRank, runAnalysis: runAnalysis, background: background, exportBusy: exportStreaming);
+      maxRatingRank: p.maxRatingRank,
+      runAnalysis: runAnalysis,
+      background: background,
+      exportBusy: exportStreaming,
+      safetyBackup: backups == null ? null : (reason) => backups!.safetyBackup(reason));
+
+  /// Waits for every state file write asked for so far, the household's and
+  /// each open profile's.
+  Future<void> flushAll() async {
+    await root.flush();
+    for (final app in [?_app, ..._offScreen.values]) {
+      await app.storage.flush();
+    }
+  }
+
+  /// Closes everything (every profile's state, Live TV export, the phone
+  /// remote), runs [whileClosed] with nothing reading or writing the data
+  /// folder, then starts it all again from the files, without an app
+  /// restart (D14). Back to "Who's watching?", or straight in with one
+  /// profile and no PIN.
+  Future<void> reload(Future<void> Function() whileClosed) async {
+    final apps = [?_app, ..._offScreen.values];
+    _app = null;
+    _current = null;
+    _offScreen.clear();
+    _exported = const {};
+    _started = false;
+    welcomeBack = null;
+    notifyListeners();
+    await export?.unload();
+    await remote?.stop();
+    for (final app in apps) {
+      await app.close();
+      await app.storage.flush();
+    }
+    await root.flush();
+    try {
+      await whileClosed();
+    } finally {
+      _profiles = [];
+      await start();
+      await remote?.load();
+      await export?.load();
+    }
+  }
 
   /// [app] (of [p]) leaves the screen: kept for Live TV export, else closed.
   Future<void> _putAway(Profile p, AppState app) async {
@@ -201,15 +308,17 @@ class Household extends ChangeNotifier {
 
   /// Why saving [draft] (new or edited) isn't allowed, if it isn't.
   String? problemWith(Profile draft) =>
-      _problemIn([for (final p in _profiles) if (p.id != draft.id) p, draft]);
+      problemIn([for (final p in _profiles) if (p.id != draft.id) p, draft]);
 
   /// Why deleting [p] isn't allowed, if it isn't.
   String? problemDeleting(Profile p) {
     if (p.id == _current?.id) return 'Switch to another profile before deleting this one.';
-    return _problemIn([for (final x in _profiles) if (x.id != p.id) x]);
+    return problemIn([for (final x in _profiles) if (x.id != p.id) x]);
   }
 
-  static String? _problemIn(List<Profile> profiles) {
+  /// Why [profiles] can't be a household, if they can't (also checked on a
+  /// backup before it's restored).
+  static String? problemIn(List<Profile> profiles) {
     final grownUps = profiles.where((p) => !p.isKid).toList();
     if (grownUps.isEmpty) return 'There has to be at least one grown-up profile.';
     if (profiles.any((p) => p.isKid)) {
@@ -250,9 +359,13 @@ class Household extends ChangeNotifier {
   }
 
   /// Deletes [p] and everything it saved, signing its device out of Jellyfin.
+  ///
+  /// A safety backup is saved first; if it can't be, nothing is deleted and
+  /// the [BackupException] is thrown.
   Future<void> deleteProfile(Profile p) async {
     final problem = problemDeleting(p);
     if (problem != null) throw StateError(problem);
+    await backups?.safetyBackup(BackupReason.beforeDelete, subject: p.name);
     _exported = {..._exported}..remove(p.id);
     await _offScreen.remove(p.id)?.close();
     final storage = await storageFor(p);

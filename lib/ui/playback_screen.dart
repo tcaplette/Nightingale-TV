@@ -2,11 +2,13 @@ import 'package:flutter/material.dart';
 
 import '../app_scope.dart';
 import '../app_state.dart';
+import '../platform/platform_info.dart';
 import '../theme/tv_theme.dart';
+import 'widgets/screen_layout.dart';
 import 'widgets/tv_focus.dart';
 
-/// "Transcode only if needed" and the maximum streaming bitrate. Off by
-/// default: everything direct-plays.
+/// "Transcode only if needed", the maximum streaming bitrate, and volume
+/// leveling. Off by default: everything direct-plays, audio untouched.
 class PlaybackScreen extends StatelessWidget {
   const PlaybackScreen({super.key});
 
@@ -19,6 +21,18 @@ class PlaybackScreen extends StatelessWidget {
 
   static const bitrateHelp = 'Pick a lower bitrate if shows buffer or stutter over Wi-Fi or a remote connection. '
       'Original never converts because of bitrate.';
+
+  static const levelingLabel = 'Volume leveling';
+
+  static const levelingHelp = 'Evens out the volume as you watch: loud commercials and programs are turned down '
+      'and quiet ones turned up, so you don\'t have to reach for the remote.';
+
+  /// Added to [levelingHelp] on Android, where leveling turns passthrough off.
+  static const levelingAndroidHelp = 'While it\'s on, surround audio (Dolby, DTS) is decoded by this device '
+      'instead of being passed through to a receiver.';
+
+  static String levelingHelpText() =>
+      PlatformInfo.isAndroid ? '$levelingHelp $levelingAndroidHelp' : levelingHelp;
 
   @override
   Widget build(BuildContext context) {
@@ -34,7 +48,7 @@ class PlaybackScreen extends StatelessWidget {
       onBack: () => Navigator.of(context).pop(),
       child: FocusTraversalGroup(
         child: ListView(
-          padding: const EdgeInsets.fromLTRB(100, 40, 100, 40),
+          padding: ScreenLayout.of(context).pagePadding(const EdgeInsets.fromLTRB(100, 40, 100, 40)),
           children: [
             Text('CONVERTING', style: g.display(26, weight: FontWeight.w800, color: g.accent)),
             const SizedBox(height: 14),
@@ -48,7 +62,7 @@ class PlaybackScreen extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 12),
-            SizedBox(width: 1100, child: Text(toggleHelp, style: g.body(24, color: g.textDim))),
+            ConstrainedBox(constraints: const BoxConstraints(maxWidth: 1100), child: Text(toggleHelp, style: g.body(24, color: g.textDim))),
             const SizedBox(height: 40),
             Text('MAXIMUM STREAMING BITRATE',
                 style: g.display(26, weight: FontWeight.w800, color: on ? g.accent : g.textDim)),
@@ -68,7 +82,20 @@ class PlaybackScreen extends StatelessWidget {
                 ),
               ),
             const SizedBox(height: 12),
-            SizedBox(width: 1100, child: Text(bitrateHelp, style: g.body(24, color: g.textDim))),
+            ConstrainedBox(constraints: const BoxConstraints(maxWidth: 1100), child: Text(bitrateHelp, style: g.body(24, color: g.textDim))),
+            const SizedBox(height: 40),
+            Text('AUDIO', style: g.display(26, weight: FontWeight.w800, color: g.accent)),
+            const SizedBox(height: 14),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: TvToggle(
+                label: levelingLabel,
+                on: playback.volumeLeveling,
+                onPressed: () => app.setPlayback(playback.copyWith(volumeLeveling: !playback.volumeLeveling)),
+              ),
+            ),
+            const SizedBox(height: 12),
+            ConstrainedBox(constraints: const BoxConstraints(maxWidth: 1100), child: Text(levelingHelpText(), style: g.body(24, color: g.textDim))),
           ],
         ),
       ),

@@ -58,8 +58,10 @@ void main() {
     await h.press(LogicalKeyboardKey.escape, after: const Duration(seconds: 1));
     expect(find.byType(GuideView), findsOneWidget, reason: 'back from the menu returns to the guide');
 
-    // Down from the Menu button goes back to the channels.
+    // Down from the Menu button goes to the tabs, and Down again back to
+    // the channels.
     await h.press(LogicalKeyboardKey.arrowUp);
+    await h.press(LogicalKeyboardKey.arrowDown);
     await h.press(LogicalKeyboardKey.arrowDown);
     await h.press(LogicalKeyboardKey.enter, after: const Duration(seconds: 1));
     expect(find.byType(GuideView), findsNothing, reason: 'OK on a channel watches it');

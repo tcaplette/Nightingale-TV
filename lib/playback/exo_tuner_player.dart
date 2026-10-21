@@ -13,7 +13,8 @@ import 'tuner_player.dart';
 /// hardware only. Like [MediaKitTunerPlayer], its configuration is the same
 /// whatever the playback mode; only seek precision is chosen per open.
 class ExoTunerPlayer implements TunerPlayer {
-  ExoTunerPlayer() {
+  /// [leveling]: volume leveling's state, which the player is built with.
+  ExoTunerPlayer({this._leveling = false}) {
     _ready = _create();
   }
 
@@ -45,10 +46,14 @@ class ExoTunerPlayer implements TunerPlayer {
   bool _isBuffering = false;
   Duration _at = Duration.zero;
 
+  /// Volume leveling: the audio goes through ExoTunerHost's leveling
+  /// processor, decoded to PCM (no passthrough).
+  bool _leveling;
+
   Future<int?> _create() async {
     final int? id;
     try {
-      id = await _channel.invokeMethod<int>('create');
+      id = await _channel.invokeMethod<int>('create', {'leveling': _leveling});
     } on PlatformException catch (e) {
       debugPrint('Android player: ${e.message}');
       return null;
@@ -97,7 +102,22 @@ class ExoTunerPlayer implements TunerPlayer {
         _log.add('${raw['line']}');
       case 'advanced':
         _advanced.add(null);
+      case 'level':
+        PlaybackDiagnostics.note('LEVEL', levelLine(raw));
     }
+  }
+
+  /// The leveling processor's counters over the last 5 s (design D6), as a
+  /// LEVEL line.
+  @visibleForTesting
+  static String levelLine(Map<Object?, Object?> e) {
+    String db(Object? v, {bool sign = false}) {
+      final d = (v as num?)?.toDouble() ?? 0;
+      return '${sign && d >= 0 ? '+' : ''}${d.toStringAsFixed(1)}dB';
+    }
+
+    return 'on exo in=${db(e['inRmsDb'])} reduction=${db(e['reductionDb'])} (max ${db(e['maxReductionDb'])}) '
+        'gain=${db(e['gainDb'], sign: true)} limiterHits=${e['limiterHits']} frames=${e['frames']}';
   }
 
   @override
@@ -170,6 +190,18 @@ class ExoTunerPlayer implements TunerPlayer {
   Future<void> showCaptions(bool on) async {
     if (!on) cues.value = ExoCues.none;
     await _call<void>('captions', {'on': on});
+  }
+
+  /// A change rebuilds ExoPlayer with the new audio output (design D4),
+  /// on the same texture; what was playing stops, and the tuner re-tunes.
+  @override
+  Future<void> setVolumeLeveling(bool on) async {
+    PlaybackDiagnostics.note('LEVEL', '${on ? 'on' : 'off'} exo ${on ? 'pcm-only' : 'passthrough'}');
+    if (on == _leveling) return;
+    _leveling = on;
+    _isPlaying = false;
+    cues.value = ExoCues.none;
+    await _call<void>('setLeveling', {'on': on});
   }
 
   @override

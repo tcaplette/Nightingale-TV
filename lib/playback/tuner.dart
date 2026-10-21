@@ -8,6 +8,7 @@ import '../channels/channel.dart';
 import '../channels/schedule.dart';
 import '../jellyfin/jellyfin_client.dart';
 import '../library/library_index.dart';
+import '../platform/platform_info.dart';
 import 'android_device_profile.dart';
 import 'index_cache.dart';
 import 'playback_diagnostics.dart';
@@ -38,7 +39,7 @@ class Tuner extends ChangeNotifier {
   /// [player], [clock] and [proxy] are for tests; the app uses the
   /// platform's player (mpv, or ExoPlayer on Android), the real time, and a playback proxy (unless NIGHTINGALE_TV_NO_PROXY=1).
   Tuner(this.app, {TunerPlayer? player, DateTime Function()? clock, PlaybackProxy? proxy})
-      : media = player ?? TunerPlayer.create(),
+      : media = player ?? TunerPlayer.create(leveling: app.volumeLeveling.value),
         _clock = clock ?? DateTime.now,
         _proxy = proxy ?? (player == null && !PlaybackProxy.disabled ? PlaybackProxy() : null) {
     _diagnostics = PlaybackDiagnostics.start(
@@ -70,7 +71,26 @@ class Tuner extends ChangeNotifier {
         _onPlaybackError(message);
       }),
     ]);
+    _leveling = app.volumeLeveling.value;
+    unawaited(media.setVolumeLeveling(_leveling));
+    app.volumeLeveling.addListener(_onLevelingChanged);
     _startProxy();
+  }
+
+  /// Volume leveling as the player has it.
+  bool _leveling = false;
+
+  /// Volume leveling changed (volume-leveling spec). mpv levels what's
+  /// playing at once. On Android the device profile and the audio output
+  /// change with it: the player is rebuilt, and the channel re-tuned (the
+  /// app has cleared this session's decisions).
+  Future<void> _onLevelingChanged() async {
+    final on = app.volumeLeveling.value;
+    if (on == _leveling) return;
+    _leveling = on;
+    _diagnostics?.event('volume leveling ${on ? 'on' : 'off'}');
+    await media.setVolumeLeveling(on);
+    if (PlatformInfo.isAndroid) await retune();
   }
 
   static const _progressInterval = Duration(seconds: 10);
@@ -1394,6 +1414,7 @@ class Tuner extends ChangeNotifier {
     _sampler?.cancel();
     _stopTranscode();
     unawaited(_diagnostics?.close());
+    app.volumeLeveling.removeListener(_onLevelingChanged);
     for (final s in _subscriptions) {
       s.cancel();
     }

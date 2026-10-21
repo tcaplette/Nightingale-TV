@@ -6,6 +6,7 @@ import '../commercials/break_plan.dart';
 import '../theme/tv_theme.dart';
 import 'format.dart';
 import 'menu_screen.dart' show confirm;
+import 'widgets/screen_layout.dart';
 import 'widgets/tv_focus.dart';
 
 /// The settings of a Custom break plan, role by role: for the main plan or
@@ -92,6 +93,7 @@ class _BreakPlanEditorScreenState extends State<BreakPlanEditorScreen> {
   Widget build(BuildContext context) {
     final app = AppScope.of(context);
     final g = context.guide;
+    final portrait = ScreenLayout.of(context).isPortrait;
     String poolName(String? id) => id == null ? 'All pools' : app.poolById(id)?.name ?? 'All pools';
 
     /// A row of choices; with [pool], ending in the button that picks the
@@ -120,7 +122,8 @@ class _BreakPlanEditorScreenState extends State<BreakPlanEditorScreen> {
           children: [
             if (rowLabel != null)
               SizedBox(
-                width: 120,
+                // Upright, a narrower label column.
+                width: portrait ? 100 : 120,
                 child: Text(rowLabel, style: g.display(28, weight: FontWeight.w600, color: g.textDim)),
               ),
             for (final (i, v) in values.indexed)
@@ -133,7 +136,7 @@ class _BreakPlanEditorScreenState extends State<BreakPlanEditorScreen> {
                 onPressed: () => _set(apply(v)),
               ),
             if (pool != null) ...[
-              const SizedBox(width: 28),
+              if (!portrait) const SizedBox(width: 28),
               TvButton(
                 label: 'Clips from: ${poolName(_roles.poolFor(pool))}',
                 icon: Icons.video_library,
@@ -155,7 +158,7 @@ class _BreakPlanEditorScreenState extends State<BreakPlanEditorScreen> {
       // them all.
       child: FocusTraversalGroup(
         child: ListView(
-          padding: const EdgeInsets.fromLTRB(100, 24, 100, 40),
+          padding: ScreenLayout.of(context).pagePadding(const EdgeInsets.fromLTRB(100, 24, 100, 40)),
           children: [
             _Examples(roles: _roles),
             _section(g, 'PRE-ROLL', 'Before each program'),
@@ -274,6 +277,7 @@ class _Examples extends StatelessWidget {
       return '$name: ${formatMinutes(s.slotLength)}$mids';
     }
 
+    final examples = [example('22-min sitcom', 22), example('44-min drama', 44), example('100-min movie', 100)];
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 18),
       decoration: BoxDecoration(
@@ -281,8 +285,14 @@ class _Examples extends StatelessWidget {
         borderRadius: BorderRadius.circular(g.radius * 2),
         border: Border.all(color: g.cellBorder, width: 2),
       ),
-      child: Text(
-        [example('22-min sitcom', 22), example('44-min drama', 44), example('100-min movie', 100)].join('     ·     '),
+      // Upright, one example to a line.
+      child: ScreenLayout.of(context).isPortrait
+          ? Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [for (final e in examples) Text(e, style: g.body(24))],
+            )
+          : Text(
+        examples.join('     ·     '),
         maxLines: 1,
         overflow: TextOverflow.ellipsis,
         style: g.body(24),
@@ -318,7 +328,7 @@ class _PoolChooserScreen extends StatelessWidget {
       onBack: () => Navigator.of(context).pop(),
       child: FocusTraversalGroup(
         child: ListView(
-          padding: const EdgeInsets.fromLTRB(120, 32, 120, 32),
+          padding: ScreenLayout.of(context).pagePadding(const EdgeInsets.fromLTRB(120, 32, 120, 32)),
           children: [
             for (final (id, name, clips) in options)
               Padding(

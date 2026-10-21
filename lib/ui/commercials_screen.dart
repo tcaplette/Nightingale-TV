@@ -9,6 +9,8 @@ import '../platform/platform_info.dart';
 import '../theme/tv_theme.dart';
 import 'break_plan_editor_screen.dart';
 import 'pool_editor_screen.dart';
+import 'widgets/adaptive.dart';
+import 'widgets/screen_layout.dart';
 import 'widgets/tv_focus.dart';
 
 /// The main break plan (Off, Automatic or Custom), the commercial pools,
@@ -59,14 +61,11 @@ class CommercialsScreen extends StatelessWidget {
       title: 'Commercials',
       hints: '▲▼◀▶ Move    OK Select    ESC Back',
       onBack: () => Navigator.of(context).pop(),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Expanded(
-            child: FocusTraversalGroup(
-              child: ListView(
-                padding: const EdgeInsets.fromLTRB(100, 40, 40, 40),
-                children: [
+      child: AdaptiveColumns(
+                mainPadding: const EdgeInsets.fromLTRB(100, 40, 40, 40),
+                sideWidth: 640,
+                side: _HowItWorks(plan: plan),
+                main: [
                   Text('COMMERCIAL BREAKS', style: g.display(26, weight: FontWeight.w800, color: g.accent)),
                   const SizedBox(height: 14),
                   Wrap(
@@ -133,11 +132,6 @@ class CommercialsScreen extends StatelessWidget {
                     builder: (context, progress, _) => _AnalysisStatus(progress: progress),
                   ),
                 ],
-              ),
-            ),
-          ),
-          SizedBox(width: 640, child: _HowItWorks(plan: plan)),
-        ],
       ),
     );
   }
@@ -236,9 +230,10 @@ class _HowItWorks extends StatelessWidget {
           'With a tail, slots are padded out to the clock.',
         ],
     };
+    final portrait = ScreenLayout.of(context).isPortrait;
     return Container(
-      margin: const EdgeInsets.fromLTRB(0, 40, 80, 40),
-      padding: const EdgeInsets.all(36),
+      margin: portrait ? EdgeInsets.zero : const EdgeInsets.fromLTRB(0, 40, 80, 40),
+      padding: EdgeInsets.all(portrait ? 28 : 36),
       decoration: BoxDecoration(
         color: g.panel,
         borderRadius: BorderRadius.circular(g.radius * 2),

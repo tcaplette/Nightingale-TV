@@ -31,6 +31,9 @@ import androidx.media3.exoplayer.LoadingInfo
 import androidx.media3.exoplayer.Renderer
 import androidx.media3.exoplayer.SeekParameters
 import androidx.media3.exoplayer.analytics.AnalyticsListener
+import androidx.media3.exoplayer.audio.AudioCapabilities
+import androidx.media3.exoplayer.audio.AudioSink
+import androidx.media3.exoplayer.audio.DefaultAudioSink
 import androidx.media3.exoplayer.mediacodec.MediaCodecAdapter
 import androidx.media3.exoplayer.mediacodec.MediaCodecInfo
 import androidx.media3.exoplayer.mediacodec.MediaCodecSelector
@@ -85,7 +88,7 @@ class ExoTunerHost(
 
     override fun onMethodCall(call: MethodCall, result: MethodChannel.Result) {
         if (call.method == "create") {
-            val player = Instance()
+            val player = Instance(call.argument<Boolean>("leveling") ?: false)
             players[player.id] = player
             result.success(player.id)
             return
@@ -126,6 +129,7 @@ class ExoTunerHost(
                 }
                 "stop" -> player.stop()
                 "captions" -> player.setCaptions(call.argument<Boolean>("on") ?: false)
+                "setLeveling" -> player.setLeveling(call.argument<Boolean>("on") ?: false)
                 "stats" -> {
                     result.success(player.stats())
                     return
@@ -151,7 +155,9 @@ class ExoTunerHost(
         players.clear()
     }
 
-    private inner class Instance :
+    /** [leveling]: volume leveling (volume-leveling spec) at creation; see
+     *  [setLeveling]. */
+    private inner class Instance(leveling: Boolean) :
         Player.Listener, AnalyticsListener, TextureRegistry.SurfaceProducer.Callback, EventChannel.StreamHandler {
 
         private val producer = textures.createSurfaceProducer().apply { setSize(1920, 1080) }
@@ -176,7 +182,13 @@ class ExoTunerHost(
             override fun onTransferEnd(source: DataSource, dataSpec: DataSpec, isNetwork: Boolean) {}
         }
 
-        private val player: ExoPlayer = ExoPlayer.Builder(context, Renderers(context))
+        /** Volume leveling's processor while leveling is on (design D3). */
+        private var leveler: LevelingAudioProcessor? = if (leveling) LevelingAudioProcessor() else null
+
+        /** Built in init, after everything [attach] uses. */
+        private lateinit var player: ExoPlayer
+
+        private fun buildPlayer(): ExoPlayer = ExoPlayer.Builder(context, Renderers(context, leveler))
             .setLoadControl(
                 // Design D7: up to 60 s ahead, never over 100 MB (4K on 1–2 GB
                 // boxes), playing once 2.5 s is in.
@@ -188,6 +200,7 @@ class ExoTunerHost(
             )
             .setLooper(Looper.getMainLooper())
             .build()
+            .also { attach(it) }
 
         private var captions = false
 
@@ -227,16 +240,53 @@ class ExoTunerHost(
             }
         }
 
+        /** The leveling processor's counters every 5 s while leveling is on
+         *  (design D6), for the diagnostics' LEVEL lines. */
+        private val levelTicker = object : Runnable {
+            override fun run() {
+                val leveler = leveler ?: return
+                leveler.takeStats()?.let { send(mapOf("e" to "level") + it) }
+                main.postDelayed(this, 5_000)
+            }
+        }
+
         init {
             events.setStreamHandler(this)
             producer.setCallback(this)
+            player = buildPlayer()
+            if (leveler != null) main.postDelayed(levelTicker, 5_000)
+        }
+
+        /** Wires a new ExoPlayer to the texture and to this instance. */
+        private fun attach(player: ExoPlayer) {
             player.setVideoSurface(producer.surface)
             player.addListener(this)
             player.addAnalyticsListener(this)
             player.setVideoFrameMetadataListener(frames)
             player.trackSelectionParameters = player.trackSelectionParameters.buildUpon()
-                .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true)
+                .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, !captions)
                 .build()
+        }
+
+        /** Volume leveling on or off (design D4): ExoPlayer is built again
+         *  with the matching audio output, on the same texture. What played
+         *  stops; the tuner re-tunes. */
+        fun setLeveling(on: Boolean) {
+            if (on == (leveler != null)) return
+            stop()
+            main.removeCallbacks(levelTicker)
+            player.removeListener(this)
+            player.removeAnalyticsListener(this)
+            player.release()
+            leveler = if (on) LevelingAudioProcessor() else null
+            completed = false
+            hadPicture = false
+            rebufferSince = 0L
+            videoDecoder = "-"
+            audioDecoder = "-"
+            player = buildPlayer()
+            log("info exo: player rebuilt with volume leveling ${if (on) "on (pcm-only)" else "off"}")
+            if (on) main.postDelayed(levelTicker, 5_000)
         }
 
         // ---- Methods ----------------------------------------------------------
@@ -433,6 +483,7 @@ class ExoTunerHost(
 
         fun dispose() {
             main.removeCallbacks(ticker)
+            main.removeCallbacks(levelTicker)
             events.setStreamHandler(null)
             sink = null
             player.removeListener(this)
@@ -634,9 +685,10 @@ class ExoTunerHost(
  *  what no hardware decoder takes is converted by Jellyfin, except H.264, the
  *  conversion target, which a device with no hardware H.264 decoder decodes
  *  in software rather than not at all. HDR streams ask the decoder for SDR
- *  output (Android 13+), since the Flutter texture is SDR. */
+ *  output (Android 13+), since the Flutter texture is SDR. With [leveler]
+ *  (volume leveling on), the audio goes through it. */
 @UnstableApi
-private class Renderers(context: Context) : DefaultRenderersFactory(context) {
+private class Renderers(context: Context, private val leveler: LevelingAudioProcessor?) : DefaultRenderersFactory(context) {
     init {
         setEnableDecoderFallback(true)
         setMediaCodecSelector { mimeType, secure, tunneling ->
@@ -645,6 +697,22 @@ private class Renderers(context: Context) : DefaultRenderersFactory(context) {
             val hardware = all.filter { DeviceCapabilities.isHardware(it) }
             if (hardware.isEmpty() && mimeType == MimeTypes.VIDEO_H264) all else hardware
         }
+    }
+
+    /** Leveling off: the default audio output, unchanged (passthrough to
+     *  HDMI where the output takes it). Leveling on (design D3/D4): PCM only,
+     *  through the leveler. A builder with no Context keeps the capabilities
+     *  it's given; with one, it follows the output's and passes AC-3/E-AC-3
+     *  through undecoded, which no processor can touch. */
+    override fun buildAudioSink(context: Context, enableFloatOutput: Boolean, enableAudioTrackPlaybackParams: Boolean): AudioSink? {
+        val leveler = leveler ?: return super.buildAudioSink(context, enableFloatOutput, enableAudioTrackPlaybackParams)
+        @Suppress("DEPRECATION")
+        return DefaultAudioSink.Builder()
+            .setAudioCapabilities(AudioCapabilities.DEFAULT_AUDIO_CAPABILITIES)
+            .setAudioProcessors(arrayOf(leveler))
+            .setEnableFloatOutput(enableFloatOutput)
+            .setEnableAudioTrackPlaybackParams(enableAudioTrackPlaybackParams)
+            .build()
     }
 
     override fun buildVideoRenderers(

@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Android 11 and older: Auto Backup copies only the newest Nightingale TV
+     backup, never sign-in tokens, device ids, the library index or caches
+     (backup-restore D13). The app's data folder is files/. -->
+<full-backup-content>
+    <include domain="file" path="backups/cloud/"/>
+</full-backup-content>

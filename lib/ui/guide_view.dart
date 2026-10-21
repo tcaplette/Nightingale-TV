@@ -6,13 +6,16 @@ import 'package:flutter/physics.dart';
 import 'package:flutter/services.dart';
 
 import '../app_scope.dart';
+import '../app_state.dart';
 import '../channels/channel.dart';
+import '../channels/channel_groups.dart';
 import '../channels/schedule.dart';
 import '../platform/platform_info.dart';
 import '../playback/tuner.dart';
 import '../theme/tv_theme.dart';
 import 'format.dart';
 import 'widgets/channel_logo.dart';
+import 'widgets/new_tag.dart';
 import 'widgets/tv_focus.dart';
 
 /// The program guide: info panel + live preview on top, channel grid below.
@@ -47,8 +50,16 @@ class _GuideViewState extends State<GuideView> with SingleTickerProviderStateMix
   Timer? _clock;
 
   /// The Menu button at the top has the keyboard highlight (Up from the
-  /// first channel gets there).
+  /// tab row gets there).
   bool _menuFocused = false;
+
+  /// The tab row has the keyboard highlight (Up from the first channel gets
+  /// there), and the tab whose channels the grid shows.
+  bool _tabsFocused = false;
+  String _tab = GuideTabs.all;
+
+  /// Height of the tab row; the info panel is that much shorter.
+  static const _tabRowHeight = 56.0;
 
   /// Touch (Android): how far a drag has gone toward the next row, and a
   /// fling's travel (in canvas units) and the rows it has moved so far.
@@ -63,13 +74,41 @@ class _GuideViewState extends State<GuideView> with SingleTickerProviderStateMix
     _now = DateTime.now();
     _windowStart = floorToHalfHour(_now);
     _cursorTime = _now;
-    final tuner = AppScope.tunerOf(context);
-    final channels = AppScope.read(context).channels;
-    final current = channels.indexWhere((c) => c.id == tuner.channel?.id);
-    _setRow(current < 0 ? 0 : current, channels.length);
-    // Open with the tuned channel second from the top, like a cable guide.
-    _firstRow = (_row - 1).clamp(0, (channels.length - _rows).clamp(0, channels.length));
+    final app = AppScope.read(context);
+    _tab = savedGuideTab(app);
+    _focusTuned(_tabChannels(app.guideTabs()));
     _clock = Timer.periodic(const Duration(seconds: 5), (_) => _tick());
+  }
+
+  /// The selected tab's channels (All's when it's gone meanwhile).
+  List<Channel> _tabChannels(List<GuideTab> tabs) => shownGuideTab(tabs, _tab).channels;
+
+  /// Focuses the tuned channel when [channels] has it, second from the top
+  /// like a cable guide; else the first channel.
+  void _focusTuned(List<Channel> channels) {
+    final tuner = AppScope.tunerOf(context);
+    final current = channels.indexWhere((c) => c.id == tuner.channel?.id);
+    _firstRow = 0;
+    _setRow(current < 0 ? 0 : current, channels.length);
+    if (current >= 0) _firstRow = (_row - 1).clamp(0, (channels.length - _rows).clamp(0, channels.length));
+  }
+
+  /// Shows [tab]'s channels at once, and remembers it.
+  void _selectTab(GuideTab tab) {
+    if (tab.id == _tab) return;
+    setState(() {
+      _tab = tab.id;
+      _focusTuned(tab.channels);
+    });
+    unawaited(AppScope.read(context).setGuideTab(tab.id));
+  }
+
+  /// Moves the tab selection [delta] places (the D-pad on the tab row).
+  void _stepTab(List<GuideTab> tabs, int delta) {
+    final i = tabs.indexWhere((t) => t.id == _tab);
+    final j = (i < 0 ? 0 : i) + delta;
+    if (j < 0 || j >= tabs.length) return;
+    _selectTab(tabs[j]);
   }
 
   @override
@@ -138,7 +177,7 @@ class _GuideViewState extends State<GuideView> with SingleTickerProviderStateMix
 
   ScheduledProgram? _focusedProgram(List<Channel> channels) {
     if (channels.isEmpty) return null;
-    return AppScope.read(context).scheduleFor(channels[_row])?.programAt(_cursorTime);
+    return AppScope.read(context).scheduleFor(channels[_row])?.guideProgramAt(_cursorTime);
   }
 
   void _moveTime(int direction, List<Channel> channels) {
@@ -167,7 +206,7 @@ class _GuideViewState extends State<GuideView> with SingleTickerProviderStateMix
     widget.onWatch(channels[_row]);
   }
 
-  KeyEventResult _onKey(FocusNode node, KeyEvent event, List<Channel> channels) {
+  KeyEventResult _onKey(FocusNode node, KeyEvent event, List<Channel> channels, List<GuideTab> tabs) {
     if (event is! KeyDownEvent && event is! KeyRepeatEvent) return KeyEventResult.ignored;
     final key = event.logicalKey;
     void row(int delta) => setState(() => _setRow(_row + delta, channels.length));
@@ -179,16 +218,44 @@ class _GuideViewState extends State<GuideView> with SingleTickerProviderStateMix
     if (_menuFocused) {
       if (isSelectKey(key)) {
         widget.onMenu();
-      } else if (key == LogicalKeyboardKey.arrowDown || isBackKey(key)) {
+      } else if (key == LogicalKeyboardKey.arrowDown) {
+        setState(() {
+          _menuFocused = false;
+          _tabsFocused = true;
+        });
+      } else if (isBackKey(key)) {
         setState(() => _menuFocused = false);
       } else if (key == LogicalKeyboardKey.keyM || key == LogicalKeyboardKey.contextMenu) {
         widget.onMenu();
       }
       return KeyEventResult.handled;
     }
+    if (_tabsFocused) {
+      // Left and Right select straight away; Down goes back to the grid.
+      if (key == LogicalKeyboardKey.arrowLeft) {
+        _stepTab(tabs, -1);
+      } else if (key == LogicalKeyboardKey.arrowRight) {
+        _stepTab(tabs, 1);
+      } else if (key == LogicalKeyboardKey.arrowUp) {
+        setState(() {
+          _tabsFocused = false;
+          _menuFocused = true;
+        });
+      } else if (key == LogicalKeyboardKey.arrowDown || isSelectKey(key) || isBackKey(key)) {
+        setState(() {
+          _tabsFocused = false;
+          _setRow(0, channels.length);
+        });
+      } else if (key == LogicalKeyboardKey.keyM || key == LogicalKeyboardKey.contextMenu) {
+        widget.onMenu();
+      } else if (PlatformInfo.isAndroid && key == LogicalKeyboardKey.guide) {
+        widget.onClose();
+      }
+      return KeyEventResult.handled;
+    }
     if (key == LogicalKeyboardKey.arrowUp) {
       if (_row == 0) {
-        setState(() => _menuFocused = true);
+        setState(() => _tabsFocused = true);
       } else {
         row(-1);
       }
@@ -222,7 +289,8 @@ class _GuideViewState extends State<GuideView> with SingleTickerProviderStateMix
   @override
   Widget build(BuildContext context) {
     final app = AppScope.of(context);
-    final channels = app.channels;
+    final tabs = app.guideTabs();
+    final channels = _tabChannels(tabs);
     final g = context.guide;
     if (_row >= channels.length) _setRow(channels.length - 1, channels.length);
     final focusedChannel = channels.isEmpty ? null : channels[_row];
@@ -231,7 +299,7 @@ class _GuideViewState extends State<GuideView> with SingleTickerProviderStateMix
     return Focus(
       focusNode: _focus,
       autofocus: true,
-      onKeyEvent: (node, event) => _onKey(node, event, channels),
+      onKeyEvent: (node, event) => _onKey(node, event, channels, tabs),
       child: GestureDetector(
         behavior: HitTestBehavior.translucent,
         onSecondaryTap: widget.onMenu,
@@ -242,7 +310,7 @@ class _GuideViewState extends State<GuideView> with SingleTickerProviderStateMix
         child: Column(
           children: [
             SizedBox(
-              height: 440,
+              height: 440 - _tabRowHeight,
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
@@ -261,6 +329,19 @@ class _GuideViewState extends State<GuideView> with SingleTickerProviderStateMix
                   ),
                 ],
               ),
+            ),
+            GuideTabRow(
+              tabs: tabs,
+              selected: shownGuideTab(tabs, _tab).id,
+              focused: _tabsFocused,
+              height: _tabRowHeight,
+              onSelect: (tab) {
+                setState(() {
+                  _menuFocused = false;
+                  _tabsFocused = false;
+                });
+                _selectTab(tab);
+              },
             ),
             _TimeHeader(
               windowStart: _windowStart,
@@ -298,9 +379,9 @@ class _GuideViewState extends State<GuideView> with SingleTickerProviderStateMix
                           _GuideRow(
                             channel: channels[i],
                             schedule: app.scheduleFor(channels[i]),
-                            // One highlight at a time: the Menu button or the grid.
-                            focused: i == _row && !_menuFocused,
-                            focusedProgram: i == _row && !_menuFocused ? focusedProgram : null,
+                            // One highlight at a time: the Menu button, the tabs or the grid.
+                            focused: i == _row && !_menuFocused && !_tabsFocused,
+                            focusedProgram: i == _row && !_menuFocused && !_tabsFocused ? focusedProgram : null,
                             isTuned: AppScope.tunerOf(context).channel?.id == channels[i].id,
                             windowStart: _windowStart,
                             window: _window,
@@ -310,6 +391,7 @@ class _GuideViewState extends State<GuideView> with SingleTickerProviderStateMix
                             now: _now,
                             onHoverProgram: (p) => setState(() {
                               _menuFocused = false;
+                              _tabsFocused = false;
                               _setRow(i, channels.length);
                               _cursorTime = p == null || p.start.isBefore(_now)
                                   ? _now
@@ -337,7 +419,7 @@ class _GuideViewState extends State<GuideView> with SingleTickerProviderStateMix
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Text('▲▼ Channels     ◀▶ Time     OK Watch     ', style: g.body(22, color: g.textDim)),
+                  Text('▲▼ Channels     ▲ Tabs     ◀▶ Time     OK Watch     ', style: g.body(22, color: g.textDim)),
                   _HintLink(text: 'ESC Back to TV', onTap: widget.onClose),
                   Text('     ', style: g.body(22)),
                   _HintLink(text: 'M Menu', onTap: widget.onMenu),
@@ -350,6 +432,33 @@ class _GuideViewState extends State<GuideView> with SingleTickerProviderStateMix
       ),
     );
   }
+}
+
+/// The tab the guide (or the portrait watch screen) opens on: the one
+/// picked last, unless it's gone (hidden, deleted or empty).
+String savedGuideTab(AppState app) {
+  final saved = app.settings.guideTab;
+  return app.guideTabs().where((t) => t.id == saved).firstOrNull?.id ?? GuideTabs.all;
+}
+
+/// The tab [tabId] shows: itself, or All when it's gone meanwhile.
+GuideTab shownGuideTab(List<GuideTab> tabs, String tabId) =>
+    tabs.where((t) => t.id == tabId).firstOrNull ?? tabs.where((t) => t.id == GuideTabs.all).firstOrNull ?? tabs.first;
+
+/// A music channel's hour in the info panel: "Now playing: Artist – Song"
+/// during it, else when it starts.
+String musicHourLine(ScheduledProgram hour, DateTime now) {
+  final on = hour.songs?.where((s) => s.isOnAt(now)).firstOrNull;
+  if (on != null && hour.isOnAt(now)) return 'Now playing: ${on.title}';
+  return 'Music';
+}
+
+/// The hour's songs from now (or from its start), as "Artist – Song".
+String musicHourSongs(ScheduledProgram hour, DateTime now) {
+  final songs = [for (final s in hour.songs ?? const <ScheduledProgram>[]) if (s.end.isAfter(now)) s];
+  if (songs.isEmpty) return '';
+  final upcoming = hour.isOnAt(now) ? songs.skip(1) : songs;
+  return '${hour.isOnAt(now) ? 'Up next' : 'First up'}: ${[for (final s in upcoming.take(4)) s.title].join(' · ')}';
 }
 
 class _InfoPanel extends StatelessWidget {
@@ -373,17 +482,20 @@ class _InfoPanel extends StatelessWidget {
     final ch = channel;
     final p = program;
     return Padding(
-      padding: const EdgeInsets.fromLTRB(60, 36, 48, 24),
+      padding: const EdgeInsets.fromLTRB(60, 28, 48, 16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              Text(
-                'NIGHTINGALE TV GUIDE',
-                style: g.display(30, weight: FontWeight.w800, color: g.accent),
+              Expanded(
+                child: Text(
+                  'NIGHTINGALE TV GUIDE',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: g.display(30, weight: FontWeight.w800, color: g.accent),
+                ),
               ),
-              const Spacer(),
               Text(
                 '${formatDate(now)}   ${formatTime(now)}',
                 style: g.display(30, weight: FontWeight.w600),
@@ -392,11 +504,11 @@ class _InfoPanel extends StatelessWidget {
               TvPointerButton(label: 'Menu', icon: Icons.settings, highlighted: menuFocused, onPressed: onMenu),
             ],
           ),
-          const SizedBox(height: 22),
+          const SizedBox(height: 10),
           if (ch != null)
             Row(
               children: [
-                ChannelLogo(icon: ch.icon, size: 64, width: 110, fallbackText: ch.name),
+                ChannelLogo(icon: ch.icon, size: 48, width: 84, fallbackText: ch.name),
                 const SizedBox(width: 18),
                 Text(
                   '${ch.number}  ${ch.name.toUpperCase()}',
@@ -404,18 +516,28 @@ class _InfoPanel extends StatelessWidget {
                 ),
               ],
             ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 4),
           if (p != null) ...[
-            Text(
-              p.title,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: g.display(62, weight: FontWeight.w800),
+            Row(
+              children: [
+                if (p.isPremiere) ...[const NewTag(size: 32), const SizedBox(width: 18)],
+                Expanded(
+                  child: Text(
+                    p.title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: g.display(58, weight: FontWeight.w800),
+                  ),
+                ),
+              ],
             ),
             const SizedBox(height: 6),
             Text(
-              [if (p.blockTitle != null) p.blockTitle!.toUpperCase(), p.subtitle, formatRange(p.start, p.end)]
-                  .join('    '),
+              [
+                if (p.blockTitle != null) p.blockTitle!.toUpperCase(),
+                p.isMusicHour ? musicHourLine(p, now) : p.subtitle,
+                formatRange(p.start, p.end),
+              ].join('    '),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: g.body(28, weight: FontWeight.w600, color: g.accent),
@@ -424,7 +546,7 @@ class _InfoPanel extends StatelessWidget {
             if (p.isOnAt(now)) ...[_ProgressBar(program: p, now: now), const SizedBox(height: 12)],
             Expanded(
               child: Text(
-                p.item?.overview ?? '',
+                p.isMusicHour ? musicHourSongs(p, now) : p.item?.overview ?? '',
                 maxLines: 3,
                 overflow: TextOverflow.ellipsis,
                 style: g.body(25, color: g.textDim),
@@ -548,6 +670,106 @@ class _Preview extends StatelessWidget {
   }
 }
 
+/// The guide's tabs (channel-groups): Left/Right on the D-pad, hover and
+/// click with a mouse, tap and sideways drag on touch. The selected tab is
+/// kept in view.
+class GuideTabRow extends StatefulWidget {
+  const GuideTabRow({
+    super.key,
+    required this.tabs,
+    required this.selected,
+    required this.focused,
+    required this.height,
+    required this.onSelect,
+    this.sidePadding = 60,
+    this.fontSize = 22,
+  });
+
+  final List<GuideTab> tabs;
+  final String selected;
+
+  /// The row has the keyboard highlight.
+  final bool focused;
+  final double height;
+  final ValueChanged<GuideTab> onSelect;
+  final double sidePadding;
+  final double fontSize;
+
+  @override
+  State<GuideTabRow> createState() => _GuideTabRowState();
+}
+
+class _GuideTabRowState extends State<GuideTabRow> {
+  final _keys = <String, GlobalKey>{};
+  String? _hovered;
+
+  @override
+  void didUpdateWidget(GuideTabRow old) {
+    super.didUpdateWidget(old);
+    if (old.selected != widget.selected) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        final context = _keys[widget.selected]?.currentContext;
+        if (context != null && context.mounted) {
+          Scrollable.ensureVisible(context, alignment: 0.5, duration: const Duration(milliseconds: 200));
+        }
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final g = context.guide;
+    return Container(
+      height: widget.height,
+      width: double.infinity,
+      alignment: Alignment.centerLeft,
+      color: g.channelColumn,
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        padding: EdgeInsets.symmetric(horizontal: widget.sidePadding, vertical: 8),
+        child: Row(
+          children: [
+            for (final tab in widget.tabs)
+              Padding(
+                key: _keys.putIfAbsent(tab.id, GlobalKey.new),
+                padding: const EdgeInsets.only(right: 12),
+                child: MouseRegion(
+                  cursor: SystemMouseCursors.click,
+                  onEnter: (_) => setState(() => _hovered = tab.id),
+                  onExit: (_) => setState(() => _hovered = _hovered == tab.id ? null : _hovered),
+                  child: GestureDetector(
+                    onTap: () => widget.onSelect(tab),
+                    child: _tab(g, tab),
+                  ),
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _tab(GuideTheme g, GuideTab tab) {
+    final selected = tab.id == widget.selected;
+    final focused = selected && widget.focused;
+    final hovered = _hovered == tab.id;
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 100),
+      padding: const EdgeInsets.symmetric(horizontal: 24),
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        color: focused ? g.focus : (selected ? g.accent : (hovered ? g.cellBorder : g.cell)),
+        borderRadius: BorderRadius.circular(g.radius * 2),
+        border: Border.all(color: focused ? Colors.white : Colors.transparent, width: 3),
+      ),
+      child: Text(
+        tab.name.toUpperCase(),
+        style: g.display(widget.fontSize, weight: FontWeight.w800, color: selected || focused ? g.onFocus : g.text),
+      ),
+    );
+  }
+}
+
 class _TimeHeader extends StatelessWidget {
   const _TimeHeader({
     required this.windowStart,
@@ -639,7 +861,7 @@ class _GuideRow extends StatelessWidget {
     final g = context.guide;
     final windowEnd = windowStart.add(window);
     final programs =
-        schedule?.programsBetween(windowStart, windowEnd) ?? const <ScheduledProgram>[];
+        schedule?.guideProgramsBetween(windowStart, windowEnd) ?? const <ScheduledProgram>[];
     double x(DateTime t) =>
         gridWidth *
         (t.difference(windowStart).inMilliseconds / window.inMilliseconds).clamp(0.0, 1.0);
@@ -825,12 +1047,19 @@ class _ProgramCell extends StatelessWidget {
             mainAxisAlignment: MainAxisAlignment.center,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
-                program.title,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                softWrap: false,
-                style: g.display(inBlock ? 26 : 30, weight: FontWeight.w700, color: fg),
+              Row(
+                children: [
+                  if (program.isPremiere && roomy) ...[const NewTag(size: 16), const SizedBox(width: 8)],
+                  Flexible(
+                    child: Text(
+                      program.title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      softWrap: false,
+                      style: g.display(inBlock ? 26 : 30, weight: FontWeight.w700, color: fg),
+                    ),
+                  ),
+                ],
               ),
               Text(
                 program.detail,

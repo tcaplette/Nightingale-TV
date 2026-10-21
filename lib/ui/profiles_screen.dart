@@ -1,11 +1,13 @@
 import 'package:flutter/material.dart';
 
 import '../app_scope.dart';
+import '../backup/backup_archive.dart';
 import '../profiles/household.dart';
 import '../profiles/profile.dart';
 import '../theme/tv_theme.dart';
 import 'menu_screen.dart';
 import 'pin_dialog.dart';
+import 'widgets/screen_layout.dart';
 import 'widgets/tv_focus.dart';
 
 const avatarColors = [
@@ -108,15 +110,20 @@ class ProfilePickerScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final household = HouseholdScope.of(context);
     final g = context.guide;
+    final layout = ScreenLayout.of(context);
     return TvPage(
       title: 'Nightingale TV',
       hints: '◀▶ Move    OK Choose',
       child: Center(
-        child: Column(
+        child: SingleChildScrollView(
+          // Upright, the profiles wrap at the screen's width and scroll.
+          padding: layout.isPortrait ? EdgeInsets.symmetric(horizontal: layout.gutter, vertical: 32) : null,
+          child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Text('Who\'s watching?', style: g.display(80, weight: FontWeight.w800)),
-            const SizedBox(height: 64),
+            Text('Who\'s watching?',
+                textAlign: TextAlign.center, style: g.display(layout.isPortrait ? 56 : 80, weight: FontWeight.w800)),
+            SizedBox(height: layout.isPortrait ? 40 : 64),
             FocusTraversalGroup(
               child: Wrap(
                 spacing: 40,
@@ -144,6 +151,7 @@ class ProfilePickerScreen extends StatelessWidget {
               ),
             ),
           ],
+        ),
         ),
       ),
     );
@@ -226,6 +234,7 @@ class ProfilesScreen extends StatelessWidget {
     final household = HouseholdScope.of(context);
     final g = context.guide;
     final current = household.current;
+    final portrait = ScreenLayout.of(context).isPortrait;
 
     Future<void> edit(Profile? p) async {
       // Someone else's locked profile: prove you're them first.
@@ -246,7 +255,7 @@ class ProfilesScreen extends StatelessWidget {
       onBack: () => Navigator.of(context).pop(),
       child: FocusTraversalGroup(
         child: ListView(
-          padding: const EdgeInsets.fromLTRB(120, 40, 120, 40),
+          padding: ScreenLayout.of(context).pagePadding(const EdgeInsets.fromLTRB(120, 40, 120, 40)),
           children: [
             Text(
               'Everyone gets their own Jellyfin sign-in, channels and programming blocks. '
@@ -281,7 +290,8 @@ class ProfilesScreen extends StatelessWidget {
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Text(p.name, style: g.display(38, weight: FontWeight.w800)),
+                              Text(p.name,
+                                  maxLines: 1, overflow: TextOverflow.ellipsis, style: g.display(38, weight: FontWeight.w800)),
                               Text(
                                 [
                                   if (p.isKid) 'Kid · ${p.rating.label} (${p.rating.description})' else 'Grown-up',
@@ -289,10 +299,13 @@ class ProfilesScreen extends StatelessWidget {
                                 ].join('  ·  '),
                                 style: g.body(24, color: g.textDim),
                               ),
+                              // Upright, under the name: there's no room beside it.
+                              if (p.id == current?.id && portrait)
+                                Text('Watching now', style: g.body(24, weight: FontWeight.w600, color: g.accent)),
                             ],
                           ),
                         ),
-                        if (p.id == current?.id)
+                        if (p.id == current?.id && !portrait)
                           Text('Watching now', style: g.body(24, weight: FontWeight.w600, color: g.accent)),
                       ],
                     ),
@@ -348,7 +361,7 @@ class _ProfileEditorScreenState extends State<ProfileEditorScreen> {
       onBack: () => Navigator.of(context).pop(),
       child: FocusTraversalGroup(
         child: ListView(
-          padding: const EdgeInsets.fromLTRB(120, 36, 120, 40),
+          padding: ScreenLayout.of(context).pagePadding(const EdgeInsets.fromLTRB(120, 36, 120, 40)),
           children: [
             Row(
               children: [
@@ -502,7 +515,13 @@ class _ProfileEditorScreenState extends State<ProfileEditorScreen> {
             'signed out of their Jellyfin account.',
         action: 'Delete');
     if (!ok || !mounted) return;
-    await _household.deleteProfile(widget.profile!);
+    try {
+      await _household.deleteProfile(widget.profile!);
+    } on BackupException catch (e) {
+      // No backup could be saved first: nothing was deleted.
+      if (mounted) setState(() => _error = e.message);
+      return;
+    }
     if (mounted) Navigator.of(context).pop();
   }
 }

@@ -166,11 +166,13 @@ const _tsAudio = ['mp3', 'ac3', 'eac3', 'dts'];
 /// [caps]: Jellyfin direct-plays what the hardware decodes, direct-streams
 /// (copies the video) when only the container or audio doesn't fit, and
 /// converts the rest to H.264/AAC in MPEG-TS. [maxBitrate] (bits per
-/// second) is the cap; null for none.
-Map<String, Object?> androidDeviceProfile(DeviceCapabilities caps, {int? maxBitrate}) {
+/// second) is the cap; null for none. With [leveling] (volume leveling on),
+/// the audio is decoded on the device to be leveled, so audio only passed
+/// through to the output is left out and Jellyfin converts it.
+Map<String, Object?> androidDeviceProfile(DeviceCapabilities caps, {int? maxBitrate, bool leveling = false}) {
   // The conversion target always plays.
   final videoCodecs = {'h264', for (final v in caps.video) v.codec};
-  final audioCodecs = {...caps.audio, ...caps.passthrough};
+  final audioCodecs = {...caps.audio, if (!leveling) ...caps.passthrough};
   String list(Iterable<String> codecs) => codecs.join(',');
   final bitrate = maxBitrate ?? unlimitedBitrate;
 

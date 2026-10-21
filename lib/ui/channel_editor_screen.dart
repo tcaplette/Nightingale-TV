@@ -7,6 +7,8 @@ import '../theme/tv_theme.dart';
 import 'break_plan_editor_screen.dart';
 import 'icon_picker_screen.dart';
 import 'widgets/channel_logo.dart';
+import 'widgets/adaptive.dart';
+import 'widgets/screen_layout.dart';
 import 'widgets/tv_focus.dart';
 
 /// Rename, renumber, re-icon, reorder or hide channels.
@@ -21,9 +23,17 @@ class _ChannelEditorScreenState extends State<ChannelEditorScreen> {
   String? _selectedId;
   final _name = TextEditingController();
 
+  /// Each row's focus, so a tapped row holds it too: the list comes back to
+  /// it, and the side-by-side layout keeps it selected after turning.
+  final _rows = <String, FocusNode>{};
+  FocusNode _row(String id) => _rows.putIfAbsent(id, () => FocusNode(debugLabel: 'channel $id'));
+
   @override
   void dispose() {
     _name.dispose();
+    for (final node in _rows.values) {
+      node.dispose();
+    }
     super.dispose();
   }
 
@@ -45,78 +55,144 @@ class _ChannelEditorScreenState extends State<ChannelEditorScreen> {
       _name.text = channels.first.name;
     }
     final selected = channels.where((c) => c.id == _selectedId).firstOrNull;
+    final layout = ScreenLayout.of(context);
+    final portrait = layout.isPortrait;
+
+    final logoModes = [
+      for (final mode in LogoMode.values)
+        TvToggle(
+          label: mode.label,
+          radio: true,
+          on: app.settings.logoMode == mode,
+          onPressed: () => app.setMainLogoMode(mode),
+        ),
+    ];
+    const logoHelp = 'The channel logo in the corner of the picture, on the TV and in Live TV export.';
+    final rows = [
+      for (final (i, ch) in channels.indexed)
+        Padding(
+          padding: const EdgeInsets.only(bottom: 8),
+          child: Builder(
+            builder: (rowContext) => TvFocusable(
+              autofocus: i == 0,
+              focusNode: _row(ch.id),
+              onPressed: () {
+                _select(ch);
+                _row(ch.id).requestFocus();
+                // Upright, the channel's settings are a page of their own.
+                ListDetail.open(rowContext);
+              },
+              onFocusChanged: (f) {
+                if (f) _select(ch);
+              },
+              builder: (context, focused) {
+                final isSelected = ch.id == _selectedId && !portrait;
+                final fg = g.text;
+                // Outline rather than fill: a solid yellow row would
+                // hide yellow channel icons.
+                return AnimatedContainer(
+                  duration: const Duration(milliseconds: 100),
+                  height: 84,
+                  padding: const EdgeInsets.symmetric(horizontal: 20),
+                  decoration: BoxDecoration(
+                    color: focused || isSelected ? g.cellBorder : g.cell,
+                    borderRadius: BorderRadius.circular(g.radius),
+                    border: Border.all(color: focused ? g.focus : Colors.transparent, width: 4),
+                  ),
+                  child: Row(
+                    children: [
+                      SizedBox(
+                        width: 70,
+                        child: Text(
+                          '${ch.number}',
+                          style: g.display(38, weight: FontWeight.w800, color: g.accent),
+                        ),
+                      ),
+                      ChannelLogo(icon: ch.icon, size: 56, width: 90, fallbackText: ch.name),
+                      const SizedBox(width: 18),
+                      Expanded(
+                        child: Text(
+                          ch.name,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: g.display(30, weight: FontWeight.w600, color: fg),
+                        ),
+                      ),
+                      if (ch.favorite) Icon(Icons.star, color: fg, size: 28),
+                      if (ch.hidden) Icon(Icons.visibility_off, color: fg, size: 28),
+                    ],
+                  ),
+                );
+              },
+            ),
+          ),
+        ),
+    ];
+
+    final list = FocusTraversalGroup(
+      child: ListView(
+        padding: portrait
+            ? EdgeInsets.fromLTRB(layout.gutter, 24, layout.gutter, 32)
+            : const EdgeInsets.fromLTRB(80, 32, 24, 32),
+        children: [
+          // Upright, the main logo setting scrolls with the list, wrapping.
+          if (portrait) ...[
+            Text('CHANNEL LOGO', style: g.display(24, weight: FontWeight.w800, color: g.accent)),
+            const SizedBox(height: 12),
+            Wrap(spacing: 16, runSpacing: 16, children: logoModes),
+            const SizedBox(height: 12),
+            Text(logoHelp, style: g.body(22, color: g.textDim)),
+            const SizedBox(height: 28),
+          ],
+          ...rows,
+        ],
+      ),
+    );
 
     return TvPage(
       title: 'Channels & icons',
       hints: '▲▼ Channels    ▶ Edit    OK Select    ESC Back',
       onBack: () => Navigator.of(context).pop(),
-      child: Row(
+      child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          SizedBox(
-            width: 720,
-            child: FocusTraversalGroup(
-              child: ListView(
-                padding: const EdgeInsets.fromLTRB(80, 32, 24, 32),
-                children: [
-                  for (final (i, ch) in channels.indexed)
-                    Padding(
-                      padding: const EdgeInsets.only(bottom: 8),
-                      child: TvFocusable(
-                        autofocus: i == 0,
-                        onPressed: () => _select(ch),
-                        onFocusChanged: (f) {
-                          if (f) _select(ch);
-                        },
-                        builder: (context, focused) {
-                          final isSelected = ch.id == _selectedId;
-                          final fg = g.text;
-                          // Outline rather than fill: a solid yellow row would
-                          // hide yellow channel icons.
-                          return AnimatedContainer(
-                            duration: const Duration(milliseconds: 100),
-                            height: 84,
-                            padding: const EdgeInsets.symmetric(horizontal: 20),
-                            decoration: BoxDecoration(
-                              color: focused || isSelected ? g.cellBorder : g.cell,
-                              borderRadius: BorderRadius.circular(g.radius),
-                              border: Border.all(color: focused ? g.focus : Colors.transparent, width: 4),
-                            ),
-                            child: Row(
-                              children: [
-                                SizedBox(
-                                  width: 70,
-                                  child: Text(
-                                    '${ch.number}',
-                                    style: g.display(38, weight: FontWeight.w800, color: g.accent),
-                                  ),
-                                ),
-                                ChannelLogo(icon: ch.icon, size: 56, width: 90, fallbackText: ch.name),
-                                const SizedBox(width: 18),
-                                Expanded(
-                                  child: Text(
-                                    ch.name,
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: g.display(30, weight: FontWeight.w600, color: fg),
-                                  ),
-                                ),
-                                if (ch.favorite) Icon(Icons.star, color: fg, size: 28),
-                                if (ch.hidden) Icon(Icons.visibility_off, color: fg, size: 28),
-                              ],
-                            ),
-                          );
-                        },
-                      ),
+          if (!portrait)
+            FocusTraversalGroup(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(80, 24, 100, 0),
+                child: Row(
+                  children: [
+                    Text('CHANNEL LOGO', style: g.display(24, weight: FontWeight.w800, color: g.accent)),
+                    const SizedBox(width: 24),
+                    for (final toggle in logoModes) ...[toggle, const SizedBox(width: 16)],
+                    Expanded(
+                      child: Text(logoHelp, maxLines: 2, overflow: TextOverflow.ellipsis, style: g.body(22, color: g.textDim)),
                     ),
+                  ],
+                ),
+              ),
+            ),
+          Expanded(
+            child: ListDetail(
+              list: list,
+              hasSelection: selected != null,
+              detailTitle: selected?.name ?? '',
+              // What's selected when the page builds (it may build before
+              // this screen does).
+              detail: (context) {
+                final ch = AppScope.read(context).allChannels.where((c) => c.id == _selectedId).firstOrNull;
+                return ch == null
+                    ? Center(child: Text('No channels yet', style: g.display(40)))
+                    : FocusTraversalGroup(child: _details(context, ch));
+              },
+              tv: (context, list, detail) => Row(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  SizedBox(width: 720, child: list),
+                  Expanded(child: detail),
                 ],
               ),
             ),
-          ),
-          Expanded(
-            child: selected == null
-                ? Center(child: Text('No channels yet', style: g.display(40)))
-                : FocusTraversalGroup(child: _details(context, selected)),
           ),
         ],
       ),
@@ -130,13 +206,15 @@ class _ChannelEditorScreenState extends State<ChannelEditorScreen> {
     final loop = schedule?.loop?.loopLength;
     final blockCount = app.blocks.where((b) => b.channelId == ch.id).length;
 
+    final portrait = ScreenLayout.of(context).isPortrait;
+
     return ListView(
-      padding: const EdgeInsets.fromLTRB(40, 32, 100, 32),
+      padding: ScreenLayout.of(context).pagePadding(const EdgeInsets.fromLTRB(40, 32, 100, 32)),
       children: [
         Row(
           children: [
-            ChannelLogo(icon: ch.icon, size: 150, width: 240, fallbackText: ch.name),
-            const SizedBox(width: 32),
+            ChannelLogo(icon: ch.icon, size: portrait ? 96 : 150, width: portrait ? 150 : 240, fallbackText: ch.name),
+            SizedBox(width: portrait ? 24 : 32),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -149,7 +227,7 @@ class _ChannelEditorScreenState extends State<ChannelEditorScreen> {
                     ch.name,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: g.display(56, weight: FontWeight.w800),
+                    style: g.display(portrait ? 40 : 56, weight: FontWeight.w800),
                   ),
                   Text(
                     [
@@ -206,7 +284,9 @@ class _ChannelEditorScreenState extends State<ChannelEditorScreen> {
             spacing: 16,
             runSpacing: 16,
             children: [
+              // Music channels only shuffle, never the same artist twice in a row.
               for (final order in PlaybackOrder.values)
+                if (!ch.isMusic || order == PlaybackOrder.random)
                 TvButton(
                   label: order.label,
                   icon: ch.order == order ? Icons.radio_button_checked : Icons.radio_button_off,
@@ -258,6 +338,41 @@ class _ChannelEditorScreenState extends State<ChannelEditorScreen> {
             ),
           ],
         ),
+        const SizedBox(height: 28),
+        Text('CHANNEL LOGO', style: g.display(24, weight: FontWeight.w800, color: g.accent)),
+        const SizedBox(height: 10),
+        Wrap(
+          spacing: 16,
+          runSpacing: 16,
+          children: [
+            TvToggle(
+              label: 'Main setting (${app.settings.logoMode.label})',
+              radio: true,
+              on: ch.logoMode == null,
+              onPressed: () => app.setChannelLogoMode(ch, null),
+            ),
+            for (final mode in LogoMode.values)
+              TvToggle(
+                label: mode.label,
+                radio: true,
+                on: ch.logoMode == mode,
+                onPressed: () => app.setChannelLogoMode(ch, mode),
+              ),
+          ],
+        ),
+        if (!ch.blockOnly && !ch.isMusic) ...[
+          const SizedBox(height: 16),
+          TvToggle(
+            label: 'New episode premieres',
+            on: ch.premieres,
+            onPressed: () async {
+              final tuner = AppScope.tunerOf(context);
+              await app.setChannelPremieres(ch, !ch.premieres);
+              // A show's premieres may have moved on or off the tuned channel.
+              if (tuner.channel != null) await tuner.reschedule();
+            },
+          ),
+        ],
         const SizedBox(height: 16),
         Wrap(
           spacing: 16,

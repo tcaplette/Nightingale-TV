@@ -225,6 +225,12 @@ class FakePlayer implements TunerPlayer {
   @override
   Future<void> showCaptions(bool on) async {}
 
+  /// Every [setVolumeLeveling], in order.
+  final leveling = <bool>[];
+
+  @override
+  Future<void> setVolumeLeveling(bool on) async => leveling.add(on);
+
   @override
   Future<void> dispose() async {}
 

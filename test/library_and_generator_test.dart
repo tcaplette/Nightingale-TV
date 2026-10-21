@@ -125,7 +125,14 @@ void main() {
         video('trailer-2', 'Movie', const Duration(seconds: 90)),
       ],
       'ads': [video('reel', 'Episode', const Duration(minutes: 122), series: 'Favorite Commercials')],
-      'tv': [video('ep-1', 'Episode', const Duration(minutes: 22), series: 'Show')],
+      'tv': [
+        video('ep-1', 'Episode', const Duration(minutes: 22), series: 'Show'),
+        {...video('mv-1', 'MusicVideo', const Duration(minutes: 4)), 'Artists': ['a-ha'], 'ProductionYear': 1985},
+      ],
+      'music': [
+        {...video('song-1', 'Audio', const Duration(minutes: 3)), 'Artists': ['Queen'], 'Album': 'The Game', 'AlbumId': 'al-1'},
+      ],
+      'photos': [video('photo-1', 'Audio', const Duration(minutes: 3))],
     };
     final asked = <String>[];
     JellyfinClient fakeServer() => JellyfinClient(
@@ -143,6 +150,8 @@ void main() {
                       {'Id': 'movies', 'Name': 'Movies', 'CollectionType': 'movies'},
                       {'Id': 'ads', 'Name': 'Commercials', 'CollectionType': 'tvshows'},
                       {'Id': 'tv', 'Name': 'TV Shows', 'CollectionType': 'tvshows'},
+                      {'Id': 'music', 'Name': 'Music', 'CollectionType': 'music'},
+                      {'Id': 'photos', 'Name': 'Photos', 'CollectionType': 'photos'},
                     ]
                   }),
                   200);
@@ -212,7 +221,20 @@ void main() {
       expect(ep.etag, 'etag-ep-1');
       expect(ep.chapters, [Duration.zero, const Duration(milliseconds: 149358)]);
       expect(asked, contains('ads:Movie,Episode,Video,MusicVideo,Trailer:Chapters,Etag'));
-      expect(asked, contains('tv:Episode:Overview,Chapters,Etag'));
+      expect(asked, contains('tv:Episode:Overview,Chapters,Etag,DateCreated'));
+    });
+
+    test('music libraries give songs and video libraries music videos', () async {
+      final index = await fetchLibraryIndex(fakeServer());
+      expect(index.songs.map((s) => s.id), ['song-1']);
+      expect(index['song-1']!.artist, 'Queen');
+      expect(index['song-1']!.albumId, 'al-1');
+      expect(index.musicVideos.map((s) => s.id), ['mv-1']);
+      expect(index['mv-1']!.artist, 'a-ha');
+      // Music libraries are scanned for songs only; other kinds not at all.
+      expect([for (final a in asked) if (a.startsWith('music:')) a.split(':')[1]], ['Audio']);
+      expect(asked.firstWhere((a) => a.startsWith('music:')), contains('Artists,AlbumArtist,Album,AlbumId'));
+      expect(asked.where((a) => a.startsWith('photos:')), isEmpty);
     });
 
     test('pool videos under 5 seconds are ignored', () {

@@ -47,10 +47,13 @@ void main() {
     expect(find.byType(PlaybackScreen), findsOneWidget);
     await h.snap('pb2-off');
 
-    // Off: the toggle has focus, and the bitrate list can't be reached.
+    // Off: the toggle has focus, and the bitrate list can't be reached:
+    // Down skips it, to volume leveling.
     expect(h.focusedLabel(), PlaybackScreen.toggleLabel);
     await h.press(LogicalKeyboardKey.arrowDown, after: const Duration(milliseconds: 300));
-    expect(h.focusedLabel(), PlaybackScreen.toggleLabel, reason: 'the bitrate choice is disabled');
+    expect(h.focusedLabel(), PlaybackScreen.levelingLabel, reason: 'the bitrate choice is disabled');
+    await h.press(LogicalKeyboardKey.arrowUp, after: const Duration(milliseconds: 300));
+    expect(h.focusedLabel(), PlaybackScreen.toggleLabel);
     expect(find.text(PlaybackScreen.toggleHelp), findsOneWidget);
 
     // On, then 8 Mbps, with arrows and OK only.
@@ -63,7 +66,7 @@ void main() {
 
     // Saved for next time.
     final saved = await tester.runAsync(() => h.app.storage.readJson('settings.json')) as Map<String, Object?>;
-    expect(saved['playback'], {'transcodeIfNeeded': true, 'bitrate': 8000});
+    expect(saved['playback'], {'transcodeIfNeeded': true, 'bitrate': 8000, 'volumeLeveling': false});
 
     await h.press(LogicalKeyboardKey.escape, after: const Duration(seconds: 1));
     expect(find.byType(MenuScreen), findsOneWidget);

@@ -108,7 +108,12 @@ class LineupServer {
       } else if (path == '/lineup.m3u' || path == '/playlist.m3u') {
         response.headers.contentType = ContentType('audio', 'x-mpegurl', charset: 'utf-8');
         response.headers.set('Cache-Control', 'no-store');
-        response.write(buildM3u(channels: lineup, urls: urlsFor(request), profileName: profileName()));
+        final profile = profileName();
+        response.write(buildM3u(
+            channels: lineup,
+            urls: urlsFor(request),
+            profileName: profile,
+            groupOf: app == null ? null : (c) => app.m3uGroupFor(c, fallback: profileGroup(profile))));
       } else if (path == '/xmltv.xml' || path == '/guide.xml') {
         response.headers.contentType = ContentType('application', 'xml', charset: 'utf-8');
         response.headers.set('Cache-Control', 'no-store');

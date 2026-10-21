@@ -50,6 +50,10 @@ abstract final class PlatformInfo {
   static bool get isTelevision => isAndroid && (_television ?? false);
   static bool? _television;
 
+  /// Pretends to be (or not be) a TV, with [debugOverride] set to Android.
+  @visibleForTesting
+  static set debugTelevision(bool? value) => _television = value;
+
   /// Looks up the Android device name and kind once, before anything signs in.
   static Future<void> init() async {
     if (!isAndroid) return;

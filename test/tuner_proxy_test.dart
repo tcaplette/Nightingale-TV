@@ -70,7 +70,8 @@ void main() {
     tuner = null;
     await app.close();
     await server.close();
-    await Future<void>.delayed(const Duration(milliseconds: 100));
+    // Tuning saves the last channel in the background.
+    await app.storage.flush();
     await dir.delete(recursive: true);
     await cacheDir.delete(recursive: true);
   });

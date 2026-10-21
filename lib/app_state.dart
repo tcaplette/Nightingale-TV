@@ -6,6 +6,9 @@ import 'package:flutter/foundation.dart';
 
 import 'channels/channel.dart';
 import 'channels/channel_generator.dart';
+import 'channels/channel_groups.dart';
+import 'channels/channel_groups.dart' as channel_groups show m3uGroupFor;
+import 'channels/premieres.dart';
 import 'channels/program_block.dart';
 import 'channels/schedule.dart';
 import 'commercials/analysis/analysis_cache.dart';
@@ -34,11 +37,14 @@ typedef BitratePreset = ({String label, int? kbps});
 /// direct stream).
 typedef Decision = ({Uri? template, bool directStream});
 
+/// A `PlaybackInfo` request's outcome: the decision, or what went wrong.
+typedef _Asked = ({Decision? decision, Object? error, StackTrace? stack});
+
 /// "Transcode only if needed": off unless the user turns it on. Per PC, not
 /// per profile, since it's about this machine and its network.
 class PlaybackSettings {
   /// A fixed [maxKbps] cap, or Original when it's null.
-  const PlaybackSettings({this.transcodeIfNeeded = false, this.maxKbps});
+  const PlaybackSettings({this.transcodeIfNeeded = false, this.maxKbps, this.volumeLeveling = false});
 
   /// A setting never saved: off, with Original chosen.
   static const off = PlaybackSettings();
@@ -49,6 +55,9 @@ class PlaybackSettings {
   /// The fixed cap in kbps, kept while the toggle is off; null is Original
   /// (no limit).
   final int? maxKbps;
+
+  /// Even out loudness between programs and commercials as they play.
+  final bool volumeLeveling;
 
   /// In this order, Original first.
   static const presets = <BitratePreset>[
@@ -72,42 +81,54 @@ class PlaybackSettings {
   /// Original. Nothing observed during playback lowers it.
   int? capKbps() => transcodeIfNeeded ? maxKbps : null;
 
-  PlaybackSettings copyWith({bool? transcodeIfNeeded, BitratePreset? bitrate}) => PlaybackSettings(
+  PlaybackSettings copyWith({bool? transcodeIfNeeded, BitratePreset? bitrate, bool? volumeLeveling}) =>
+      PlaybackSettings(
         transcodeIfNeeded: transcodeIfNeeded ?? this.transcodeIfNeeded,
         maxKbps: bitrate == null ? maxKbps : bitrate.kbps,
+        volumeLeveling: volumeLeveling ?? this.volumeLeveling,
       );
 
   Map<String, Object?> toJson() => {
         'transcodeIfNeeded': transcodeIfNeeded,
         'bitrate': maxKbps ?? 'original',
+        'volumeLeveling': volumeLeveling,
       };
 
   /// A missing or unreadable setting is off with Original chosen. A saved
   /// "auto" (removed) is Original, with the toggle as it was; a saved cap
   /// snaps to the preset at or below it (4 Mbps for anything lower). Saved
-  /// before Auto (as `maxBitrateMbps`), the same rules apply.
+  /// before Auto (as `maxBitrateMbps`), the same rules apply. Volume
+  /// leveling is off unless saved as on.
   factory PlaybackSettings.fromJson(Object? json) {
     if (json is! Map<String, Object?>) return off;
     final on = json['transcodeIfNeeded'] == true;
+    final leveling = json['volumeLeveling'] == true;
     final bitrate = json['bitrate'];
-    if (bitrate is num) return PlaybackSettings(transcodeIfNeeded: on, maxKbps: capAtOrBelow(bitrate));
+    if (bitrate is num) {
+      return PlaybackSettings(transcodeIfNeeded: on, maxKbps: capAtOrBelow(bitrate), volumeLeveling: leveling);
+    }
     if (!json.containsKey('bitrate')) {
       if (json['maxBitrateMbps'] case final num mbps) {
-        return PlaybackSettings(transcodeIfNeeded: on, maxKbps: capAtOrBelow(mbps * 1000));
+        return PlaybackSettings(
+            transcodeIfNeeded: on, maxKbps: capAtOrBelow(mbps * 1000), volumeLeveling: leveling);
       }
     }
-    return PlaybackSettings(transcodeIfNeeded: on);
+    return PlaybackSettings(transcodeIfNeeded: on, volumeLeveling: leveling);
   }
 
   @override
   bool operator ==(Object other) =>
-      other is PlaybackSettings && other.transcodeIfNeeded == transcodeIfNeeded && other.maxKbps == maxKbps;
+      other is PlaybackSettings &&
+      other.transcodeIfNeeded == transcodeIfNeeded &&
+      other.maxKbps == maxKbps &&
+      other.volumeLeveling == volumeLeveling;
 
   @override
-  int get hashCode => Object.hash(transcodeIfNeeded, maxKbps);
+  int get hashCode => Object.hash(transcodeIfNeeded, maxKbps, volumeLeveling);
 
   @override
-  String toString() => 'PlaybackSettings(${transcodeIfNeeded ? 'on' : 'off'}, ${preset.label})';
+  String toString() => 'PlaybackSettings(${transcodeIfNeeded ? 'on' : 'off'}, ${preset.label}, '
+      'leveling ${volumeLeveling ? 'on' : 'off'})';
 }
 
 /// What the TV is doing, as far as bandwidth goes.
@@ -148,7 +169,16 @@ class AppSettings {
     this.lastChannelId,
     this.playback = PlaybackSettings.off,
     this.migrated = false,
-  }) : commercialPools = commercialPools ?? [];
+    this.logoMode = LogoMode.nowAndThen,
+    List<ChannelGroup>? groups,
+    List<String>? guideTabs,
+    Set<String>? hiddenTabs,
+    this.guideTab,
+    this.premieres = const PremiereSettings(),
+  })  : commercialPools = commercialPools ?? [],
+        groups = groups ?? [],
+        guideTabs = guideTabs ?? [...GuideTabs.defaultOrder],
+        hiddenTabs = hiddenTabs ?? {};
 
   /// Random per-install id; Jellyfin's DeviceId.
   final String installId;
@@ -166,6 +196,19 @@ class AppSettings {
 
   /// Loaded from an older format; save to finish upgrading it.
   final bool migrated;
+
+  /// The main channel logo setting; channels can have their own.
+  LogoMode logoMode;
+
+  /// The profile's own channel groups, and the guide's tabs: their order
+  /// (built-in ids and group ids), the hidden ones, and the one picked last.
+  List<ChannelGroup> groups;
+  List<String> guideTabs;
+  Set<String> hiddenTabs;
+  String? guideTab;
+
+  /// The nightly new episode premiere slot.
+  PremiereSettings premieres;
 
   /// The pool settings from before break plans became, with an id that's
   /// the same every time the upgrade runs.
@@ -185,6 +228,12 @@ class AppSettings {
         }.toList(),
         if (lastChannelId != null) 'lastChannelId': lastChannelId,
         'playback': playback.toJson(),
+        'logoMode': logoMode.name,
+        if (groups.isNotEmpty) 'groups': [for (final g in groups) g.toJson()],
+        'guideTabs': guideTabs,
+        if (hiddenTabs.isNotEmpty) 'hiddenTabs': hiddenTabs.toList(),
+        if (guideTab != null) 'guideTab': guideTab,
+        'premieres': premieres.toJson(),
       };
 
   /// Jellyfin device IDs start with this.
@@ -202,8 +251,18 @@ class AppSettings {
     final installId = migrateDeviceId(j['installId'] as String);
     final lastChannelId = j['lastChannelId'] as String?;
     final playback = PlaybackSettings.fromJson(j['playback']);
+    final groups = [
+      for (final g in (j['groups'] as List? ?? const []).whereType<Map<String, Object?>>()) ChannelGroup.fromJson(g)
+    ];
+    AppSettings withExtras(AppSettings s) => s
+      ..logoMode = LogoMode.parse(j['logoMode']) ?? LogoMode.nowAndThen
+      ..groups = groups
+      ..guideTabs = GuideTabs.normalize((j['guideTabs'] as List?)?.whereType<String>().toList() ?? GuideTabs.defaultOrder, groups)
+      ..hiddenTabs = {...?(j['hiddenTabs'] as List?)?.whereType<String>()}
+      ..guideTab = j['guideTab'] as String?
+      ..premieres = PremiereSettings.fromJson(j['premieres']);
     if (j['commercialPlan'] case final Map<String, Object?> plan) {
-      return AppSettings(
+      return withExtras(AppSettings(
         installId: installId,
         commercialPlan: BreakPlan.fromJson(plan),
         commercialPools: [
@@ -212,11 +271,11 @@ class AppSettings {
         ],
         lastChannelId: lastChannelId,
         playback: playback,
-      );
+      ));
     }
     // Saved before break plans: an on/off switch and whole libraries.
     final libraries = (j['commercialLibraryIds'] as List?)?.cast<String>() ?? const [];
-    return AppSettings(
+    return withExtras(AppSettings(
       installId: installId,
       commercialPlan: j['commercialsEnabled'] == true ? BreakPlan.legacy : BreakPlan.off,
       commercialPools: [
@@ -231,7 +290,7 @@ class AppSettings {
       lastChannelId: lastChannelId,
       playback: playback,
       migrated: j.containsKey('commercialsEnabled') || j.containsKey('commercialLibraryIds'),
-    );
+    ));
   }
 
   static AppSettings fresh() {
@@ -250,6 +309,7 @@ class AppState extends ChangeNotifier {
       this.runAnalysis = true,
       this._background = false,
       this.exportBusy,
+      this.safetyBackup,
       @visibleForTesting this._sessionClient})
       : icons = CustomIconStore(storage.logosDir) {
     playbackActivity.addListener(_pushBudget);
@@ -285,6 +345,13 @@ class AppState extends ChangeNotifier {
       _afterLaunch.add(action);
     }
   }
+
+  /// Runs [action] once the launch's tune has its picture and background
+  /// work may start (the daily backup check waits for it): that is
+  /// [launchSettleDelay] after the picture.
+  void afterLaunch(void Function() action) => _afterLaunchTune(action);
+
+  static Duration get launchSettleDelay => launchAfterPicture;
 
   /// Starts counting once the lineup is ready.
   void _armLaunchGate() {
@@ -326,6 +393,10 @@ class AppState extends ChangeNotifier {
   /// Analyze media in the background (off in most tests), while on screen.
   final bool runAnalysis;
 
+  /// Saves a safety backup of the household before a big change (reset,
+  /// settings upgrade), named by its reason; throws when it can't be saved.
+  final Future<void> Function(String reason)? safetyBackup;
+
   /// Builds the client for a saved sign-in at [start] (tests give a fake).
   final JellyfinClient Function(JellyfinSession session)? _sessionClient;
 
@@ -349,6 +420,10 @@ class AppState extends ChangeNotifier {
   static const _channelsFile = 'channels.json';
   static const _blocksFile = 'blocks.json';
 
+  /// A restored profile's server and user name, until it signs in
+  /// (backup-restore D6).
+  static const signInHintFile = 'sign_in_hint.json';
+
   /// Re-scan the library in the background when the cache is older than this.
   static const libraryMaxAge = Duration(hours: 6);
 
@@ -361,6 +436,10 @@ class AppState extends ChangeNotifier {
   late AppSettings settings;
   JellyfinSession? session;
   JellyfinClient? client;
+
+  /// Where a restored profile signed in, for pre-filling sign-in: server URL,
+  /// name and id, user id and name. Null otherwise.
+  Map<String, Object?>? signInHint;
   LibraryIndex library = LibraryIndex.empty;
   List<Channel> _channels = [];
   List<ProgramBlock> _blocks = [];
@@ -377,8 +456,146 @@ class AppState extends ChangeNotifier {
   /// Programming blocks, in the order they were created.
   List<ProgramBlock> get blocks => _blocks;
 
-  ChannelSchedule? scheduleFor(Channel c) =>
-      _schedules.putIfAbsent(c.id, () => ChannelSchedule.build(c, library, _blocks, _breakContext(planFor(c))));
+  ChannelSchedule? scheduleFor(Channel c) {
+    final premieres = premierePlan;
+    return _schedules.putIfAbsent(
+        c.id, () => ChannelSchedule.build(c, library, _blocks, _breakContext(planFor(c)), premieres));
+  }
+
+  // ---- New episode premieres (episode-premieres) ------------------------------
+
+  PremierePlan? _premierePlan;
+  bool _premiereStale = true;
+
+  /// Which episodes premiere where; rebuilt (with every schedule) when the
+  /// lineup, the library or the premiere settings change.
+  PremierePlan? get premierePlan {
+    if (_premiereStale) {
+      _premiereStale = false;
+      _premierePlan = PremierePlan.build(library, channels, settings.premieres);
+      _schedules.clear();
+    }
+    return _premierePlan;
+  }
+
+  void _premieresChanged() {
+    _premiereStale = true;
+    _autoGroups = null;
+    _schedules.clear();
+  }
+
+  // ---- Channel groups (channel-groups) -------------------------------------------
+
+  AutoGroups? _autoGroups;
+
+  /// Which channels the automatic tabs hold; worked out again when the
+  /// lineup, the library or the blocks change.
+  AutoGroups get autoGroups => _autoGroups ??= AutoGroups(library, _blocks, kidProfile: maxRatingRank != null);
+
+  /// The guide's tabs, in order, each with its visible channels.
+  List<GuideTab> guideTabs() => resolveGuideTabs(
+        visible: channels,
+        groups: settings.groups,
+        order: settings.guideTabs,
+        hidden: settings.hiddenTabs,
+        auto: autoGroups,
+      );
+
+  /// Every tab, hidden and empty ones included (for the Channel groups
+  /// screen), in order.
+  List<String> get allTabIds => GuideTabs.normalize(settings.guideTabs, settings.groups);
+
+  /// What [tabId] is called.
+  String tabName(String tabId) =>
+      settings.groups.where((g) => g.id == tabId).firstOrNull?.name ?? GuideTabs.builtinName(tabId) ?? tabId;
+
+  /// The M3U `group-title` for [c] (lineup-export).
+  String m3uGroupFor(Channel c, {required String fallback}) =>
+      channel_groups.m3uGroupFor(c, groups: settings.groups, order: settings.guideTabs, auto: autoGroups, fallback: fallback);
+
+  /// Remembers the guide's tab.
+  Future<void> setGuideTab(String tabId) async {
+    if (settings.guideTab == tabId) return;
+    settings.guideTab = tabId;
+    await _saveSettings();
+  }
+
+  /// A new, empty group named [name], placed after Favorites.
+  Future<ChannelGroup> createGroup(String name) async {
+    final group = ChannelGroup(
+      id: 'group:${DateTime.now().microsecondsSinceEpoch.toRadixString(36)}',
+      name: name.trim().isEmpty ? 'New group' : name.trim(),
+    );
+    settings.groups = [...settings.groups, group];
+    settings.guideTabs = GuideTabs.normalize(settings.guideTabs, settings.groups);
+    await _groupsChanged();
+    return group;
+  }
+
+  Future<void> renameGroup(ChannelGroup group, String name) async {
+    final trimmed = name.trim();
+    if (trimmed.isEmpty || trimmed == group.name) return;
+    group.name = trimmed;
+    await _groupsChanged();
+  }
+
+  Future<void> deleteGroup(ChannelGroup group) async {
+    settings.groups = [for (final g in settings.groups) if (g.id != group.id) g];
+    settings.guideTabs = GuideTabs.normalize(settings.guideTabs, settings.groups);
+    settings.hiddenTabs = {...settings.hiddenTabs}..remove(group.id);
+    await _groupsChanged();
+  }
+
+  /// Puts [ch] in [group] or takes it out.
+  Future<void> setInGroup(ChannelGroup group, Channel ch, bool member) async {
+    final ids = [...group.channelIds]..remove(ch.id);
+    if (member) ids.add(ch.id);
+    group.channelIds = ids;
+    await _groupsChanged();
+  }
+
+  /// Moves a tab [delta] places; All stays first.
+  Future<void> moveTab(String tabId, int delta) async {
+    final order = allTabIds;
+    final i = order.indexOf(tabId);
+    final j = i + delta;
+    if (tabId == GuideTabs.all || i < 0 || j < 1 || j >= order.length) return;
+    order
+      ..removeAt(i)
+      ..insert(j, tabId);
+    settings.guideTabs = order;
+    await _groupsChanged();
+  }
+
+  /// Hides a tab from the guide or shows it again; All is always shown.
+  Future<void> setTabHidden(String tabId, bool hidden) async {
+    if (tabId == GuideTabs.all) return;
+    settings.hiddenTabs = {...settings.hiddenTabs};
+    hidden ? settings.hiddenTabs.add(tabId) : settings.hiddenTabs.remove(tabId);
+    await _groupsChanged();
+  }
+
+  Future<void> _groupsChanged() async {
+    notifyListeners();
+    await _saveSettings();
+  }
+
+  /// Changes the premiere slot. Like a block edit, it takes effect at once.
+  Future<void> setPremiereSettings(PremiereSettings premieres) async {
+    if (premieres == settings.premieres) return;
+    settings.premieres = premieres;
+    _premieresChanged();
+    notifyListeners();
+    await _saveSettings();
+  }
+
+  /// Whether [ch] can be a show's home channel for premieres.
+  Future<void> setChannelPremieres(Channel ch, bool on) async {
+    if (on == ch.premieres) return;
+    ch.premieres = on;
+    _setChannels(_channels);
+    await _saveChannels();
+  }
 
   // ---- Commercial breaks ---------------------------------------------------
 
@@ -439,6 +656,10 @@ class AppState extends ChangeNotifier {
 
   LoopbackStreamProxy? _proxy;
 
+  /// Volume leveling as set (volume-leveling spec), for the tuner, which
+  /// follows it.
+  final volumeLeveling = ValueNotifier(false);
+
   /// The playing file's average bitrate in bits per second, once the tuner
   /// knows it (null while it doesn't): with no cap, it sets the analyzer's
   /// budget.
@@ -466,8 +687,11 @@ class AppState extends ChangeNotifier {
   bool get decidesEverySegment => PlatformInfo.isAndroid;
 
   /// `PlaybackInfo` requests in flight, by source and cap: a tune, a
-  /// prefetch and the launch's early request share one.
-  final _deciding = <(String, int?), Future<Decision>>{};
+  /// prefetch and the launch's early request share one. Shared as an
+  /// outcome, never as an error: a future's error only reaches listeners in
+  /// its own error zone (tests start the app in another one), so each
+  /// caller gets it back as an error in its own.
+  final _deciding = <(String, int?), Future<_Asked>>{};
 
   /// Whether a decision for [source] under [capKbps] is being asked.
   bool deciding(String source, int? capKbps) => _deciding.containsKey((source, capKbps));
@@ -479,7 +703,7 @@ class AppState extends ChangeNotifier {
     final saved = savedDecision(source, capKbps);
     if (saved != null) return Future.value(saved);
     final key = (source, capKbps);
-    if (_deciding[key] case final inFlight?) return inFlight;
+    if (_deciding[key] case final inFlight?) return _answer(inFlight);
     final c = client;
     if (c == null) return Future.error(StateError('Not signed in.'));
     final playback = settings.playback;
@@ -505,8 +729,16 @@ class AppState extends ChangeNotifier {
         _deciding.remove(key);
       }
     }();
-    _deciding[key] = request;
-    return request;
+    final asked = request.then<_Asked>((d) => (decision: d, error: null, stack: null),
+        onError: (Object e, StackTrace s) => (decision: null, error: e, stack: s));
+    _deciding[key] = asked;
+    return _answer(asked);
+  }
+
+  static Future<Decision> _answer(Future<_Asked> asked) async {
+    final a = await asked;
+    if (a.error case final e?) Error.throwWithStackTrace(e, a.stack!);
+    return a.decision!;
   }
 
   /// At launch, asks the decision for what's on the channel the TV will
@@ -546,12 +778,13 @@ class AppState extends ChangeNotifier {
   Future<DeviceCapabilities?>? _capabilities;
 
   /// The device profile decisions under [capKbps] send: on Android, built
-  /// from what the device decodes (asked once); elsewhere null, for the
-  /// Linux profile.
+  /// from what the device decodes (asked once), without passthrough while
+  /// volume leveling is on; elsewhere null, for the Linux profile.
   Future<Map<String, Object?>?> deviceProfile(int? capKbps) async {
     if (!PlatformInfo.isAndroid) return null;
     final caps = await (_capabilities ??= _queryCapabilities()) ?? DeviceCapabilities.fallback;
-    return androidDeviceProfile(caps, maxBitrate: capKbps == null ? null : capKbps * 1000);
+    return androidDeviceProfile(caps,
+        maxBitrate: capKbps == null ? null : capKbps * 1000, leveling: settings.playback.volumeLeveling);
   }
 
   static Future<DeviceCapabilities?> _queryCapabilities() async {
@@ -582,6 +815,9 @@ class AppState extends ChangeNotifier {
   /// The plan [c] is set to: its own, or the main one.
   BreakPlan configuredPlanFor(Channel c) => c.commercialPlan ?? settings.commercialPlan;
 
+  /// The logo setting [c] follows: its own, or the main one.
+  LogoMode logoModeFor(Channel c) => c.logoMode ?? settings.logoMode;
+
   /// The plan [c] airs with: [configuredPlanFor], or Off while none of the
   /// pools it uses has clips.
   BreakPlan planFor(Channel c) {
@@ -611,7 +847,17 @@ class AppState extends ChangeNotifier {
     settings = settingsJson is Map<String, Object?>
         ? AppSettings.fromJson(settingsJson)
         : AppSettings.fresh();
+    volumeLeveling.value = settings.playback.volumeLeveling;
     final renamed = settingsJson is Map<String, Object?> && settingsJson['installId'] != settings.installId;
+    if (settings.migrated) {
+      // The old format is kept in a backup first; the upgrade goes ahead
+      // even if that fails, since the app can't refuse to start.
+      try {
+        await safetyBackup?.call('before-upgrade');
+      } on Object catch (e) {
+        debugPrint('No backup before upgrading settings: $e');
+      }
+    }
     if (settingsJson == null || renamed || settings.migrated) await _saveSettings();
     PlaybackDiagnostics.mark('settings read');
     // Decisions and a connection measurement saved by an older version.
@@ -621,6 +867,8 @@ class AppState extends ChangeNotifier {
 
     final sessionJson = await storage.readJson(_sessionFile);
     if (sessionJson is! Map<String, Object?>) {
+      final hint = await storage.readJson(signInHintFile);
+      signInHint = hint is Map<String, Object?> ? hint : null;
       _setPhase(AppPhase.signedOut);
       return;
     }
@@ -635,16 +883,15 @@ class AppState extends ChangeNotifier {
     final libraryJson = await storage.readJson(_libraryFile);
     final channelsJson = await storage.readJson(_channelsFile);
     PlaybackDiagnostics.mark('library and channels read');
+    // Blocks whenever they're saved: a restored lineup has them without a
+    // library index.
+    await _loadBlocks();
     if (libraryJson is Map<String, Object?> && channelsJson is List) {
       library = LibraryIndex.fromJson(libraryJson);
       PlaybackDiagnostics.mark('library parsed');
       // A kid's limit may have been tightened since this was saved.
       final limit = maxRatingRank;
       if (limit != null) library = library.restrictedTo(limit);
-      final blocksJson = await storage.readJson(_blocksFile);
-      if (blocksJson is List) {
-        _blocks = [for (final b in blocksJson.cast<Map<String, Object?>>()) ProgramBlock.fromJson(b)];
-      }
       // Clips (and so which channels have breaks) must be known before the
       // lineup is, or every launch would shift the guide.
       if (session!.serverId case final id?) await _openAnalysis(id);
@@ -663,10 +910,25 @@ class AppState extends ChangeNotifier {
           unawaited(refreshLibrary(background: true));
         });
       }
+    } else if (channelsJson is List) {
+      // A restored lineup, without its library index: the first scan merges
+      // into it, keeping every anchor, so the same shows are on the air
+      // (backup-restore D8).
+      if (session!.serverId case final id?) await _openAnalysis(id);
+      _setChannels([for (final c in channelsJson.cast<Map<String, Object?>>()) Channel.fromJson(c)]);
+      _restoredLineup = true;
+      await refreshLibrary();
     } else {
       await refreshLibrary();
     }
     _armLaunchGate();
+  }
+
+  Future<void> _loadBlocks() async {
+    final blocksJson = await storage.readJson(_blocksFile);
+    if (blocksJson is List) {
+      _blocks = [for (final b in blocksJson.cast<Map<String, Object?>>()) ProgramBlock.fromJson(b)];
+    }
   }
 
   /// Sign-ins from before the rename identify this PC to Jellyfin as
@@ -747,7 +1009,30 @@ class AppState extends ChangeNotifier {
     _decisions.clear();
     await storage.writeJson(_sessionFile, newSession.toJson(), private: true);
     await _recordServerId();
+    await _adoptRestoredLineup();
     await refreshLibrary();
+  }
+
+  /// A restored profile's lineup waits on disk for its sign-in (D8). On the
+  /// server the backup came from it's loaded, so the first scan merges into
+  /// it; on another server it's deleted, and a fresh lineup is generated.
+  /// Settings are kept either way.
+  Future<void> _adoptRestoredLineup() async {
+    final hint = signInHint ?? await storage.readJson(signInHintFile);
+    signInHint = null;
+    if (_channels.isNotEmpty) return;
+    final channelsJson = await storage.readJson(_channelsFile);
+    final serverId = hint is Map<String, Object?> ? hint['serverId'] : null;
+    if (channelsJson is List && serverId != null && serverId == session?.serverId) {
+      await _loadBlocks();
+      _setChannels([for (final c in channelsJson.cast<Map<String, Object?>>()) Channel.fromJson(c)]);
+      _restoredLineup = true;
+    } else {
+      _blocks = [];
+      await storage.delete(_channelsFile);
+      await storage.delete(_blocksFile);
+    }
+    await storage.delete(signInHintFile);
   }
 
   Future<void> signOut() async {
@@ -781,6 +1066,10 @@ class AppState extends ChangeNotifier {
 
   bool _refreshing = false;
 
+  /// The lineup was restored from a backup and has no library index yet:
+  /// its first scan is like a first sign-in's, and keeps every anchor.
+  bool _restoredLineup = false;
+
   /// A library scan is in progress ([syncStatus] says what it's doing).
   bool get refreshing => _refreshing;
 
@@ -802,11 +1091,22 @@ class AppState extends ChangeNotifier {
       }, onLibraries: _labelLibraryRoots);
       final limit = maxRatingRank;
       if (limit != null) fresh = fresh.restrictedTo(limit);
+      // When this profile could first know each episode (episode-premieres):
+      // a profile with no lineup yet is on its first scan.
+      final restored = _restoredLineup;
+      fresh = fresh.withAvailability(_channels.isEmpty || restored ? null : library, DateTime.now());
       syncStatus = 'Building channels…';
       notifyListeners();
       final previous = library;
       final plansBefore = _plans();
       library = fresh;
+      if (restored) {
+        // The clips are known before the merge, as at a launch, so no
+        // channel is rebased for gaining its breaks: with no previous index
+        // every anchor stays as the backup had it.
+        _restoredLineup = false;
+        _updateCatalog(rebase: false);
+      }
       if (_channels.isNotEmpty) {
         _mergeLibraryIntoChannels(previous, plansBefore);
       } else {
@@ -869,8 +1169,14 @@ class AppState extends ChangeNotifier {
         _schedules.remove(ch.id);
         continue;
       }
-      _rebase(ch, _mergedPlaylist(ch.playlist, buildPlaylist(library, ch.source, ch.order, seed: stableHash(ch.id))), now,
-          previous: previous, planBefore: plansBefore[ch.id]);
+      final fresh = buildPlaylist(library, ch.source, ch.order, seed: stableHash(ch.id));
+      var merged = _mergedPlaylist(ch.playlist, fresh);
+      if (ch.isMusic && merged.length > maxMusicPlaylist) {
+        // Keep the channel's fixed sample, in the order it airs.
+        final sample = fresh.toSet();
+        merged = [for (final id in merged) if (sample.contains(id)) id];
+      }
+      _rebase(ch, merged, now, previous: previous, planBefore: plansBefore[ch.id]);
     }
     for (final b in _blocks) {
       b.playlist = _mergedPlaylist(b.playlist, blockPlaylist(b));
@@ -1001,7 +1307,11 @@ class AppState extends ChangeNotifier {
   /// Discards all channel edits and regenerates the default lineup.
   /// Channels made for programming blocks are kept, moved after the
   /// generated ones.
+  ///
+  /// A safety backup is saved first; if it can't be, nothing is reset and
+  /// the error is thrown.
   Future<void> resetChannels() async {
+    await safetyBackup?.call('before-reset');
     _schedules.clear();
     final fresh = ChannelGenerator(library).generate();
     var next = fresh.fold(1, (n, c) => max(n, c.number)) + 1;
@@ -1013,6 +1323,25 @@ class AppState extends ChangeNotifier {
     await _saveChannels();
   }
 
+  // ---- Channel logo (channel-logo) -------------------------------------------
+
+  /// Sets the main logo setting, for every channel that follows it. The TV
+  /// and Live TV export use it at once.
+  Future<void> setMainLogoMode(LogoMode mode) async {
+    if (mode == settings.logoMode) return;
+    settings.logoMode = mode;
+    notifyListeners();
+    await _saveSettings();
+  }
+
+  /// Gives [ch] its own logo setting; null follows the main one again.
+  Future<void> setChannelLogoMode(Channel ch, LogoMode? mode) async {
+    if (mode == ch.logoMode) return;
+    ch.logoMode = mode;
+    notifyListeners();
+    await _saveChannels();
+  }
+
   Future<void> setLastChannel(Channel ch) async {
     if (settings.lastChannelId == ch.id) return;
     settings.lastChannelId = ch.id;
@@ -1021,13 +1350,17 @@ class AppState extends ChangeNotifier {
 
   // ---- Playback ----------------------------------------------------------
 
-  /// Changes "Transcode only if needed". What's playing plays on; the tuner
+  /// Changes the Playback settings. What's playing plays on; the tuner
   /// uses the new setting from the next segment it opens. The analyzer's
   /// budget follows right away. This session's decisions are cleared.
+  /// Volume leveling goes to the tuner at once: mpv levels what's playing;
+  /// on Android, where the device profile changes with it, the tuner
+  /// re-tunes.
   Future<void> setPlayback(PlaybackSettings playback) async {
     if (playback == settings.playback) return;
     settings.playback = playback;
     _decisions.clear();
+    volumeLeveling.value = playback.volumeLeveling;
     _pushBudget();
     notifyListeners();
     await _saveSettings();
@@ -1173,7 +1506,8 @@ class AppState extends ChangeNotifier {
       ];
       for (final id in ids) {
         final item = library[id];
-        if (item == null || item.kind == MediaKind.commercial) continue;
+        // Music never breaks inside an item: nothing to analyze.
+        if (item == null || item.kind == MediaKind.commercial || item.isMusic) continue;
         final mids = resolve(plan, item.runtime).midCount;
         if (mids > 0) counts.putIfAbsent(id, () => {}).add(mids);
       }
@@ -1385,6 +1719,7 @@ class AppState extends ChangeNotifier {
     } else {
       _blocks = [..._blocks]..[existing] = block;
     }
+    _autoGroups = null;
     _schedules.clear();
     notifyListeners();
     await _saveBlocks();
@@ -1392,6 +1727,7 @@ class AppState extends ChangeNotifier {
 
   Future<void> deleteBlock(ProgramBlock block) async {
     _blocks = _blocks.where((b) => b.id != block.id).toList();
+    _autoGroups = null;
     _schedules.clear();
     notifyListeners();
     await _saveBlocks();
@@ -1424,6 +1760,8 @@ class AppState extends ChangeNotifier {
 
   void _setChannels(List<Channel> list) {
     _channels = [...list]..sort((a, b) => a.number.compareTo(b.number));
+    // Which channel is each show's premiere home may have changed.
+    _premieresChanged();
     notifyListeners();
   }
 

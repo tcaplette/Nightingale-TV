@@ -5,8 +5,11 @@ import 'package:flutter/services.dart';
 
 import '../app_exit.dart';
 import '../app_scope.dart';
+import '../app_state.dart';
 import '../channels/channel.dart';
 import '../channels/schedule.dart';
+import '../library/library_index.dart';
+import '../platform/orientation.dart';
 import '../platform/platform_info.dart';
 import '../playback/playback_diagnostics.dart';
 import '../playback/tuner.dart';
@@ -14,8 +17,13 @@ import '../theme/tv_theme.dart';
 import 'format.dart';
 import 'guide_view.dart';
 import 'menu_screen.dart';
+import 'portrait_watch_screen.dart';
 import 'widgets/broadcast_cards.dart';
 import 'widgets/channel_logo.dart';
+import 'widgets/channel_logo_bug.dart';
+import 'widgets/new_tag.dart';
+import 'widgets/now_playing.dart';
+import 'widgets/screen_layout.dart';
 import 'widgets/tv_focus.dart';
 
 /// Main screen: full-screen TV with channel banner and number entry; the
@@ -47,14 +55,46 @@ class _TvScreenState extends State<TvScreen> {
   /// Android: Back was pressed once; another within [_exitWindow] quits.
   Timer? _exitTimer;
 
+  /// The picture, kept the same widget in both layouts.
+  final _pictureKey = GlobalKey(debugLabel: 'picture');
+  final _watchKey = GlobalKey<PortraitWatchScreenState>();
+  bool? _portrait;
+
   @override
   void initState() {
     super.initState();
+    FullScreen.instance.addListener(_fullScreenChanged);
     WidgetsBinding.instance.addPostFrameCallback((_) => _powerOn());
+  }
+
+  void _fullScreenChanged() {
+    if (!mounted) return;
+    // Into full screen: the banner shows what's on, with Exit full screen
+    // beside Guide and Menu.
+    if (FullScreen.instance.isOn) {
+      _showBanner();
+    } else {
+      setState(() {});
+    }
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final portrait = ScreenLayout.of(context).isPortrait;
+    if (_portrait != null && _portrait != portrait) {
+      // The focused control may have gone with the old layout.
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted || !(ModalRoute.of(context)?.isCurrent ?? true)) return;
+        if ((portrait || !_guideOpen) && !_focus.hasFocus) _focus.requestFocus();
+      });
+    }
+    _portrait = portrait;
   }
 
   @override
   void dispose() {
+    FullScreen.instance.removeListener(_fullScreenChanged);
     _bannerTimer?.cancel();
     _digitTimer?.cancel();
     _toastTimer?.cancel();
@@ -99,7 +139,7 @@ class _TvScreenState extends State<TvScreen> {
   Future<void> _surf(Future<void> Function() action) async {
     _digits = '';
     await action();
-    _showBanner();
+    if (mounted) _showBanner();
   }
 
   void _typeDigit(int digit) {
@@ -126,11 +166,28 @@ class _TvScreenState extends State<TvScreen> {
 
   void _openGuide() => setState(() => _guideOpen = true);
 
+  void _exitFullScreen() => unawaited(FullScreen.instance.exit());
+
+  /// The portrait watch screen tunes without leaving.
+  void _tuneFromList(Channel ch) {
+    _cancelExit();
+    final tuner = AppScope.tunerOf(context);
+    _digits = '';
+    if (tuner.channel?.id == ch.id) return;
+    tuner.tune(ch);
+    // The tuner takes the channel at once; the panel and highlight follow
+    // before the picture does.
+    setState(() {});
+  }
+
   /// Android's Back on the TV screen: the first asks, the second quits.
+  /// In full screen from portrait it leaves full screen instead.
   void _back() {
     if (_digits.isNotEmpty) {
       _digitTimer?.cancel();
       setState(() => _digits = '');
+    } else if (FullScreen.instance.isOn && !ScreenLayout.of(context).isPortrait) {
+      _exitFullScreen();
     } else if (_exitTimer?.isActive ?? false) {
       _exitTimer!.cancel();
       final tuner = AppScope.tunerOf(context);
@@ -177,7 +234,8 @@ class _TvScreenState extends State<TvScreen> {
         await tuner.stop();
       }
     }
-    if (_guideOpen) {
+    if (!mounted) return;
+    if (_guideOpen && !ScreenLayout.of(context).isPortrait) {
       setState(() {});
     } else {
       _focus.requestFocus();
@@ -215,6 +273,7 @@ class _TvScreenState extends State<TvScreen> {
         return KeyEventResult.handled;
       }
       _cancelExit();
+      if (ScreenLayout.of(context).isPortrait) return _onPortraitKey(key);
       // The remote's own Guide and Last Channel buttons.
       if (key == LogicalKeyboardKey.guide) {
         _openGuide();
@@ -261,9 +320,66 @@ class _TvScreenState extends State<TvScreen> {
     return KeyEventResult.handled;
   }
 
+  /// The portrait watch screen: the channel keys and numbers tune as on the
+  /// TV screen; the arrows and OK move through and pick from the list.
+  KeyEventResult _onPortraitKey(LogicalKeyboardKey key) {
+    final tuner = AppScope.tunerOf(context);
+    final digit = _digitFor(key);
+    if (digit != null) {
+      _typeDigit(digit);
+    } else if (_digits.isNotEmpty && isSelectKey(key)) {
+      _commitDigits();
+    } else if (key == LogicalKeyboardKey.pageUp || key == LogicalKeyboardKey.channelUp) {
+      _surf(tuner.channelUp);
+    } else if (key == LogicalKeyboardKey.pageDown || key == LogicalKeyboardKey.channelDown) {
+      _surf(tuner.channelDown);
+    } else if (key == LogicalKeyboardKey.mediaLast || key == LogicalKeyboardKey.keyL) {
+      _surf(tuner.lastChannel);
+    } else if (key == LogicalKeyboardKey.keyC || key == LogicalKeyboardKey.closedCaptionToggle) {
+      tuner.toggleCaptions().then((_) => _showToast(tuner.captions ? 'Captions on' : 'Captions off'));
+    } else if (key == LogicalKeyboardKey.keyM || key == LogicalKeyboardKey.contextMenu) {
+      _openMenu();
+    } else if (key == LogicalKeyboardKey.escape) {
+      // A keyboard's Escape is Back here: there's no guide to open.
+      _back();
+    } else if (FocusManager.instance.primaryFocus == _focus &&
+        (key == LogicalKeyboardKey.arrowUp || key == LogicalKeyboardKey.arrowDown || isSelectKey(key))) {
+      // Nothing in the list has focus yet: start at the tuned channel.
+      _watchKey.currentState?.focusTuned();
+    } else {
+      return KeyEventResult.ignored;
+    }
+    return KeyEventResult.handled;
+  }
+
   @override
   Widget build(BuildContext context) {
     final tuner = AppScope.tunerOf(context);
+    if (ScreenLayout.of(context).isPortrait) {
+      return Focus(
+        focusNode: _focus,
+        autofocus: true,
+        onKeyEvent: _onKey,
+        child: ListenableBuilder(
+          listenable: tuner,
+          builder: (context, _) => PortraitWatchScreen(
+            key: _watchKey,
+            picture: TvPicture(key: _pictureKey),
+            numberEntry: tuner.changingChannel || _digits.isNotEmpty
+                ? (_digits.isNotEmpty ? '${_digits}_' : '${tuner.channel?.number ?? ''}')
+                : null,
+            toast: _toast,
+            onTune: _tuneFromList,
+            onMenu: _openMenu,
+            onFullScreen: () {
+              _cancelExit();
+              unawaited(FullScreen.instance.enter());
+            },
+            onTouch: _cancelExit,
+          ),
+        ),
+      );
+    }
     if (_guideOpen) {
       return GuideView(onWatch: _watch, onClose: _closeGuide, onMenu: _openMenu);
     }
@@ -290,34 +406,7 @@ class _TvScreenState extends State<TvScreen> {
             builder: (context, _) => Stack(
               fit: StackFit.expand,
               children: [
-                tuner.media.buildVideo(),
-                if (tuner.status == TunerStatus.standby)
-                  StatusCard(
-                    icon: Icons.schedule,
-                    title: 'PLEASE STAND BY',
-                    message: tuner.program == null
-                        ? null
-                        : 'Up next at ${formatTime((tuner.segment ?? tuner.program!).end)}',
-                  ),
-                if (tuner.status == TunerStatus.offAir)
-                  StatusCard(
-                    icon: Icons.tv_off,
-                    title: 'OFF THE AIR',
-                    message: switch (_backOnAir(context, tuner)) {
-                      final b? => 'Back on the air ${b.when} with ${b.title}',
-                      null => null,
-                    },
-                  ),
-                if (tuner.status == TunerStatus.error)
-                  StatusCard(
-                    icon: Icons.signal_cellular_connected_no_internet_0_bar,
-                    title: 'NO SIGNAL',
-                    message: [
-                      if (tuner.error != null) tuner.error!,
-                      if (tuner.program != null)
-                        'Trying again at ${formatTime((tuner.segment ?? tuner.program!).end)}',
-                    ].join('\n'),
-                  ),
+                TvPicture(key: _pictureKey, bannerUp: _banner),
                 if (tuner.changingChannel || _digits.isNotEmpty)
                   Positioned(
                     top: 60,
@@ -333,7 +422,7 @@ class _TvScreenState extends State<TvScreen> {
                   bottom: _banner && tuner.channel != null ? 0 : -260,
                   child: tuner.channel == null
                       ? const SizedBox.shrink()
-                      : _ChannelBanner(
+                      : ChannelBanner(
                           channel: tuner.channel!,
                           program: tuner.program,
                           inBreak: tuner.inBreak,
@@ -343,21 +432,8 @@ class _TvScreenState extends State<TvScreen> {
                           backOnAir: tuner.program?.isOffAir ?? false ? _backOnAir(context, tuner)?.when : null,
                         ),
                 ),
-                if ((tuner.status == TunerStatus.playing ? AppScope.read(context).scheduleFor(tuner.channel!) : null)
-                    case final schedule? when tuner.program != null && tuner.segment != null)
-                  Positioned(
-                    right: 90,
-                    bottom: 70,
-                    child: _UpNext(
-                      program: tuner.program!,
-                      segment: tuner.segment!,
-                      next: schedule.next(tuner.program!),
-                      lastPart: schedule.isLastPart(tuner.program!, tuner.segment!),
-                      hidden: _banner,
-                    ),
-                  ),
                 if (_toast != null)
-                  Positioned(top: 60, left: 0, right: 0, child: Center(child: _Toast(_toast!))),
+                  Positioned(top: 60, left: 0, right: 0, child: Center(child: TvToast(_toast!))),
                 Positioned(
                   top: 48,
                   left: 60,
@@ -371,6 +447,11 @@ class _TvScreenState extends State<TvScreen> {
                           TvPointerButton(label: 'Guide', icon: Icons.grid_view, onPressed: _openGuide),
                           const SizedBox(width: 16),
                           TvPointerButton(label: 'Menu', icon: Icons.settings, onPressed: _openMenu),
+                          if (FullScreen.instance.isOn && !PlatformInfo.isTelevision) ...[
+                            const SizedBox(width: 16),
+                            TvPointerButton(
+                                label: 'Exit full screen', icon: Icons.fullscreen_exit, onPressed: _exitFullScreen),
+                          ],
                         ],
                       ),
                     ),
@@ -381,6 +462,92 @@ class _TvScreenState extends State<TvScreen> {
           ),
         ),
       ),
+      ),
+    );
+  }
+}
+
+/// The picture: the video, the song card, the status cards, the logo bug and
+/// the Up next card, on the 1920×1080 canvas. The TV screen draws its
+/// banner and buttons over it; the portrait watch screen shows it in its
+/// player. One [GlobalKey] keeps it (and the video) the same widget when the
+/// layout changes.
+class TvPicture extends StatelessWidget {
+  const TvPicture({super.key, this.bannerUp = false});
+
+  /// The channel banner is up: the logo bug and Up next card make way.
+  final bool bannerUp;
+
+  @override
+  Widget build(BuildContext context) {
+    final tuner = AppScope.tunerOf(context);
+    return ListenableBuilder(
+      listenable: tuner,
+      builder: (context, _) => Stack(
+        fit: StackFit.expand,
+        children: [
+          tuner.media.buildVideo(),
+          // A song has no picture of its own.
+          if (tuner.channel case final ch? when tuner.status == TunerStatus.playing)
+            if (tuner.segment?.item case final song? when song.kind == MediaKind.song)
+              Positioned.fill(
+                child: NowPlayingCard(
+                  channel: ch,
+                  song: tuner.program!,
+                  next: AppScope.read(context).scheduleFor(ch)?.next(tuner.program!),
+                  art: albumArt(AppScope.read(context), song),
+                ),
+              ),
+          if (tuner.status == TunerStatus.standby)
+            StatusCard(
+              icon: Icons.schedule,
+              title: 'PLEASE STAND BY',
+              message: tuner.program == null
+                  ? null
+                  : 'Up next at ${formatTime((tuner.segment ?? tuner.program!).end)}',
+            ),
+          if (tuner.status == TunerStatus.offAir)
+            StatusCard(
+              icon: Icons.tv_off,
+              title: 'OFF THE AIR',
+              message: switch (_backOnAir(context, tuner)) {
+                final b? => 'Back on the air ${b.when} with ${b.title}',
+                null => null,
+              },
+            ),
+          if (tuner.status == TunerStatus.error)
+            StatusCard(
+              icon: Icons.signal_cellular_connected_no_internet_0_bar,
+              title: 'NO SIGNAL',
+              message: [
+                if (tuner.error != null) tuner.error!,
+                if (tuner.program != null)
+                  'Trying again at ${formatTime((tuner.segment ?? tuner.program!).end)}',
+              ].join('\n'),
+            ),
+          if (tuner.channel case final ch? when tuner.status == TunerStatus.playing)
+            ChannelLogoBug(
+              icon: ch.icon,
+              mode: AppScope.read(context).logoModeFor(ch),
+              segment: tuner.segment,
+              hidden: bannerUp,
+              blackouts: [?_upNextWindowOf(context, tuner)],
+              fallbackText: ch.name,
+            ),
+          if ((tuner.status == TunerStatus.playing ? AppScope.read(context).scheduleFor(tuner.channel!) : null)
+              case final schedule? when tuner.program != null && tuner.segment != null)
+            Positioned(
+              right: 90,
+              bottom: 70,
+              child: UpNextCard(
+                program: tuner.program!,
+                segment: tuner.segment!,
+                next: schedule.next(tuner.program!),
+                lastPart: schedule.isLastPart(tuner.program!, tuner.segment!),
+                hidden: bannerUp,
+              ),
+            ),
+        ],
       ),
     );
   }
@@ -400,12 +567,33 @@ class _TvScreenState extends State<TvScreen> {
   return (when: when, title: next.title);
 }
 
+/// [song]'s art from Jellyfin: its album's image, then its own.
+List<ImageProvider> albumArt(AppState app, MediaEntry song) {
+  final client = app.client;
+  if (client == null) return const [];
+  return [
+    for (final id in [?song.albumId, song.id])
+      NetworkImage(client.imageUri(id, 'Primary', maxHeight: 640).toString(), headers: client.authHeaders),
+  ];
+}
+
+/// When the Up next card is up during what [tuner] plays, if it comes up.
+({DateTime from, DateTime to})? _upNextWindowOf(BuildContext context, Tuner tuner) {
+  final ch = tuner.channel, program = tuner.program, segment = tuner.segment;
+  if (ch == null || program == null || segment == null) return null;
+  final schedule = AppScope.read(context).scheduleFor(ch);
+  if (schedule == null) return null;
+  return upNextWindow(program, segment, schedule.next(program), lastPart: schedule.isLastPart(program, segment));
+}
+
 /// What the banner says during a break.
 const commercialBreakLabel = 'Commercial break';
 
-class _ChannelBanner extends StatelessWidget {
-  const _ChannelBanner(
-      {required this.channel, required this.program, required this.next, this.inBreak = false, this.backOnAir});
+/// The bottom banner: the channel, what's on, and what's next.
+class ChannelBanner extends StatelessWidget {
+  const ChannelBanner(
+      {super.key,
+      required this.channel, required this.program, required this.next, this.inBreak = false, this.backOnAir});
 
   final Channel channel;
   final ScheduledProgram? program;
@@ -459,8 +647,15 @@ class _ChannelBanner extends StatelessWidget {
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: g.display(28, weight: FontWeight.w700, color: g.accent)),
-                Text(p?.title ?? 'Tuning…',
-                    maxLines: 1, overflow: TextOverflow.ellipsis, style: g.display(60, weight: FontWeight.w800)),
+                Row(
+                  children: [
+                    if (p?.isPremiere ?? false) ...[const NewTag(size: 32), const SizedBox(width: 18)],
+                    Expanded(
+                      child: Text(p?.title ?? 'Tuning…',
+                          maxLines: 1, overflow: TextOverflow.ellipsis, style: g.display(60, weight: FontWeight.w800)),
+                    ),
+                  ],
+                ),
                 if (p != null)
                   Text('${inBreak ? commercialBreakLabel : p.subtitle}   ·   ${formatRange(p.start, p.end)}',
                       maxLines: 1,
@@ -516,17 +711,18 @@ class _ChannelBanner extends StatelessWidget {
     ScheduledProgram program, ScheduledProgram segment, ScheduledProgram? next, {required bool lastPart}) {
   final item = program.item;
   if (item == null || next == null || next.isOffAir || segment.isBreak || segment.item?.id != item.id) return null;
-  if (item.runtime < _UpNext.minRuntime || !lastPart) return null;
-  final from = segment.end.subtract(_UpNext.lead);
-  return (from: from, to: from.add(_UpNext.showFor));
+  if (item.runtime < UpNextCard.minRuntime || item.isMusic || !lastPart) return null;
+  final from = segment.end.subtract(UpNextCard.lead);
+  return (from: from, to: from.add(UpNextCard.showFor));
 }
 
 /// The "Up next" card that slides in near the end of a show, like a cable
 /// network's end-credits promo. When the next program starts a programming
 /// block, it announces the block.
-class _UpNext extends StatefulWidget {
-  const _UpNext(
-      {required this.program, required this.segment, required this.next, required this.lastPart, required this.hidden});
+class UpNextCard extends StatefulWidget {
+  const UpNextCard(
+      {super.key,
+      required this.program, required this.segment, required this.next, required this.lastPart, required this.hidden});
 
   /// When it comes up: this long before the show ends…
   static const lead = Duration(seconds: 60);
@@ -550,10 +746,10 @@ class _UpNext extends StatefulWidget {
   final bool hidden;
 
   @override
-  State<_UpNext> createState() => _UpNextState();
+  State<UpNextCard> createState() => _UpNextCardState();
 }
 
-class _UpNextState extends State<_UpNext> {
+class _UpNextCardState extends State<UpNextCard> {
   late final Timer _tick;
   bool _visible = false;
 
@@ -565,7 +761,7 @@ class _UpNextState extends State<_UpNext> {
   }
 
   @override
-  void didUpdateWidget(_UpNext old) {
+  void didUpdateWidget(UpNextCard old) {
     super.didUpdateWidget(old);
     _check();
   }
@@ -613,8 +809,17 @@ class _UpNextState extends State<_UpNext> {
                       Text('UP NEXT  ·  ${formatTime(n.start)}',
                           style: g.display(24, weight: FontWeight.w800, color: g.accent)),
                       const SizedBox(height: 4),
-                      Text(block ?? n.title,
-                          maxLines: 1, overflow: TextOverflow.ellipsis, style: g.display(40, weight: FontWeight.w800)),
+                      Row(
+                        children: [
+                          if (n.isPremiere) ...[const NewTag(size: 24), const SizedBox(width: 14)],
+                          Expanded(
+                            child: Text(block ?? n.title,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: g.display(40, weight: FontWeight.w800)),
+                          ),
+                        ],
+                      ),
                       Text(
                         block != null ? 'Starting with ${n.title}' : n.subtitle,
                         maxLines: 1,
@@ -630,8 +835,9 @@ class _UpNextState extends State<_UpNext> {
   }
 }
 
-class _Toast extends StatelessWidget {
-  const _Toast(this.message);
+/// A short message over the picture ("There is no channel 99").
+class TvToast extends StatelessWidget {
+  const TvToast(this.message, {super.key});
 
   final String message;
 

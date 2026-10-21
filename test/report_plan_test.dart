@@ -43,6 +43,19 @@ void main() {
     expect(viewingOf('ch', loose), isNull);
   });
 
+  test('songs and music videos are never reported', () {
+    for (final kind in [MediaKind.song, MediaKind.musicVideo]) {
+      final music = ScheduledProgram(
+          item: MediaEntry(id: 'm', kind: kind, title: 'Song', runtime: const Duration(minutes: 4)),
+          start: slot,
+          end: slot.add(const Duration(minutes: 4)));
+      expect(viewingOf('radio', music), isNull, reason: kind.name);
+      expect(reportStep(null, 'radio', music), ReportStep.none);
+      // A song after a show ends the show's viewing and starts none.
+      expect(reportStep(viewingOf('ch', part(0, 22)), 'ch', music), ReportStep.finish);
+    }
+  });
+
   test('a new slot, or another channel, ends the viewing', () {
     final viewing = viewingOf('ch', part(0, 7))!;
     final nextSlot = slot.add(const Duration(minutes: 30));

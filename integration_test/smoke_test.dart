@@ -12,8 +12,9 @@
 // the guide with the keyboard, and saves screenshots to SNAP_DIR (if set).
 //
 // The second test sets up commercial breaks from the server's commercials
-// folder (JF_POOL_FOLDER, default 80s-2000s-commercial-compilation), lets
-// analysis split its reels, and watches a real break. JF_ANALYSIS_CACHE (a
+// folder (JF_POOL_FOLDER; by default 80s-2000s-commercial-compilation, with
+// long reels, or Collectionof90sCommercials, with short clips), lets
+// analysis split any reels, and watches a real break. JF_ANALYSIS_CACHE (a
 // folder) keeps the analysis between runs.
 import 'dart:convert';
 import 'dart:io';
@@ -245,13 +246,15 @@ void main() {
     final client = app.client!;
 
     // A pool on the commercials folder.
-    final folderName = env['JF_POOL_FOLDER'] ?? '80s-2000s-commercial-compilation';
+    final folderNames = [
+      if (env['JF_POOL_FOLDER'] case final name?) name else ...['80s-2000s-commercial-compilation', 'Collectionof90sCommercials'],
+    ];
     PoolRoot? root;
     for (final lib in (await tester.runAsync(client.libraries))!.where((l) => l.isVideo)) {
       final tree = (await tester.runAsync(() => client.folderTree(lib.id)))!;
       FolderNode? find(List<FolderNode> nodes) {
         for (final n in nodes) {
-          if (n.name == folderName) return n;
+          if (folderNames.contains(n.name)) return n;
           final inside = find(n.children);
           if (inside != null) return inside;
         }
@@ -259,16 +262,22 @@ void main() {
       }
 
       final node = find(tree);
-      if (node != null) root = PoolRoot(itemId: node.id, libraryId: lib.id, label: '${lib.name} › ${node.name}');
+      if (node != null) root ??= PoolRoot(itemId: node.id, libraryId: lib.id, label: '${lib.name} › ${node.name}');
     }
-    expect(root, isNotNull, reason: 'no folder named $folderName');
+    expect(root, isNotNull, reason: 'no folder named ${folderNames.join(' or ')}');
     final pool = (await tester.runAsync(app.createPool))!;
     await tester.runAsync(() => app.setPoolRoots(pool, [root!]));
     for (var i = 0; i < 360 && (app.refreshing || app.library.commercials.isEmpty); i++) {
       await wait(const Duration(milliseconds: 500));
     }
     final reels = [for (final c in app.library.commercials) if (c.runtime > LibraryIndex.maxClip) c];
-    expect(reels, isNotEmpty, reason: 'the folder holds long commercial videos');
+    // A folder of short clips: each is a clip as it is, with nothing to split.
+    if (reels.isEmpty) {
+      final clips = app.catalog.clipsFor(pool.id);
+      debugPrint('${app.library.commercials.length} commercials, ${clips.length} clips');
+      expect(clips, isNotEmpty, reason: 'the folder\'s short videos are clips');
+      expect(clips.every((c) => c.runtime <= LibraryIndex.maxClip && c.runtime >= LibraryIndex.minClip), isTrue);
+    }
     final before = {for (final r in reels) r.id: await userData(client, r.id)};
 
     // Analysis splits the reels (ffmpeg, through the loopback proxy).
@@ -296,7 +305,10 @@ void main() {
       });
     }
     await tester.runAsync(() => app.setGlobalPlan(BreakPlan.automatic));
-    expect(app.channels.every(app.breaksFor), isTrue);
+    // Music channels keep their own setting: no breaks (music-channels).
+    for (final ch in app.channels) {
+      expect(app.breaksFor(ch), !ch.isMusic, reason: '${ch.name} ${ch.isMusic ? 'plays music' : 'gets breaks'}');
+    }
 
     /// A channel airing [item], and its layout of [item] for a slot now.
     (ChannelSchedule, List<({Duration from, Duration to})>)? layoutOf(MediaEntry item) {
@@ -337,7 +349,9 @@ void main() {
     final now = DateTime.now();
     var best = (channel: app.channels.first, at: now.add(const Duration(days: 1)));
     for (final ch in app.channels) {
-      final schedule = app.scheduleFor(ch)!;
+      // Channels with breaks (not music ones).
+      final schedule = app.scheduleFor(ch);
+      if (schedule == null || !app.breaksFor(ch)) continue;
       var t = now;
       for (var i = 0; i < 40; i++) {
         final p = schedule.playbackAt(t);

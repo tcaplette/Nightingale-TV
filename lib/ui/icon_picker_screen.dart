@@ -11,6 +11,7 @@ import 'device_image_picker_screen.dart';
 import '../theme/tv_theme.dart';
 import 'menu_screen.dart';
 import 'widgets/channel_logo.dart';
+import 'widgets/screen_layout.dart';
 import 'widgets/tv_focus.dart';
 
 enum _Tab {
@@ -108,29 +109,34 @@ class _IconPickerScreenState extends State<IconPickerScreen> {
   @override
   Widget build(BuildContext context) {
     final g = context.guide;
+    final layout = ScreenLayout.of(context);
+    final tabs = Row(
+      children: [
+        for (final t in _Tab.values) ...[
+          _TabButton(
+            tab: t,
+            selected: t == _tab,
+            autofocus: t == _Tab.builtin,
+            onSelected: () => setState(() => _tab = t),
+          ),
+          const SizedBox(width: 14),
+        ],
+      ],
+    );
     return TvPage(
       title: 'Icon for ${widget.channel.name}',
       hints: '◀▶▲▼ Move    OK Choose    ESC Cancel',
       onBack: () => Navigator.of(context).pop(),
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(80, 28, 80, 20),
+        padding: layout.isPortrait
+            ? EdgeInsets.fromLTRB(layout.gutter, 20, layout.gutter, 0)
+            : const EdgeInsets.fromLTRB(80, 28, 80, 20),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             FocusTraversalGroup(
-              child: Row(
-                children: [
-                  for (final t in _Tab.values) ...[
-                    _TabButton(
-                      tab: t,
-                      selected: t == _tab,
-                      autofocus: t == _Tab.builtin,
-                      onSelected: () => setState(() => _tab = t),
-                    ),
-                    const SizedBox(width: 14),
-                  ],
-                ],
-              ),
+              // Upright, the tabs scroll sideways.
+              child: layout.isPortrait ? SingleChildScrollView(scrollDirection: Axis.horizontal, child: tabs) : tabs,
             ),
             if (_error != null)
               Padding(
@@ -166,13 +172,16 @@ class _IconPickerScreenState extends State<IconPickerScreen> {
         );
       case _Tab.badges:
         final g = context.guide;
+        final portrait = ScreenLayout.of(context).isPortrait;
         return ListView(
           children: [
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
+            // Upright, the badge's settings over the preview.
+            Flex(
+              direction: portrait ? Axis.vertical : Axis.horizontal,
+              crossAxisAlignment: portrait ? CrossAxisAlignment.stretch : CrossAxisAlignment.start,
               children: [
                 SizedBox(
-                  width: 560,
+                  width: portrait ? null : 560,
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
@@ -192,8 +201,9 @@ class _IconPickerScreenState extends State<IconPickerScreen> {
                     ],
                   ),
                 ),
-                const SizedBox(width: 80),
-                Expanded(
+                SizedBox(width: 80, height: portrait ? 40 : null),
+                Flexible(
+                  fit: portrait ? FlexFit.loose : FlexFit.tight,
                   child: Column(
                     children: [
                       _SectionTitle('Preview'),

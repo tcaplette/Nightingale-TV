@@ -6,10 +6,11 @@ import '../library/library_index.dart';
 typedef Viewing = ({String channelId, String itemId, DateTime layoutStart});
 
 /// The viewing [segment] is part of, if it is a part of a program (not a
-/// break, a commercial or off the air).
+/// break, a commercial, music or off the air). Music is never reported: hours
+/// of radio would flood play counts and "recently played".
 Viewing? viewingOf(String channelId, ScheduledProgram segment) {
   final item = segment.item;
-  if (segment.isBreak || item == null || item.kind == MediaKind.commercial) return null;
+  if (segment.isBreak || item == null || item.kind == MediaKind.commercial || item.isMusic) return null;
   return (channelId: channelId, itemId: item.id, layoutStart: segment.layoutStart);
 }
 

@@ -232,6 +232,15 @@ class _Session {
       recordStartup: (d) => owner._recordStartup(profileId, d),
       isSilent: owner._silent.contains,
       markSilent: owner._silent.add,
+      logoMode: () => app.logoModeFor(app.channelById(channel.id) ?? channel),
+      logoPng: () async => (await owner.chunks.art.logoFile(app, app.channelById(channel.id) ?? channel))?.path,
+      songCard: (segment) async {
+        final schedule = app.scheduleFor(channel);
+        final slot = schedule?.programAt(segment.start) ?? segment;
+        final card = await owner.chunks.art
+            .nowPlayingPng(app, app.channelById(channel.id) ?? channel, slot, schedule?.next(slot), quality.height);
+        return card.path;
+      },
       log: (line) => owner.onEvent?.call('channel ${channel.number}: $line'),
     );
     final s = stream = ChannelStream(ctx);

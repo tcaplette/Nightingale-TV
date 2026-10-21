@@ -28,3 +28,19 @@ String formatMinutes(Duration d) {
 /// Start of the half hour containing [t].
 DateTime floorToHalfHour(DateTime t) =>
     DateTime(t.year, t.month, t.day, t.hour, t.minute < 30 ? 0 : 30);
+
+/// "Oct 18, 9:05 PM".
+String formatMoment(DateTime t) {
+  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  return '${months[t.month - 1]} ${t.day}, ${formatTime(t)}';
+}
+
+/// "today 9:05 PM", "yesterday 9:05 PM", or [formatMoment] for older times.
+String formatRecent(DateTime t, {DateTime? now}) {
+  final today = now ?? DateTime.now();
+  final day = DateTime(t.year, t.month, t.day);
+  final days = DateTime(today.year, today.month, today.day).difference(day).inDays;
+  if (days == 0) return 'today ${formatTime(t)}';
+  if (days == 1) return 'yesterday ${formatTime(t)}';
+  return formatMoment(t);
+}

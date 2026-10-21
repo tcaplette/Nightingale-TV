@@ -1,3 +1,5 @@
+import 'dart:math';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -92,8 +94,12 @@ class _PinPadState extends State<_PinPad> {
   @override
   Widget build(BuildContext context) {
     final g = context.guide;
+    final padding = dialogPadding(context);
+    final width = dialogWidth(context, 560, padding: padding);
+    // Three keys to a row, as wide as fit (150 on the TV).
+    final keyWidth = min(150.0, (width - 24) / 3);
     Widget key(String label, {VoidCallback? onPressed, bool autofocus = false, IconData? icon}) => SizedBox(
-          width: 150,
+          width: keyWidth,
           child: TvButton(
             label: label,
             icon: icon,
@@ -112,9 +118,9 @@ class _PinPadState extends State<_PinPad> {
           side: BorderSide(color: g.cellBorder, width: 2),
         ),
         child: Padding(
-          padding: const EdgeInsets.all(56),
+          padding: EdgeInsets.all(padding),
           child: SizedBox(
-            width: 560,
+            width: width,
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [

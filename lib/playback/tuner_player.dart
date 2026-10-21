@@ -9,6 +9,21 @@ import 'package:media_kit_video/media_kit_video.dart';
 import 'exo_tuner_player.dart';
 import 'playback_diagnostics.dart';
 
+/// Volume leveling (volume-leveling spec, design D1) as an FFmpeg filter
+/// graph: a slow RMS compressor with linked channels (threshold -40 dBFS,
+/// 4:1, soft knee 2.8, 200 ms attack, 2000 ms release, +12 dB make-up),
+/// then a peak limiter at -1 dBFS (5 ms look-ahead, 50 ms release) with its
+/// auto-level off, since auto-level raises the output. Neither looks ahead
+/// further, so the first audio isn't held back. Android's
+/// LevelingAudioProcessor.kt runs the same algorithm with the same values;
+/// test/volume_leveling_test.dart runs this graph through ffmpeg.
+const volumeLevelingChain = 'acompressor=detection=rms:link=average:threshold=0.01:ratio=4:knee=2.8'
+    ':attack=200:release=2000:makeup=3.981,'
+    'alimiter=limit=0.89:attack=5:release=50:level=disabled';
+
+/// [volumeLevelingChain] as mpv's `af` property.
+const volumeLevelingAf = 'lavfi=[$volumeLevelingChain]';
+
 /// What the [Tuner] needs from a video player: mpv on Linux
 /// ([MediaKitTunerPlayer]), ExoPlayer on Android ([ExoTunerPlayer]); tests
 /// use a fake.
@@ -16,7 +31,10 @@ abstract class TunerPlayer implements PlayerReadings {
   /// The platform's player. By the real OS, not PlatformInfo's test
   /// override: ExoPlayer is native code, which only exists in the Android
   /// app.
-  static TunerPlayer create() => Platform.isAndroid ? ExoTunerPlayer() : MediaKitTunerPlayer();
+  /// [leveling]: volume leveling's state at start-up, which ExoPlayer is
+  /// built with.
+  static TunerPlayer create({bool leveling = false}) =>
+      Platform.isAndroid ? ExoTunerPlayer(leveling: leveling) : MediaKitTunerPlayer();
 
   Stream<bool> get playingStream;
   Stream<bool> get bufferingStream;
@@ -71,6 +89,11 @@ abstract class TunerPlayer implements PlayerReadings {
   /// Drops the queued item, if there is one.
   Future<void> clearQueue();
 
+  /// Volume leveling (volume-leveling spec) on or off, for what's playing
+  /// and everything opened after. mpv applies it at once; ExoPlayer is
+  /// rebuilt, and the tuner then re-tunes.
+  Future<void> setVolumeLeveling(bool on);
+
   /// The player moved on to the queued item, by itself at the end of the
   /// item playing or by [advance].
   Stream<void> get advanced;
@@ -89,7 +112,10 @@ abstract class TunerPlayer implements PlayerReadings {
 class MediaKitTunerPlayer implements TunerPlayer {
   /// [verboseLog]: mpv's verbose log on [logStream] (diagnostics builds,
   /// and the startup latency test, which times mpv's steps from it).
-  MediaKitTunerPlayer({bool? verboseLog})
+  ///
+  /// [video]: false makes decks without a video output, for tests, which
+  /// can't attach one.
+  MediaKitTunerPlayer({bool? verboseLog, @visibleForTesting this._video = true})
       : _configuration = (verboseLog ?? PlaybackDiagnostics.enabled) ? _diagnosticConfiguration : configuration {
     _onAir = _newDeck();
     _decks.value = [_onAir];
@@ -102,6 +128,7 @@ class MediaKitTunerPlayer implements TunerPlayer {
   static const _diagnosticConfiguration = PlayerConfiguration(title: 'Nightingale TV', logLevel: MPVLogLevel.v);
 
   final PlayerConfiguration _configuration;
+  final bool _video;
 
   /// The deck on screen.
   late _Deck _onAir;
@@ -123,6 +150,22 @@ class MediaKitTunerPlayer implements TunerPlayer {
 
   bool _captions = false;
 
+  /// Volume leveling is on (design D2): on every deck, including decks made
+  /// later.
+  bool _leveling = false;
+
+  /// mpv couldn't build the leveling filters: playing without them until
+  /// the setting changes again.
+  bool _levelingRefused = false;
+
+  /// The `af` set while leveling is on (tests replace it).
+  @visibleForTesting
+  String levelingAf = volumeLevelingAf;
+
+  /// What mpv says when it can't build the audio filters (0.34: "Audio
+  /// filter initialized failed!"). It turns the audio track off then.
+  static final _filterFailure = RegExp('audio filter init', caseSensitive: false);
+
   /// The mpv on screen.
   Player get player => _onAir.player;
   VideoController get video => _onAir.video;
@@ -143,11 +186,12 @@ class MediaKitTunerPlayer implements TunerPlayer {
   Duration? _lastTick;
 
   _Deck _newDeck() {
-    final deck = _Deck(Player(configuration: _configuration));
+    final deck = _Deck(Player(configuration: _configuration), video: _video);
     // The audio output keeps running (silent) while a deck is paused, so a
     // deck taking over doesn't wait for it to start: picture waits for
     // audio, and starting PulseAudio took up to 350 ms.
     unawaited(deck.setOption('audio-stream-silence', 'yes'));
+    if (_leveling) unawaited(_applyLeveling(deck));
     final s = deck.player.stream;
     bool onAir() => identical(deck, _onAir);
     deck.subscriptions.addAll([
@@ -177,6 +221,10 @@ class MediaKitTunerPlayer implements TunerPlayer {
         _completed.add(done);
       }),
       s.error.listen((message) {
+        if (_filterFailure.hasMatch(message) && deck.af.isNotEmpty) {
+          unawaited(_refuseLeveling(deck, message));
+          return;
+        }
         if (onAir()) {
           _error.add(message);
         } else if (_queued && identical(deck, _spare)) {
@@ -294,6 +342,61 @@ class MediaKitTunerPlayer implements TunerPlayer {
 
   @override
   Future<void> clearQueue() => _dropQueue();
+
+  /// Sets `af` on both decks; a deck made later gets it in [_newDeck].
+  @override
+  Future<void> setVolumeLeveling(bool on) async {
+    _leveling = on;
+    _levelingRefused = false;
+    PlaybackDiagnostics.note('LEVEL', '${on ? 'on' : 'off'} mpv af=$_af');
+    for (final deck in [_onAir, ?_spare]) {
+      await _applyLeveling(deck);
+    }
+  }
+
+  String get _af => _leveling && !_levelingRefused ? levelingAf : '';
+
+  Future<void> _applyLeveling(_Deck deck) async {
+    final af = _af;
+    if (deck.af == af) return;
+    deck.af = af;
+    try {
+      await deck.setOption('af', af);
+    } on Object catch (e) {
+      await _refuseLeveling(deck, '$e');
+    }
+  }
+
+  /// mpv refused the filters: every deck plays on without them, with the
+  /// audio track back on where mpv turned it off.
+  Future<void> _refuseLeveling(_Deck failed, String message) async {
+    if (!_levelingRefused) {
+      _levelingRefused = true;
+      debugPrint('Volume leveling: mpv refused the audio filters ($message); playing without leveling');
+      PlaybackDiagnostics.note('LEVEL', 'refused mpv af=$levelingAf: $message');
+    }
+    for (final deck in [_onAir, ?_spare]) {
+      await _applyLeveling(deck);
+    }
+    try {
+      // mpv says so before it turns the track off. Its selection is still
+      // "auto", so it's set to "no" first for "auto" to be a change.
+      for (var i = 0; i < 40; i++) {
+        if (await failed.property('aid') == 'no') {
+          await failed.setOption('aid', 'no');
+          await failed.setOption('aid', 'auto');
+          return;
+        }
+        await Future<void>.delayed(const Duration(milliseconds: 50));
+      }
+    } on Object catch (e) {
+      debugPrint('Volume leveling: audio not restored: $e');
+    }
+  }
+
+  /// The decks' mpvs, the one on screen first (tests).
+  @visibleForTesting
+  List<Player> get debugDecks => [_onAir.player, ?_spare?.player];
 
   /// mpv auto-selects "default" subtitle tracks on every new file.
   @override
@@ -471,11 +574,16 @@ class MediaKitTunerPlayer implements TunerPlayer {
 
 /// One mpv and its video.
 class _Deck {
-  _Deck(this.player) : video = VideoController(player);
+  _Deck(this.player, {bool video = true}) {
+    if (video) this.video = VideoController(player);
+  }
 
   final Player player;
-  final VideoController video;
+  late final VideoController video;
   final subscriptions = <StreamSubscription<Object?>>[];
+
+  /// The `af` property as last set ("" for none).
+  String af = '';
 
   /// [exact]: mpv's own default (precise for a start position); else
   /// keyframes.

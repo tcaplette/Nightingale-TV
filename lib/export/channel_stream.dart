@@ -5,7 +5,9 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 
 import '../channels/channel.dart';
+import '../channels/logo_windows.dart';
 import '../channels/schedule.dart';
+import '../library/library_index.dart';
 import 'broadcast_art.dart';
 import 'encode_args.dart';
 import 'export_settings.dart';
@@ -27,11 +29,16 @@ class StreamContext {
     void Function(Duration)? recordStartup,
     bool Function(String sourceId)? isSilent,
     void Function(String sourceId)? markSilent,
+    LogoMode Function()? logoMode,
+    Future<String?> Function()? logoPng,
+    this.songCard,
     this.log,
   })  : expectedStartup = expectedStartup ?? (() => const Duration(seconds: 3)),
         recordStartup = recordStartup ?? ((_) {}),
         isSilent = isSilent ?? ((_) => false),
-        markSilent = markSilent ?? ((_) {});
+        markSilent = markSilent ?? ((_) {}),
+        logoMode = logoMode ?? (() => LogoMode.off),
+        logoPng = logoPng ?? (() async => null);
 
   final Channel channel;
 
@@ -60,6 +67,13 @@ class StreamContext {
   /// Items found to have no audio track.
   final bool Function(String sourceId) isSilent;
   final void Function(String sourceId) markSilent;
+
+  /// The channel's logo setting right now, and its logo's PNG file.
+  final LogoMode Function() logoMode;
+  final Future<String?> Function() logoPng;
+
+  /// A song's Now Playing card (PNG file), its picture in the stream.
+  final Future<String> Function(ScheduledProgram song)? songCard;
 
   /// Diagnostics: what the stream plans and how its encoders start.
   final void Function(String line)? log;
@@ -274,17 +288,30 @@ class ChannelStream {
   }
 
   Future<void> _startEncoder(_ProgramPlan plan) async {
-    final started = ctx.clock();
+    final started = plan.started = ctx.clock();
     ctx.log?.call('encoder ${plan.sourceId} for ${plan.t.toIso8601String()} from ${plan.from} '
         '${plan.frames} frames${plan.segment.isCommercial ? ' (commercial, held)' : ''}, '
         '${plan.t.difference(started).inMilliseconds} ms ahead');
     try {
+      final logo = await _logoFor(plan);
+      final song = plan.segment.item?.kind == MediaKind.song ? ctx.songCard : null;
+      final card = song == null ? null : await song(plan.segment);
       final url = await ctx.openSource(plan.sourceId);
       plan.opened = true;
       if (_stopped) return _release(plan);
+      plan.logo = logo != null;
       final process = await ctx.start(
         'nice',
-        EncodeArgs.segment(
+        card != null
+            ? EncodeArgs.songSegment(
+                input: url,
+                card: card,
+                from: plan.from,
+                frames: plan.frames,
+                quality: ctx.quality,
+                encoder: plan.encoder = ctx.encoder,
+              )
+            : EncodeArgs.segment(
           input: url,
           from: plan.from,
           frames: plan.frames,
@@ -292,6 +319,7 @@ class ChannelStream {
           encoder: plan.encoder = ctx.encoder,
           audio: !ctx.isSilent(plan.sourceId),
           hold: plan.segment.isCommercial,
+          logo: logo,
         ),
       );
       plan.process = process;
@@ -303,6 +331,8 @@ class ChannelStream {
           .forEach((line) {
         if (line.startsWith('frame=')) {
           plan.produced = int.tryParse(line.substring(6).trim()) ?? plan.produced;
+        } else if (line.startsWith('speed=')) {
+          plan.speed = line.substring(6).trim();
         } else if (!line.contains('=') && line.trim().isNotEmpty) {
           plan.errors.add(line.trim());
         }
@@ -320,6 +350,23 @@ class ChannelStream {
       plan.ready = true;
       plan.first = Future.value(false);
     }
+  }
+
+  /// The logo [plan]'s segment carries: the TV's windows for it (channel-
+  /// logo), relative to where the encoder starts; null when it never shows.
+  Future<SegmentLogo?> _logoFor(_ProgramPlan plan) async {
+    final mode = ctx.logoMode();
+    final end = plan.t.add(EncodeArgs.framesLength(plan.frames));
+    final windows = logoWindows(mode, [plan.segment], plan.t, end);
+    if (windows.isEmpty) return null;
+    final png = await ctx.logoPng();
+    if (png == null) return null;
+    final relative = [
+      for (final w in windows) (start: w.start.difference(plan.t), end: w.end.difference(plan.t)),
+    ];
+    ctx.log?.call('logo ${mode.name} on ${plan.sourceId}: '
+        '${[for (final w in relative) '${w.start.inMilliseconds / 1000}–${w.end.inMilliseconds / 1000} s'].join(', ')}');
+    return SegmentLogo(png: png, windows: relative, always: mode == LogoMode.always);
   }
 
   Future<void> _playProgram(_ProgramPlan plan) async {
@@ -358,7 +405,9 @@ class ChannelStream {
       }
       return;
     }
-    ctx.log?.call('encoder ${plan.sourceId} done: ${plan.produced}/${plan.frames} frames, exit $code');
+    final took = ctx.clock().difference(plan.started).inMilliseconds;
+    ctx.log?.call('encoder ${plan.sourceId} done: ${plan.produced}/${plan.frames} frames, exit $code, '
+        'logo ${plan.logo ? 'on' : 'off'}, $took ms, speed ${plan.speed ?? '?'}');
     if (!_splicer.sawAudio && !ctx.isSilent(plan.sourceId)) ctx.markSilent(plan.sourceId);
     // Commercials are padded with their last picture, so only a program
     // part ends early.
@@ -404,6 +453,10 @@ class _ProgramPlan extends _Plan {
   final int frames;
 
   VideoEncoder? encoder;
+
+  /// When its encoder started, and whether it lays the logo over.
+  DateTime started = DateTime.now();
+  bool logo = false;
   Process? process;
   StreamIterator<List<int>>? output;
   Future<bool>? first;
@@ -412,5 +465,8 @@ class _ProgramPlan extends _Plan {
   bool opened = false;
   bool finished = false;
   int produced = 0;
+
+  /// ffmpeg's last reported encode speed ("1.8x").
+  String? speed;
   final errors = <String>[];
 }

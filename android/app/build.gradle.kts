@@ -58,6 +58,12 @@ android {
         }
     }
 
+    // JVM tests (android/app/src/test) run Media3's audio classes, which
+    // touch android.jar's stubs; those return defaults instead of throwing.
+    testOptions {
+        unitTests.isReturnDefaultValues = true
+    }
+
 }
 
 // The Android player (ExoTunerHost.kt): ExoPlayer, and its OkHttp data source
@@ -66,6 +72,8 @@ dependencies {
     implementation("androidx.media3:media3-exoplayer:1.11.1")
     implementation("androidx.media3:media3-datasource-okhttp:1.11.1")
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
+    // LevelingAudioProcessorTest.
+    testImplementation("junit:junit:4.13.2")
 }
 
 gradle.taskGraph.whenReady {

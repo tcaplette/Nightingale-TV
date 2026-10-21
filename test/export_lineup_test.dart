@@ -6,6 +6,7 @@ import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:nightingale_tv/app_state.dart';
 import 'package:nightingale_tv/channels/channel.dart';
+import 'package:nightingale_tv/channels/premieres.dart';
 import 'package:nightingale_tv/data/app_storage.dart';
 import 'package:nightingale_tv/export/export_service.dart';
 import 'package:nightingale_tv/export/lineup_server.dart';
@@ -108,6 +109,36 @@ void main() {
       expect(ep, contains('<category>Comedy</category>'));
       expect(ep, contains('<previously-shown/>'));
       expect(ep, contains('<icon src="http://192.168.1.20:5004/images/${entry.seriesId}.jpg"/>'));
+    });
+
+    test('group-title: a group, else the automatic group, else the profile', () async {
+      // All Shows (2) is in no group and no automatic group.
+      final library = fakeLibrary(
+          shows: const {'Alpha': 20, 'Beta': 20, 'Gamma': 4},
+          genres: const {
+            'Alpha': ['Comedy'],
+            'Beta': ['Comedy'],
+          },
+          movies: 6);
+      final dir2 = await Directory.systemTemp.createTemp('nightingale_tv_export_groups');
+      final app2 = await signedInApp(dir2, library);
+      addTearDown(() async {
+        await app2.close();
+        await dir2.delete(recursive: true);
+      });
+      final movies = app2.channels.firstWhere((c) => c.name == 'Movie Channel');
+      final grouped = app2.channels.firstWhere((c) => c != movies && c.number != 2);
+      final group = await app2.createGroup('Saturday');
+      await app2.setInGroup(group, grouped, true);
+      final m3u = buildM3u(
+          channels: app2.channels,
+          urls: _urls,
+          profileName: 'Ann',
+          groupOf: (c) => app2.m3uGroupFor(c, fallback: profileGroup('Ann')));
+      String entry(Channel c) => m3u.split('\n').firstWhere((l) => l.contains('tvg-chno="${c.number}"'));
+      expect(entry(grouped), contains('group-title="Saturday"'));
+      expect(entry(movies), contains('group-title="Movies"'));
+      expect(entry(app2.channels.firstWhere((c) => c.number == 2)), contains('group-title="Nightingale TV · Ann"'));
     });
 
     test('special characters are escaped', () {
@@ -245,6 +276,23 @@ void main() {
       await app.updateChannel(app.channels.first, name: 'Renamed');
       expect(server.hasCachedGuide, isFalse);
       expect((await get(port, '/xmltv.xml')).$2, contains('Renamed'));
+      // Groups and premiere settings drop it too.
+      await app.createGroup('Saturday');
+      expect(server.hasCachedGuide, isFalse);
+      await get(port, '/xmltv.xml');
+      await app.setPremiereSettings(const PremiereSettings(startMinute: 21 * 60));
+      expect(server.hasCachedGuide, isFalse);
+    });
+
+    test("the M3U names each channel's group", () async {
+      final port = await export(mom);
+      final app = household.appFor(mom.id)!;
+      final first = app.channels.first;
+      String line(String m3u) => m3u.split('\n').firstWhere((l) => l.contains('tvg-chno="${first.number}"'));
+      expect(line((await get(port, '/lineup.m3u')).$2), contains('group-title="Nightingale TV · Mom"'));
+      final group = await app.createGroup('Saturday');
+      await app.setInGroup(group, first, true);
+      expect(line((await get(port, '/lineup.m3u')).$2), contains('group-title="Saturday"'));
     });
 
     test('posters only for items in the lineup, fetched with the sign-in', () async {
@@ -334,6 +382,63 @@ void main() {
       }
       expect(service.settings.profiles.containsKey(dad.id), isFalse);
       expect(service.serverOf(dad.id), isNull);
+    });
+  });
+
+  group('premieres and music in XMLTV', () {
+    late Directory dir;
+    late AppState app;
+
+    setUp(() async {
+      dir = await Directory.systemTemp.createTemp('nightingale_tv_export_new');
+      final now = DateTime.now();
+      final items = fakeItems(shows: const {'Alpha': 12, 'Beta': 12});
+      final added = now.subtract(const Duration(days: 2)).toUtc().toIso8601String();
+      final library = LibraryIndex.fromJellyfinItems(
+        seriesItems: items.series,
+        episodeItems: [for (final e in items.episodes) {...e, 'DateCreated': added}],
+        movieItems: const [],
+        songItems: fakeMusic(200),
+        fetchedAt: DateTime(2026),
+      ).withAvailability(null, now);
+      // Premieres two hours from now.
+      final soon = now.add(const Duration(hours: 2));
+      app = await signedInApp(dir, library,
+          settings: (AppSettings.fresh()..premieres = PremiereSettings(startMinute: soon.hour * 60)).toJson());
+    });
+
+    tearDown(() async {
+      await app.close();
+      await dir.delete(recursive: true);
+    });
+
+    String guide() =>
+        buildXmltv(channels: app.channels, scheduleFor: app.scheduleFor, library: app.library, urls: _urls, now: DateTime.now());
+
+    test('a premiere carries <new/> and the New Episodes category; reruns <previously-shown/>', () {
+      final xml = guide();
+      final home = app.channelById(app.premierePlan!.homeOf['alpha']!)!;
+      final premieres = [for (final p in _programmes(xml, home.number)) if (p.contains('<new/>')) p];
+      expect(premieres, isNotEmpty);
+      expect(premieres.first, contains('<category>${PremierePlan.title}</category>'));
+      expect(premieres.first, isNot(contains('<previously-shown/>')));
+      final reruns = [for (final p in _programmes(xml, home.number)) if (!p.contains('<new/>')) p];
+      expect(reruns.where((p) => p.contains('<sub-title>')), everyElement(contains('<previously-shown/>')));
+    });
+
+    test('a radio channel runs hour by hour, titled with its name, with its songs listed', () {
+      final xml = guide();
+      final radio = app.channels.firstWhere((c) => c.name == 'Music Radio');
+      final programmes = _programmes(xml, radio.number);
+      expect(programmes, hasLength(72));
+      for (final p in programmes.take(3)) {
+        expect(p, contains('<title>Music Radio</title>'));
+        expect(p, contains('<category>Music</category>'));
+        expect(RegExp(r'<desc>song artist \d+ – Song \d+').hasMatch(p), isTrue, reason: p);
+        final start = _attr(p, 'start')!, stop = _attr(p, 'stop')!;
+        expect(start.substring(10, 14), '0000', reason: 'on the hour');
+        expect(stop.substring(10, 14), '0000');
+      }
     });
   });
 }

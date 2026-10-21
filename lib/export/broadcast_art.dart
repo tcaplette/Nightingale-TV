@@ -11,10 +11,12 @@ import 'package:http/http.dart' as http;
 import '../app_state.dart';
 import '../channels/channel.dart';
 import '../channels/schedule.dart';
+import '../library/library_index.dart';
 import '../theme/tv_theme.dart';
 import '../ui/format.dart';
 import '../ui/widgets/broadcast_cards.dart';
 import '../ui/widgets/channel_logo.dart';
+import '../ui/widgets/now_playing.dart';
 import '../ui/widgets/tv_canvas.dart';
 import 'lineup_server.dart';
 import 'offscreen_renderer.dart';
@@ -104,6 +106,62 @@ class BroadcastArt implements LogoSource {
     return file;
   }
 
+  /// The Now Playing card for [song] (a slot on music [channel]; [next]
+  /// is the song after it) as [height]p PNG: the picture of a song in an
+  /// exported stream (channel-streaming). Drawn once per song.
+  Future<File> nowPlayingPng(AppState app, Channel channel, ScheduledProgram song, ScheduledProgram? next, int height) async {
+    final item = song.item!;
+    final key = '${channel.number}|${channel.name}|${jsonEncode(channel.icon.toJson())}|${item.id}|${next?.item?.id}|$height';
+    final file = File('${cacheDir.path}/song-${md5.convert(utf8.encode(key))}.png');
+    if (await file.exists()) return file;
+    await cacheDir.create(recursive: true);
+    final art = await _albumArt(app, item);
+    final logoPng = await pngFor(app, channel);
+    final logo = logoPng == null ? null : await OffscreenRenderer.decode(logoPng);
+    try {
+      final png = await OffscreenRenderer.renderPng(
+        NowPlayingCard(
+          channel: channel,
+          song: song,
+          next: next,
+          live: false,
+          decodedArt: art,
+          logo: logo == null
+              ? null
+              : SizedBox(width: 110, height: 64, child: RawImage(image: logo, fit: BoxFit.contain, alignment: Alignment.centerLeft)),
+          app: app,
+        ),
+        logicalSize: TvCanvas.size,
+        pixelRatio: height / TvCanvas.size.height,
+      );
+      final tmp = File('${file.path}.$pid.tmp');
+      await tmp.writeAsBytes(png, flush: true);
+      await tmp.rename(file.path);
+      return file;
+    } finally {
+      art?.dispose();
+      logo?.dispose();
+    }
+  }
+
+  /// [song]'s album image, else its own, decoded; null when neither loads.
+  Future<ui.Image?> _albumArt(AppState app, MediaEntry song) async {
+    final client = app.client;
+    if (client == null) return null;
+    for (final id in [?song.albumId, song.id]) {
+      try {
+        final uri = client.imageUri(id, 'Primary', maxHeight: 640);
+        final r = await _http
+            .get(uri.replace(queryParameters: {...uri.queryParameters, 'format': 'Jpg'}), headers: client.authHeaders)
+            .timeout(const Duration(seconds: 15));
+        if (r.statusCode == HttpStatus.ok) return await OffscreenRenderer.decode(r.bodyBytes);
+      } on Object catch (e) {
+        debugPrint('No art for ${song.id} from $id: $e');
+      }
+    }
+    return null;
+  }
+
   Widget _cardWidget(BroadcastCard card) => switch (card) {
         TuningCardSpec(:final channel) => TuningCard(channel: channel),
         BlackCard() => const ColoredBox(color: Colors.black),
@@ -125,6 +183,20 @@ class BroadcastArt implements LogoSource {
     png ??= await _badge(_initials(channel.name), BadgeShape.roundedSquare, GuideTheme.cableGuide.accent);
     if (_logos.length >= _logoCacheSize) _logos.remove(_logos.keys.first);
     return _logos[key] = png;
+  }
+
+  /// [channel]'s logo ([pngFor]) as a file, for the encoders to lay over
+  /// the picture (channel-streaming).
+  Future<File?> logoFile(AppState app, Channel channel) async {
+    final png = await pngFor(app, channel);
+    if (png == null) return null;
+    final file = File('${cacheDir.path}/logo-${md5.convert(png)}.png');
+    if (await file.exists()) return file;
+    await cacheDir.create(recursive: true);
+    final tmp = File('${file.path}.$pid.tmp');
+    await tmp.writeAsBytes(png, flush: true);
+    await tmp.rename(file.path);
+    return file;
   }
 
   Future<Uint8List?> _drawLogo(AppState app, Channel channel) async {

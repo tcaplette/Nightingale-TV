@@ -140,6 +140,11 @@ class UiHarness {
     await tester.pump();
     await tester.sendKeyEvent(key);
     await wait(after);
+    // The window may have gone to the background meanwhile, taking focus
+    // with it: back in front, Flutter gives it back, so what the test
+    // checks next is where the key put it.
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    await tester.pump();
   }
 
   Future<void> tapOn(Finder finder) async {

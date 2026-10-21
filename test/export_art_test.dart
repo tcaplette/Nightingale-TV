@@ -8,8 +8,10 @@ import 'package:http/testing.dart';
 import 'package:image/image.dart' as img;
 import 'package:nightingale_tv/app_state.dart';
 import 'package:nightingale_tv/channels/channel.dart';
+import 'package:nightingale_tv/channels/schedule.dart';
 import 'package:nightingale_tv/export/broadcast_art.dart';
 import 'package:nightingale_tv/export/offscreen_renderer.dart';
+import 'package:nightingale_tv/library/library_index.dart';
 
 import 'fixtures.dart';
 
@@ -136,6 +138,28 @@ void main() {
         pixelRatio: 0.5,
       );
       expectDrawn(png, 100, 50);
+    });
+  });
+
+  testWidgets("a song's Now Playing card draws once per song, with its album art", (tester) async {
+    await tester.runAsync(() async {
+      app.client = app.clientFor('https://jf.example');
+      const song = MediaEntry(
+          id: 's1', kind: MediaKind.song, title: 'Take On Me', runtime: Duration(minutes: 4), artist: 'a-ha', albumId: 'al1');
+      final start = DateTime(2026, 10, 20, 19);
+      final slot = ScheduledProgram(item: song, start: start, end: start.add(song.runtime));
+      final ch = app.channels.first;
+      final file = await art.nowPlayingPng(app, ch, slot, null, 720);
+      expectDrawn(await file.readAsBytes(), 1280, 720);
+      final again = await art.nowPlayingPng(app, ch, slot, null, 720);
+      expect(again.path, file.path);
+      expect(again.lastModifiedSync(), file.lastModifiedSync(), reason: 'drawn once');
+      // No art at all still draws (the music-note tile).
+      jellyfinLogo = 404;
+      final other = ScheduledProgram(item: const MediaEntry(id: 's2', kind: MediaKind.song, title: 'B', runtime: Duration(minutes: 3)),
+          start: start, end: start.add(const Duration(minutes: 3)));
+      expectDrawn(await (await art.nowPlayingPng(app, ch, other, slot, 1080)).readAsBytes(), 1920, 1080);
+      jellyfinLogo = 200;
     });
   });
 }

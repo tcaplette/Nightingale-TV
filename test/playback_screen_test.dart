@@ -1,9 +1,11 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:nightingale_tv/app_scope.dart';
 import 'package:nightingale_tv/app_state.dart';
+import 'package:nightingale_tv/platform/platform_info.dart';
 import 'package:nightingale_tv/playback/tuner.dart';
 import 'package:nightingale_tv/theme/tv_theme.dart';
 import 'package:nightingale_tv/ui/playback_screen.dart';
@@ -76,6 +78,58 @@ void main() {
     for (final t in tester.widgetList<TvToggle>(find.byType(TvToggle))) {
       if (t.radio) expect(t.onPressed, isNull, reason: t.label);
     }
+  });
+
+  /// The label of the toggle that has focus.
+  String? focusedLabel() {
+    final context = FocusManager.instance.primaryFocus?.context;
+    return context?.findAncestorWidgetOfExactType<TvToggle>()?.label;
+  }
+
+  testWidgets('volume leveling: shown under AUDIO, off by default, with help text', (tester) async {
+    await show(tester, PlaybackSettings.off);
+    expect(find.text('AUDIO'), findsOneWidget);
+    final toggle = tester.widget<TvToggle>(find.widgetWithText(TvToggle, PlaybackScreen.levelingLabel));
+    expect(toggle.on, isFalse);
+    expect(toggle.radio, isFalse);
+    expect(find.text(PlaybackScreen.levelingHelp), findsOneWidget, reason: 'no passthrough sentence off Android');
+    expect(find.textContaining(PlaybackScreen.levelingAndroidHelp), findsNothing);
+  });
+
+  testWidgets('volume leveling: the help text mentions passthrough on Android', (tester) async {
+    PlatformInfo.debugOverride = TargetPlatform.android;
+    addTearDown(PlatformInfo.debugReset);
+    await show(tester, PlaybackSettings.off);
+    expect(find.text('${PlaybackScreen.levelingHelp} ${PlaybackScreen.levelingAndroidHelp}'), findsOneWidget);
+  });
+
+  for (final transcode in [false, true]) {
+    testWidgets('volume leveling: the D-pad reaches it and OK saves it (converting ${transcode ? 'on' : 'off'})',
+        (tester) async {
+      await show(tester, PlaybackSettings.off.copyWith(transcodeIfNeeded: transcode));
+      expect(focusedLabel(), PlaybackScreen.toggleLabel);
+      // Past the caps when they're selectable; straight to it when they aren't.
+      for (var i = 0; i < 10 && focusedLabel() != PlaybackScreen.levelingLabel; i++) {
+        await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+        await tester.pumpAndSettle();
+      }
+      expect(focusedLabel(), PlaybackScreen.levelingLabel, reason: 'transcode $transcode');
+      await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+      await tester.pumpAndSettle();
+      expect(app.settings.playback.volumeLeveling, isTrue);
+      expect(app.settings.playback.transcodeIfNeeded, transcode, reason: 'nothing else changes');
+      expect(tester.widget<TvToggle>(find.widgetWithText(TvToggle, PlaybackScreen.levelingLabel)).on, isTrue);
+      await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+      await tester.pumpAndSettle();
+      expect(app.settings.playback.volumeLeveling, isFalse);
+    });
+  }
+
+  testWidgets('volume leveling: a tap saves it', (tester) async {
+    await show(tester, PlaybackSettings.off);
+    await tester.tap(find.text(PlaybackScreen.levelingLabel));
+    await tester.pumpAndSettle();
+    expect(app.settings.playback, const PlaybackSettings(volumeLeveling: true));
   });
 
   testWidgets('picking a cap saves it', (tester) async {

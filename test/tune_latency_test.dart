@@ -10,9 +10,13 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:nightingale_tv/app_state.dart';
+import 'package:nightingale_tv/backup/backup_archive.dart';
+import 'package:nightingale_tv/backup/backup_scheduler.dart';
 import 'package:nightingale_tv/commercials/analysis/stream_proxy.dart';
 import 'package:nightingale_tv/playback/tuner.dart';
+import 'package:nightingale_tv/profiles/profile.dart';
 
+import 'backup_fixtures.dart';
 import 'fake_playback.dart';
 import 'fixtures.dart';
 
@@ -53,7 +57,8 @@ void main() {
     if (!(client.holdReports?.isCompleted ?? true)) client.holdReports!.complete();
     tuner.dispose();
     await app.close();
-    await Future<void>.delayed(const Duration(milliseconds: 100));
+    // Tuning saves the last channel in the background.
+    await app.storage.flush();
     await dir.delete(recursive: true);
   });
 
@@ -263,6 +268,43 @@ void main() {
       } finally {
         await stale.close();
         await server.close(force: true);
+        await Future<void>.delayed(const Duration(milliseconds: 100));
+        await dir2.delete(recursive: true);
+      }
+    });
+
+    test('a launch with a daily backup due builds it only after the first picture', () async {
+      final dir2 = await Directory.systemTemp.createTemp('nightingale_tv_latency_backup');
+      // 10 s and 15 s after the picture in the app; shortened here.
+      final after = AppState.launchAfterPicture;
+      final first = BackupScheduler.firstCheck;
+      AppState.launchAfterPicture = const Duration(milliseconds: 200);
+      BackupScheduler.firstCheck = const Duration(milliseconds: 300);
+      addTearDown(() {
+        AppState.launchAfterPicture = after;
+        BackupScheduler.firstCheck = first;
+      });
+      await writeHousehold(dir2, [Profile(id: 'solo000000000001', name: 'Solo')], library);
+      final household = await openHousehold(dir2);
+      final backups = household.backups!;
+      final launched = household.app!;
+      try {
+        backups.start();
+        // The TV screen tunes the last channel as soon as the lineup shows.
+        launched.playbackActivity.value = PlaybackActivity.tuning;
+        await Future<void>.delayed(const Duration(milliseconds: 600));
+        expect(await backups.store.list(), isEmpty, reason: 'no backup is built while the first stream opens');
+        launched.playbackActivity.value = PlaybackActivity.playing;
+        await Future<void>.delayed(const Duration(milliseconds: 150));
+        expect(await backups.store.list(), isEmpty, reason: 'not at the picture itself');
+        final deadline = DateTime.now().add(const Duration(seconds: 3));
+        while ((await backups.store.list()).isEmpty && DateTime.now().isBefore(deadline)) {
+          await Future<void>.delayed(const Duration(milliseconds: 50));
+        }
+        expect((await backups.store.list()).single.kind, BackupReason.daily);
+      } finally {
+        backups.dispose();
+        household.leave();
         await Future<void>.delayed(const Duration(milliseconds: 100));
         await dir2.delete(recursive: true);
       }

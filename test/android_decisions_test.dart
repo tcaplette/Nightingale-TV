@@ -4,7 +4,7 @@
 import 'dart:async';
 import 'dart:io';
 
-import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:nightingale_tv/app_state.dart';
 import 'package:nightingale_tv/channels/channel.dart';
@@ -62,7 +62,8 @@ void main() {
   tearDown(() async {
     tuner.dispose();
     await app.close();
-    await Future<void>.delayed(const Duration(milliseconds: 100));
+    // Tuning saves the last channel in the background.
+    await app.storage.flush();
     await dir.delete(recursive: true);
     PlatformInfo.debugReset();
   });
@@ -245,6 +246,87 @@ void main() {
       await settle();
       expect(player.opens, hasLength(1));
       expect(client.decisions, hasLength(1), reason: 'no second PlaybackInfo');
+    });
+  });
+
+  group('volume leveling (volume-leveling)', () {
+    const channel = MethodChannel('nightingale_tv/player');
+    final messenger = TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+
+    setUp(() async {
+      // A box that passes AC-3 and E-AC-3 through to HDMI but decodes
+      // neither, asked at start-up.
+      tuner.dispose();
+      await app.close();
+      messenger.setMockMethodCallHandler(channel, (call) async => switch (call.method) {
+            'capabilities' => {
+                'video': [
+                  {'codec': 'h264', 'profiles': ['main', 'high'], 'maxWidth': 1920, 'maxHeight': 1080, 'maxFps': 60},
+                ],
+                'audio': ['aac', 'mp3'],
+                'passthrough': ['ac3', 'eac3'],
+                'maxChannels': 6,
+              },
+            _ => null,
+          });
+      app = await signedInApp(dir, library);
+      app.client = client;
+      await app.setGlobalPlan(BreakPlan.automatic);
+      player = FakePlayer(log);
+      tuner = newTuner();
+    });
+
+    tearDown(() => messenger.setMockMethodCallHandler(channel, null));
+
+    Set<String> audioCodecs(Map<String, Object?>? profile) => {
+          for (final d in (profile!['DirectPlayProfiles'] as List).cast<Map<String, Object?>>())
+            ...'${d['AudioCodec']}'.split(','),
+        };
+
+    test('turning it on clears the decisions, re-tunes once, and asks without passthrough', () async {
+      final part = await tuneIntoPart(app.channels.first);
+      final source = part.item!.sourceId;
+      expect(player.opens, hasLength(1));
+      expect(audioCodecs(client.decisions.last.profile), containsAll(['ac3', 'eac3']), reason: 'passthrough while off');
+      expect(app.savedDecision(source, null), isNotNull);
+      client.decisions.clear();
+
+      await app.setPlayback(const PlaybackSettings(volumeLeveling: true));
+      await settle();
+      expect(player.leveling, [false, true], reason: 'the player is rebuilt with it');
+      expect(player.opens, hasLength(2), reason: 're-tuned once');
+      expect(tuner.segment!.item!.sourceId, source, reason: 'the same channel and program');
+      final asked = client.decisions.where((d) => d.id == source).toList();
+      expect(asked, hasLength(1), reason: 'the cleared decision is asked again, once');
+      expect(audioCodecs(asked.single.profile), {'aac', 'mp3'}, reason: 'Jellyfin converts AC-3');
+
+      client.decisions.clear();
+      await app.setPlayback(PlaybackSettings.off);
+      await settle();
+      expect(player.leveling, [false, true, false]);
+      expect(player.opens, hasLength(3), reason: 're-tuned once more');
+      expect(audioCodecs(client.decisions.where((d) => d.id == source).single.profile), containsAll(['ac3', 'eac3']),
+          reason: 'passthrough is back');
+    });
+
+    test('other Playback changes don\'t touch it or re-tune', () async {
+      await tuneIntoPart(app.channels.first);
+      await app.setPlayback(const PlaybackSettings(maxKbps: 8000));
+      await settle();
+      expect(player.leveling, [false]);
+      expect(player.opens, hasLength(1));
+    });
+
+    test('saved on, the first profile already leaves passthrough out', () async {
+      await app.setPlayback(const PlaybackSettings(volumeLeveling: true));
+      tuner.dispose();
+      player = FakePlayer(log);
+      tuner = newTuner();
+      expect(player.leveling, [true]);
+      client.decisions.clear();
+      await tuneIntoPart(app.channels.first);
+      expect(player.opens, hasLength(1));
+      expect(audioCodecs(client.decisions.first.profile), {'aac', 'mp3'});
     });
   });
 

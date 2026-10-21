@@ -15,6 +15,7 @@
 //   flutter test integration_test/startup_latency_test.dart -d linux
 //   LINK_MBPS=1 LATENCY_MS=300 BUDGET_MS=2500 flutter test integration_test/startup_latency_test.dart -d linux
 //   NIGHTINGALE_TV_NO_PROXY=1 flutter test integration_test/startup_latency_test.dart -d linux   (mpv straight to the server)
+//   LEVELING=1 flutter test integration_test/startup_latency_test.dart -d linux   (volume leveling on)
 //
 // Linux only (it needs ffmpeg to make the files).
 import 'dart:async';
@@ -36,6 +37,9 @@ double _env(String name, double fallback) => double.tryParse(Platform.environmen
 final _linkBitsPerSecond = _env('LINK_MBPS', 2.5) * 1e6;
 final _latency = Duration(milliseconds: _env('LATENCY_MS', 250).round());
 final _budget = Duration(milliseconds: _env('BUDGET_MS', 2000).round());
+
+/// Volume leveling on (volume-leveling spec: the budgets hold with it).
+final _leveling = Platform.environment['LEVELING'] == '1';
 
 /// Episode length, so an MP4's index is as big as a real episode's.
 const _length = Duration(minutes: 22);
@@ -256,8 +260,11 @@ void main() {
   testWidgets('first picture within the budget, by file layout and join', (tester) async {
     player = MediaKitTunerPlayer(verboseLog: true);
     await tester.pumpWidget(MaterialApp(home: Video(controller: player.video, controls: NoVideoControls)));
+    // mpv's properties are set once its video output is up (on screen).
+    if (_leveling) await tester.runAsync(() => player.setVolumeLeveling(true));
     // ignore: avoid_print
-    print('link ${_linkBitsPerSecond / 1e6} Mbps, ${_latency.inMilliseconds} ms per request, budget ${_budget.inMilliseconds} ms');
+    print('link ${_linkBitsPerSecond / 1e6} Mbps, ${_latency.inMilliseconds} ms per request, '
+        'budget ${_budget.inMilliseconds} ms, leveling ${_leveling ? 'on' : 'off'}');
 
     final misses = <String>[];
     final rng = Random(7);

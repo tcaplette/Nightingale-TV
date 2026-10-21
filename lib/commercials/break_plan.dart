@@ -339,6 +339,20 @@ class SlotPlan {
   /// Which pools the roles draw from.
   final CustomRoles roles;
 
+  /// The same slot with no break inside the program: the mid-roll time
+  /// goes to the post-roll (songs and music videos break only between them).
+  SlotPlan withoutMidRolls() => midCount == 0
+      ? this
+      : SlotPlan(
+          runtime: runtime,
+          preRoll: preRoll,
+          midCount: 0,
+          midLength: Duration.zero,
+          postRoll: postRoll + midLength * midCount,
+          tail: tail,
+          roles: roles,
+        );
+
   Duration get adTime => preRoll + midLength * midCount + postRoll + tail;
   Duration get slotLength => runtime + adTime;
   bool get hasBreaks => adTime > Duration.zero;

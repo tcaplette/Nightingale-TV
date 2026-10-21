@@ -57,6 +57,7 @@ const iconCatalog = <String, Map<String, IconData>>{
     'piano': Icons.piano,
     'mic': Icons.mic,
     'album': Icons.album,
+    'music_video': Icons.music_video,
   },
   'Sports': {
     'sports_football': Icons.sports_football,

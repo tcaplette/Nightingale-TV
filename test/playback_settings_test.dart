@@ -84,10 +84,49 @@ void main() {
       expect(AppSettings.fromJson(s.toJson()).playback, playback);
     }
     const eight = PlaybackSettings(transcodeIfNeeded: true, maxKbps: 8000);
-    expect(eight.toJson(), {'transcodeIfNeeded': true, 'bitrate': 8000});
+    expect(eight.toJson(), {'transcodeIfNeeded': true, 'bitrate': 8000, 'volumeLeveling': false});
     expect(eight.capKbps(), 8000);
-    expect(PlaybackSettings.off.toJson(), {'transcodeIfNeeded': false, 'bitrate': 'original'});
-    expect(const PlaybackSettings(transcodeIfNeeded: true).toJson(), {'transcodeIfNeeded': true, 'bitrate': 'original'});
+    expect(PlaybackSettings.off.toJson(), {'transcodeIfNeeded': false, 'bitrate': 'original', 'volumeLeveling': false});
+    expect(const PlaybackSettings(transcodeIfNeeded: true).toJson(),
+        {'transcodeIfNeeded': true, 'bitrate': 'original', 'volumeLeveling': false});
+  });
+
+  test('volume leveling is off by default and round-trips through JSON', () {
+    expect(AppSettings.fresh().playback.volumeLeveling, isFalse);
+    for (final playback in const [
+      PlaybackSettings(volumeLeveling: true),
+      PlaybackSettings(transcodeIfNeeded: true, maxKbps: 8000, volumeLeveling: true),
+      PlaybackSettings(maxKbps: 4000, volumeLeveling: true),
+    ]) {
+      final s = AppSettings.fresh()..playback = playback;
+      expect(AppSettings.fromJson(s.toJson()).playback, playback);
+    }
+    const leveled = PlaybackSettings(volumeLeveling: true);
+    expect(leveled.toJson()['volumeLeveling'], true);
+    expect(leveled, isNot(PlaybackSettings.off));
+    expect(leveled.hashCode, isNot(PlaybackSettings.off.hashCode));
+    expect(PlaybackSettings.off.copyWith(volumeLeveling: true), leveled);
+    expect(leveled.copyWith(transcodeIfNeeded: true).volumeLeveling, isTrue, reason: 'other changes keep it');
+  });
+
+  test('settings saved before volume leveling load with it off and the rest unchanged', () {
+    expect(PlaybackSettings.fromJson({'transcodeIfNeeded': true, 'bitrate': 8000}),
+        const PlaybackSettings(transcodeIfNeeded: true, maxKbps: 8000));
+    expect(PlaybackSettings.fromJson({'transcodeIfNeeded': true, 'maxBitrateMbps': 12}),
+        const PlaybackSettings(transcodeIfNeeded: true, maxKbps: 12000));
+    expect(PlaybackSettings.fromJson({'transcodeIfNeeded': false, 'bitrate': 'original'}), PlaybackSettings.off);
+  });
+
+  test('an unreadable volume leveling value is off', () {
+    for (final v in ['yes', 1, null, <String, Object?>{}]) {
+      expect(PlaybackSettings.fromJson({'transcodeIfNeeded': true, 'bitrate': 8000, 'volumeLeveling': v}),
+          const PlaybackSettings(transcodeIfNeeded: true, maxKbps: 8000), reason: '$v');
+    }
+    expect(PlaybackSettings.fromJson({'volumeLeveling': true}).volumeLeveling, isTrue);
+    expect(PlaybackSettings.fromJson({'bitrate': 4000, 'volumeLeveling': true}),
+        const PlaybackSettings(maxKbps: 4000, volumeLeveling: true));
+    expect(PlaybackSettings.fromJson({'maxBitrateMbps': 8, 'volumeLeveling': true}),
+        const PlaybackSettings(maxKbps: 8000, volumeLeveling: true));
   });
 
   test('the cap is remembered while the toggle is off, but not in effect', () {
@@ -150,6 +189,17 @@ void main() {
       final again = AppState(app.storage);
       await again.start();
       expect(again.settings.playback, const PlaybackSettings(transcodeIfNeeded: true, maxKbps: 8000));
+      await app.close();
+      await again.close();
+    });
+
+    test('volume leveling is saved and survives a restart', () async {
+      final app = await signedInApp(dir, fakeLibrary());
+      expect(app.settings.playback.volumeLeveling, isFalse);
+      await app.setPlayback(const PlaybackSettings(volumeLeveling: true));
+      final again = AppState(app.storage);
+      await again.start();
+      expect(again.settings.playback, const PlaybackSettings(volumeLeveling: true));
       await app.close();
       await again.close();
     });

@@ -1,5 +1,6 @@
 import '../commercials/commercial_pool.dart';
 import '../jellyfin/jellyfin_client.dart';
+import '../playback/playback_diagnostics.dart';
 import '../profiles/profile.dart';
 
 enum MediaKind {
@@ -8,6 +9,12 @@ enum MediaKind {
 
   /// A commercial, bumper or station ident from a commercials library.
   commercial,
+
+  /// An audio track from a music library.
+  song,
+
+  /// A music video from a video library.
+  musicVideo,
 }
 
 /// One playable video, flattened from Jellyfin's item JSON.
@@ -33,6 +40,11 @@ class MediaEntry {
     this.size,
     this.chapters = const [],
     this.poolIds = const [],
+    this.artist,
+    this.album,
+    this.albumId,
+    this.added,
+    this.availableAt,
   }) : sourceId = sourceId ?? id;
 
   final String id;
@@ -74,6 +86,23 @@ class MediaEntry {
   /// The commercial pools this item belongs to (commercials only).
   final List<String> poolIds;
 
+  /// Songs and music videos: the first listed artist, else the album
+  /// artist; the album and its Jellyfin id (for the album art).
+  final String? artist;
+  final String? album;
+  final String? albumId;
+
+  /// When Jellyfin added the item (episodes; Jellyfin's DateCreated).
+  final DateTime? added;
+
+  /// Episodes: when this profile could first know about the item, so a
+  /// scan never changes a premiere airing already under way (see
+  /// [LibraryIndex.withAvailability]). Null until a scan assigns it.
+  final DateTime? availableAt;
+
+  /// A song or a music video.
+  bool get isMusic => kind == MediaKind.song || kind == MediaKind.musicVideo;
+
   /// A clip cut from a longer video, rather than a whole Jellyfin item.
   bool get isClip => clipStart != null;
 
@@ -81,7 +110,12 @@ class MediaEntry {
   Duration get sourceStart => clipStart ?? Duration.zero;
 
   /// A copy with a different [poolIds].
-  MediaEntry withPools(List<String> pools) => MediaEntry(
+  MediaEntry withPools(List<String> pools) => _copy(poolIds: pools);
+
+  /// A copy with a different [availableAt].
+  MediaEntry withAvailableAt(DateTime? at) => _copy(availableAt: at, clearAvailableAt: at == null);
+
+  MediaEntry _copy({List<String>? poolIds, DateTime? availableAt, bool clearAvailableAt = false}) => MediaEntry(
         id: id,
         kind: kind,
         title: title,
@@ -101,16 +135,31 @@ class MediaEntry {
         container: container,
         size: size,
         chapters: chapters,
-        poolIds: pools,
+        poolIds: poolIds ?? this.poolIds,
+        artist: artist,
+        album: album,
+        albumId: albumId,
+        added: added,
+        availableAt: clearAvailableAt ? null : availableAt ?? this.availableAt,
       );
 
-  /// Title shown in the guide: the show name for episodes.
-  String get guideTitle => kind == MediaKind.episode ? (seriesName ?? title) : title;
+  /// Title shown in the guide: the show name for episodes, "Artist – Song"
+  /// for music.
+  String get guideTitle => switch (kind) {
+        MediaKind.episode => seriesName ?? title,
+        MediaKind.song || MediaKind.musicVideo => artist == null ? title : '$artist – $title',
+        _ => title,
+      };
 
-  /// "S3 · E12 · Episode title" for episodes, year for movies.
+  /// "S3 · E12 · Episode title" for episodes, year for movies, "Album ·
+  /// Year" for music.
   String get subtitle {
     if (kind == MediaKind.commercial) return 'Commercial';
     if (kind == MediaKind.movie) return year != null ? 'Movie · $year' : 'Movie';
+    if (isMusic) {
+      final parts = [album ?? (kind == MediaKind.musicVideo ? 'Music video' : null), ?year?.toString()];
+      return parts.whereType<String>().join(' · ');
+    }
     final code = [
       if (season != null) 'S$season',
       if (episode != null) 'E$episode',
@@ -139,10 +188,16 @@ class MediaEntry {
         if (size != null) 'size': size,
         if (chapters.isNotEmpty) 'chaptersMs': [for (final c in chapters) c.inMilliseconds],
         if (poolIds.isNotEmpty) 'poolIds': poolIds,
+        if (artist != null) 'artist': artist,
+        if (album != null) 'album': album,
+        if (albumId != null) 'albumId': albumId,
+        if (added != null) 'added': added!.toUtc().toIso8601String(),
+        if (availableAt != null) 'availableAt': availableAt!.toUtc().toIso8601String(),
       };
 
-  /// Files written before clips, chapters and pools existed load with the
-  /// defaults: a whole item, no chapters, no pools.
+  /// Files written before clips, chapters, pools, music and premieres
+  /// existed load with the defaults: a whole item, no chapters, no pools, no
+  /// artist or album, and no added or available times.
   factory MediaEntry.fromJson(Map<String, Object?> j) => MediaEntry(
         id: j['id'] as String,
         kind: MediaKind.values.byName(j['kind'] as String),
@@ -166,7 +221,14 @@ class MediaEntry {
           for (final ms in (j['chaptersMs'] as List? ?? const []).cast<int>()) Duration(milliseconds: ms)
         ],
         poolIds: (j['poolIds'] as List?)?.cast<String>() ?? const [],
+        artist: j['artist'] as String?,
+        album: j['album'] as String?,
+        albumId: j['albumId'] as String?,
+        added: _time(j['added']),
+        availableAt: _time(j['availableAt']),
       );
+
+  static DateTime? _time(Object? s) => s is String ? DateTime.tryParse(s)?.toLocal() : null;
 }
 
 class SeriesEntry {
@@ -223,7 +285,9 @@ class LibraryIndex {
     required this.movies,
     required this.fetchedAt,
     this.commercials = const [],
-  }) : _byId = {for (final e in [...episodes, ...movies, ...commercials]) e.id: e};
+    this.songs = const [],
+    this.musicVideos = const [],
+  }) : _byId = {for (final e in [...episodes, ...movies, ...commercials, ...songs, ...musicVideos]) e.id: e};
 
   final List<SeriesEntry> series;
   final List<MediaEntry> episodes;
@@ -233,16 +297,20 @@ class LibraryIndex {
   /// clips, long ones are reels to split. Never part of a channel's own
   /// programming.
   final List<MediaEntry> commercials;
+
+  /// Songs from music libraries, and music videos from video libraries.
+  final List<MediaEntry> songs;
+  final List<MediaEntry> musicVideos;
   final DateTime fetchedAt;
   final Map<String, MediaEntry> _byId;
 
   static final empty =
       LibraryIndex(series: const [], episodes: const [], movies: const [], fetchedAt: DateTime(0));
 
-  bool get isEmpty => episodes.isEmpty && movies.isEmpty;
+  bool get isEmpty => episodes.isEmpty && movies.isEmpty && songs.isEmpty && musicVideos.isEmpty;
 
   /// Only what's rated at most [maxRank] (see [ratingRank]). Episodes go by
-  /// their show's rating; anything unrated is left out.
+  /// their show's rating; anything unrated is left out, music included.
   LibraryIndex restrictedTo(int maxRank) {
     bool allowed(String? rating) {
       final rank = ratingRank(rating);
@@ -255,6 +323,37 @@ class LibraryIndex {
       episodes: episodes.where((e) => shows.contains(e.seriesKey)).toList(),
       movies: movies.where((m) => allowed(m.officialRating)).toList(),
       commercials: commercials,
+      songs: songs.where((m) => allowed(m.officialRating)).toList(),
+      musicVideos: musicVideos.where((m) => allowed(m.officialRating)).toList(),
+      fetchedAt: fetchedAt,
+    );
+  }
+
+  /// This index with each episode's [MediaEntry.availableAt] set from
+  /// [previous] (the index this profile had before this scan, null on its
+  /// first scan), as of [scanTime]:
+  /// - first scan: when Jellyfin added it;
+  /// - an episode [previous] had a time for keeps it;
+  /// - any other: the later of when it was added and [scanTime].
+  ///
+  /// So a premiere airing never gains an episode after it started.
+  LibraryIndex withAvailability(LibraryIndex? previous, DateTime scanTime) {
+    DateTime? availableAt(MediaEntry e) {
+      final added = e.added;
+      if (previous == null) return added ?? scanTime;
+      final known = previous[e.id]?.availableAt;
+      if (known != null) return known;
+      if (added == null) return scanTime;
+      return added.isAfter(scanTime) ? added : scanTime;
+    }
+
+    return LibraryIndex(
+      series: series,
+      episodes: [for (final e in episodes) e.withAvailableAt(availableAt(e))],
+      movies: movies,
+      commercials: commercials,
+      songs: songs,
+      musicVideos: musicVideos,
       fetchedAt: fetchedAt,
     );
   }
@@ -289,6 +388,8 @@ class LibraryIndex {
         'episodes': [for (final e in episodes) e.toJson()],
         'movies': [for (final m in movies) m.toJson()],
         'commercials': [for (final c in commercials) c.toJson()],
+        'songs': [for (final m in songs) m.toJson()],
+        'musicVideos': [for (final m in musicVideos) m.toJson()],
       };
 
   factory LibraryIndex.fromJson(Map<String, Object?> j) => LibraryIndex(
@@ -306,6 +407,13 @@ class LibraryIndex {
           for (final c in ((j['commercials'] as List?) ?? const []).cast<Map<String, Object?>>())
             MediaEntry.fromJson(c)
         ],
+        songs: [
+          for (final m in ((j['songs'] as List?) ?? const []).cast<Map<String, Object?>>()) MediaEntry.fromJson(m)
+        ],
+        musicVideos: [
+          for (final m in ((j['musicVideos'] as List?) ?? const []).cast<Map<String, Object?>>())
+            MediaEntry.fromJson(m)
+        ],
       );
 
   /// Builds an index from raw Jellyfin item JSON. Pure, so it is unit-testable.
@@ -314,6 +422,8 @@ class LibraryIndex {
     required List<Map<String, Object?>> episodeItems,
     required List<Map<String, Object?>> movieItems,
     List<Map<String, Object?>> commercialItems = const [],
+    List<Map<String, Object?>> songItems = const [],
+    List<Map<String, Object?>> musicVideoItems = const [],
     Map<String, List<String>> poolsByItem = const {},
     DateTime? fetchedAt,
   }) {
@@ -386,6 +496,7 @@ class LibraryIndex {
         container: _container(e),
         size: _size(e),
         chapters: _chapters(e),
+        added: _date(e['DateCreated']),
       ));
     }
 
@@ -436,6 +547,38 @@ class LibraryIndex {
       ));
     }
 
+    List<MediaEntry> music(List<Map<String, Object?>> items, MediaKind kind) {
+      final result = <MediaEntry>[];
+      final seen = <String>{};
+      for (final m in items) {
+        final ticks = m['RunTimeTicks'] as int?;
+        if (ticks == null || ticks <= 0 || m['LocationType'] == 'Virtual' || inPool(m)) continue;
+        final id = m['Id'] as String;
+        if (!seen.add(id)) continue;
+        final artists = _strings(m['Artists']);
+        final name = m['Name'] as String? ?? (kind == MediaKind.song ? 'Song' : 'Music video');
+        final tagged = artists.isNotEmpty ? artists.first : m['AlbumArtist'] as String?;
+        // Untagged downloads are often named "Artist - Title [id]".
+        final named = tagged == null ? splitMusicName(name) : null;
+        result.add(MediaEntry(
+          id: id,
+          kind: kind,
+          title: named?.title ?? name,
+          runtime: Duration(microseconds: ticks ~/ 10),
+          year: m['ProductionYear'] as int?,
+          genres: _strings(m['Genres']),
+          officialRating: m['OfficialRating'] as String?,
+          etag: m['Etag'] as String?,
+          container: _container(m),
+          size: _size(m),
+          artist: tagged ?? named?.artist,
+          album: m['Album'] as String?,
+          albumId: m['AlbumId'] as String?,
+        ));
+      }
+      return result;
+    }
+
     // Drop series with no playable episodes (e.g. only missing-episode stubs).
     final withEpisodes = {for (final e in episodes) e.seriesKey};
     return LibraryIndex(
@@ -443,8 +586,32 @@ class LibraryIndex {
       episodes: episodes,
       movies: movies,
       commercials: commercials,
+      songs: music(songItems, MediaKind.song),
+      musicVideos: music(musicVideoItems, MediaKind.musicVideo),
       fetchedAt: fetchedAt ?? DateTime.now(),
     );
+  }
+
+  static DateTime? _date(Object? s) => s is String ? DateTime.tryParse(s)?.toLocal() : null;
+
+  /// "Len - Steal My Sunshine (Official Video) [E1fzJ_AYajA]" → (artist:
+  /// "Len", title: "Steal My Sunshine"): the artist and a clean title from an
+  /// untagged file's name, or null when it isn't "Artist - Title".
+  static ({String artist, String title})? splitMusicName(String name) {
+    final m = RegExp(r'^\s*(.+?)\s+[-–—]\s+(.+?)\s*$').firstMatch(name);
+    if (m == null) return null;
+    var title = m.group(2)!;
+    // Video ids at the end, and "(Official Music Video)"-style notes anywhere.
+    final note = RegExp(r'\s*[\[(][^\])]*(official|video|audio|lyric|hd|hq|4k|remaster|upgrade|visuali[sz]er)[^\])]*[\])]',
+        caseSensitive: false);
+    title = title
+        .replaceFirst(RegExp(r'\s*\[[A-Za-z0-9_-]{6,}\]\s*$'), '')
+        .replaceAll(note, '')
+        .replaceAll(RegExp(r'\s+'), ' ');
+    title = title.trim();
+    final artist = m.group(1)!.trim();
+    if (title.isEmpty || artist.isEmpty) return null;
+    return (artist: artist, title: title);
   }
 
   /// Episodes without metadata are named after their file, e.g.
@@ -502,7 +669,9 @@ class LibraryIndex {
       (value as List?)?.cast<String>().toList() ?? const [];
 }
 
-/// Downloads the index for every video library the user can see.
+/// Downloads the index for every video and music library the user can see:
+/// shows, episodes and movies, plus music videos from the video libraries
+/// and songs from the music libraries.
 ///
 /// Videos under any of [pools]' folders become commercials (tagged with the
 /// pools they're in) and are left out of the programs, even when their
@@ -512,7 +681,7 @@ Future<LibraryIndex> fetchLibraryIndex(JellyfinClient client,
     {List<CommercialPool> pools = const [],
     void Function(String status)? onStatus,
     void Function(List<JellyfinLibrary> libraries)? onLibraries}) async {
-  final libraries = (await client.libraries()).where((l) => l.isVideo).toList();
+  final libraries = (await client.libraries()).where((l) => l.isVideo || l.isMusic).toList();
   onLibraries?.call(libraries);
   final poolsByItem = <String, List<String>>{};
   final commercials = <String, Map<String, Object?>>{};
@@ -541,10 +710,28 @@ Future<LibraryIndex> fetchLibraryIndex(JellyfinClient client,
   final series = <Map<String, Object?>>[];
   final episodes = <Map<String, Object?>>[];
   final movies = <Map<String, Object?>>[];
+  final songs = <Map<String, Object?>>[];
+  final musicVideos = <Map<String, Object?>>[];
+  // Minimal fields and no images: music libraries can hold 50,000 songs.
+  const musicFields = 'Genres,ProductionYear,Artists,AlbumArtist,Album,AlbumId,OfficialRating,Etag,MediaSources';
   for (final lib in libraries) {
     if (poolRoots.contains(lib.id)) continue;
     onStatus?.call('Scanning ${lib.name}…');
+    final scanStart = DateTime.now();
     final common = {'ParentId': lib.id, 'Recursive': 'true', 'ImageTypeLimit': 1};
+    if (lib.isMusic) {
+      songs.addAll(await client.allItems({
+        ...common,
+        'IncludeItemTypes': 'Audio',
+        'IsMissing': 'false',
+        'Fields': musicFields,
+        'EnableImages': 'false',
+        'EnableUserData': 'false',
+      }));
+      PlaybackDiagnostics.note('SCAN', '${lib.name}: ${songs.length} songs so far, '
+          '${DateTime.now().difference(scanStart).inMilliseconds} ms');
+      continue;
+    }
     series.addAll(await client.allItems({
       ...common,
       'IncludeItemTypes': 'Series',
@@ -554,7 +741,7 @@ Future<LibraryIndex> fetchLibraryIndex(JellyfinClient client,
       ...common,
       'IncludeItemTypes': 'Episode',
       'IsMissing': 'false',
-      'Fields': 'Overview,Chapters,Etag',
+      'Fields': 'Overview,Chapters,Etag,DateCreated',
       'EnableImages': 'false',
       'EnableUserData': 'false',
     }));
@@ -565,12 +752,23 @@ Future<LibraryIndex> fetchLibraryIndex(JellyfinClient client,
       'EnableImages': 'false',
       'EnableUserData': 'false',
     }));
+    musicVideos.addAll(await client.allItems({
+      ...common,
+      'IncludeItemTypes': 'MusicVideo',
+      'IsMissing': 'false',
+      'Fields': musicFields,
+      'EnableImages': 'false',
+      'EnableUserData': 'false',
+    }));
+    PlaybackDiagnostics.note('SCAN', '${lib.name}: ${DateTime.now().difference(scanStart).inMilliseconds} ms');
   }
   return LibraryIndex.fromJellyfinItems(
     seriesItems: series,
     episodeItems: episodes,
     movieItems: movies,
     commercialItems: commercials.values.toList(),
+    songItems: songs,
+    musicVideoItems: musicVideos,
     poolsByItem: poolsByItem,
   );
 }

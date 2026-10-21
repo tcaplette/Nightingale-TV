@@ -6,6 +6,8 @@ import '../app_scope.dart';
 import '../jellyfin/jellyfin_client.dart';
 import '../platform/platform_info.dart';
 import '../theme/tv_theme.dart';
+import 'backup_screen.dart';
+import 'widgets/screen_layout.dart';
 import 'widgets/tv_focus.dart';
 
 enum _Step { server, method, password, quickConnect }
@@ -41,6 +43,16 @@ class _LoginScreenState extends State<LoginScreen> {
     // A new profile most likely uses the same server as the others.
     final known = HouseholdScope.read(context).lastServerUrl;
     if (known != null) _server.text = known;
+    // A restored profile: its server and user name from the backup, so
+    // only the password is asked (backup-restore D6).
+    final hint = AppScope.read(context).signInHint;
+    if (hint case {'serverUrl': final String url, 'userName': final String user}) {
+      _server.text = url;
+      _user.text = user;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _connect(then: _Step.password);
+      });
+    }
   }
 
   @override
@@ -66,7 +78,7 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
-  void _connect() => _run(() async {
+  void _connect({_Step then = _Step.method}) => _run(() async {
         if (_server.text.trim().isEmpty) throw JellyfinException('Enter your server address.');
         final client = AppScope.read(context).clientFor(_server.text);
         final info = await client.publicInfo();
@@ -75,7 +87,7 @@ class _LoginScreenState extends State<LoginScreen> {
           _client = client;
           _info = info;
           _quickConnectAvailable = qc;
-          _step = _Step.method;
+          _step = then;
         });
       });
 
@@ -136,58 +148,86 @@ class _LoginScreenState extends State<LoginScreen> {
       hints: '▲▼ Move    OK Select    ESC Back',
       // On the first step, Back returns to "Who's watching?".
       onBack: _step != _Step.server ? _back : (shared ? household.leave : null),
-      child: Row(
+      child: ScreenLayout.of(context).isPortrait ? _portrait(g) : Row(
         children: [
           Expanded(
             flex: 5,
             child: _fitAboveKeyboard(Padding(
               padding: const EdgeInsets.fromLTRB(120, 80, 60, 80),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(Icons.live_tv, size: 140, color: g.accent),
-                  const SizedBox(height: 32),
-                  Text('Your library.\nOn the air, 24/7.',
-                      style: g.display(84, weight: FontWeight.w800)),
-                  const SizedBox(height: 24),
-                  Text(
-                    'Nightingale TV turns your Jellyfin shows and movies into always-on '
-                    'channels with a program guide. Flip around and catch whatever is on.',
-                    style: g.body(28, color: g.textDim),
-                  ),
-                ],
-              ),
+              child: _intro(g),
             )),
           ),
           Expanded(
             flex: 4,
             child: _fitAboveKeyboard(Padding(
               padding: const EdgeInsets.fromLTRB(40, 80, 120, 80),
-              child: FocusTraversalGroup(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    ..._form(g),
-                    const SizedBox(height: 28),
-                    SizedBox(
-                      height: 80,
-                      child: _busy
-                          ? Center(child: CircularProgressIndicator(color: g.accent))
-                          : _error == null
-                              ? null
-                              : Text(_error!, style: g.body(26, color: g.nowLine)),
-                    ),
-                  ],
-                ),
-              ),
+              child: _formColumn(g),
             )),
           ),
         ],
       ),
     );
   }
+
+  /// Upright: the welcome over the form, in one column that scrolls when
+  /// the keyboard is up.
+  Widget _portrait(GuideTheme g) {
+    final layout = ScreenLayout.of(context);
+    return _fitAboveKeyboard(Padding(
+      padding: EdgeInsets.symmetric(horizontal: layout.gutter, vertical: 32),
+      child: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 760),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              if (_step == _Step.server) ...[_intro(g, compact: true), const SizedBox(height: 40)],
+              _formColumn(g),
+            ],
+          ),
+        ),
+      ),
+    ));
+  }
+
+  Widget _intro(GuideTheme g, {bool compact = false}) => Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(Icons.live_tv, size: compact ? 96 : 140, color: g.accent),
+          SizedBox(height: compact ? 20 : 32),
+          Text('Your library.\nOn the air, 24/7.', style: g.display(compact ? 56 : 84, weight: FontWeight.w800)),
+          SizedBox(height: compact ? 16 : 24),
+          Text(
+            'Nightingale TV turns your Jellyfin shows and movies into always-on '
+            'channels with a program guide. Flip around and catch whatever is on.',
+            style: g.body(28, color: g.textDim),
+          ),
+        ],
+      );
+
+  Widget _formColumn(GuideTheme g) => FocusTraversalGroup(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            ..._form(g),
+            const SizedBox(height: 28),
+            ConstrainedBox(
+              // Upright, a long error gets the lines it needs.
+              constraints: ScreenLayout.of(context).isPortrait
+                  ? const BoxConstraints(minHeight: 80)
+                  : const BoxConstraints.tightFor(height: 80),
+              child: _busy
+                  ? Center(child: CircularProgressIndicator(color: g.accent))
+                  : _error == null
+                      ? null
+                      : Text(_error!, style: g.body(26, color: g.nowLine)),
+            ),
+          ],
+        ),
+      );
 
   /// Android: centered as usual, but scrollable when the on-screen keyboard
   /// leaves too little room, so the field being typed in stays in view.
@@ -200,6 +240,11 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 
+  bool get _offerRestore {
+    final household = HouseholdScope.read(context);
+    return household.firstRun && household.backups != null && household.profiles.length == 1;
+  }
+
   List<Widget> _form(GuideTheme g) {
     switch (_step) {
       case _Step.server:
@@ -207,6 +252,8 @@ class _LoginScreenState extends State<LoginScreen> {
           Text('Connect to your server', style: g.display(44)),
           const SizedBox(height: 32),
           TvTextField(
+            // Keyed by step, so a field never takes over another's focus.
+            key: const ValueKey('server'),
             controller: _server,
             label: 'Server address',
             hint: 'https://jellyfin.example.org:8920',
@@ -216,6 +263,16 @@ class _LoginScreenState extends State<LoginScreen> {
           ),
           const SizedBox(height: 28),
           TvButton(label: 'Connect', icon: Icons.arrow_forward, expand: true, onPressed: _busy ? null : _connect),
+          // A new install can be set up from a backup instead.
+          if (_offerRestore) ...[
+            const SizedBox(height: 20),
+            TvButton(
+              label: 'Restore from a backup',
+              icon: Icons.settings_backup_restore,
+              expand: true,
+              onPressed: _busy ? null : () => restoreOnFirstRun(context),
+            ),
+          ],
         ];
       case _Step.method:
         return [
@@ -246,12 +303,14 @@ class _LoginScreenState extends State<LoginScreen> {
         return [
           Text('Sign in to ${_info!.name}', style: g.display(44)),
           const SizedBox(height: 32),
-          TvTextField(controller: _user, label: 'Username', autofocus: true),
+          TvTextField(key: const ValueKey('user'), controller: _user, label: 'Username', autofocus: _user.text.isEmpty),
           const SizedBox(height: 20),
           TvTextField(
+            key: const ValueKey('password'),
             controller: _password,
             label: 'Password',
             obscure: true,
+            autofocus: _user.text.isNotEmpty,
             onSubmitted: (_) => _signInWithPassword(),
           ),
           const SizedBox(height: 28),

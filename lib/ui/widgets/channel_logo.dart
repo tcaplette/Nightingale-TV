@@ -11,7 +11,8 @@ import '../../theme/tv_theme.dart';
 
 /// Renders any [ChannelIcon] kind, centered in a [width]×[size] box.
 class ChannelLogo extends StatelessWidget {
-  const ChannelLogo({super.key, required this.icon, required this.size, this.width, this.fallbackText, this.app});
+  const ChannelLogo(
+      {super.key, required this.icon, required this.size, this.width, this.fallbackText, this.app, this.alignment = Alignment.center});
 
   final ChannelIcon icon;
 
@@ -27,26 +28,30 @@ class ChannelLogo extends StatelessWidget {
   /// (offscreen rendering has no scope).
   final AppState? app;
 
+  /// Where a logo narrower than the box sits in it.
+  final Alignment alignment;
+
   @override
   Widget build(BuildContext context) {
-    final app = this.app ?? AppScope.of(context);
+    // Built-in icons and badges need no app (or scope).
+    AppState app() => this.app ?? AppScope.of(context);
     final Widget child = switch (icon.kind) {
       ChannelIconKind.builtin =>
         Icon(iconForKey(icon.value), size: size * 0.82, color: Color(icon.color)),
       ChannelIconKind.badge => StationBadge(
           text: icon.value, shape: icon.shape, color: Color(icon.color), size: size),
-      ChannelIconKind.jellyfin => app.client == null
+      ChannelIconKind.jellyfin => app().client == null
           ? _fallback(context)
           : Image.network(
-              app.client!.imageUri(icon.value, 'Logo', maxHeight: 160).toString(),
-              headers: app.client!.authHeaders,
+              app().client!.imageUri(icon.value, 'Logo', maxHeight: 160).toString(),
+              headers: app().client!.authHeaders,
               fit: BoxFit.contain,
               filterQuality: FilterQuality.medium,
               errorBuilder: (_, _, _) => _fallback(context),
             ),
-      ChannelIconKind.custom => _customImage(context, app.icons.fileFor(icon.value)),
+      ChannelIconKind.custom => _customImage(context, app().icons.fileFor(icon.value)),
     };
-    return SizedBox(width: width ?? size, height: size, child: Center(child: child));
+    return SizedBox(width: width ?? size, height: size, child: Align(alignment: alignment, child: child));
   }
 
   Widget _customImage(BuildContext context, File file) {

@@ -4,12 +4,16 @@ import '../app_scope.dart';
 import '../app_state.dart';
 import '../channels/channel.dart';
 import '../channels/channel_generator.dart';
+import '../channels/premieres.dart';
 import '../channels/program_block.dart';
 import '../channels/schedule.dart';
 import '../theme/tv_theme.dart';
 import 'format.dart';
 import 'menu_screen.dart';
 import 'widgets/channel_logo.dart';
+import 'widgets/new_tag.dart';
+import 'widgets/adaptive.dart';
+import 'widgets/screen_layout.dart';
 import 'widgets/tv_focus.dart';
 
 /// "Sat · 7:00 AM – 12:00 PM · Dec 1 – Dec 25"
@@ -20,6 +24,10 @@ String describeBlock(ProgramBlock b) => [
     ].join('  ·  ');
 
 String _clock(int minute) => formatTime(DateTime(2000, 1, 1, minute ~/ 60, minute % 60));
+
+/// "8:00 PM · Every day · On"
+String describePremieres(PremiereSettings p) =>
+    [_clock(p.startMinute), describeDays(p.days), p.enabled ? 'On' : 'Off'].join('  ·  ');
 
 /// When [b] next starts (or the airing in progress), within about a year.
 DateTime? nextAiring(ProgramBlock b, DateTime now) {
@@ -47,13 +55,16 @@ class BlocksScreen extends StatelessWidget {
           MaterialPageRoute<void>(builder: (_) => BlockEditorScreen(block: block)),
         );
 
+    final portrait = ScreenLayout.of(context).isPortrait;
+    final premiereCaption = Text('Newly added episodes, on their show\'s channel',
+        style: g.body(24, weight: FontWeight.w600, color: g.accent));
     return TvPage(
       title: 'Programming blocks',
       hints: '▲▼ Move    OK Edit    ESC Back',
       onBack: () => Navigator.of(context).pop(),
       child: FocusTraversalGroup(
         child: ListView(
-          padding: const EdgeInsets.fromLTRB(120, 40, 120, 40),
+          padding: ScreenLayout.of(context).pagePadding(const EdgeInsets.fromLTRB(120, 40, 120, 40)),
           children: [
             Text(
               'Blocks take over a channel on the days and times you choose, like Saturday morning '
@@ -71,14 +82,53 @@ class BlocksScreen extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 28),
-            for (final (i, b) in app.blocks.indexed)
+            // Fixed first: the automatic premiere slot.
+            Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: TvFocusable(
+                autofocus: app.blocks.isNotEmpty,
+                onPressed: () => Navigator.of(context)
+                    .push(MaterialPageRoute<void>(builder: (_) => const PremiereEditorScreen())),
+                builder: (context, focused) => AnimatedContainer(
+                  duration: const Duration(milliseconds: 100),
+                  padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 18),
+                  decoration: BoxDecoration(
+                    color: focused ? g.cellBorder : g.cell,
+                    borderRadius: BorderRadius.circular(g.radius),
+                    border: Border.all(color: focused ? g.focus : Colors.transparent, width: 4),
+                  ),
+                  child: Row(
+                    children: [
+                      const NewTag(size: 26),
+                      const SizedBox(width: 24),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(PremiereEditorScreen.title,
+                                style: g.display(38,
+                                    weight: FontWeight.w800, color: app.settings.premieres.enabled ? g.text : g.textDim)),
+                            Text(describePremieres(app.settings.premieres),
+                                maxLines: 1, overflow: TextOverflow.ellipsis, style: g.body(24, color: g.textDim)),
+                            // Upright, under the rest: there's no room beside it.
+                            if (portrait) premiereCaption,
+                          ],
+                        ),
+                      ),
+                      if (!portrait) ...[const SizedBox(width: 24), premiereCaption],
+                    ],
+                  ),
+                ),
+              ),
+            ),
+            for (final b in app.blocks)
               Padding(
                 padding: const EdgeInsets.only(bottom: 12),
                 child: _BlockRow(
                   block: b,
                   channel: app.channelById(b.channelId),
                   next: nextAiring(b, now),
-                  autofocus: i == 0,
+                  autofocus: false,
                   onPressed: () => edit(b),
                 ),
               ),
@@ -108,6 +158,7 @@ class _BlockRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final g = context.guide;
     final ch = channel;
+    final portrait = ScreenLayout.of(context).isPortrait;
     final status = !block.enabled
         ? 'Turned off'
         : ch == null
@@ -117,6 +168,8 @@ class _BlockRow extends StatelessWidget {
                 : next!.isBefore(DateTime.now())
                     ? 'On the air now'
                     : 'Next: ${formatDate(next!)} ${formatTime(next!)}';
+    final statusText = Text(status,
+        style: g.body(24, weight: FontWeight.w600, color: ch == null && block.enabled ? g.nowLine : g.accent));
     return TvFocusable(
       autofocus: autofocus,
       onPressed: onPressed,
@@ -153,13 +206,11 @@ class _BlockRow extends StatelessWidget {
                     overflow: TextOverflow.ellipsis,
                     style: g.body(24, color: g.textDim),
                   ),
+                  if (portrait) statusText,
                 ],
               ),
             ),
-            const SizedBox(width: 24),
-            Text(status,
-                style: g.body(24,
-                    weight: FontWeight.w600, color: ch == null && block.enabled ? g.nowLine : g.accent)),
+            if (!portrait) ...[const SizedBox(width: 24), statusText],
           ],
         ),
       ),
@@ -245,14 +296,13 @@ class _BlockEditorScreenState extends State<BlockEditorScreen> {
       title: _isNew ? 'New programming block' : 'Edit programming block',
       hints: '▲▼◀▶ Move    OK Select    ESC Cancel',
       onBack: () => Navigator.of(context).pop(),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Expanded(
-            child: FocusTraversalGroup(
-              child: ListView(
-                padding: const EdgeInsets.fromLTRB(100, 32, 40, 40),
-                children: [
+      // Upright, what the block will air comes first.
+      child: AdaptiveColumns(
+                mainPadding: const EdgeInsets.fromLTRB(100, 32, 40, 40),
+                sideWidth: 640,
+                sideFirst: true,
+                side: _summary(context, app, channel, playlist, preview),
+                main: [
                   TvTextField(
                     controller: _title,
                     label: 'Title',
@@ -417,11 +467,6 @@ class _BlockEditorScreenState extends State<BlockEditorScreen> {
                     ],
                   ),
                 ],
-              ),
-            ),
-          ),
-          SizedBox(width: 640, child: _summary(context, app, channel, playlist, preview)),
-        ],
       ),
     );
   }
@@ -443,9 +488,10 @@ class _BlockEditorScreenState extends State<BlockEditorScreen> {
       }
     }
     final title = _title.text.trim();
+    final portrait = ScreenLayout.of(context).isPortrait;
     return Container(
-      margin: const EdgeInsets.fromLTRB(0, 32, 80, 40),
-      padding: const EdgeInsets.all(36),
+      margin: portrait ? EdgeInsets.zero : const EdgeInsets.fromLTRB(0, 32, 80, 40),
+      padding: EdgeInsets.all(portrait ? 28 : 36),
       decoration: BoxDecoration(
         color: g.panel,
         borderRadius: BorderRadius.circular(g.radius * 2),
@@ -515,12 +561,16 @@ class _BlockEditorScreenState extends State<BlockEditorScreen> {
               style: g.display(24, weight: FontWeight.w800, color: g.accent),
             ),
             const SizedBox(height: 8),
-            Expanded(
-              child: ListView(
-                primary: false,
-                children: [for (final p in preview.programs) _PreviewRow(program: p)],
+            // Upright the panel scrolls with the page.
+            if (portrait)
+              for (final p in preview.programs) _PreviewRow(program: p)
+            else
+              Expanded(
+                child: ListView(
+                  primary: false,
+                  children: [for (final p in preview.programs) _PreviewRow(program: p)],
+                ),
               ),
-            ),
           ],
         ],
       ),
@@ -708,6 +758,117 @@ class _BlockEditorScreenState extends State<BlockEditorScreen> {
   }
 }
 
+/// The nightly new episode premiere slot (episode-premieres): on or off,
+/// when, and which days. Saved changes take effect at once, as block edits
+/// do.
+class PremiereEditorScreen extends StatefulWidget {
+  const PremiereEditorScreen({super.key});
+
+  static const title = 'New episode premieres';
+
+  @override
+  State<PremiereEditorScreen> createState() => _PremiereEditorScreenState();
+}
+
+class _PremiereEditorScreenState extends State<PremiereEditorScreen> {
+  late PremiereSettings _draft = AppScope.read(context).settings.premieres;
+  String? _error;
+
+  void _update(PremiereSettings next) => setState(() {
+        _draft = next;
+        _error = null;
+      });
+
+  void _toggleDay(int d) {
+    final days = {..._draft.days};
+    if (!days.remove(d)) days.add(d);
+    _update(_draft.copyWith(days: days));
+  }
+
+  Future<void> _save() async {
+    if (_draft.enabled && _draft.days.isEmpty) {
+      setState(() => _error = 'Pick at least one day.');
+      return;
+    }
+    final app = AppScope.read(context);
+    final tuner = AppScope.tunerOf(context);
+    await app.setPremiereSettings(_draft);
+    // What's on may change from now on.
+    if (tuner.channel != null) await tuner.reschedule();
+    if (mounted) Navigator.of(context).pop();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final g = context.guide;
+    return TvPage(
+      title: PremiereEditorScreen.title,
+      hints: '▲▼◀▶ Move    OK Select    ESC Cancel',
+      onBack: () => Navigator.of(context).pop(),
+      child: FocusTraversalGroup(
+        child: ListView(
+          padding: ScreenLayout.of(context).pagePadding(const EdgeInsets.fromLTRB(100, 32, 100, 40)),
+          children: [
+            Text(
+              'Episodes added to Jellyfin in the last two weeks premiere in a nightly slot on their show\'s '
+              'channel: one new episode per show each night, for up to two hours, marked NEW. Programming '
+              'blocks come first.',
+              style: g.body(26, color: g.textDim),
+            ),
+            _BlockEditorScreenState._section(g, 'ON THE AIR'),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: TvToggle(
+                label: _draft.enabled ? 'Premieres are on' : 'Premieres are off',
+                on: _draft.enabled,
+                autofocus: true,
+                onPressed: () => _update(_draft.copyWith(enabled: !_draft.enabled)),
+              ),
+            ),
+            _BlockEditorScreenState._section(g, 'TIME'),
+            _Stepper(
+              label: 'Starts',
+              value: _clock(_draft.startMinute),
+              onMinus: () => _update(_draft.copyWith(startMinute: _BlockEditorScreenState._wrap(_draft.startMinute - 15))),
+              onPlus: () => _update(_draft.copyWith(startMinute: _BlockEditorScreenState._wrap(_draft.startMinute + 15))),
+            ),
+            _BlockEditorScreenState._section(g, 'DAYS'),
+            Wrap(
+              spacing: 12,
+              runSpacing: 12,
+              children: [
+                for (var d = 1; d <= 7; d++)
+                  TvToggle(
+                    label: const ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'][d - 1],
+                    on: _draft.days.contains(d),
+                    onPressed: () => _toggleDay(d),
+                  ),
+                const SizedBox(width: 12),
+                TvButton(label: 'Weekdays', onPressed: () => _update(_draft.copyWith(days: {1, 2, 3, 4, 5}))),
+                TvButton(label: 'Weekends', onPressed: () => _update(_draft.copyWith(days: {6, 7}))),
+                TvButton(label: 'Every day', onPressed: () => _update(_draft.copyWith(days: PremiereSettings.everyDay))),
+              ],
+            ),
+            const SizedBox(height: 40),
+            if (_error != null) ...[
+              Text(_error!, style: g.body(28, weight: FontWeight.w600, color: g.nowLine)),
+              const SizedBox(height: 20),
+            ],
+            Wrap(
+              spacing: 16,
+              runSpacing: 16,
+              children: [
+                TvButton(label: 'Save', icon: Icons.check, onPressed: _save),
+                TvButton(label: 'Cancel', onPressed: () => Navigator.of(context).pop()),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 /// "Starts  [−]  7:00 AM  [+]"
 class _Stepper extends StatelessWidget {
   const _Stepper({required this.label, required this.value, required this.onMinus, required this.onPlus});
@@ -720,6 +881,28 @@ class _Stepper extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final g = context.guide;
+    // Upright, the label goes above the buttons.
+    if (ScreenLayout.of(context).isPortrait) {
+      return Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(label, style: g.display(30, weight: FontWeight.w600)),
+          const SizedBox(height: 8),
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TvButton(label: '−', onPressed: onMinus),
+              SizedBox(
+                width: 220,
+                child: Text(value, textAlign: TextAlign.center, style: g.display(32, weight: FontWeight.w700)),
+              ),
+              TvButton(label: '+', onPressed: onPlus),
+            ],
+          ),
+        ],
+      );
+    }
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
@@ -746,6 +929,28 @@ class _DateStepper extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final g = context.guide;
+    // Upright, the label goes above the buttons, which wrap.
+    if (ScreenLayout.of(context).isPortrait) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(label, style: g.display(30, weight: FontWeight.w600)),
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 12,
+            runSpacing: 12,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              TvButton(label: '− Month', onPressed: () => onChanged(value.addMonths(-1))),
+              TvButton(label: '− Day', onPressed: () => onChanged(value.addDays(-1))),
+              Text('$value', style: g.display(32, weight: FontWeight.w700)),
+              TvButton(label: '+ Day', onPressed: () => onChanged(value.addDays(1))),
+              TvButton(label: '+ Month', onPressed: () => onChanged(value.addMonths(1))),
+            ],
+          ),
+        ],
+      );
+    }
     return Row(
       children: [
         SizedBox(width: 110, child: Text(label, style: g.display(30, weight: FontWeight.w600))),
@@ -791,6 +996,7 @@ class _LineupRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final g = context.guide;
+    if (ScreenLayout.of(context).isPortrait) return _portrait(g);
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
       decoration: BoxDecoration(color: g.cell, borderRadius: BorderRadius.circular(g.radius)),
@@ -817,6 +1023,41 @@ class _LineupRow extends StatelessWidget {
       ),
     );
   }
+
+  /// Upright: the show on a line of its own, its buttons wrapping below.
+  Widget _portrait(GuideTheme g) => Container(
+        padding: const EdgeInsets.fromLTRB(20, 14, 20, 16),
+        decoration: BoxDecoration(color: g.cell, borderRadius: BorderRadius.circular(g.radius)),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                SizedBox(width: 48, child: Text('$number', style: g.display(32, weight: FontWeight.w800, color: g.accent))),
+                Expanded(
+                  child: Text(name,
+                      maxLines: 1, overflow: TextOverflow.ellipsis, style: g.display(30, weight: FontWeight.w600)),
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            Wrap(
+              spacing: 8,
+              runSpacing: 12,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              children: [
+                TvButton(label: '−', focusNode: focus.fewer, onPressed: onFewer),
+                Text('$count episode${count == 1 ? '' : 's'}', style: g.body(24, weight: FontWeight.w600)),
+                TvButton(label: '+', focusNode: focus.more, onPressed: onMore),
+                const SizedBox(width: 16),
+                TvButton(label: '▲', focusNode: focus.up, onPressed: onUp),
+                TvButton(label: '▼', focusNode: focus.down, onPressed: onDown),
+                TvButton(label: 'Remove', icon: Icons.close, focusNode: focus.remove, onPressed: onRemove),
+              ],
+            ),
+          ],
+        ),
+      );
 }
 
 /// "7:30 AM  DuckTales / S1 · E4 · Duck Blind" in the next-airing preview.
@@ -869,7 +1110,7 @@ class _ShowPickerScreen extends StatelessWidget {
       onBack: () => Navigator.of(context).pop(),
       child: FocusTraversalGroup(
         child: ListView(
-          padding: const EdgeInsets.fromLTRB(120, 32, 120, 32),
+          padding: ScreenLayout.of(context).pagePadding(const EdgeInsets.fromLTRB(120, 32, 120, 32)),
           children: [
             for (final (i, s) in series.indexed)
               Padding(
@@ -929,7 +1170,7 @@ class _ChannelPickerScreen extends StatelessWidget {
       onBack: () => Navigator.of(context).pop(),
       child: FocusTraversalGroup(
         child: ListView(
-          padding: const EdgeInsets.fromLTRB(120, 32, 120, 32),
+          padding: ScreenLayout.of(context).pagePadding(const EdgeInsets.fromLTRB(120, 32, 120, 32)),
           children: [
             Align(
               alignment: Alignment.centerLeft,
@@ -1024,35 +1265,114 @@ class _ContentPickerScreenState extends State<_ContentPickerScreen> {
     }.toList()
       ..sort();
     final count = buildPlaylist(library, _source, PlaybackOrder.cyclic, seed: 0).length;
+    final layout = ScreenLayout.of(context);
+
+    final shows = [
+      Text('SHOWS', style: g.display(26, weight: FontWeight.w800, color: g.accent)),
+      const SizedBox(height: 12),
+      for (final (i, s) in series.indexed)
+        Padding(
+          padding: const EdgeInsets.only(bottom: 8),
+          child: _CheckRow(
+            autofocus: i == 0,
+            label: s.year == null ? s.name : '${s.name} (${s.year})',
+            detail: '${library.episodesBySeries[s.key]?.length ?? 0} episodes',
+            on: _shows.contains(s.key),
+            onPressed: () => setState(() {
+              if (!_shows.remove(s.key)) _shows.add(s.key);
+            }),
+          ),
+        ),
+    ];
+    final summary = [
+      Text('$count programs', style: g.display(44, weight: FontWeight.w800)),
+      Text(
+        _shows.isNotEmpty
+            ? 'Plays the shows you picked${_movies ? ', plus movies' : ''}.'
+            : _genres.isNotEmpty
+                ? 'Plays every show${_movies ? ' and movie' : ''} in these genres.'
+                : _movies
+                    ? 'Plays every movie.'
+                    : 'Pick shows, genres or movies.',
+        style: g.body(24, color: g.textDim),
+      ),
+      const SizedBox(height: 24),
+      Wrap(
+        spacing: 16,
+        runSpacing: 16,
+        children: [
+          TvButton(
+            label: 'Done',
+            icon: Icons.check,
+            onPressed: () => Navigator.of(context).pop(_source),
+          ),
+          if (_shows.isNotEmpty || _genres.isNotEmpty || _movies)
+            TvButton(
+              label: 'Clear',
+              onPressed: () => setState(() {
+                _shows.clear();
+                _genres.clear();
+                _movies = false;
+              }),
+            ),
+        ],
+      ),
+    ];
+    final moviesAndGenres = [
+      _CheckRow(
+        label: 'Include movies',
+        on: _movies,
+        onPressed: () => setState(() => _movies = !_movies),
+      ),
+      const SizedBox(height: 32),
+      Text('GENRES', style: g.display(26, weight: FontWeight.w800, color: g.accent)),
+      const SizedBox(height: 6),
+      Text('Used when no shows are picked. Also narrows down movies.',
+          style: g.body(22, color: g.textDim)),
+      const SizedBox(height: 12),
+      Wrap(
+        spacing: 12,
+        runSpacing: 12,
+        children: [
+          for (final genre in genres)
+            TvToggle(
+              label: genre,
+              on: _genres.contains(genre),
+              onPressed: () => setState(() {
+                if (!_genres.remove(genre)) _genres.add(genre);
+              }),
+            ),
+        ],
+      ),
+    ];
 
     return TvPage(
       title: 'Choose shows & movies',
       hints: '▲▼◀▶ Move    OK Toggle    ESC Cancel',
       onBack: () => Navigator.of(context).pop(),
-      child: Row(
+      // Upright, one list: the count and Done, the shows, then movies and
+      // genres.
+      child: layout.isPortrait
+          ? FocusTraversalGroup(
+              child: ListView(
+                padding: layout.pagePadding(EdgeInsets.zero),
+                children: [
+                  ...summary,
+                  const SizedBox(height: 32),
+                  ...shows,
+                  const SizedBox(height: 32),
+                  ...moviesAndGenres,
+                ],
+              ),
+            )
+          : Row(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Expanded(
             child: FocusTraversalGroup(
               child: ListView(
                 padding: const EdgeInsets.fromLTRB(100, 32, 24, 32),
-                children: [
-                  Text('SHOWS', style: g.display(26, weight: FontWeight.w800, color: g.accent)),
-                  const SizedBox(height: 12),
-                  for (final (i, s) in series.indexed)
-                    Padding(
-                      padding: const EdgeInsets.only(bottom: 8),
-                      child: _CheckRow(
-                        autofocus: i == 0,
-                        label: s.year == null ? s.name : '${s.name} (${s.year})',
-                        detail: '${library.episodesBySeries[s.key]?.length ?? 0} episodes',
-                        on: _shows.contains(s.key),
-                        onPressed: () => setState(() {
-                          if (!_shows.remove(s.key)) _shows.add(s.key);
-                        }),
-                      ),
-                    ),
-                ],
+                children: shows,
               ),
             ),
           ),
@@ -1062,64 +1382,9 @@ class _ContentPickerScreenState extends State<_ContentPickerScreen> {
               child: ListView(
                 padding: const EdgeInsets.fromLTRB(24, 32, 100, 32),
                 children: [
-                  Text('$count programs', style: g.display(44, weight: FontWeight.w800)),
-                  Text(
-                    _shows.isNotEmpty
-                        ? 'Plays the shows you picked${_movies ? ', plus movies' : ''}.'
-                        : _genres.isNotEmpty
-                            ? 'Plays every show${_movies ? ' and movie' : ''} in these genres.'
-                            : _movies
-                                ? 'Plays every movie.'
-                                : 'Pick shows, genres or movies.',
-                    style: g.body(24, color: g.textDim),
-                  ),
-                  const SizedBox(height: 24),
-                  Wrap(
-                    spacing: 16,
-                    runSpacing: 16,
-                    children: [
-                      TvButton(
-                        label: 'Done',
-                        icon: Icons.check,
-                        onPressed: () => Navigator.of(context).pop(_source),
-                      ),
-                      if (_shows.isNotEmpty || _genres.isNotEmpty || _movies)
-                        TvButton(
-                          label: 'Clear',
-                          onPressed: () => setState(() {
-                            _shows.clear();
-                            _genres.clear();
-                            _movies = false;
-                          }),
-                        ),
-                    ],
-                  ),
+                  ...summary,
                   const SizedBox(height: 32),
-                  _CheckRow(
-                    label: 'Include movies',
-                    on: _movies,
-                    onPressed: () => setState(() => _movies = !_movies),
-                  ),
-                  const SizedBox(height: 32),
-                  Text('GENRES', style: g.display(26, weight: FontWeight.w800, color: g.accent)),
-                  const SizedBox(height: 6),
-                  Text('Used when no shows are picked. Also narrows down movies.',
-                      style: g.body(22, color: g.textDim)),
-                  const SizedBox(height: 12),
-                  Wrap(
-                    spacing: 12,
-                    runSpacing: 12,
-                    children: [
-                      for (final genre in genres)
-                        TvToggle(
-                          label: genre,
-                          on: _genres.contains(genre),
-                          onPressed: () => setState(() {
-                            if (!_genres.remove(genre)) _genres.add(genre);
-                          }),
-                        ),
-                    ],
-                  ),
+                  ...moviesAndGenres,
                 ],
               ),
             ),

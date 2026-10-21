@@ -1,7 +1,10 @@
+import 'dart:math';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../theme/tv_theme.dart';
+import 'screen_layout.dart';
 
 /// True for the keys a TV remote or air mouse sends for "back".
 bool isBackKey(LogicalKeyboardKey key) =>
@@ -172,6 +175,7 @@ class TvButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final g = context.guide;
+    final portrait = ScreenLayout.of(context).isPortrait;
     return TvFocusable(
       onPressed: onPressed,
       autofocus: autofocus,
@@ -189,20 +193,24 @@ class TvButton extends StatelessWidget {
                 ? [BoxShadow(color: g.focus.withValues(alpha: 0.45), blurRadius: 18)]
                 : null,
           ),
-          child: Row(
-            mainAxisSize: expand ? MainAxisSize.max : MainAxisSize.min,
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              if (icon != null) ...[
-                Icon(icon, size: 32, color: fg),
-                const SizedBox(width: 14),
+          child: ConstrainedBox(
+            // Upright on a phone: at least 76 units (48 dp) in all.
+            constraints: BoxConstraints(minHeight: portrait ? 36 : 0),
+            child: Row(
+              mainAxisSize: expand ? MainAxisSize.max : MainAxisSize.min,
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                if (icon != null) ...[
+                  Icon(icon, size: 32, color: fg),
+                  const SizedBox(width: 14),
+                ],
+                Flexible(
+                  child: Text(label,
+                      overflow: TextOverflow.ellipsis,
+                      style: g.display(30, weight: FontWeight.w600, color: fg)),
+                ),
               ],
-              Flexible(
-                child: Text(label,
-                    overflow: TextOverflow.ellipsis,
-                    style: g.display(30, weight: FontWeight.w600, color: fg)),
-              ),
-            ],
+            ),
           ),
         );
       },
@@ -266,6 +274,9 @@ class _PageFocusNode extends FocusNode {
 class _TvPageState extends State<TvPage> {
   final _node = _PageFocusNode();
 
+  /// The page's content, kept (with its state) when the layout changes.
+  final _body = GlobalKey(debugLabel: 'page body');
+
   @override
   void initState() {
     super.initState();
@@ -284,11 +295,15 @@ class _TvPageState extends State<TvPage> {
   /// Back and the arrow keys would stop working. Catch it here instead.
   void _keepFocusInPage() {
     final scope = _node.enclosingScope;
-    if (scope == null || FocusManager.instance.primaryFocus != scope) return;
+    if (scope == null || FocusManager.instance.primaryFocus != scope || !_current) return;
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted && FocusManager.instance.primaryFocus == scope) _node.requestFocus();
+      if (mounted && _current && FocusManager.instance.primaryFocus == scope) _node.requestFocus();
     });
   }
+
+  /// A page on its way out (popped, still animating) leaves focus alone:
+  /// it belongs to the screen it uncovers.
+  bool get _current => ModalRoute.of(context)?.isCurrent ?? true;
 
   @override
   Widget build(BuildContext context) {
@@ -308,7 +323,9 @@ class _TvPageState extends State<TvPage> {
         }
         return KeyEventResult.ignored;
       },
-      child: DecoratedBox(
+      child: ScreenLayout.of(context).isPortrait
+          ? _portrait(context)
+          : DecoratedBox(
         decoration: g.backdrop,
         child: Column(
           children: [
@@ -320,7 +337,7 @@ class _TvPageState extends State<TvPage> {
               child: Text(widget.title.toUpperCase(),
                   style: g.display(52, weight: FontWeight.w800, color: g.accent)),
             ),
-            Expanded(child: widget.child),
+            Expanded(child: KeyedSubtree(key: _body, child: widget.child)),
             if (hints != null)
               Container(
                 height: 64,
@@ -333,7 +350,106 @@ class _TvPageState extends State<TvPage> {
       ),
     );
   }
+
+  /// Upright on a phone: clear of the system bars, a back arrow in a
+  /// shorter title bar, and no key hints (phones have the back gesture).
+  Widget _portrait(BuildContext context) {
+    final g = context.guide;
+    final layout = ScreenLayout.of(context);
+    final safe = MediaQuery.paddingOf(context);
+    final onBack = widget.onBack;
+    return DecoratedBox(
+      decoration: g.backdrop,
+      child: Column(
+        children: [
+          Container(
+            color: g.header,
+            padding: EdgeInsets.only(top: safe.top, left: safe.left, right: safe.right),
+            child: SizedBox(
+              height: 96,
+              child: Row(
+                children: [
+                  if (onBack != null)
+                    _BackArrow(onPressed: onBack)
+                  else
+                    SizedBox(width: layout.gutter),
+                  Expanded(
+                    child: Text(widget.title.toUpperCase(),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: g.display(40, weight: FontWeight.w800, color: g.accent)),
+                  ),
+                  SizedBox(width: layout.gutter),
+                ],
+              ),
+            ),
+          ),
+          Expanded(
+            child: Padding(
+              padding: EdgeInsets.only(left: safe.left, right: safe.right, bottom: safe.bottom),
+              child: MediaQuery.removePadding(
+                context: context,
+                removeTop: true,
+                removeBottom: true,
+                removeLeft: true,
+                removeRight: true,
+                child: KeyedSubtree(key: _body, child: widget.child),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }
+
+/// The portrait title bar's back arrow: touch-sized, and out of the way of
+/// the arrow keys (Back already does the same).
+class _BackArrow extends StatelessWidget {
+  const _BackArrow({required this.onPressed});
+
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    final g = context.guide;
+    return Semantics(
+      button: true,
+      label: 'Back',
+      excludeSemantics: true,
+      child: MouseRegion(
+        cursor: SystemMouseCursors.click,
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: onPressed,
+          child: SizedBox(
+            width: 96,
+            height: 96,
+            child: Icon(Icons.arrow_back, size: 44, color: g.text),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// The width for a dialog's content: [preferred] in the TV layout; upright,
+/// at most what fits between the gutters, less the dialog's own [padding]
+/// on each side.
+double dialogWidth(BuildContext context, double preferred, {double padding = 0}) {
+  final layout = ScreenLayout.of(context);
+  if (layout.isTv) return preferred;
+  return min(preferred, layout.canvas.width - 2 * layout.gutter - 2 * padding);
+}
+
+/// A dialog's content: upright it scrolls, in case the screen is too short
+/// for it.
+Widget dialogBody(BuildContext context, Widget child) =>
+    ScreenLayout.of(context).isPortrait ? SingleChildScrollView(child: child) : child;
+
+/// A dialog's padding: [preferred] in the TV layout, less upright.
+double dialogPadding(BuildContext context, [double preferred = 56]) =>
+    ScreenLayout.of(context).isPortrait ? min(preferred, 32) : preferred;
 
 /// A pill button for the pointer (mouse or air mouse) that never takes
 /// keyboard focus, for overlays on screens whose keys do something else

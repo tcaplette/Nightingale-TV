@@ -38,8 +38,9 @@ void main() {
     final app = h.app, tuner = h.tuner;
     final wait = h.wait, snap = h.snap, press = h.press, tap = h.tap, tapOn = h.tapOn;
 
-    // Menu → Programming blocks (third item).
+    // Menu → Programming blocks (fourth item, after Channel groups).
     await press(LogicalKeyboardKey.keyM, after: const Duration(seconds: 1));
+    await press(LogicalKeyboardKey.arrowDown);
     await press(LogicalKeyboardKey.arrowDown);
     await press(LogicalKeyboardKey.arrowDown);
     await press(LogicalKeyboardKey.enter, after: const Duration(seconds: 1));
@@ -143,6 +144,7 @@ void main() {
     await press(LogicalKeyboardKey.keyM, after: const Duration(seconds: 1));
     await press(LogicalKeyboardKey.arrowDown);
     await press(LogicalKeyboardKey.arrowDown);
+    await press(LogicalKeyboardKey.arrowDown);
     await press(LogicalKeyboardKey.enter, after: const Duration(seconds: 1));
     await press(LogicalKeyboardKey.enter, after: const Duration(seconds: 1));
     await tester.enterText(find.byType(TextField), 'Saturday Morning Cartoons');
@@ -209,6 +211,7 @@ void main() {
     final wait = h.wait, press = h.press, tap = h.tap;
 
     await press(LogicalKeyboardKey.keyM, after: const Duration(seconds: 1));
+    await press(LogicalKeyboardKey.arrowDown);
     await press(LogicalKeyboardKey.arrowDown);
     await press(LogicalKeyboardKey.arrowDown);
     await press(LogicalKeyboardKey.enter, after: const Duration(seconds: 1));

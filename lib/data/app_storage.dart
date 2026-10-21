@@ -59,7 +59,15 @@ class AppStorage {
     if (await file.exists()) await file.rename(_file(name).path);
   }
 
+  /// Storage over [dir] as it is, creating nothing (reading a data folder
+  /// for a backup).
+  factory AppStorage.existing(Directory dir) => AppStorage._(dir);
+
   File _file(String name) => File('${root.path}/$name');
+
+  /// A state file's JSON as saved, without parsing it into a model; null
+  /// when it's missing or unreadable.
+  Future<Object?> readRaw(String name) => readJson(name);
 
   Future<Object?> readJson(String name) async {
     final file = _file(name);
@@ -88,6 +96,13 @@ class AppStorage {
       if (identical(_writes[name], write)) _writes.remove(name);
     }).ignore();
     return write;
+  }
+
+  /// Waits for every write asked for so far, and those queued meanwhile.
+  Future<void> flush() async {
+    while (_writes.isNotEmpty) {
+      await Future.wait([for (final w in _writes.values) w.catchError((Object _) {})]);
+    }
   }
 
   Future<void> _write(String name, String text, bool private) async {

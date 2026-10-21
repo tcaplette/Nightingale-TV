@@ -109,6 +109,34 @@ void main() {
     expect(_ts(p)['MaxAudioChannels'], '6');
   });
 
+  group('volume leveling on (volume-leveling)', () {
+    test('a box that passes AC-3 through but can\'t decode it: AC-3 is listed off, left out on', () {
+      final box = caps(audio: {'aac', 'mp3'}, passthrough: {'ac3', 'eac3'});
+      final off = androidDeviceProfile(box);
+      final on = androidDeviceProfile(box, leveling: true);
+      expect(_codecs(_directPlay(off, 'mkv')['AudioCodec']), containsAll(['ac3', 'eac3']));
+      expect(_codecs(_ts(off)['AudioCodec']), containsAll(['ac3', 'eac3']));
+      for (final d in _list(on, 'DirectPlayProfiles')) {
+        expect(_codecs(d['AudioCodec']), {'aac', 'mp3'}, reason: '${d['Container']}');
+      }
+      expect(_codecs(_ts(on)['AudioCodec']), {'aac', 'mp3'}, reason: 'converted to AAC, the video copied');
+    });
+
+    test('codecs the box decodes stay, and nothing else changes', () {
+      final box = caps(audio: {'aac', 'mp3', 'ac3', 'flac'}, passthrough: {'ac3', 'eac3', 'dts'});
+      final off = androidDeviceProfile(box);
+      final on = androidDeviceProfile(box, leveling: true);
+      expect(_codecs(_directPlay(on, 'mkv')['AudioCodec']), {'aac', 'mp3', 'ac3', 'flac'});
+      expect(_codecs(_ts(on)['AudioCodec']), {'aac', 'mp3', 'ac3'});
+      Map<String, Object?> withoutAudio(Map<String, Object?> p) => {
+            ...p,
+            'DirectPlayProfiles': [for (final d in _list(p, 'DirectPlayProfiles')) {...d}..remove('AudioCodec')],
+            'TranscodingProfiles': [for (final d in _list(p, 'TranscodingProfiles')) {...d}..remove('AudioCodec')],
+          };
+      expect(withoutAudio(on), withoutAudio(off));
+    });
+  });
+
   test('a decoder faster at 1080p than at 4K gets both frame rates', () {
     const v = VideoDecoderCaps(codec: 'vp9', profiles: ['profile 0'], maxWidth: 3840, maxHeight: 2160, maxFps: 30, fps1080: 60);
     final p = androidDeviceProfile(DeviceCapabilities(video: const [_h264, v], audio: const {'aac'}));

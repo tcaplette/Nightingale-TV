@@ -14,6 +14,23 @@ enum PlaybackOrder {
       };
 }
 
+/// When a channel's logo shows in the corner of the picture (channel-logo).
+enum LogoMode {
+  always,
+
+  /// For 20 seconds from each program part's start and each quarter hour.
+  nowAndThen,
+  off;
+
+  String get label => switch (this) {
+        always => 'Always',
+        nowAndThen => 'Now and then',
+        off => 'Off',
+      };
+
+  static LogoMode? parse(Object? name) => LogoMode.values.where((m) => m.name == name).firstOrNull;
+}
+
 enum ChannelIconKind {
   /// A Material icon from the built-in catalog (`value` = catalog key).
   builtin,
@@ -71,6 +88,9 @@ class ChannelSource {
     this.seriesKeys = const [],
     this.includeEpisodes = true,
     this.includeMovies = false,
+    this.includeSongs = false,
+    this.includeMusicVideos = false,
+    this.decades = const [],
   });
 
   /// Normalized genre names (see `normalizeGenre`). Empty = any genre.
@@ -80,12 +100,23 @@ class ChannelSource {
   final List<String> seriesKeys;
   final bool includeEpisodes;
   final bool includeMovies;
+  final bool includeSongs;
+  final bool includeMusicVideos;
+
+  /// Music only: the decades (first year, e.g. 1980) to play. Empty = any.
+  final List<int> decades;
+
+  /// Plays songs or music videos.
+  bool get isMusic => includeSongs || includeMusicVideos;
 
   Map<String, Object?> toJson() => {
         if (genres.isNotEmpty) 'genres': genres,
         if (seriesKeys.isNotEmpty) 'seriesKeys': seriesKeys,
         'episodes': includeEpisodes,
         'movies': includeMovies,
+        if (includeSongs) 'songs': true,
+        if (includeMusicVideos) 'musicVideos': true,
+        if (decades.isNotEmpty) 'decades': decades,
       };
 
   factory ChannelSource.fromJson(Map<String, Object?> j) => ChannelSource(
@@ -93,6 +124,9 @@ class ChannelSource {
         seriesKeys: (j['seriesKeys'] as List?)?.cast<String>() ?? const [],
         includeEpisodes: j['episodes'] as bool? ?? true,
         includeMovies: j['movies'] as bool? ?? false,
+        includeSongs: j['songs'] as bool? ?? false,
+        includeMusicVideos: j['musicVideos'] as bool? ?? false,
+        decades: (j['decades'] as List?)?.cast<int>() ?? const [],
       );
 }
 
@@ -111,6 +145,8 @@ class Channel {
     this.auto = true,
     this.blockOnly = false,
     this.commercialPlan,
+    this.logoMode,
+    this.premieres = true,
   });
 
   final String id;
@@ -138,6 +174,15 @@ class Channel {
   /// This channel's own break plan; null follows the main setting.
   BreakPlan? commercialPlan;
 
+  /// This channel's own logo setting; null follows the main setting.
+  LogoMode? logoMode;
+
+  /// Can be a show's home channel for new episode premieres.
+  bool premieres;
+
+  /// A music channel (songs or music videos).
+  bool get isMusic => source.isMusic;
+
   Map<String, Object?> toJson() => {
         'id': id,
         'number': number,
@@ -155,6 +200,8 @@ class Channel {
         // Read by versions from before break plans, so a downgrade keeps
         // roughly the same setting.
         if (commercialPlan != null) 'commercials': !commercialPlan!.isOff,
+        if (logoMode != null) 'logoMode': logoMode!.name,
+        if (!premieres) 'premieres': false,
       };
 
   factory Channel.fromJson(Map<String, Object?> j) => Channel(
@@ -178,5 +225,7 @@ class Channel {
           (_, false) => BreakPlan.off,
           _ => null,
         },
+        logoMode: LogoMode.parse(j['logoMode']),
+        premieres: j['premieres'] as bool? ?? true,
       );
 }

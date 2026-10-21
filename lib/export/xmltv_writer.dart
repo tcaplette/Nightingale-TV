@@ -8,7 +8,8 @@ import 'm3u_writer.dart';
 const xmltvSpan = Duration(hours: 72);
 
 /// The XMLTV guide for [channels] from the start of [now]'s hour through
-/// [xmltvSpan]: the same slots the TV guide shows.
+/// [xmltvSpan]: the same slots the TV guide shows, music channels hour by
+/// hour.
 String buildXmltv({
   required List<Channel> channels,
   required ChannelSchedule? Function(Channel) scheduleFor,
@@ -33,7 +34,7 @@ String buildXmltv({
   for (final c in channels) {
     final schedule = scheduleFor(c);
     if (schedule == null) continue;
-    for (final p in schedule.programsBetween(from, to)) {
+    for (final p in schedule.guideProgramsBetween(from, to)) {
       _programme(out, c, p, schedule, library, urls);
     }
   }
@@ -49,6 +50,15 @@ void _programme(
     out.write('    <$name>${xmlEscape(value.trim())}</$name>\n');
   }
 
+  // A music channel's hour: its songs in order (music-channels).
+  if (p.songs case final songs?) {
+    tag('title', p.title);
+    tag('desc', [for (final s in songs) s.title].join('\n'));
+    tag('category', 'Music');
+    tag('category', p.blockTitle);
+    out.write('  </programme>\n');
+    return;
+  }
   final item = p.item;
   if (item == null) {
     tag('title', 'Off Air');
@@ -77,7 +87,8 @@ void _programme(
       final s = '${item.season}'.padLeft(2, '0'), e = '${item.episode}'.padLeft(2, '0');
       out.write('    <episode-num system="onscreen">S${s}E$e</episode-num>\n');
     }
-    out.write('    <previously-shown/>\n');
+    // A premiere is new; everything else is a rerun.
+    out.write(p.isPremiere ? '    <new/>\n' : '    <previously-shown/>\n');
   }
   final rating = (isEpisode ? series?.officialRating : null) ?? item.officialRating;
   if (rating != null && rating.trim().isNotEmpty) {

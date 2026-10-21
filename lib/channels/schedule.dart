@@ -4,6 +4,7 @@ import '../commercials/break_sources.dart';
 import '../library/library_index.dart';
 import 'channel.dart';
 import 'channel_generator.dart';
+import 'premieres.dart';
 import 'program_block.dart';
 import 'slot_layout.dart';
 
@@ -24,6 +25,9 @@ class ScheduledProgram {
     this.blockTitle,
     this.role,
     this.program,
+    this.isPremiere = false,
+    this.label,
+    this.songs,
   })  : layoutStart = layoutStart ?? start,
         itemFrom = itemFrom ?? start.difference(layoutStart ?? start);
 
@@ -49,10 +53,22 @@ class ScheduledProgram {
   /// During a break: the program the break belongs to.
   final MediaEntry? program;
 
-  /// The programming block this slot belongs to, if any.
+  /// The programming block this slot belongs to, if any ("New Episodes"
+  /// for a premiere slot).
   final String? blockTitle;
 
+  /// A new episode premiering (episode-premieres).
+  final bool isPremiere;
+
+  /// A music channel's hour-long guide cell: titled [label] (the channel's
+  /// name), holding the hour's [songs] in order; [item] is the first.
+  final String? label;
+  final List<ScheduledProgram>? songs;
+
   bool get isOffAir => item == null;
+
+  /// A music channel's hour in the guide, rather than one program.
+  bool get isMusicHour => songs != null;
 
   /// A commercial break rather than the program.
   bool get isBreak => role != null;
@@ -67,7 +83,7 @@ class ScheduledProgram {
   /// Where in [item]'s video this ends.
   Duration get itemTo => itemFrom + duration;
 
-  String get title => item?.guideTitle ?? 'Off Air';
+  String get title => label ?? item?.guideTitle ?? 'Off Air';
 
   /// Episode code + title, or "Movie · year".
   String get subtitle => item?.subtitle ?? 'This channel is off the air';
@@ -76,6 +92,7 @@ class ScheduledProgram {
   String get detail {
     final i = item;
     if (i == null) return '';
+    if (isMusicHour) return i.guideTitle;
     return i.kind == MediaKind.episode ? i.title : i.subtitle;
   }
 
@@ -361,37 +378,64 @@ class BreakContext {
 /// channel's regular loop around them, and "Off Air" for block-only
 /// channels outside their blocks.
 class ChannelSchedule {
-  ChannelSchedule._(this.loop, this.blocks, this.breaks, this._seed, this._slotPlans);
+  ChannelSchedule._(this.loop, this.blocks, this.breaks, this._seed, this._slotPlans,
+      {this.premieres, this.musicName});
 
   /// The regular programming; null for block-only channels.
   final LoopSchedule? loop;
   final List<BlockSchedule> blocks;
+
+  /// New episode premiere slots, which take over like blocks (blocks come
+  /// first: a slot that would overlap one doesn't air).
+  final ChannelPremieres? premieres;
+
+  /// A music channel's name: the guide shows it in hour-long cells.
+  final String? musicName;
   final BreakContext breaks;
   final int _seed;
-  final Map<Duration, SlotPlan> _slotPlans;
+  final Map<(Duration, bool), SlotPlan> _slotPlans;
   final _layouts = <(String, DateTime), SlotLayout>{};
 
   bool get hasBreaks => !breaks.plan.isOff;
 
   /// Builds [channel]'s schedule; programs get [breaks]' plan, in blocks
   /// too.
+  /// Premiere slots come from [premieres], the profile's plan.
   static ChannelSchedule? build(Channel channel, LibraryIndex library,
-      [List<ProgramBlock> allBlocks = const [], BreakContext breaks = BreakContext.none]) {
-    final plans = <Duration, SlotPlan>{};
-    SlotPlan planOf(Duration runtime) => plans.putIfAbsent(runtime, () => resolve(breaks.plan, runtime));
-    Duration slotOf(MediaEntry item) => planOf(item.runtime).slotLength;
+      [List<ProgramBlock> allBlocks = const [], BreakContext breaks = BreakContext.none, PremierePlan? premieres]) {
+    final plans = <(Duration, bool), SlotPlan>{};
+    Duration slotOf(MediaEntry item) => _planOf(plans, breaks.plan, item).slotLength;
     final loop = LoopSchedule.build(channel, library, slotOf: slotOf);
     final blocks = [
       for (final b in allBlocks)
         if (b.channelId == channel.id) ?BlockSchedule.build(b, library, slotOf: slotOf),
     ];
     if (loop == null && blocks.isEmpty) return null;
-    return ChannelSchedule._(loop, blocks, breaks, stableHash(channel.id), plans);
+    return ChannelSchedule._(
+      loop,
+      blocks,
+      breaks,
+      stableHash(channel.id),
+      plans,
+      premieres: loop == null
+          ? null
+          : premieres?.forChannel(channel,
+              slotOf: slotOf,
+              blocked: (start, end) => blocks.any((b) => b.airingsBetween(start, end).isNotEmpty)),
+      musicName: channel.isMusic ? channel.name : null,
+    );
   }
 
   /// [item]'s slot under this channel's plan.
-  SlotPlan slotPlanFor(MediaEntry item) =>
-      _slotPlans.putIfAbsent(item.runtime, () => resolve(breaks.plan, item.runtime));
+  SlotPlan slotPlanFor(MediaEntry item) => _planOf(_slotPlans, breaks.plan, item);
+
+  /// [item]'s slot under [plan], kept in [plans]: by runtime, and never a
+  /// break inside a song or music video, only before or after it.
+  static SlotPlan _planOf(Map<(Duration, bool), SlotPlan> plans, BreakPlan plan, MediaEntry item) =>
+      plans.putIfAbsent((item.runtime, item.isMusic), () {
+        final slot = resolve(plan, item.runtime);
+        return item.isMusic ? slot.withoutMidRolls() : slot;
+      });
 
   /// The program airing at [t].
   ScheduledProgram programAt(DateTime t) {
@@ -399,15 +443,21 @@ class ChannelSchedule {
       final airing = b.airingAt(t);
       if (airing != null) return b.programAt(airing, t);
     }
+    if (premieres?.airingAt(t) case final airing?) return _premiereAt(airing, t);
     // Between blocks: regular programming, cut at the blocks' edges.
     var after = DateTime.fromMicrosecondsSinceEpoch(0);
     var before = DateTime(9999);
     final from = t.subtract(const Duration(days: 1)), to = t.add(const Duration(days: 1));
+    void edges(Airing a) {
+      if (!a.end.isAfter(t) && a.end.isAfter(after)) after = a.end;
+      if (a.start.isAfter(t) && a.start.isBefore(before)) before = a.start;
+    }
+
     for (final b in blocks) {
-      for (final a in b.airingsBetween(from, to)) {
-        if (!a.end.isAfter(t) && a.end.isAfter(after)) after = a.end;
-        if (a.start.isAfter(t) && a.start.isBefore(before)) before = a.start;
-      }
+      b.airingsBetween(from, to).forEach(edges);
+    }
+    for (final a in premieres?.airingsBetween(from, to) ?? const <PremiereAiring>[]) {
+      edges((start: a.start, end: a.end));
     }
     final loop = this.loop;
     if (loop == null) {
@@ -428,6 +478,19 @@ class ChannelSchedule {
       // A program resuming after a block carries on in the same slot.
       layoutStart: p.start,
     );
+  }
+
+  /// The premiere on during [airing] at [t].
+  ScheduledProgram _premiereAt(PremiereAiring airing, DateTime t) {
+    var start = airing.start;
+    for (final (i, e) in airing.episodes.indexed) {
+      final end = start.add(airing.slots[i]);
+      if (t.isBefore(end) || i == airing.episodes.length - 1) {
+        return ScheduledProgram(item: e, start: start, end: end, blockTitle: PremierePlan.title, isPremiere: true);
+      }
+      start = end;
+    }
+    throw StateError('A premiere slot with no episodes');
   }
 
   /// [item]'s layout in the slot starting at [layoutStart], using what was
@@ -462,6 +525,7 @@ class ChannelSchedule {
         end: slot.end,
         layoutStart: slot.layoutStart,
         blockTitle: slot.blockTitle,
+        isPremiere: slot.isPremiere,
       );
     }
     final layout = layoutFor(item, slot.layoutStart);
@@ -479,6 +543,7 @@ class ChannelSchedule {
       role: segment.role,
       program: segment.isShow ? null : item,
       blockTitle: slot.blockTitle,
+      isPremiere: slot.isPremiere,
     );
   }
 
@@ -516,6 +581,29 @@ class ChannelSchedule {
   }
 
   ScheduledProgram next(ScheduledProgram p) => programAt(p.end);
+
+  /// What the guide shows at [t]: [programAt], except on a music channel,
+  /// where it's the hour-long cell (music-channels: a 3-minute song would
+  /// be an unreadable cell).
+  ScheduledProgram guideProgramAt(DateTime t) {
+    final name = musicName;
+    if (name == null) return programAt(t);
+    final hour = DateTime(t.year, t.month, t.day, t.hour);
+    final end = DateTime(t.year, t.month, t.day, t.hour + 1);
+    final songs = programsBetween(hour, end);
+    final first = songs.where((p) => !p.start.isBefore(hour)).firstOrNull ?? songs.firstOrNull;
+    return ScheduledProgram(item: first?.item, start: hour, end: end, label: name, songs: songs);
+  }
+
+  /// Guide cells overlapping [from, to), in order (see [guideProgramAt]).
+  List<ScheduledProgram> guideProgramsBetween(DateTime from, DateTime to) {
+    if (musicName == null) return programsBetween(from, to);
+    final result = <ScheduledProgram>[];
+    for (var p = guideProgramAt(from); p.start.isBefore(to); p = guideProgramAt(p.end)) {
+      result.add(p);
+    }
+    return result;
+  }
 
   /// The next programming block to start after [t] (within about a year),
   /// e.g. for "back on the air" messages on block-only channels.

@@ -186,6 +186,9 @@ class JellyfinLibrary {
       collectionType == null ||
       const {'movies', 'tvshows', 'homevideos', 'musicvideos', 'mixed'}
           .contains(collectionType);
+
+  /// A library of songs.
+  bool get isMusic => collectionType == 'music';
 }
 
 /// Thin client over the parts of the Jellyfin REST API this app needs.

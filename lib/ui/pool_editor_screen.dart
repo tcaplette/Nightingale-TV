@@ -6,6 +6,8 @@ import '../library/library_index.dart';
 import '../theme/tv_theme.dart';
 import 'folder_picker_screen.dart';
 import 'menu_screen.dart' show confirm;
+import 'widgets/adaptive.dart';
+import 'widgets/screen_layout.dart';
 import 'widgets/tv_focus.dart';
 
 /// Rename a commercial pool, choose its folders, or delete it.
@@ -66,19 +68,16 @@ class _PoolEditorScreenState extends State<PoolEditorScreen> {
     final items = [for (final c in app.library.commercials) if (c.poolIds.contains(_pool.id)) c];
     final reels = items.where((c) => c.runtime > LibraryIndex.maxClip).toList();
     final unsplit = reels.where((r) => !app.catalog.clipsFor(_pool.id).any((c) => c.sourceId == r.id)).length;
+    final portrait = ScreenLayout.of(context).isPortrait;
 
     return TvPage(
       title: 'Commercial pool',
       hints: '▲▼◀▶ Move    OK Select    ESC Back',
       onBack: () => Navigator.of(context).pop(),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Expanded(
-            child: FocusTraversalGroup(
-              child: ListView(
-                padding: const EdgeInsets.fromLTRB(100, 32, 40, 40),
-                children: [
+      child: AdaptiveColumns(
+                mainPadding: const EdgeInsets.fromLTRB(100, 32, 40, 40),
+                sideWidth: 640,
+                main: [
                   Row(
                     children: [
                       Expanded(child: TvTextField(controller: _name, label: 'Pool name', onSubmitted: (_) => _rename())),
@@ -137,14 +136,9 @@ class _PoolEditorScreenState extends State<PoolEditorScreen> {
                   else if (app.syncError != null)
                     Text('Last scan failed: ${app.syncError}', style: g.body(24, color: g.nowLine)),
                 ],
-              ),
-            ),
-          ),
-          SizedBox(
-            width: 640,
-            child: Container(
-              margin: const EdgeInsets.fromLTRB(0, 40, 80, 40),
-              padding: const EdgeInsets.all(36),
+            side: Container(
+              margin: portrait ? EdgeInsets.zero : const EdgeInsets.fromLTRB(0, 40, 80, 40),
+              padding: EdgeInsets.all(portrait ? 28 : 36),
               decoration: BoxDecoration(
                 color: g.panel,
                 borderRadius: BorderRadius.circular(g.radius * 2),
@@ -179,8 +173,6 @@ class _PoolEditorScreenState extends State<PoolEditorScreen> {
                 ],
               ),
             ),
-          ),
-        ],
       ),
     );
   }

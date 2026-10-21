@@ -1,4 +1,19 @@
+import '../channels/logo_windows.dart';
 import 'export_settings.dart';
+
+/// The channel logo burned into a segment (channel-streaming): its PNG and
+/// when it shows, relative to the segment's start. With [always], it shows
+/// throughout with no fades.
+class SegmentLogo {
+  const SegmentLogo({required this.png, this.windows = const [], this.always = false});
+
+  final String png;
+  final List<({Duration start, Duration end})> windows;
+  final bool always;
+
+  /// Whether the segment needs the logo at all.
+  bool get shows => always || windows.isNotEmpty;
+}
 
 /// The H.264 encoders exported streams can use, best first.
 enum VideoEncoder {
@@ -40,13 +55,54 @@ abstract final class EncodeArgs {
   /// an output-wide -frames:v or -t ends the file early or a frame short.
   /// With [hold], a source that ends sooner repeats its last picture up to
   /// [frames].
-  static String _filters(ExportQuality q, VideoEncoder e, int frames, {bool hold = false}) {
+  static String _filters(ExportQuality q, VideoEncoder e, int frames, {bool hold = false}) =>
+      '${_picture(q, frames, hold: hold)},${_uploadOnly(e)}';
+
+  /// The picture before encoding: scaled, padded, 29.97 fps, [frames] long.
+  static String _picture(ExportQuality q, int frames, {bool hold = false}) {
     final w = q.width, h = q.height;
-    final f =
-        'scale=$w:$h:force_original_aspect_ratio=decrease,pad=$w:$h:(ow-iw)/2:(oh-ih)/2:black,setsar=1,'
+    return 'scale=$w:$h:force_original_aspect_ratio=decrease,pad=$w:$h:(ow-iw)/2:(oh-ih)/2:black,setsar=1,'
         'fps=$frameRate:start_time=0,${hold ? 'tpad=stop=-1:stop_mode=clone,' : ''}trim=end_frame=$frames';
-    return e == VideoEncoder.vaapi ? '$f,format=nv12,hwupload' : '$f,format=yuv420p';
   }
+
+  /// [_picture] of input 0 with [logo] (input [logoInput]) laid over it in
+  /// the bottom-right box (see [logoBox]), at 70%, faded in and out over
+  /// each window. Drawn on the CPU before the upload, so every encoder gets
+  /// the same picture.
+  static String _logoGraph(ExportQuality q, VideoEncoder e, int frames, SegmentLogo logo, int logoInput,
+      {bool hold = false}) {
+    final box = logoBox(q.width.toDouble(), q.height.toDouble());
+    final bw = box.maxWidth.floor(), bh = box.height.round(), right = box.right.round(), bottom = box.bottom.round();
+    // Right-aligned and centred in the box, as on the TV.
+    final at = 'x=main_w-overlay_w-$right:y=main_h-$bottom-($bh+overlay_h)/2';
+    final graph = [
+      '[0:v]${_picture(q, frames, hold: hold)}[base]',
+      '[$logoInput:v]scale=$bw:$bh:force_original_aspect_ratio=decrease,format=rgba,'
+          'colorchannelmixer=aa=$logoOpacity[logo]',
+    ];
+    if (logo.always) {
+      graph.add('[base][logo]overlay=$at:shortest=1,${_uploadOnly(e)}[v]');
+      return graph.join(';');
+    }
+    final n = logo.windows.length;
+    if (n > 1) graph.add('[logo]split=$n${[for (var i = 0; i < n; i++) '[l$i]'].join()}');
+    var under = 'base';
+    for (final (i, w) in logo.windows.indexed) {
+      final start = _secondsExact(w.start), end = _secondsExact(w.end);
+      final length = (w.end - w.start).inMicroseconds / 1e6;
+      final fade = length < 2 * logoFade.inMicroseconds / 1e6 ? length / 2 : logoFade.inMicroseconds / 1e6;
+      final source = n > 1 ? 'l$i' : 'logo';
+      graph.add('[$source]fade=t=in:st=$start:d=${fade.toStringAsFixed(3)}:alpha=1,'
+          'fade=t=out:st=${(w.end.inMicroseconds / 1e6 - fade).toStringAsFixed(3)}:d=${fade.toStringAsFixed(3)}:alpha=1[f$i]');
+      final last = i == n - 1;
+      graph.add("[$under][f$i]overlay=$at:shortest=1:enable='between(t,$start,$end)'"
+          "${last ? ',${_uploadOnly(e)}[v]' : '[o$i]'}");
+      under = 'o$i';
+    }
+    return graph.join(';');
+  }
+
+  static String _secondsExact(Duration d) => (d.inMicroseconds / 1e6).toStringAsFixed(3);
 
   static List<String> _video(ExportQuality q, VideoEncoder e) {
     final rate = '${q.mbps}M', buf = '${q.mbps * 2}M';
@@ -100,7 +156,8 @@ abstract final class EncodeArgs {
   /// One program part or commercial: [frames] frames of [input] from
   /// [from], to stdout. [audio] false gives it silence. With [hold] (a
   /// commercial), a file that ends early holds its last picture, with
-  /// silence, for the frames left.
+  /// silence, for the frames left. With a [logo] that shows, it's laid over
+  /// the picture; without one, the logo isn't an input at all.
   static List<String> segment({
     required Uri input,
     required Duration from,
@@ -109,20 +166,66 @@ abstract final class EncodeArgs {
     required VideoEncoder encoder,
     bool audio = true,
     bool hold = false,
+    SegmentLogo? logo,
+  }) {
+    // Inputs, numbered as they're added: the source, then silence if
+    // needed, then the logo.
+    var inputs = 1;
+    final silence = audio ? null : inputs++;
+    final withLogo = logo != null && logo.shows ? logo : null;
+    final logoInput = withLogo == null ? null : inputs++;
+    return [
+      ..._nice,
+      ..._device(encoder),
+      '-ss',
+      _seconds(from),
+      '-i',
+      '$input',
+      if (silence != null) ...['-f', 'lavfi', '-i', 'anullsrc=r=48000:cl=stereo'],
+      if (withLogo != null) ...['-loop', '1', '-framerate', frameRate, '-i', withLogo.png],
+      if (withLogo != null) ...['-filter_complex', _logoGraph(quality, encoder, frames, withLogo, logoInput!, hold: hold)],
+      '-map',
+      withLogo == null ? '0:v:0' : '[v]',
+      '-map',
+      silence == null ? '0:a:0?' : '$silence:a:0',
+      if (withLogo == null) ...['-vf', _filters(quality, encoder, frames, hold: hold)],
+      ..._video(quality, encoder),
+      ..._audio(frames),
+      '-progress',
+      'pipe:2',
+      ..._out,
+      'pipe:1',
+    ];
+  }
+
+  /// A song (music-channels): [frames] frames of the looped [card] PNG (its
+  /// Now Playing card) as the picture, with [input]'s audio from [from].
+  static List<String> songSegment({
+    required Uri input,
+    required String card,
+    required Duration from,
+    required int frames,
+    required ExportQuality quality,
+    required VideoEncoder encoder,
   }) => [
     ..._nice,
     ..._device(encoder),
+    '-loop',
+    '1',
+    '-framerate',
+    frameRate,
+    '-i',
+    card,
     '-ss',
     _seconds(from),
     '-i',
     '$input',
-    if (!audio) ...['-f', 'lavfi', '-i', 'anullsrc=r=48000:cl=stereo'],
     '-map',
     '0:v:0',
     '-map',
-    audio ? '0:a:0?' : '1:a:0',
+    '1:a:0?',
     '-vf',
-    _filters(quality, encoder, frames, hold: hold),
+    _filters(quality, encoder, frames),
     ..._video(quality, encoder),
     ..._audio(frames),
     '-progress',

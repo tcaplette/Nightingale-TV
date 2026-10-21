@@ -103,6 +103,20 @@ class ExportService extends ChangeNotifier {
     await _apply();
   }
 
+  /// Stops everything and lets go of the household, for a restore; [load]
+  /// starts it again with the restored settings.
+  Future<void> unload() async {
+    household.removeListener(_onHousehold);
+    for (final app in _watched) {
+      app.removeListener(notifyListeners);
+    }
+    _watched.clear();
+    _portErrors.clear();
+    await stop();
+    _settings = ExportSettings.off;
+    notifyListeners();
+  }
+
   @override
   void dispose() {
     household.removeListener(_onHousehold);

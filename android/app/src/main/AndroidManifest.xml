@@ -17,6 +17,8 @@
         android:icon="@mipmap/ic_launcher"
         android:banner="@drawable/tv_banner"
         android:networkSecurityConfig="@xml/network_security_config"
+        android:fullBackupContent="@xml/backup_rules"
+        android:dataExtractionRules="@xml/data_extraction_rules"
         android:enableOnBackInvokedCallback="true">
         <activity
             android:name=".MainActivity"
@@ -24,7 +26,6 @@
             android:launchMode="singleTop"
             android:taskAffinity=""
             android:theme="@style/LaunchTheme"
-            android:screenOrientation="sensorLandscape"
             android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|locale|layoutDirection|fontScale|screenLayout|density|uiMode"
             android:hardwareAccelerated="true"
             android:windowSoftInputMode="adjustResize">
@@ -68,6 +69,15 @@
         <intent>
             <action android:name="android.intent.action.OPEN_DOCUMENT"/>
             <data android:mimeType="image/*"/>
+        </intent>
+        <!-- Whether backup files can be saved and opened (BackupFiles.kt). -->
+        <intent>
+            <action android:name="android.intent.action.CREATE_DOCUMENT"/>
+            <data android:mimeType="*/*"/>
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.OPEN_DOCUMENT"/>
+            <data android:mimeType="*/*"/>
         </intent>
     </queries>
 </manifest>
