@@ -160,7 +160,7 @@ void main() {
         }
         await tester.runAsync(() async {
           await player.stop();
-          if (session != null) await client.stopEncoding(session).catchError((_) {});
+          if (session != null) await client.stopTranscode(session).catchError((_) {});
           // Let the server end the job before the next one starts.
           await Future<void>.delayed(const Duration(seconds: 2));
         });
@@ -173,7 +173,7 @@ void main() {
     Future<(Uri, Duration?, String?)> transcode(String item, {int? kbps, bool copy = false, String protocol = 'http'}) async {
       final template = await transcodeUrl(item, kbps: kbps, copy: copy, protocol: protocol);
       final session = newSession();
-      return (JellyfinClient.transcodeUri(template, playSessionId: session, startAt: join), null, session);
+      return (await client.transcodeUri(template, playSessionId: session, startAt: join), null, session);
     }
 
     for (final item in items) {

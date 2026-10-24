@@ -1,6 +1,6 @@
 # Nightingale TV
 
-Nightingale TV turns your Jellyfin library into always-on cable TV channels, plus music video and radio channels, with a program guide. It's an Android app first, made for Android TV (Google TV, Fire TV and other Android TV boxes) and also at home on Android phones and tablets. There's a desktop version for Linux too, and Windows and macOS versions are planned. Like real TV, every channel is always mid-broadcast. You tune in to whatever is on, flip channels, and check the guide to see what's coming up.
+Nightingale TV turns your Jellyfin, Emby or Plex library into always-on cable TV channels, plus music video and radio channels, with a program guide. It's an Android app first, made for Android TV (Google TV, Fire TV and other Android TV boxes) and also at home on Android phones and tablets. There's a desktop version for Linux too, and Windows and macOS versions are planned. Like real TV, every channel is always mid-broadcast. You tune in to whatever is on, flip channels, and check the guide to see what's coming up.
 
 It's inspired by NostalgiaTV for Android. It's built for the couch, so everything works with a TV remote, an air mouse, a touchscreen, your phone, or a keyboard and mouse.
 
@@ -13,21 +13,21 @@ It's inspired by NostalgiaTV for Android. It's built for the couch, so everythin
 - **Channel logo in the corner.** A translucent station logo sits in the bottom-right corner of the picture, like a network's. By default it shows *now and then*: for 20 seconds when a show starts or comes back from a break, and at each quarter hour. Choose **Always**, **Now and then** or **Off** at the top of Channels & icons, and override it for any channel. It hides during breaks, while songs play, and while the channel banner or the Up next card covers the corner. Exported streams carry the same logo at the same moments.
 - **Program guide.** A scrolling cable-style grid with a live preview window. Near the end of each show, an "Up next" card says what's on next.
 - **Guide tabs and channel groups.** Tabs at the top of the guide show **All**, **Favorites**, **Movies**, **Music** and **Kids** channels, plus groups you make yourself. Pick a tab with the remote (Up from the first channel, then Left and Right), a mouse or a tap. Channel up and down still go through every channel. Make, rename, reorder and hide tabs in Menu → **Channel groups**. Each profile has its own groups, and exported M3U playlists use them as categories.
-- **Music channels.** Music libraries and music videos get their own channels: **Music Videos** and **Music Radio**, plus genre and decade channels when your library is big enough ("80s Radio", "Rock Music Videos"). Songs play over a full-screen **Now Playing** card with the album art, song, artist, album and a progress bar. The same artist never plays twice in a row, music channels have no commercial breaks unless you turn them on, and music never shows up in your Jellyfin play history. Kid profiles only get music rated for their age, and since most music isn't rated in Jellyfin, they usually have no music channels.
-- **New episode premieres.** Episodes newly added to Jellyfin premiere in prime time (8:00 PM by default) on one channel that plays the show: one new episode per show each night, for up to two hours, marked **NEW** in the guide, the banner and the Up next card. Change the time and days, or turn it off, in Programming blocks → **New episode premieres**, and turn it off for single channels in Channels & icons. A library scan never changes what's already on the air.
+- **Music channels.** Music libraries and music videos get their own channels: **Music Videos** and **Music Radio**, plus genre and decade channels when your library is big enough ("80s Radio", "Rock Music Videos"). Songs play over a full-screen **Now Playing** card with the album art, song, artist, album and a progress bar. The same artist never plays twice in a row, music channels have no commercial breaks unless you turn them on, and music never shows up in your server's play history. Kid profiles only get music rated for their age, and since most music isn't rated on media servers, they usually have no music channels.
+- **New episode premieres.** Episodes newly added to your server premiere in prime time (8:00 PM by default) on one channel that plays the show: one new episode per show each night, for up to two hours, marked **NEW** in the guide, the banner and the Up next card. Change the time and days, or turn it off, in Programming blocks → **New episode premieres**, and turn it off for single channels in Channels & icons. A library scan never changes what's already on the air.
 - **Programming blocks.** Set up lineups such as "Saturday Morning Cartoons" on chosen days and times. They can also run only during a date range each year, such as "Christmas Specials, Dec 1–25". A block plays a mix of shows, or a lineup you program slot by slot (DuckTales, then two Animaniacs, then Rugrats), with each show playing its next episode every airing. Each airing picks up where the last one left off.
 - **Commercial breaks (experimental, off by default).** Make TV feel like TV again, with ads between and during shows:
-  - **Your own ads.** Pick the Jellyfin folders that hold your commercials and bumpers. Their videos leave your regular channels and fill the breaks instead.
+  - **Your own ads.** Pick the folders or collections on your server that hold your commercials and bumpers. Their videos leave your regular channels and fill the breaks instead.
   - **Ad compilations split automatically.** Long compilations (an hour of '80s ads in one file, say) are cut into individual ads at chapters, or, using ffmpeg, where the picture goes black and silent.
   - **Breaks where they belong.** Ads play before, during and after shows and movies. Mid-show breaks go at act breaks when the show's chapters mark them, and otherwise at a scene change near evenly spaced points.
   - **Automatic or Custom.** **Automatic** lays breaks out broadcast-style, so shows start on the hour and half hour. **Custom** lets you set how long each break is, how often shows break, and which ads each break uses. Use one setting for every channel, or give a channel its own.
-  - **Same ads for everyone.** Like real TV, tuning away and back shows the same ads at the same spot. Ads never show up in your Jellyfin watch history.
+  - **Same ads for everyone.** Like real TV, tuning away and back shows the same ads at the same spot. Ads never show up in your server's watch history.
 
   Being experimental, this feature may change between versions, and splitting a long compilation for the first time can take several minutes. The rest of the app works the same with breaks off.
 - **Profiles.** Everyone gets their own sign-in, channels and blocks. Kid profiles only see content rated for their age. Grown-up profiles and settings can be locked with a PIN.
 - **Phone remote.** Turn it on in the menu, scan the QR code, and your phone's browser becomes the remote. There's nothing to install.
 - **Backup and restore.** Your whole setup is backed up every day something changes, and right before anything that replaces a lot at once: restoring a backup, **Reset channel lineup**, deleting a profile, or an update that changes saved settings. Menu → **Backup & restore** lists every backup, restores one, saves it to a file, or moves it to another device through your phone or computer. See [Backup and restore](#backup-and-restore).
-- **Always direct play.** Nightingale TV plays your original files and never asks Jellyfin to transcode, unless you turn on *Transcode only if needed*.
+- **Always direct play.** Nightingale TV plays your original files and never asks your server to transcode, unless you turn on *Transcode only if needed*.
 - **Bitrate cap.** With *Transcode only if needed* on, pick a maximum bitrate from 40 Mbps down to 4 Mbps for Wi-Fi or a remote connection. Your server converts a show only when it's over the cap you picked, and nothing lowers it while you watch. *Original* (the default) never converts because of bitrate.
 - **Live TV export (HDHomeRun, M3U and XMLTV, desktop only).** Watch your channels in Jellyfin Live TV, Plex or any IPTV app on your home network. Turn it on for each profile you want to share:
   - **HDHomeRun tuner.** Each exported profile shows up as its own network TV tuner. Add it in Jellyfin or Plex by its address, or let Plex find it on the network.
@@ -43,11 +43,24 @@ It's inspired by NostalgiaTV for Android. It's built for the couch, so everythin
 
 ## Install
 
-Ready-made installers aren't published yet. For now, build the app yourself as described in [Building from source](#building-from-source).
+Nightingale TV is free and open source. There are two ways to get it on Android:
+
+- **Buy it from the store** (coming soon). The app will be sold on **Google Play** for Android TV, Google TV, phones and tablets, and on the **Amazon Appstore** for Fire TV. You install it like any other app, and it updates by itself. Buying it is the easy way to get Nightingale TV, and it supports the project.
+- **Build it yourself, for free.** Everything is in this repository. See [Building from source](#building-from-source).
+
+Both are built from the same source code and work the same.
+
+The desktop version (Linux) isn't sold in a store. Build it from this repository, as described in [On a computer](#on-a-computer).
 
 ### On Android
 
-There is one app for Android TVs, phones and tablets (Android 7.0 or newer). Build the APKs as described in [Building for Android](#building-for-android), then install the one for the device:
+There is one app for Android TVs, phones and tablets (Android 7.0 or newer). The store version installs from Google Play or the Amazon Appstore.
+
+**Switching between the store version and your own build:** the store version and an APK you build yourself are signed with different keys, so neither installs over the other. To switch, make a backup with **Save to file** or **Use your phone or computer** (see [Moving to a new device](#moving-to-a-new-device)), uninstall the old app, install the new one and restore the backup.
+
+#### Installing an APK you built
+
+[Building for Android](#building-for-android) makes four APKs. Install the one for the device:
 
 | APK | For |
 | --- | --- |
@@ -56,14 +69,9 @@ There is one app for Android TVs, phones and tablets (Android 7.0 or newer). Bui
 | `nightingale-tv_<version>_universal.apk` | Any of them, if you're not sure. It's several times larger. |
 | `nightingale-tv_<version>_x86_64.apk` | Android Studio emulators on a PC |
 
-Ways to install it:
+The simplest way is from your computer: turn on *Developer options* and *USB debugging* (or *Network debugging*) on the device, then run `adb install nightingale-tv_<version>_arm64-v8a.apk`. You can also copy the APK to the device and open it, allowing *Install unknown apps* when asked. Updates you build install over it, keeping your profiles, as long as you sign them with the same release key.
 
-- **On an Android TV or Google TV:** put the APK on a web server or cloud drive, open it with an app such as *Downloader*, and allow that app to *Install unknown apps* when asked.
-- **On a Fire TV:** Settings → My Fire TV → Developer options → *Install unknown apps* → turn on *Downloader*, then download the APK in Downloader and install it.
-- **On a phone or tablet:** open the APK from the browser's downloads or a file manager, and allow *Install unknown apps* when asked.
-- **From a computer, over the network or USB:** turn on *Developer options* and *USB debugging* (or *Network debugging*) on the device, then `adb install nightingale-tv_<version>_arm64-v8a.apk`.
-
-It shows up in the TV's apps row and the phone's app drawer as **Nightingale TV**. Updates install over it, keeping your profiles, as long as they're built with the same release key.
+It shows up in the TV's apps row and the phone's app drawer as **Nightingale TV**.
 
 On Android the app always fills the screen, runs sideways on phones, and keeps the screen from turning off while it's in front. Going to the home screen stops playback, and coming back tunes in to the same channel live.
 
@@ -88,14 +96,16 @@ To uninstall it: `sudo apt remove nightingale-tv`. Your settings in `~/.local/sh
 ### What you need
 
 - An Android TV, Google TV or Fire TV device, or an Android phone or tablet, running Android 7.0 or newer. Or, for the desktop version, a 64-bit PC running Ubuntu 24.04 or newer, or a similar Debian-based Linux.
-- A [Jellyfin](https://jellyfin.org) server (10.11 or newer) with your shows and movies, and music or music videos if you want music channels.
+- A [Jellyfin](https://jellyfin.org) server (10.11 or newer), an [Emby](https://emby.media) server (4.8 or newer) or a [Plex Media Server](https://www.plex.tv) with your shows and movies, and music or music videos if you want music channels.
 - For the phone remote, a phone on the same Wi-Fi as the TV. On Linux, if the firewall blocks it, allow the remote's port once: `sudo ufw allow 8642/tcp`.
 - On Linux, ffmpeg, which `apt` installs with the app. It splits long commercial compilations into individual ads and converts Live TV export's streams.
 
 ## First start
 
-1. Enter your Jellyfin server's address.
-2. Sign in with your username and password, or with **Quick Connect**, approving the TV from the Jellyfin app on your phone.
+1. Enter your server's address. The app works out whether it's Jellyfin, Emby or Plex. For Plex you can also choose **Sign in with Plex** instead.
+2. Sign in:
+   - **Jellyfin or Emby:** with your username and password, or with **Quick Connect** when the server has it on, approving the TV from your phone.
+   - **Plex:** go to plex.tv/link on your phone or computer and enter the code the TV shows. If the account can use more than one server, pick one, and in a Plex Home pick who's watching.
 3. The app scans your library and builds your channels. That's it. It starts on channel 2.
 
 Moving from another device? Choose **Restore from a backup** on the sign-in screen. If the app finds a backup of its own when it starts with no profiles (after a reinstall, or from Android's backup), it shows **Welcome back** and offers to **Restore it**. See [Moving to a new device](#moving-to-a-new-device).
@@ -130,10 +140,10 @@ Menu → **Backup & restore** (grown-ups only, when there are kid profiles) show
 
 **What isn't, and why:**
 
-- **Jellyfin sign-ins.** A backup never holds a sign-in token or this device's Jellyfin device ID, so a backup file can't be used to get into your server, and restoring it on another TV never signs this one out. A profile restored on the same TV, still signed in to the same server, stays signed in. Any other profile asks for its Jellyfin password once, with the server and user name filled in.
+- **Server sign-ins.** A backup never holds a sign-in token, a Plex account token or this device's device ID, so a backup file can't be used to get into your server, and restoring it on another TV never signs this one out. A profile restored on the same TV, still signed in to the same server, stays signed in. Any other profile asks you to sign in once: for Jellyfin and Emby with its password, with the server and user name filled in, and for Plex with a new link code, after which the same server is picked for you.
 - **What the app rebuilds by itself:** the library index, which one library scan brings back, the media analysis results and caches. On a new device, commercial breaks inside shows may sit at slightly different moments until media analysis catches up.
 
-**Restoring** replaces everything on this TV with the backup, after backing up the current setup first, so you can always go back ("Before restore"). Channels come back on the same schedule, so after signing in the same show is on the air as on the device the backup came from. If you sign a restored profile in to a different Jellyfin server, its settings are kept and its channels are built fresh from that server's library.
+**Restoring** replaces everything on this TV with the backup, after backing up the current setup first, so you can always go back ("Before restore"). Channels come back on the same schedule, so after signing in the same show is on the air as on the device the backup came from. If you sign a restored profile in to a different server, its settings are kept and its channels are built fresh from that server's library.
 
 The 14 newest daily backups and the 10 newest "Before…" backups are kept. Backups you make, open or send from another device are kept until you delete them. They live in the app's data folder, in `backups/`.
 
@@ -219,6 +229,10 @@ Nightingale TV is **free and open source software**, licensed under the [GNU Gen
 
 You're free to use, study, copy, modify and redistribute it, and even sell it. If you distribute it, modified or not, you must pass on the same freedoms: share the source code under the GPL and keep the copyright and license notices. Nightingale TV comes with no warranty; see the license for details.
 
+The versions sold on Google Play and the Amazon Appstore are built from this same source code under the same license. Buying one pays for the convenience of a store install and supports the project.
+
+"Nightingale TV" and its logo identify this project. If you publish your own modified version, please give it a different name and icon so people can tell the two apart.
+
 Copyright © 2026 tcaplette.
 
 ### Third-party software
@@ -229,4 +243,4 @@ Nightingale TV is built with software that keeps its own licenses:
 - [Flutter](https://flutter.dev), [media_kit](https://github.com/media-kit/media-kit), [qr_flutter](https://pub.dev/packages/qr_flutter) and the other packages listed in [`pubspec.yaml`](pubspec.yaml) are under their own open-source licenses.
 - On Android, video playback uses [AndroidX Media3](https://developer.android.com/media/media3) (ExoPlayer) with [OkHttp](https://square.github.io/okhttp/), both under the Apache License 2.0. On a computer it uses [mpv](https://mpv.io) (libmpv), installed from your Linux distribution's packages.
 
-Nightingale TV is an independent project. It isn't affiliated with or endorsed by Jellyfin or NostalgiaTV. It doesn't include any TV network logos or other trademarks.
+Nightingale TV is an independent project. It isn't affiliated with or endorsed by Jellyfin, Emby, Plex or NostalgiaTV. It doesn't include any TV network logos or other trademarks.

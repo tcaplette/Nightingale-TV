@@ -1,0 +1,31 @@
+{
+ "MediaContainer": {
+  "size": 3,
+  "Channel": [
+   {
+    "id": "fake21.test",
+    "gridKey": "fake21.test",
+    "vcn": "2.1",
+    "thumb": "http://127.0.0.1:5104/logo/2.1.png",
+    "title": "Fake H264",
+    "callSign": "Fake H264"
+   },
+   {
+    "id": "fake41.test",
+    "gridKey": "fake41.test",
+    "vcn": "4.1",
+    "thumb": "http://127.0.0.1:5104/logo/4.1.png",
+    "title": "Fake MPEG2",
+    "callSign": "Fake MPEG2"
+   },
+   {
+    "id": "fake71.test",
+    "gridKey": "fake71.test",
+    "vcn": "7.1",
+    "thumb": "http://127.0.0.1:5104/logo/7.1.png",
+    "title": "fake captions",
+    "callSign": "fake captions"
+   }
+  ]
+ }
+}

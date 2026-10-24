@@ -6,6 +6,8 @@ import 'dart:math';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
+import '../../live/url_privacy.dart';
+
 /// How fast the proxy may download for the analyzer.
 @immutable
 class Budget {
@@ -152,7 +154,12 @@ class LoopbackStreamProxy {
 }
 
 /// The background isolate: binds, reports its port, then follows commands.
-Future<void> _serve((SendPort, String) args) async {
+/// Its messages are scrubbed here: the main isolate's log rules don't reach
+/// it, and stream URLs can carry a token.
+Future<void> _serve((SendPort, String) args) => runZonedGuarded(() => _serveIn(args),
+    (e, st) => debugPrint('Stream proxy: ${scrubUrlsIn('$e')}'))!;
+
+Future<void> _serveIn((SendPort, String) args) async {
   final (ready, secret) = args;
   final core = _ProxyCore(secret, http.Client());
   final port = await core.bind();
@@ -241,7 +248,7 @@ class _ProxyCore {
       await response.addStream(_metered(upstream.stream));
     } on Object catch (e) {
       // ffmpeg closes connections when it seeks; that's not an error.
-      if (e is! HttpException && e is! SocketException) debugPrint('Stream proxy: $e');
+      if (e is! HttpException && e is! SocketException) debugPrint('Stream proxy: ${scrubUrlsIn('$e')}');
       try {
         response.statusCode = HttpStatus.badGateway;
       } on StateError {
@@ -259,6 +266,20 @@ class _ProxyCore {
   /// [source] at the budget's pace. Waiting for the budget stops reading
   /// [source], so the upstream transfer stalls instead of buffering here.
   Stream<List<int>> _metered(Stream<List<int>> source) async* {
+    try {
+      // Not yield*, whose errors would skip this try.
+      await for (final chunk in _paced(source)) {
+        yield chunk;
+      }
+    } on http.ClientException {
+      // The server dropped the transfer (or quitting closed it): it just
+      // ends, as when ffmpeg hangs up.
+    } on IOException {
+      // The same, from the socket.
+    }
+  }
+
+  Stream<List<int>> _paced(Stream<List<int>> source) async* {
     await for (final chunk in source) {
       if (_bucket.budget.unlimited) {
         _served += chunk.length;

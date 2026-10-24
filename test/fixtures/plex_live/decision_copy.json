@@ -1,0 +1,92 @@
+{
+ "MediaContainer": {
+  "size": 1,
+  "directPlayDecisionCode": 3000,
+  "directPlayDecisionText": "App cannot direct play this item. Direct play is disabled.",
+  "generalDecisionCode": 1001,
+  "generalDecisionText": "Direct play not available; Conversion OK.",
+  "resourceSession": "probe-1792630021",
+  "transcodeDecisionCode": 1001,
+  "transcodeDecisionText": "Direct play not available; Conversion OK.",
+  "Metadata": [
+   {
+    "addedAt": 1792629959,
+    "genuineMediaAnalysis": "1",
+    "grandparentTitle": "The News",
+    "guid": "tv.plex.xmltv://episode/The%20News/3/4",
+    "index": 4,
+    "key": "/livetv/sessions/ac4f7022-5ae9-4179-9de2-6c206202e2ab",
+    "live": "1",
+    "parentIndex": 3,
+    "ratingKey": "129",
+    "title": "Part 4",
+    "type": "episode",
+    "Media": [
+     {
+      "id": "104",
+      "origin": "livetv",
+      "timeStamp": "1792630018.8234301",
+      "uuid": "ac4f7022-5ae9-4179-9de2-6c206202e2ab",
+      "audioChannels": 1,
+      "audioCodec": "aac",
+      "container": "mpegts",
+      "height": 720,
+      "protocol": "hls",
+      "videoCodec": "h264",
+      "videoFrameRate": "NTSC",
+      "videoResolution": "720p",
+      "width": 1280,
+      "selected": true,
+      "Part": [
+       {
+        "deepAnalysisVersion": "6",
+        "id": "104",
+        "container": "mpegts",
+        "height": 720,
+        "protocol": "hls",
+        "width": 1280,
+        "decision": "transcode",
+        "selected": true,
+        "Stream": [
+         {
+          "bitrate": 2147483647,
+          "codec": "h264",
+          "displayTitle": "720p",
+          "extendedDisplayTitle": "720p (H.264)",
+          "frameRate": 29.969999313354492,
+          "height": 720,
+          "id": "177",
+          "level": 31,
+          "pixelAspectRatio": "1:1",
+          "profile": "high",
+          "streamType": 1,
+          "width": 1280,
+          "decision": "copy",
+          "location": "segments-av"
+         },
+         {
+          "audioChannelLayout": "mono",
+          "bitrate": 126,
+          "bitrateMode": "cbr",
+          "channels": 1,
+          "codec": "aac",
+          "displayTitle": "Unknown (AAC Mono)",
+          "extendedDisplayTitle": "Unknown (AAC Mono)",
+          "id": "178",
+          "profile": "lc",
+          "requiredBandwidths": "126,126,126,126,126,126,126,126",
+          "samplingRate": 48000,
+          "selected": true,
+          "streamType": 2,
+          "decision": "copy",
+          "location": "segments-av"
+         }
+        ]
+       }
+      ]
+     }
+    ]
+   }
+  ]
+ }
+}

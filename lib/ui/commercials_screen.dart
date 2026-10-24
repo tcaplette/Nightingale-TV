@@ -95,7 +95,7 @@ class CommercialsScreen extends StatelessWidget {
                   Text('POOLS', style: g.display(26, weight: FontWeight.w800, color: g.accent)),
                   const SizedBox(height: 6),
                   Text(
-                    'Pick the Jellyfin folders that hold commercials and bumpers. Their videos leave your '
+                    'Pick the folders on your server that hold commercials and bumpers. Their videos leave your '
                     'regular channels and fill the breaks instead.',
                     style: g.body(24, color: g.textDim),
                   ),
@@ -244,7 +244,7 @@ class _HowItWorks extends StatelessWidget {
         children: [
           Text('HOW BREAKS WORK', style: g.display(26, weight: FontWeight.w800, color: g.accent)),
           const SizedBox(height: 16),
-          for (final line in [...lines, 'The same ads play for everyone, every time.', 'Commercials never show up in your Jellyfin watch history.'])
+          for (final line in [...lines, 'The same ads play for everyone, every time.', 'Commercials never show up in your server\'s watch history.'])
             Padding(
               padding: const EdgeInsets.only(bottom: 14),
               child: Text('•  $line', style: g.body(24, color: g.textDim)),

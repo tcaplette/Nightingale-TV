@@ -12,7 +12,7 @@ const xmltvSpan = Duration(hours: 72);
 /// hour.
 String buildXmltv({
   required List<Channel> channels,
-  required ChannelSchedule? Function(Channel) scheduleFor,
+  required ProgramSchedule? Function(Channel) scheduleFor,
   required LibraryIndex library,
   required ExportUrls urls,
   required DateTime now,
@@ -43,7 +43,7 @@ String buildXmltv({
 }
 
 void _programme(
-    StringBuffer out, Channel c, ScheduledProgram p, ChannelSchedule schedule, LibraryIndex library, ExportUrls urls) {
+    StringBuffer out, Channel c, ScheduledProgram p, ProgramSchedule schedule, LibraryIndex library, ExportUrls urls) {
   out.write('  <programme start="${xmltvTime(p.start)}" stop="${xmltvTime(p.end)}" channel="${c.number}">\n');
   void tag(String name, String? value) {
     if (value == null || value.trim().isEmpty) return;

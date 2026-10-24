@@ -1,0 +1,28 @@
+{
+ "MediaContainer": {
+  "size": 1,
+  "allowSync": true,
+  "identifier": "com.plexapp.plugins.library",
+  "librarySectionID": 3,
+  "librarySectionTitle": "Home Videos",
+  "title1": "Home Videos",
+  "title2": "All Home Videos",
+  "viewGroup": "movie",
+  "viewMode": 65592,
+  "Metadata": [
+   {
+    "ratingKey": "128",
+    "key": "/library/collections/128/children",
+    "type": "collection",
+    "title": "Trailers",
+    "subtype": "movie",
+    "summary": "",
+    "index": 16,
+    "ratingCount": 1,
+    "addedAt": 1792608660,
+    "updatedAt": 1792608660,
+    "childCount": 20
+   }
+  ]
+ }
+}

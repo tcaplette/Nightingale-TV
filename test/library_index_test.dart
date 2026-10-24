@@ -283,7 +283,8 @@ void main() {
       expect(back.logoMode, LogoMode.off);
       expect(back.groups.single.name, 'Saturday');
       expect(back.groups.single.channelIds, ['c5', 'c9']);
-      expect(back.guideTabs, ['all', 'favorites', 'group:sat', 'auto:movies', 'auto:music', 'auto:kids']);
+      // Saved before the Live TV tab: it goes just before Movies.
+      expect(back.guideTabs, ['all', 'favorites', 'group:sat', 'auto:live', 'auto:movies', 'auto:music', 'auto:kids']);
       expect(back.hiddenTabs, {'auto:music'});
       expect(back.guideTab, 'group:sat');
       expect(back.premieres, const PremiereSettings(enabled: false, startMinute: 21 * 60, days: {1, 2, 3, 4, 5}));

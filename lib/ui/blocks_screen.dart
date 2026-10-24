@@ -16,14 +16,7 @@ import 'widgets/adaptive.dart';
 import 'widgets/screen_layout.dart';
 import 'widgets/tv_focus.dart';
 
-/// "Sat · 7:00 AM – 12:00 PM · Dec 1 – Dec 25"
-String describeBlock(ProgramBlock b) => [
-      describeDays(b.days),
-      '${_clock(b.startMinute)} – ${_clock(b.endMinute)}',
-      if (b.hasSeason) '${b.seasonStart} – ${b.seasonEnd}',
-    ].join('  ·  ');
-
-String _clock(int minute) => formatTime(DateTime(2000, 1, 1, minute ~/ 60, minute % 60));
+String _clock(int minute) => formatClockMinute(minute);
 
 /// "8:00 PM · Every day · On"
 String describePremieres(PremiereSettings p) =>
@@ -708,27 +701,7 @@ class _BlockEditorScreenState extends State<BlockEditorScreen> {
     final app = AppScope.read(context);
     final tuner = AppScope.tunerOf(context);
     _draft.title = _title.text.trim();
-    String? problem;
-    if (_draft.title.isEmpty) {
-      problem = 'Give the block a title.';
-    } else if (_draft.days.isEmpty) {
-      problem = 'Pick at least one day.';
-    } else if (_draft.startMinute == _draft.endMinute) {
-      problem = 'The block has to end at a different time than it starts.';
-    } else if (!_newChannel && app.channelById(_draft.channelId) == null) {
-      problem = 'Choose a channel.';
-    } else if (_lineupMode && !_draft.hasLineup) {
-      problem = 'Add a show to the lineup.';
-    } else if (app.blockPlaylist(_draft).isEmpty) {
-      problem = _lineupMode
-          ? "The lineup's shows have no episodes. Pick other shows."
-          : 'Choose some shows or movies for the block to play.';
-    } else if (!_newChannel) {
-      final clash = app.blockConflict(_draft);
-      if (clash != null) {
-        problem = 'This overlaps "${clash.title}" (${describeBlock(clash)}) on the same channel.';
-      }
-    }
+    final problem = app.blockProblem(_draft, newChannel: _newChannel, lineupMode: _lineupMode);
     if (problem != null) {
       setState(() => _error = problem);
       return;
@@ -810,7 +783,7 @@ class _PremiereEditorScreenState extends State<PremiereEditorScreen> {
           padding: ScreenLayout.of(context).pagePadding(const EdgeInsets.fromLTRB(100, 32, 100, 40)),
           children: [
             Text(
-              'Episodes added to Jellyfin in the last two weeks premiere in a nightly slot on their show\'s '
+              'Episodes added to your server in the last two weeks premiere in a nightly slot on their show\'s '
               'channel: one new episode per show each night, for up to two hours, marked NEW. Programming '
               'blocks come first.',
               style: g.body(26, color: g.textDim),

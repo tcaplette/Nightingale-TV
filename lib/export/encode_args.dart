@@ -266,13 +266,18 @@ abstract final class EncodeArgs {
     output,
   ];
 
-  /// The copying muxer: real-time paced, from stdin to stdout.
+  /// The copying muxer: real-time paced, from stdin to stdout. It looks at
+  /// half a second of input before its first output, not ffmpeg's default
+  /// five, which a stream fed in real time would wait out; every chunk
+  /// carries both streams from its start.
   static const muxer = [
     '-nostdin',
     '-hide_banner',
     '-loglevel',
     'error',
     '-re',
+    '-analyzeduration',
+    '500000',
     '-f',
     'mpegts',
     '-i',

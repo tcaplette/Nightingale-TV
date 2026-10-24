@@ -186,8 +186,11 @@ class _Harness {
   final startups = <Duration>[];
   late final ChannelStream stream;
 
+  /// How long the tuning card takes to make (zero: encoded ahead).
+  Duration tuningCardTakes = Duration.zero;
+
   DateTime now() => start.add(async.elapsed);
-  ChannelSchedule get schedule => app.scheduleFor(channel)!;
+  ChannelSchedule get schedule => app.scheduleFor(channel)! as ChannelSchedule;
 
   Future<Process> startProcess(String exe, List<String> args) async {
     if (exe == 'ffmpeg') return _Process(args, stdin: IOSink(muxer));
@@ -219,6 +222,7 @@ class _Harness {
       schedule: () => app.channels.any((c) => c.id == channel.id) ? app.scheduleFor(channel) : null,
       card: (c) async {
         cardsAsked.add(c.key);
+        if (c is TuningCardSpec && tuningCardTakes > Duration.zero) await Future<void>.delayed(tuningCardTakes);
         return Uint8List.fromList([for (final f in _frames(_label(c), 30)) ...f]);
       },
       openSource: (id) async => Uri.parse('http://127.0.0.1:1/0123secret/$id'),
@@ -310,6 +314,23 @@ void main() {
       final t1 = h.start.add(const Duration(seconds: 3));
       expect(first.from, h.schedule.playbackAt(t1).positionAt(t1));
       expect(runs[1].$1, 'src:${first.source}');
+      h.expectContinuous();
+      unawaited(h.stream.stop());
+      async.flushTimers();
+    });
+  });
+
+  test('a tuning card that wasn\'t made ahead: black first, so the first bytes don\'t wait', () async {
+    await make();
+    final channel = app.channels.first;
+    fakeAsync((async) {
+      final h = _Harness(async, app, channel)..tuningCardTakes = const Duration(milliseconds: 1500);
+      h.run(const Duration(seconds: 20));
+      expect(h.muxer.frames.first.at, lessThan(const Duration(milliseconds: 500)));
+      final runs = h.runs;
+      expect(runs[0], ('black', 60), reason: 'whole black seconds until the card is made');
+      expect(runs[1], ('tuning', 30));
+      expect(runs[2].$1, 'src:${h.encoders.first.p.source}');
       h.expectContinuous();
       unawaited(h.stream.stop());
       async.flushTimers();

@@ -1,0 +1,46 @@
+# Nightingale TV server on a bridge network, with its ports mapped. Discovery
+# (SSDP) doesn't cross Docker's bridge, so add the tuner in Plex, Jellyfin or
+# Emby by address: http://<NTV_LAN_HOST>:5004 for the first exported profile,
+# 5005 for the next, and so on.
+#
+#   docker compose -f docker-compose.bridge.yml up -d
+#   docker compose -f docker-compose.bridge.yml logs | grep "to set up"
+services:
+  nightingale-tv:
+    image: ghcr.io/tcaplette/nightingale-tv-server:latest
+    container_name: nightingale-tv
+    # The name Jellyfin, Emby and Plex show for this server's device.
+    hostname: nightingale-tv
+    restart: unless-stopped
+    ports:
+      # The web admin (keep it the same as NTV_SETUP_PORT).
+      - "8484:8484"
+      # One port per exported profile, from 5004 up. Map more if you export
+      # more than six profiles, and keep both sides the same: the lineup
+      # tells Plex and Jellyfin its own port.
+      - "5004-5009:5004-5009"
+    environment:
+      # The user and group that own /config (run `id` on the host to see
+      # yours). The app never runs as root.
+      PUID: "1000"
+      PGID: "1000"
+      # Your time zone: the schedule, the guide and the cards use it.
+      TZ: "America/Chicago"
+      # The web admin's port inside the container (default 8484).
+      NTV_SETUP_PORT: "8484"
+      # This machine's address on your home network, shown in the web
+      # admin's URLs and the setup link (inside the container the app only
+      # sees Docker's own address).
+      NTV_LAN_HOST: "192.168.1.20"
+      # Set to 1 for one start when an admin's password is forgotten: every
+      # session ends and a setup link is logged that sets a new password for
+      # an admin account you pick. Other accounts are kept. Remove it again
+      # afterwards.
+      # NTV_RESET_PASSWORD: "1"
+      # Where the web admin is served from (default: the web/ folder next to
+      # the app in the image). Only for trying a web admin you built.
+      # NTV_WEB_DIR: "/web"
+    volumes:
+      # Everything the server keeps: profiles, channels, sign-ins, user
+      # accounts, export ports, backups, caches.
+      - ./config:/config

@@ -1,0 +1,45 @@
+{
+ "MediaSources": [
+  {
+   "Id": "df2a766c82a199f72ae2836b30e6cb21",
+   "Protocol": "Http",
+   "Path": "http://172.18.0.3:8096/LiveTv/LiveStreamFiles/dcf99723e0904d4a93b54208705d87f6/stream.ts",
+   "Container": "ts",
+   "IsInfiniteStream": true,
+   "IsRemote": false,
+   "SupportsDirectPlay": true,
+   "SupportsDirectStream": true,
+   "SupportsTranscoding": true,
+   "RequiresOpening": true,
+   "RequiresClosing": true,
+   "LiveStreamId": "e2329f4997b378e64ccf8fa396deb76e_af999c25a00715699361240d4c6c7a53_df2a766c82a199f72ae2836b30e6cb21",
+   "TranscodingSubProtocol": "http",
+   "Bitrate": 8127617,
+   "RequiredHttpHeaders": {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
+   },
+   "MediaStreams": [
+    {
+     "Type": "Video",
+     "Codec": "h264",
+     "Index": -1,
+     "IsInterlaced": false,
+     "Width": 1280,
+     "Height": 720,
+     "BitRate": 8000000,
+     "Profile": "High"
+    },
+    {
+     "Type": "Audio",
+     "Codec": "aac",
+     "Index": -1,
+     "IsInterlaced": false,
+     "BitRate": 127617,
+     "Channels": 1,
+     "Profile": "LC"
+    }
+   ]
+  }
+ ],
+ "PlaySessionId": "02ac381bbfa34f56a852efabba33b414"
+}

@@ -47,6 +47,26 @@ class _GuideViewState extends State<GuideView> with SingleTickerProviderStateMix
   int _row = 0;
   int _firstRow = 0;
   late DateTime _cursorTime;
+
+  /// The window end live channels' guide was last asked to cover.
+  DateTime? _liveAskedUntil;
+
+  /// A server Live TV source fetches guide data the window reaches past
+  /// what it has (live-tv-sources "Guide scrolled ahead").
+  void _askLiveGuide(List<Channel> rows) {
+    final until = _windowStart.add(_window);
+    if (until == _liveAskedUntil) return;
+    _liveAskedUntil = until;
+    final live = [for (final c in rows) if (c.isLive) c];
+    if (live.isEmpty) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final app = AppScope.read(context);
+      for (final c in live) {
+        app.needLiveGuideUntil(c, until);
+      }
+    });
+  }
   Timer? _clock;
 
   /// The Menu button at the top has the keyboard highlight (Up from the
@@ -291,6 +311,8 @@ class _GuideViewState extends State<GuideView> with SingleTickerProviderStateMix
     final app = AppScope.of(context);
     final tabs = app.guideTabs();
     final channels = _tabChannels(tabs);
+    _askLiveGuide(channels.sublist(
+        _firstRow.clamp(0, channels.length), (_firstRow + _rows).clamp(0, channels.length)));
     final g = context.guide;
     if (_row >= channels.length) _setRow(channels.length - 1, channels.length);
     final focusedChannel = channels.isEmpty ? null : channels[_row];
@@ -843,7 +865,7 @@ class _GuideRow extends StatelessWidget {
   });
 
   final Channel channel;
-  final ChannelSchedule? schedule;
+  final ProgramSchedule? schedule;
   final bool focused;
   final ScheduledProgram? focusedProgram;
   final bool isTuned;

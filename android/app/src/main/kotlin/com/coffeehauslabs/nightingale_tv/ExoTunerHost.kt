@@ -8,6 +8,7 @@ import android.os.Handler
 import android.os.Looper
 import androidx.media3.common.C
 import androidx.media3.common.Format
+import android.net.Uri
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MimeTypes
 import androidx.media3.common.PlaybackException
@@ -23,6 +24,7 @@ import androidx.media3.datasource.DataSource
 import androidx.media3.datasource.DataSpec
 import androidx.media3.datasource.TransferListener
 import androidx.media3.datasource.okhttp.OkHttpDataSource
+import androidx.media3.exoplayer.DecoderReuseEvaluation
 import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlaybackException
@@ -43,6 +45,9 @@ import androidx.media3.exoplayer.source.ForwardingTimeline
 import androidx.media3.exoplayer.source.MediaPeriod
 import androidx.media3.exoplayer.source.MediaSource
 import androidx.media3.exoplayer.source.ProgressiveMediaSource
+import androidx.media3.exoplayer.hls.DefaultHlsExtractorFactory
+import androidx.media3.exoplayer.hls.HlsMediaSource
+import androidx.media3.exoplayer.rtsp.RtspMediaSource
 import androidx.media3.exoplayer.source.SampleStream
 import androidx.media3.exoplayer.source.TrackGroupArray
 import androidx.media3.exoplayer.source.WrappingMediaSource
@@ -111,6 +116,7 @@ class ExoTunerHost(
                     startMs = call.argument<Number>("startMs")?.toLong(),
                     endMs = call.argument<Number>("endMs")?.toLong(),
                     exact = call.argument<Boolean>("exact") ?: true,
+                    live = call.argument<Boolean>("live") ?: false,
                 )
                 "enqueue" -> player.enqueue(
                     url = call.argument<String>("url")!!,
@@ -300,8 +306,20 @@ class ExoTunerHost(
             val extractors = DefaultExtractorsFactory()
                 // Jellyfin's MPEG-TS conversions, and .ts/.m2ts files.
                 .setTsExtractorFlags(DefaultTsPayloadReaderFactory.FLAG_ALLOW_NON_IDR_KEYFRAMES)
-            var source: MediaSource = ProgressiveMediaSource.Factory(data, extractors)
-                .createMediaSource(MediaItem.fromUri(url))
+            // A playlist (Plex's transcodes) plays as HLS; anything else is
+            // one file or stream.
+            val hls = Uri.parse(url).path?.endsWith(".m3u8") == true
+            var source: MediaSource = if (hls) {
+                HlsMediaSource.Factory(data)
+                    .setExtractorFactory(
+                        DefaultHlsExtractorFactory(DefaultTsPayloadReaderFactory.FLAG_ALLOW_NON_IDR_KEYFRAMES, true)
+                    )
+                    .setAllowChunklessPreparation(true)
+                    .createMediaSource(MediaItem.fromUri(url))
+            } else {
+                ProgressiveMediaSource.Factory(data, extractors)
+                    .createMediaSource(MediaItem.fromUri(url))
+            }
             if (endMs != null && endMs > 0L) {
                 source = ClippingMediaSource.Builder(source)
                     .setEndPositionMs(endMs)
@@ -310,13 +328,60 @@ class ExoTunerHost(
             return source
         }
 
-        fun open(url: String, headers: Map<String, String>, startMs: Long?, endMs: Long?, exact: Boolean) {
+        /** A Live TV source's stream (live-playback D9): no clipping and no
+         *  start (it plays from the live point), HLS, RTSP or one endless
+         *  stream by its address, opened with the entry's own headers. A user
+         *  agent goes to OkHttp's own setting (as a header too, it would be
+         *  sent twice). Interlaced video is the device decoder's to handle,
+         *  as in other Android TV apps. */
+        private fun liveSource(url: String, headers: Map<String, String>): MediaSource {
+            val uri = Uri.parse(url)
+            if (uri.scheme.equals("rtsp", ignoreCase = true)) {
+                return RtspMediaSource.Factory().createMediaSource(MediaItem.fromUri(url))
+            }
+            val agent = headers.entries.firstOrNull { it.key.equals("User-Agent", ignoreCase = true) }
+            val data = OkHttpDataSource.Factory(http)
+                .setUserAgent(agent?.value ?: "Nightingale TV")
+                .setDefaultRequestProperties(headers.filterKeys { !it.equals("User-Agent", ignoreCase = true) })
+                .setTransferListener(transfers)
+            val hls = uri.path?.endsWith(".m3u8", ignoreCase = true) == true ||
+                uri.query?.contains("m3u8", ignoreCase = true) == true
+            return if (hls) {
+                HlsMediaSource.Factory(data)
+                    .setExtractorFactory(
+                        DefaultHlsExtractorFactory(DefaultTsPayloadReaderFactory.FLAG_ALLOW_NON_IDR_KEYFRAMES, true)
+                    )
+                    .setAllowChunklessPreparation(true)
+                    .createMediaSource(MediaItem.Builder().setUri(url).setMimeType(MimeTypes.APPLICATION_M3U8).build())
+            } else {
+                ProgressiveMediaSource.Factory(
+                    data,
+                    DefaultExtractorsFactory()
+                        .setTsExtractorFlags(DefaultTsPayloadReaderFactory.FLAG_ALLOW_NON_IDR_KEYFRAMES)
+                        // Broadcast captions (CEA-608 in the video), even
+                        // when the stream doesn't declare them, as HLS does.
+                        .setTsSubtitleFormats(
+                            listOf(Format.Builder().setSampleMimeType(MimeTypes.APPLICATION_CEA608).setAccessibilityChannel(1).build())
+                        ),
+                ).createMediaSource(MediaItem.fromUri(url))
+            }
+        }
+
+        fun open(url: String, headers: Map<String, String>, startMs: Long?, endMs: Long?, exact: Boolean, live: Boolean = false) {
+            undecodable = false
             completed = false
             hadPicture = false
             rebufferSince = 0L
             queued = false
             moved = false
             startsPaused = false
+            if (live) {
+                player.setSeekParameters(SeekParameters.DEFAULT)
+                player.setMediaSource(liveSource(url, headers))
+                player.prepare()
+                player.playWhenReady = true
+                return
+            }
             var source = source(url, headers, endMs)
             // Design D5: a keyframe start, not a clipping start, so the
             // position stays on the file's own timeline. Outside the clipping,
@@ -552,9 +617,28 @@ class ExoTunerHost(
             send(mapOf("e" to "advanced"))
         }
 
+        /** This open's video couldn't be decoded, and that was said. */
+        private var undecodable = false
+
         override fun onTracksChanged(tracks: Tracks) {
             selectSubtitles(tracks)
             send(mapOf("e" to "tracks"))
+            val text = tracks.groups.filter { it.type == C.TRACK_TYPE_TEXT }
+            if (text.isNotEmpty()) {
+                log("info exo: text tracks " + text.joinToString { g ->
+                    "${g.getTrackFormat(0).sampleMimeType}${if (g.isSupported) "" else " (unsupported)"}${if (g.isSelected) " selected" else ""}"
+                })
+            }
+            // Video that no decoder here takes plays nothing and raises no
+            // error: it's said, so the tuner can (a library item converts, a
+            // live channel shows "can't play this channel's video").
+            val video = tracks.groups.filter { it.type == C.TRACK_TYPE_VIDEO }
+            if (!undecodable && video.isNotEmpty() && video.none { it.isSupported }) {
+                undecodable = true
+                val mime = video.first().getTrackFormat(0).sampleMimeType ?: "video"
+                log("error exo: no decoder for $mime")
+                send(mapOf("e" to "error", "message" to "VIDEO_UNSUPPORTED: no decoder for $mime"))
+            }
         }
 
         override fun onPlayerError(error: PlaybackException) {
@@ -579,8 +663,23 @@ class ExoTunerHost(
             send(mapOf("e" to "error", "message" to message))
         }
 
+        /** The texture's size: the video's, so a picture of any size fills
+         *  it (a 720p channel after a 1080p one would otherwise take the
+         *  corner of a 1080p texture, over the old picture). */
+        private var textureSize = Pair(1920, 1080)
+
         override fun onVideoSizeChanged(videoSize: VideoSize) {
             if (videoSize.width <= 0 || videoSize.height <= 0) return
+            val size = Pair(videoSize.width, videoSize.height)
+            if (size != textureSize) {
+                textureSize = size
+                producer.setSize(size.first, size.second)
+                // The decoder keeps the buffers it has unless its output is
+                // detached and attached again (to the producer's Surface,
+                // which resizing can also replace).
+                player.clearVideoSurface()
+                player.setVideoSurface(producer.surface)
+            }
             send(
                 mapOf(
                     "e" to "size",
@@ -741,6 +840,23 @@ private class Renderers(context: Context, private val leveler: LevelingAudioProc
 
 @UnstableApi
 private class SdrVideoRenderer(builder: Builder) : MediaCodecVideoRenderer(builder) {
+    /** A decoder reused across a change of resolution keeps its old output
+     *  size and crops the new picture inside it, and the Flutter texture
+     *  ignores that crop (a 720p channel after a 1080p one showed in a
+     *  corner, or zoomed). A new resolution gets a new decoder. */
+    override fun canReuseCodec(
+        codecInfo: MediaCodecInfo, oldFormat: Format, newFormat: Format, isNewFormatTheSameSource: Boolean,
+    ): DecoderReuseEvaluation {
+        if (oldFormat.width != newFormat.width || oldFormat.height != newFormat.height) {
+            return DecoderReuseEvaluation(
+                codecInfo.name, oldFormat, newFormat,
+                DecoderReuseEvaluation.REUSE_RESULT_NO,
+                DecoderReuseEvaluation.DISCARD_REASON_VIDEO_RESOLUTION_CHANGED,
+            )
+        }
+        return super.canReuseCodec(codecInfo, oldFormat, newFormat, isNewFormatTheSameSource)
+    }
+
     override fun getMediaCodecConfiguration(
         codecInfo: MediaCodecInfo, format: Format, crypto: android.media.MediaCrypto?, codecOperatingRate: Float,
     ): MediaCodecAdapter.Configuration {

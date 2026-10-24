@@ -1,0 +1,130 @@
+{
+ "MediaContainer": {
+  "size": 41,
+  "allowSync": true,
+  "content": "secondary",
+  "identifier": "com.plexapp.plugins.library",
+  "librarySectionID": 3,
+  "librarySectionTitle": "Home Videos",
+  "title1": "Home Videos",
+  "title2": "By Folder",
+  "viewGroup": "secondary",
+  "viewMode": 65592,
+  "Metadata": [
+   {
+    "key": "/library/sections/3/folder?parent=16",
+    "title": "Reels"
+   },
+   {
+    "ratingKey": "50",
+    "key": "/library/metadata/50",
+    "type": "movie",
+    "title": "Boomer",
+    "subtype": "clip",
+    "summary": "",
+    "duration": 30030,
+    "addedAt": 1792607704,
+    "updatedAt": 1792608409,
+    "Media": [
+     {
+      "id": 41,
+      "duration": 30030,
+      "bitrate": 2094,
+      "width": 1280,
+      "height": 720,
+      "aspectRatio": 1.78,
+      "audioChannels": 2,
+      "audioCodec": "aac",
+      "videoCodec": "h264",
+      "videoResolution": "720",
+      "container": "mp4",
+      "videoFrameRate": "NTSC",
+      "optimizedForStreaming": 0,
+      "has64bitOffsets": false,
+      "videoProfile": "high",
+      "Part": [
+       {
+        "id": 41,
+        "key": "/library/parts/41/1792607704/file.mp4",
+        "duration": 30030,
+        "file": "/media/Home Videos/Commercials/15 Boomer Spot 1.mp4",
+        "size": 7859738,
+        "container": "mp4",
+        "has64bitOffsets": false,
+        "optimizedForStreaming": false,
+        "videoProfile": "high"
+       }
+      ]
+     }
+    ],
+    "Image": [
+     {
+      "alt": "Boomer",
+      "type": "coverPoster",
+      "url": "/library/metadata/50/thumb/1792608409"
+     },
+     {
+      "alt": "Boomer",
+      "type": "background",
+      "url": "/library/metadata/50/art/1792608409"
+     }
+    ]
+   },
+   {
+    "ratingKey": "70",
+    "key": "/library/metadata/70",
+    "type": "movie",
+    "title": "Boomer",
+    "subtype": "clip",
+    "summary": "",
+    "duration": 30030,
+    "addedAt": 1792607854,
+    "updatedAt": 1792608410,
+    "Media": [
+     {
+      "id": 61,
+      "duration": 30030,
+      "bitrate": 2093,
+      "width": 1280,
+      "height": 720,
+      "aspectRatio": 1.78,
+      "audioChannels": 2,
+      "audioCodec": "aac",
+      "videoCodec": "h264",
+      "videoResolution": "720",
+      "container": "mp4",
+      "videoFrameRate": "NTSC",
+      "optimizedForStreaming": 0,
+      "has64bitOffsets": false,
+      "videoProfile": "high",
+      "Part": [
+       {
+        "id": 61,
+        "key": "/library/parts/61/1792607854/file.mp4",
+        "duration": 30030,
+        "file": "/media/Home Videos/Commercials/35 Boomer Spot 2.mp4",
+        "size": 7855136,
+        "container": "mp4",
+        "has64bitOffsets": false,
+        "optimizedForStreaming": false,
+        "videoProfile": "high"
+       }
+      ]
+     }
+    ],
+    "Image": [
+     {
+      "alt": "Boomer",
+      "type": "coverPoster",
+      "url": "/library/metadata/70/thumb/1792608410"
+     },
+     {
+      "alt": "Boomer",
+      "type": "background",
+      "url": "/library/metadata/70/art/1792608410"
+     }
+    ]
+   }
+  ]
+ }
+}

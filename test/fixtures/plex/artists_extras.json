@@ -1,0 +1,714 @@
+{
+ "MediaContainer": {
+  "size": 5,
+  "allowSync": true,
+  "identifier": "com.plexapp.plugins.library",
+  "librarySectionID": 4,
+  "librarySectionTitle": "Music",
+  "Metadata": [
+   {
+    "ratingKey": "95",
+    "key": "/library/metadata/95/children",
+    "type": "artist",
+    "title": "DJ Marmalade",
+    "librarySectionTitle": "Music",
+    "librarySectionID": 4,
+    "librarySectionKey": "/library/sections/4",
+    "summary": "",
+    "index": 1,
+    "addedAt": 1792608396,
+    "updatedAt": 1792608408,
+    "Genre": [
+     {
+      "id": 9,
+      "filter": "genre=9",
+      "tag": "Electronic"
+     }
+    ],
+    "Location": [
+     {
+      "path": "/media/Music/DJ Marmalade"
+     }
+    ],
+    "Extras": {
+     "size": 1,
+     "Metadata": [
+      {
+       "ratingKey": "122",
+       "key": "/library/metadata/122",
+       "type": "clip",
+       "title": "Song 25",
+       "summary": "",
+       "index": 2,
+       "subtype": "musicVideo",
+       "duration": 200033,
+       "addedAt": 1792608408,
+       "updatedAt": 1792608408,
+       "extraType": 4,
+       "Media": [
+        {
+         "id": 98,
+         "duration": 200033,
+         "bitrate": 2077,
+         "width": 1280,
+         "height": 720,
+         "aspectRatio": 1.78,
+         "audioChannels": 2,
+         "audioCodec": "aac",
+         "videoCodec": "h264",
+         "videoResolution": "720",
+         "container": "mp4",
+         "videoFrameRate": "NTSC",
+         "optimizedForStreaming": 0,
+         "has64bitOffsets": false,
+         "videoProfile": "high",
+         "Part": [
+          {
+           "id": 98,
+           "key": "/library/parts/98/0/file.mp4",
+           "duration": 200033,
+           "file": "/media/Music/DJ Marmalade/Song 25-video.mp4",
+           "size": 51944606,
+           "container": "mp4",
+           "has64bitOffsets": false,
+           "optimizedForStreaming": false,
+           "videoProfile": "high",
+           "Stream": [
+            {
+             "id": 165,
+             "streamType": 1,
+             "default": true,
+             "codec": "h264",
+             "index": 0,
+             "bitrate": 2000,
+             "bitDepth": 8,
+             "chromaLocation": "left",
+             "chromaSubsampling": "4:2:0",
+             "codedHeight": 720,
+             "codedWidth": 1280,
+             "frameRate": 29.97,
+             "hasScalingMatrix": false,
+             "height": 720,
+             "level": 31,
+             "profile": "high",
+             "refFrames": 4,
+             "scanType": "progressive",
+             "streamIdentifier": "1",
+             "width": 1280,
+             "displayTitle": "720p",
+             "extendedDisplayTitle": "720p (H.264)"
+            },
+            {
+             "id": 166,
+             "streamType": 2,
+             "selected": true,
+             "default": true,
+             "codec": "aac",
+             "index": 1,
+             "channels": 2,
+             "bitrate": 69,
+             "samplingRate": 48000,
+             "streamIdentifier": "2",
+             "displayTitle": "Unknown (AAC Stereo)",
+             "extendedDisplayTitle": "Unknown (AAC Stereo)"
+            }
+           ]
+          }
+         ]
+        }
+       ],
+       "Image": [
+        {
+         "alt": "Song 25",
+         "type": "coverPoster",
+         "url": "/library/metadata/122/thumb/1792608408"
+        }
+       ]
+      }
+     ]
+    }
+   },
+   {
+    "ratingKey": "113",
+    "key": "/library/metadata/113/children",
+    "type": "artist",
+    "title": "Hollow Pines",
+    "librarySectionTitle": "Music",
+    "librarySectionID": 4,
+    "librarySectionKey": "/library/sections/4",
+    "summary": "",
+    "index": 1,
+    "addedAt": 1792608397,
+    "updatedAt": 1792608408,
+    "Genre": [
+     {
+      "id": 10,
+      "filter": "genre=10",
+      "tag": "Folk"
+     }
+    ],
+    "Location": [
+     {
+      "path": "/media/Music/Hollow Pines"
+     }
+    ],
+    "Extras": {
+     "size": 1,
+     "Metadata": [
+      {
+       "ratingKey": "123",
+       "key": "/library/metadata/123",
+       "type": "clip",
+       "title": "Song 19",
+       "summary": "",
+       "index": 2,
+       "subtype": "musicVideo",
+       "duration": 190023,
+       "addedAt": 1792608408,
+       "updatedAt": 1792608408,
+       "extraType": 4,
+       "Media": [
+        {
+         "id": 99,
+         "duration": 190023,
+         "bitrate": 2092,
+         "width": 1280,
+         "height": 720,
+         "aspectRatio": 1.78,
+         "audioChannels": 2,
+         "audioCodec": "aac",
+         "videoCodec": "h264",
+         "videoResolution": "720",
+         "container": "mp4",
+         "videoFrameRate": "NTSC",
+         "optimizedForStreaming": 0,
+         "has64bitOffsets": false,
+         "videoProfile": "high",
+         "Part": [
+          {
+           "id": 99,
+           "key": "/library/parts/99/0/file.mp4",
+           "duration": 190023,
+           "file": "/media/Music/Hollow Pines/Song 19-video.mp4",
+           "size": 49697542,
+           "container": "mp4",
+           "has64bitOffsets": false,
+           "optimizedForStreaming": false,
+           "videoProfile": "high",
+           "Stream": [
+            {
+             "id": 167,
+             "streamType": 1,
+             "default": true,
+             "codec": "h264",
+             "index": 0,
+             "bitrate": 2000,
+             "bitDepth": 8,
+             "chromaLocation": "left",
+             "chromaSubsampling": "4:2:0",
+             "codedHeight": 720,
+             "codedWidth": 1280,
+             "frameRate": 29.97,
+             "hasScalingMatrix": false,
+             "height": 720,
+             "level": 31,
+             "profile": "high",
+             "refFrames": 4,
+             "scanType": "progressive",
+             "streamIdentifier": "1",
+             "width": 1280,
+             "displayTitle": "720p",
+             "extendedDisplayTitle": "720p (H.264)"
+            },
+            {
+             "id": 168,
+             "streamType": 2,
+             "selected": true,
+             "default": true,
+             "codec": "aac",
+             "index": 1,
+             "channels": 2,
+             "bitrate": 84,
+             "samplingRate": 48000,
+             "streamIdentifier": "2",
+             "displayTitle": "Unknown (AAC Stereo)",
+             "extendedDisplayTitle": "Unknown (AAC Stereo)"
+            }
+           ]
+          }
+         ]
+        }
+       ],
+       "Image": [
+        {
+         "alt": "Song 19",
+         "type": "coverPoster",
+         "url": "/library/metadata/123/thumb/1792608408"
+        }
+       ]
+      }
+     ]
+    }
+   },
+   {
+    "ratingKey": "86",
+    "key": "/library/metadata/86/children",
+    "type": "artist",
+    "title": "The Paper Kites Club",
+    "titleSort": "Paper Kites Club",
+    "librarySectionTitle": "Music",
+    "librarySectionID": 4,
+    "librarySectionKey": "/library/sections/4",
+    "summary": "",
+    "index": 1,
+    "addedAt": 1792608396,
+    "updatedAt": 1792608409,
+    "Genre": [
+     {
+      "id": 8,
+      "filter": "genre=8",
+      "tag": "Rock"
+     }
+    ],
+    "Location": [
+     {
+      "path": "/media/Music/The Paper Kites Club"
+     }
+    ],
+    "Extras": {
+     "size": 2,
+     "Metadata": [
+      {
+       "ratingKey": "124",
+       "key": "/library/metadata/124",
+       "type": "clip",
+       "title": "Song 1",
+       "summary": "",
+       "index": 2,
+       "subtype": "musicVideo",
+       "duration": 160027,
+       "addedAt": 1792608408,
+       "updatedAt": 1792608409,
+       "extraType": 4,
+       "Media": [
+        {
+         "id": 100,
+         "duration": 160027,
+         "bitrate": 2087,
+         "width": 1280,
+         "height": 720,
+         "aspectRatio": 1.78,
+         "audioChannels": 2,
+         "audioCodec": "aac",
+         "videoCodec": "h264",
+         "videoResolution": "720",
+         "container": "mp4",
+         "videoFrameRate": "NTSC",
+         "optimizedForStreaming": 0,
+         "has64bitOffsets": false,
+         "videoProfile": "high",
+         "Part": [
+          {
+           "id": 100,
+           "key": "/library/parts/100/0/file.mp4",
+           "duration": 160027,
+           "file": "/media/Music/The Paper Kites Club/Song 1-video.mp4",
+           "size": 41744773,
+           "container": "mp4",
+           "has64bitOffsets": false,
+           "optimizedForStreaming": false,
+           "videoProfile": "high",
+           "Stream": [
+            {
+             "id": 169,
+             "streamType": 1,
+             "default": true,
+             "codec": "h264",
+             "index": 0,
+             "bitrate": 1999,
+             "bitDepth": 8,
+             "chromaLocation": "left",
+             "chromaSubsampling": "4:2:0",
+             "codedHeight": 720,
+             "codedWidth": 1280,
+             "frameRate": 29.97,
+             "hasScalingMatrix": false,
+             "height": 720,
+             "level": 31,
+             "profile": "high",
+             "refFrames": 4,
+             "scanType": "progressive",
+             "streamIdentifier": "1",
+             "width": 1280,
+             "displayTitle": "720p",
+             "extendedDisplayTitle": "720p (H.264)"
+            },
+            {
+             "id": 170,
+             "streamType": 2,
+             "selected": true,
+             "default": true,
+             "codec": "aac",
+             "index": 1,
+             "channels": 2,
+             "bitrate": 79,
+             "samplingRate": 48000,
+             "streamIdentifier": "2",
+             "displayTitle": "Unknown (AAC Stereo)",
+             "extendedDisplayTitle": "Unknown (AAC Stereo)"
+            }
+           ]
+          }
+         ]
+        }
+       ],
+       "Image": [
+        {
+         "alt": "Song 1",
+         "type": "coverPoster",
+         "url": "/library/metadata/124/thumb/1792608409"
+        }
+       ]
+      },
+      {
+       "ratingKey": "125",
+       "key": "/library/metadata/125",
+       "type": "clip",
+       "title": "Song 2",
+       "summary": "",
+       "index": 3,
+       "subtype": "musicVideo",
+       "duration": 210010,
+       "addedAt": 1792608408,
+       "updatedAt": 1792608409,
+       "extraType": 4,
+       "Media": [
+        {
+         "id": 101,
+         "duration": 210010,
+         "bitrate": 2087,
+         "width": 1280,
+         "height": 720,
+         "aspectRatio": 1.78,
+         "audioChannels": 2,
+         "audioCodec": "aac",
+         "videoCodec": "h264",
+         "videoResolution": "720",
+         "container": "mp4",
+         "videoFrameRate": "NTSC",
+         "optimizedForStreaming": 0,
+         "has64bitOffsets": false,
+         "videoProfile": "high",
+         "Part": [
+          {
+           "id": 101,
+           "key": "/library/parts/101/0/file.mp4",
+           "duration": 210010,
+           "file": "/media/Music/The Paper Kites Club/Song 2-video.mp4",
+           "size": 54777920,
+           "container": "mp4",
+           "has64bitOffsets": false,
+           "optimizedForStreaming": false,
+           "videoProfile": "high",
+           "Stream": [
+            {
+             "id": 171,
+             "streamType": 1,
+             "default": true,
+             "codec": "h264",
+             "index": 0,
+             "bitrate": 2000,
+             "bitDepth": 8,
+             "chromaLocation": "left",
+             "chromaSubsampling": "4:2:0",
+             "codedHeight": 720,
+             "codedWidth": 1280,
+             "frameRate": 29.97,
+             "hasScalingMatrix": false,
+             "height": 720,
+             "level": 31,
+             "profile": "high",
+             "refFrames": 4,
+             "scanType": "progressive",
+             "streamIdentifier": "1",
+             "width": 1280,
+             "displayTitle": "720p",
+             "extendedDisplayTitle": "720p (H.264)"
+            },
+            {
+             "id": 172,
+             "streamType": 2,
+             "selected": true,
+             "default": true,
+             "codec": "aac",
+             "index": 1,
+             "channels": 2,
+             "bitrate": 78,
+             "samplingRate": 48000,
+             "streamIdentifier": "2",
+             "displayTitle": "Unknown (AAC Stereo)",
+             "extendedDisplayTitle": "Unknown (AAC Stereo)"
+            }
+           ]
+          }
+         ]
+        }
+       ],
+       "Image": [
+        {
+         "alt": "Song 2",
+         "type": "coverPoster",
+         "url": "/library/metadata/125/thumb/1792608409"
+        }
+       ]
+      }
+     ]
+    }
+   },
+   {
+    "ratingKey": "104",
+    "key": "/library/metadata/104/children",
+    "type": "artist",
+    "title": "Static Orchard",
+    "librarySectionTitle": "Music",
+    "librarySectionID": 4,
+    "librarySectionKey": "/library/sections/4",
+    "summary": "",
+    "index": 1,
+    "addedAt": 1792608397,
+    "updatedAt": 1792608409,
+    "Genre": [
+     {
+      "id": 8,
+      "filter": "genre=8",
+      "tag": "Rock"
+     }
+    ],
+    "Location": [
+     {
+      "path": "/media/Music/Static Orchard"
+     }
+    ],
+    "Extras": {
+     "size": 1,
+     "Metadata": [
+      {
+       "ratingKey": "126",
+       "key": "/library/metadata/126",
+       "type": "clip",
+       "title": "Song 13",
+       "summary": "",
+       "index": 2,
+       "subtype": "musicVideo",
+       "duration": 180013,
+       "addedAt": 1792608409,
+       "updatedAt": 1792608409,
+       "extraType": 4,
+       "Media": [
+        {
+         "id": 102,
+         "duration": 180013,
+         "bitrate": 2093,
+         "width": 1280,
+         "height": 720,
+         "aspectRatio": 1.78,
+         "audioChannels": 2,
+         "audioCodec": "aac",
+         "videoCodec": "h264",
+         "videoResolution": "720",
+         "container": "mp4",
+         "videoFrameRate": "NTSC",
+         "optimizedForStreaming": 0,
+         "has64bitOffsets": false,
+         "videoProfile": "high",
+         "Part": [
+          {
+           "id": 102,
+           "key": "/library/parts/102/0/file.mp4",
+           "duration": 180013,
+           "file": "/media/Music/Static Orchard/Song 13-video.mp4",
+           "size": 47093991,
+           "container": "mp4",
+           "has64bitOffsets": false,
+           "optimizedForStreaming": false,
+           "videoProfile": "high",
+           "Stream": [
+            {
+             "id": 173,
+             "streamType": 1,
+             "default": true,
+             "codec": "h264",
+             "index": 0,
+             "bitrate": 1999,
+             "bitDepth": 8,
+             "chromaLocation": "left",
+             "chromaSubsampling": "4:2:0",
+             "codedHeight": 720,
+             "codedWidth": 1280,
+             "frameRate": 29.97,
+             "hasScalingMatrix": false,
+             "height": 720,
+             "level": 31,
+             "profile": "high",
+             "refFrames": 4,
+             "scanType": "progressive",
+             "streamIdentifier": "1",
+             "width": 1280,
+             "displayTitle": "720p",
+             "extendedDisplayTitle": "720p (H.264)"
+            },
+            {
+             "id": 174,
+             "streamType": 2,
+             "selected": true,
+             "default": true,
+             "codec": "aac",
+             "index": 1,
+             "channels": 2,
+             "bitrate": 85,
+             "samplingRate": 48000,
+             "streamIdentifier": "2",
+             "displayTitle": "Unknown (AAC Stereo)",
+             "extendedDisplayTitle": "Unknown (AAC Stereo)"
+            }
+           ]
+          }
+         ]
+        }
+       ],
+       "Image": [
+        {
+         "alt": "Song 13",
+         "type": "coverPoster",
+         "url": "/library/metadata/126/thumb/1792608409"
+        }
+       ]
+      }
+     ]
+    }
+   },
+   {
+    "ratingKey": "77",
+    "key": "/library/metadata/77/children",
+    "type": "artist",
+    "title": "Vera Lune",
+    "librarySectionTitle": "Music",
+    "librarySectionID": 4,
+    "librarySectionKey": "/library/sections/4",
+    "summary": "",
+    "index": 1,
+    "addedAt": 1792608396,
+    "updatedAt": 1792608409,
+    "Genre": [
+     {
+      "id": 7,
+      "filter": "genre=7",
+      "tag": "Pop"
+     }
+    ],
+    "Location": [
+     {
+      "path": "/media/Music/Vera Lune"
+     }
+    ],
+    "Extras": {
+     "size": 1,
+     "Metadata": [
+      {
+       "ratingKey": "127",
+       "key": "/library/metadata/127",
+       "type": "clip",
+       "title": "Song 7",
+       "summary": "",
+       "index": 2,
+       "subtype": "musicVideo",
+       "duration": 170003,
+       "addedAt": 1792608409,
+       "updatedAt": 1792608409,
+       "extraType": 4,
+       "Media": [
+        {
+         "id": 103,
+         "duration": 170003,
+         "bitrate": 2094,
+         "width": 1280,
+         "height": 720,
+         "aspectRatio": 1.78,
+         "audioChannels": 2,
+         "audioCodec": "aac",
+         "videoCodec": "h264",
+         "videoResolution": "720",
+         "container": "mp4",
+         "videoFrameRate": "NTSC",
+         "optimizedForStreaming": 0,
+         "has64bitOffsets": false,
+         "videoProfile": "high",
+         "Part": [
+          {
+           "id": 103,
+           "key": "/library/parts/103/0/file.mp4",
+           "duration": 170003,
+           "file": "/media/Music/Vera Lune/Song 7-video.mp4",
+           "size": 44506705,
+           "container": "mp4",
+           "has64bitOffsets": false,
+           "optimizedForStreaming": false,
+           "videoProfile": "high",
+           "Stream": [
+            {
+             "id": 175,
+             "streamType": 1,
+             "default": true,
+             "codec": "h264",
+             "index": 0,
+             "bitrate": 1999,
+             "bitDepth": 8,
+             "chromaLocation": "left",
+             "chromaSubsampling": "4:2:0",
+             "codedHeight": 720,
+             "codedWidth": 1280,
+             "frameRate": 29.97,
+             "hasScalingMatrix": false,
+             "height": 720,
+             "level": 31,
+             "profile": "high",
+             "refFrames": 4,
+             "scanType": "progressive",
+             "streamIdentifier": "1",
+             "width": 1280,
+             "displayTitle": "720p",
+             "extendedDisplayTitle": "720p (H.264)"
+            },
+            {
+             "id": 176,
+             "streamType": 2,
+             "selected": true,
+             "default": true,
+             "codec": "aac",
+             "index": 1,
+             "channels": 2,
+             "bitrate": 87,
+             "samplingRate": 48000,
+             "streamIdentifier": "2",
+             "displayTitle": "Unknown (AAC Stereo)",
+             "extendedDisplayTitle": "Unknown (AAC Stereo)"
+            }
+           ]
+          }
+         ]
+        }
+       ],
+       "Image": [
+        {
+         "alt": "Song 7",
+         "type": "coverPoster",
+         "url": "/library/metadata/127/thumb/1792608409"
+        }
+       ]
+      }
+     ]
+    }
+   }
+  ]
+ }
+}

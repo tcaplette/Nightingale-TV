@@ -1,0 +1,4 @@
+# The image needs only these from this repo; the app itself is downloaded.
+*
+!entrypoint.sh
+!healthcheck.sh

@@ -1,0 +1,35 @@
+{
+ "Items": [
+  {
+   "Name": "Home Videos",
+   "Id": "7",
+   "CollectionType": "homevideos",
+   "Type": "CollectionFolder"
+  },
+  {
+   "Name": "Movies",
+   "Id": "5",
+   "CollectionType": "movies",
+   "Type": "CollectionFolder"
+  },
+  {
+   "Name": "Music",
+   "Id": "9",
+   "CollectionType": "music",
+   "Type": "CollectionFolder"
+  },
+  {
+   "Name": "Music Videos",
+   "Id": "11",
+   "CollectionType": "musicvideos",
+   "Type": "CollectionFolder"
+  },
+  {
+   "Name": "TV",
+   "Id": "3",
+   "CollectionType": "tvshows",
+   "Type": "CollectionFolder"
+  }
+ ],
+ "TotalRecordCount": 5
+}

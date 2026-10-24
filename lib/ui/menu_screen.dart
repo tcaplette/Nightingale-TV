@@ -15,6 +15,7 @@ import 'channel_groups_screen.dart';
 import 'commercials_screen.dart';
 import 'format.dart';
 import 'phone_remote_screen.dart';
+import 'live_sources_screen.dart';
 import 'live_tv_export_screen.dart';
 import 'playback_screen.dart';
 import 'profiles_screen.dart';
@@ -86,6 +87,17 @@ class _MenuScreenState extends State<MenuScreen> {
         onPressed: guard(() => Navigator.of(context).push(
             MaterialPageRoute<void>(builder: (_) => const ChannelGroupsScreen()))),
       ),
+      // Kid profiles have no live channels (live-tv-sources).
+      if (!(profile?.isKid ?? false)) ...[
+        const SizedBox(height: 18),
+        TvButton(
+          label: 'Live TV sources',
+          icon: Icons.settings_input_antenna,
+          expand: true,
+          onPressed: guard(() => Navigator.of(context)
+              .push(MaterialPageRoute<void>(builder: (_) => const LiveSourcesScreen()))),
+        ),
+      ],
       const SizedBox(height: 18),
       TvButton(
         label: 'Programming blocks',

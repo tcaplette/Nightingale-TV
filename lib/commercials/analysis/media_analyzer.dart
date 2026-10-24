@@ -82,6 +82,18 @@ class AnalysisProgress {
       reelsDone, reelsTotal, programsDone, programsTotal, current, ffmpegMissing, reelsNeedingFfmpeg, failed);
 }
 
+/// What a [MediaAnalyzer] is doing.
+enum AnalyzerState {
+  /// Not looked at its work yet.
+  starting,
+
+  /// Running a job, or holding off in the middle of one.
+  working,
+
+  /// Nothing left to do: waiting for news or a retry.
+  idle,
+}
+
 /// Reads the Commercial media segments of an item.
 typedef SegmentReader = Future<List<Span>> Function(String itemId);
 
@@ -124,6 +136,11 @@ class MediaAnalyzer {
 
   bool _running = false;
   bool get running => _running;
+
+  /// Whether it has looked at its work yet, is working (or holding off in
+  /// the middle of a job), or has nothing left to do.
+  ValueListenable<AnalyzerState> get state => _state;
+  final _state = ValueNotifier(AnalyzerState.starting);
   Future<void>? _loop;
   Completer<void>? _wake;
   Timer? _retryTimer;
@@ -155,6 +172,7 @@ class MediaAnalyzer {
     _loop = null;
     await proxy.close();
     await cache.flush();
+    _state.value = AnalyzerState.starting;
     _progress.value = AnalysisProgress(
       reelsDone: _progress.value.reelsDone,
       reelsTotal: _progress.value.reelsTotal,
@@ -188,9 +206,11 @@ class MediaAnalyzer {
       if (job == null) {
         // Nothing to do: free the port, and wait for news or a retry.
         if (proxy.running) await proxy.close();
+        _state.value = AnalyzerState.idle;
         await _sleep(plan.retryAt);
         continue;
       }
+      _state.value = AnalyzerState.working;
       _progress.value = plan.progressWith(job.item.title);
       try {
         await job.run();

@@ -1,0 +1,10 @@
+{
+ "AccessToken": "emby-token",
+ "ServerId": "36742d04fcf5437dbdbed483484e14d8",
+ "User": {
+  "Name": "admin",
+  "ServerId": "36742d04fcf5437dbdbed483484e14d8",
+  "Id": "900ca7ffb70648a8bdb33214f9b4de2f",
+  "HasPassword": true
+ }
+}

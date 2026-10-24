@@ -8,6 +8,7 @@ import 'package:flutter/foundation.dart';
 import '../app_state.dart';
 import '../channels/channel.dart';
 import '../commercials/analysis/stream_proxy.dart';
+import 'broadcast_art.dart';
 import 'card_chunks.dart';
 import 'channel_stream.dart';
 import 'encode_args.dart';
@@ -57,6 +58,42 @@ class ExportStreams implements ChannelStreamer {
   final _sessions = <(String, String), _Session>{};
   final _proxies = <String, _Proxy>{};
 
+  /// Cards encoded ahead, so a stream's first bytes don't wait on drawing
+  /// and encoding its tuning card; and the profiles waiting for theirs.
+  final _warmed = <String>{};
+  final _toWarm = <AppState>{};
+  bool _warming = false;
+
+  /// Encodes the black card and [app]'s channels' tuning cards ahead, one
+  /// at a time, skipping those done before.
+  void warm(AppState app) {
+    _toWarm.add(app);
+    if (!_warming) unawaited(_warmQueued());
+  }
+
+  Future<void> _warmQueued() async {
+    _warming = true;
+    try {
+      while (_toWarm.isNotEmpty) {
+        final app = _toWarm.first;
+        _toWarm.remove(app);
+        final quality = policy.quality();
+        final encoder = await policy.encoder();
+        for (final card in <BroadcastCard>[const BlackCard(), for (final c in [...app.channels]) if (!c.isLive) TuningCardSpec(c)]) {
+          // Tried once: a card that can't be made is made when it plays.
+          if (!_warmed.add('${card.key}|${quality.label}|${encoder.codec}')) continue;
+          try {
+            await chunks.chunkFor(card, app, quality, encoder);
+          } on Object catch (e) {
+            debugPrint('Live TV export: couldn\'t prepare a card ahead: $e');
+          }
+        }
+      }
+    } finally {
+      _warming = false;
+    }
+  }
+
   /// Startup times of each profile's sources, newest last.
   final _startups = <String, List<Duration>>{};
   final _silent = <String>{};
@@ -78,6 +115,12 @@ class ExportStreams implements ChannelStreamer {
     final key = (server.profileId, channel.id);
     var session = _sessions[key];
     if (session == null) {
+      if (_sessions.length >= policy.limit()) {
+        // A stream lingering with nobody watching gives way, so changing
+        // channels on a one-tuner setup works at once.
+        final idle = _sessions.values.where((s) => s.clients.isEmpty).firstOrNull;
+        if (idle != null) await idle.stop();
+      }
       if (_sessions.length >= policy.limit()) {
         response
           ..statusCode = HttpStatus.serviceUnavailable
@@ -117,9 +160,11 @@ class ExportStreams implements ChannelStreamer {
 
   /// Ends [profileId]'s streams (its export was turned off), or all.
   Future<void> stopAll({String? profileId}) async {
-    for (final s in [..._sessions.values]) {
-      if (profileId == null || s.key.$1 == profileId) await s.stop();
-    }
+    // At once: each may wait up to 2 s for its ffmpeg to go.
+    await Future.wait([
+      for (final s in [..._sessions.values])
+        if (profileId == null || s.key.$1 == profileId) s.stop(),
+    ]);
     if (profileId == null) {
       for (final p in [..._proxies.values]) {
         await p.proxy.close();

@@ -75,6 +75,15 @@ class MainActivity : FlutterActivity() {
                         (getSystemService(UI_MODE_SERVICE) as UiModeManager).currentModeType ==
                             Configuration.UI_MODE_TYPE_TELEVISION
                     )
+                    // The browser, e.g. for plex.tv/link on a phone.
+                    "openUrl" -> result.success(
+                        try {
+                            startActivity(Intent(Intent.ACTION_VIEW, android.net.Uri.parse(call.arguments as String)))
+                            true
+                        } catch (e: Exception) {
+                            false
+                        }
+                    )
                     else -> result.notImplemented()
                 }
             }

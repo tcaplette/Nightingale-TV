@@ -1,0 +1,45 @@
+# Nightingale TV server, with host networking (the tuners are announced on
+# your network over SSDP, UDP 1900). In Plex, Jellyfin or Emby, add the tuner
+# by the address the web admin shows, e.g. http://192.168.1.20:5004.
+#
+#   docker compose up -d
+#   docker compose logs | grep "to set up"
+#
+# Open the setup link from the log, make the first admin account, then set
+# everything up in the web admin on port 8484: restore a backup from the
+# Nightingale TV app, or start fresh.
+#
+# If host networking clashes with other ports on this machine, use
+# docker-compose.bridge.yml instead.
+services:
+  nightingale-tv:
+    image: ghcr.io/tcaplette/nightingale-tv-server:latest
+    container_name: nightingale-tv
+    # The name Jellyfin, Emby and Plex show for this server's device.
+    hostname: nightingale-tv
+    network_mode: host
+    restart: unless-stopped
+    environment:
+      # The user and group that own /config (run `id` on the host to see
+      # yours). The app never runs as root.
+      PUID: "1000"
+      PGID: "1000"
+      # Your time zone: the schedule, the guide and the cards use it.
+      TZ: "America/Chicago"
+      # The web admin's port (default 8484).
+      NTV_SETUP_PORT: "8484"
+      # The host name or address shown in the web admin's URLs (default:
+      # the address your browser used).
+      # NTV_LAN_HOST: "192.168.1.20"
+      # Set to 1 for one start when an admin's password is forgotten: every
+      # session ends and a setup link is logged that sets a new password for
+      # an admin account you pick. Other accounts are kept. Remove it again
+      # afterwards.
+      # NTV_RESET_PASSWORD: "1"
+      # Where the web admin is served from (default: the web/ folder next to
+      # the app in the image). Only for trying a web admin you built.
+      # NTV_WEB_DIR: "/web"
+    volumes:
+      # Everything the server keeps: profiles, channels, sign-ins, user
+      # accounts, export ports, backups, caches.
+      - ./config:/config

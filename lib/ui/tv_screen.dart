@@ -25,6 +25,7 @@ import 'widgets/new_tag.dart';
 import 'widgets/now_playing.dart';
 import 'widgets/screen_layout.dart';
 import 'widgets/tv_focus.dart';
+import '../server/media_server.dart';
 
 /// Main screen: full-screen TV with channel banner and number entry; the
 /// guide opens on top of it.
@@ -221,11 +222,21 @@ class _TvScreenState extends State<TvScreen> {
   }
 
   Future<void> _openMenu() async {
+    // A live stream holds a tuner or an IPTV connection: it's closed while
+    // the full-screen settings are open, and tuned again after.
+    final leftLive = AppScope.tunerOf(context).isLive ? AppScope.tunerOf(context).channel : null;
+    if (leftLive != null) await AppScope.tunerOf(context).stop();
+    if (!mounted) return;
     await Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const MenuScreen()));
     if (!mounted) return;
     // Channels may have been edited, hidden or renumbered.
     final app = AppScope.read(context);
     final tuner = AppScope.tunerOf(context);
+    if (leftLive != null && tuner.channel == null) {
+      final back = app.channels.where((c) => c.id == leftLive.id).firstOrNull ?? app.channels.firstOrNull;
+      if (back != null) await tuner.tune(back);
+      if (!mounted) return;
+    }
     final current = tuner.channel;
     if (current != null && !app.channels.any((c) => c.id == current.id)) {
       if (app.channels.isNotEmpty) {
@@ -498,7 +509,9 @@ class TvPicture extends StatelessWidget {
                   art: albumArt(AppScope.read(context), song),
                 ),
               ),
-          if (tuner.status == TunerStatus.standby)
+          if (tuner.isLive && tuner.status == TunerStatus.standby)
+            StatusCard(icon: Icons.sensors, title: 'PLEASE STAND BY', message: tuner.liveMessage)
+          else if (tuner.status == TunerStatus.standby)
             StatusCard(
               icon: Icons.schedule,
               title: 'PLEASE STAND BY',
@@ -515,7 +528,13 @@ class TvPicture extends StatelessWidget {
                 null => null,
               },
             ),
-          if (tuner.status == TunerStatus.error)
+          if (tuner.isLive && tuner.status == TunerStatus.error)
+            StatusCard(
+              icon: Icons.signal_cellular_connected_no_internet_0_bar,
+              title: 'NO SIGNAL',
+              message: tuner.liveMessage ?? tuner.error,
+            )
+          else if (tuner.status == TunerStatus.error)
             StatusCard(
               icon: Icons.signal_cellular_connected_no_internet_0_bar,
               title: 'NO SIGNAL',
@@ -573,7 +592,7 @@ List<ImageProvider> albumArt(AppState app, MediaEntry song) {
   if (client == null) return const [];
   return [
     for (final id in [?song.albumId, song.id])
-      NetworkImage(client.imageUri(id, 'Primary', maxHeight: 640).toString(), headers: client.authHeaders),
+      NetworkImage(client.imageUri(id, ImageKind.primary, maxHeight: 640).toString(), headers: client.authHeaders),
   ];
 }
 
@@ -588,6 +607,13 @@ List<ImageProvider> albumArt(AppState app, MediaEntry song) {
 
 /// What the banner says during a break.
 const commercialBreakLabel = 'Commercial break';
+
+/// A live channel's own number at its source ("2.1"), when it isn't its
+/// lineup number.
+String? liveNumber(Channel ch) => switch (ch.live?.sourceNumber) {
+      final n? when n != '${ch.number}' => n,
+      _ => null,
+    };
 
 /// The bottom banner: the channel, what's on, and what's next.
 class ChannelBanner extends StatelessWidget {
@@ -641,14 +667,16 @@ class ChannelBanner extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                    [channel.name, if (p?.blockTitle != null) p!.blockTitle!]
-                        .join('   ·   ')
-                        .toUpperCase(),
+                    [
+                      [channel.name, ?liveNumber(channel)].join('  '),
+                      if (p?.blockTitle != null) p!.blockTitle!,
+                    ].join('   ·   ').toUpperCase(),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: g.display(28, weight: FontWeight.w700, color: g.accent)),
                 Row(
                   children: [
+                    if (channel.isLive) ...[const LiveTag(size: 32), const SizedBox(width: 18)],
                     if (p?.isPremiere ?? false) ...[const NewTag(size: 32), const SizedBox(width: 18)],
                     Expanded(
                       child: Text(p?.title ?? 'Tuning…',

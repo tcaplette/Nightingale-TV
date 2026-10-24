@@ -1,0 +1,88 @@
+{
+ "MediaContainer": {
+  "size": 1,
+  "directPlayDecisionCode": 3000,
+  "directPlayDecisionText": "App cannot direct play this item. Direct play is disabled.",
+  "generalDecisionCode": 1001,
+  "generalDecisionText": "Direct play not available; Conversion OK.",
+  "resourceSession": "probe-1792630153",
+  "transcodeDecisionCode": 1001,
+  "transcodeDecisionText": "Direct play not available; Conversion OK.",
+  "Metadata": [
+   {
+    "addedAt": 1792630153,
+    "genuineMediaAnalysis": "1",
+    "grandparentTitle": "Fake Drama",
+    "guid": "tv.plex.xmltv://episode/Fake%20Drama/3/2",
+    "index": 2,
+    "key": "/livetv/sessions/f7c4eb7b-aa82-40d6-8dc0-bd54f5044510",
+    "live": "1",
+    "parentIndex": 3,
+    "ratingKey": "130",
+    "title": "Part 2",
+    "type": "episode",
+    "Media": [
+     {
+      "id": "105",
+      "origin": "livetv",
+      "timeStamp": "1792630153.8529365",
+      "uuid": "f7c4eb7b-aa82-40d6-8dc0-bd54f5044510",
+      "audioChannels": 1,
+      "audioCodec": "aac",
+      "bitrate": 20128,
+      "container": "mpegts",
+      "height": 1080,
+      "protocol": "hls",
+      "videoCodec": "h264",
+      "videoFrameRate": "NTSC",
+      "videoResolution": "1080p",
+      "width": 1920,
+      "selected": true,
+      "Part": [
+       {
+        "deepAnalysisVersion": "6",
+        "id": "105",
+        "bitrate": 20128,
+        "container": "mpegts",
+        "height": 1080,
+        "protocol": "hls",
+        "width": 1920,
+        "decision": "transcode",
+        "selected": true,
+        "Stream": [
+         {
+          "bitrate": 20000,
+          "codec": "h264",
+          "displayTitle": "1080i",
+          "extendedDisplayTitle": "1080i (MPEG2VIDEO)",
+          "frameRate": 29.969999313354492,
+          "height": 1080,
+          "id": "179",
+          "streamType": 1,
+          "width": 1920,
+          "decision": "transcode",
+          "location": "segments-av"
+         },
+         {
+          "bitrate": 128,
+          "bitrateMode": "cbr",
+          "channels": 1,
+          "codec": "aac",
+          "displayTitle": "Unknown (AC3 Mono)",
+          "extendedDisplayTitle": "Unknown (AC3 Mono)",
+          "id": "180",
+          "requiredBandwidths": "384,384,384,384,384,384,384,384",
+          "selected": true,
+          "streamType": 2,
+          "decision": "transcode",
+          "location": "segments-av"
+         }
+        ]
+       }
+      ]
+     }
+    ]
+   }
+  ]
+ }
+}

@@ -61,9 +61,12 @@ Uint8List _second() => Uint8List.fromList([
 
 class _Chunks extends CardChunks {
   _Chunks(Directory dir) : super(BroadcastArt(dir));
+  final asked = <String>[];
   @override
-  Future<Uint8List> chunkFor(BroadcastCard card, AppState app, ExportQuality quality, VideoEncoder encoder) async =>
-      _second();
+  Future<Uint8List> chunkFor(BroadcastCard card, AppState app, ExportQuality quality, VideoEncoder encoder) async {
+    asked.add(card.key);
+    return _second();
+  }
 }
 
 /// Echoes what it's given, paced like -re (a frame per 1/30 s).
@@ -98,6 +101,9 @@ class _Process implements Process {
   final _exit = Completer<int>();
   bool killed = false;
 
+  /// Like an ffmpeg stuck in a network read: only SIGKILL ends it.
+  static bool ignoreTerm = false;
+
   @override
   final IOSink stdin;
   @override
@@ -118,6 +124,7 @@ class _Process implements Process {
 
   @override
   bool kill([ProcessSignal signal = ProcessSignal.sigterm]) {
+    if (ignoreTerm && signal != ProcessSignal.sigkill) return true;
     killed = true;
     if (_muxer != null) unawaited(_muxer.out.close());
     finish(-15);
@@ -163,6 +170,7 @@ void main() {
   late AppState app;
   late ExportStreams streams;
   late List<LineupServer> servers;
+  late _Chunks chunks;
   final muxers = <_Process>[];
   final encoders = <_Process>[];
   var limit = 2;
@@ -181,7 +189,7 @@ void main() {
     streams = ExportStreams(
       policy: StreamPolicy(
           limit: () => limit, quality: () => ExportQuality.p720, encoder: () async => VideoEncoder.x264),
-      chunks: _Chunks(dir),
+      chunks: chunks = _Chunks(dir),
       streaming: streaming,
       proxyFor: (app) => LoopbackStreamProxy(
           upstream: (id) => Uri.parse('http://jellyfin.invalid/$id'),
@@ -249,6 +257,19 @@ void main() {
 
   int number(int i) => app.channels[i].number;
 
+  test('the black card and every tuning card are made ahead, once', () async {
+    streams.warm(app);
+    streams.warm(app);
+    await pumpEventQueue();
+    expect(chunks.asked, [
+      const BlackCard().key,
+      for (final c in app.channels) TuningCardSpec(c).key,
+    ]);
+    streams.warm(app);
+    await pumpEventQueue();
+    expect(chunks.asked, hasLength(app.channels.length + 1));
+  });
+
   test('two viewers of a channel share one stream', () async {
     final (_, a) = await read(await open(0, number(0)), 188 * 10);
     final (_, b) = await read(await open(0, number(0)), 188 * 10);
@@ -286,6 +307,44 @@ void main() {
     // The channel already streaming can still be joined.
     final (_, b) = await read(await open(0, number(0)), 188);
     await a.cancel();
+    await b.cancel();
+  });
+
+  test('stopping every stream waits for their processes together, not one by one', () async {
+    final (_, a) = await read(await open(0, number(0)), 188 * 10);
+    final (_, b) = await read(await open(1, number(0)), 188 * 10);
+    expect(streams.running, hasLength(2));
+    _Process.ignoreTerm = true;
+    addTearDown(() => _Process.ignoreTerm = false);
+    final watch = Stopwatch()..start();
+    await streams.stopAll();
+    // Each process is killed 2 s after SIGTERM; together, not 4 s.
+    expect(watch.elapsed, lessThan(const Duration(milliseconds: 3500)));
+    expect(watch.elapsed, greaterThanOrEqualTo(const Duration(seconds: 2)));
+    expect([...muxers, ...encoders].every((p) => p.killed), isTrue);
+    expect(streams.running, isEmpty);
+    await a.cancel();
+    await b.cancel();
+  });
+
+  test('at the limit, a stream nobody is watching gives way to a new channel', () async {
+    limit = 1;
+    final ra = await open(0, number(0));
+    final (_, a) = await read(ra, 188 * 10);
+    await a.cancel();
+    hangUp(ra);
+    await Future<void>.delayed(const Duration(milliseconds: 50));
+    expect(streams.running, hasLength(1), reason: 'lingering');
+    // A channel change on a one-tuner setup, within the linger.
+    final rb = await open(0, number(1));
+    expect(rb.statusCode, 200);
+    final (_, b) = await read(rb, 188 * 10);
+    expect(streams.running.single.channel.number, number(1));
+    expect(muxers.first.killed, isTrue);
+    // A stream with a viewer never gives way.
+    final busy = await open(1, number(0));
+    expect(busy.statusCode, 503);
+    await busy.drain<void>();
     await b.cancel();
   });
 

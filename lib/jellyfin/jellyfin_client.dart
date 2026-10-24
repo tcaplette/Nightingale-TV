@@ -1,170 +1,15 @@
 import 'dart:async';
 import 'dart:convert';
 
-import 'package:flutter/foundation.dart' show visibleForTesting;
+import 'package:flutter/foundation.dart' show protected, visibleForTesting;
 import 'package:http/http.dart' as http;
 
+import '../commercials/commercial_pool.dart';
+import '../library/library_index.dart';
 import '../playback/playback_diagnostics.dart';
-
-class JellyfinException implements Exception {
-  JellyfinException(this.message, {this.statusCode});
-
-  final String message;
-  final int? statusCode;
-
-  @override
-  String toString() => message;
-}
-
-class JellyfinSession {
-  const JellyfinSession({
-    required this.serverUrl,
-    required this.serverName,
-    required this.userId,
-    required this.userName,
-    required this.accessToken,
-    required this.deviceId,
-    this.serverId,
-  });
-
-  final String serverUrl;
-  final String serverName;
-  final String userId;
-  final String userName;
-  final String accessToken;
-  final String deviceId;
-
-  /// The server's own id, which stays the same if its address changes.
-  /// Sign-ins saved before it was recorded don't have it yet.
-  final String? serverId;
-
-  Map<String, Object?> toJson() => {
-        'serverUrl': serverUrl,
-        'serverName': serverName,
-        'userId': userId,
-        'userName': userName,
-        'accessToken': accessToken,
-        'deviceId': deviceId,
-        if (serverId != null) 'serverId': serverId,
-      };
-
-  /// The same sign-in, identifying this PC as [id].
-  JellyfinSession withDeviceId(String id) => JellyfinSession(
-        serverUrl: serverUrl,
-        serverName: serverName,
-        userId: userId,
-        userName: userName,
-        accessToken: accessToken,
-        deviceId: id,
-        serverId: serverId,
-      );
-
-  /// The same sign-in, knowing the server's [id].
-  JellyfinSession withServerId(String id) => JellyfinSession(
-        serverUrl: serverUrl,
-        serverName: serverName,
-        userId: userId,
-        userName: userName,
-        accessToken: accessToken,
-        deviceId: deviceId,
-        serverId: id,
-      );
-
-  factory JellyfinSession.fromJson(Map<String, Object?> json) => JellyfinSession(
-        serverUrl: json['serverUrl'] as String,
-        serverName: json['serverName'] as String? ?? 'Jellyfin',
-        userId: json['userId'] as String,
-        userName: json['userName'] as String,
-        accessToken: json['accessToken'] as String,
-        deviceId: json['deviceId'] as String,
-        serverId: json['serverId'] as String?,
-      );
-}
-
-class ServerInfo {
-  const ServerInfo({required this.url, required this.name, required this.version, this.id});
-
-  final String url;
-  final String name;
-  final String version;
-
-  /// Null only for servers too old to report it.
-  final String? id;
-}
-
-/// A stretch of a video, e.g. a Jellyfin media segment.
-typedef MediaSegment = ({Duration start, Duration end});
-
-/// A folder in a library, for picking commercial folders. Built from the
-/// folder-like items Jellyfin lists to any user (folders, shows, seasons,
-/// collections), never from server file-system paths.
-class FolderNode {
-  FolderNode({required this.id, required this.name, required this.type, this.index, List<FolderNode>? children})
-      : children = children ?? [];
-
-  final String id;
-  final String name;
-
-  /// Jellyfin's item type: `Folder`, `Series`, `Season` or `BoxSet`.
-  final String type;
-  final int? index;
-  final List<FolderNode> children;
-
-  static const itemTypes = 'Folder,Series,Season,BoxSet';
-
-  /// Rebuilds the tree from a recursive listing. Each item's `ParentId`
-  /// points at its folder; items whose parent isn't in the listing are the
-  /// top level (a library's storage folders). Virtual items (placeholder
-  /// seasons for missing episodes) are left out.
-  static List<FolderNode> buildTree(List<Map<String, Object?>> items) {
-    final real = [for (final i in items) if (i['LocationType'] != 'Virtual') i];
-    final nodes = <String, FolderNode>{
-      for (final i in real)
-        i['Id'] as String: FolderNode(
-          id: i['Id'] as String,
-          name: (i['Name'] as String?)?.trim() ?? '',
-          type: i['Type'] as String? ?? 'Folder',
-          index: i['IndexNumber'] as int?,
-        ),
-    };
-    final top = <FolderNode>[];
-    for (final i in real) {
-      final node = nodes[i['Id'] as String]!;
-      final parent = nodes[i['ParentId']];
-      if (parent != null && parent != node) {
-        parent.children.add(node);
-      } else {
-        top.add(node);
-      }
-    }
-    for (final n in nodes.values) {
-      n.children.sort(_compare);
-    }
-    top.sort(_compare);
-    return top;
-  }
-
-  /// Seasons by number; everything else by name, numbers in order
-  /// ("Season 2" before "Season 10").
-  static int _compare(FolderNode a, FolderNode b) {
-    if (a.type == 'Season' && b.type == 'Season' && a.index != null && b.index != null) {
-      final byIndex = a.index!.compareTo(b.index!);
-      if (byIndex != 0) return byIndex;
-    }
-    return naturalCompare(a.name, b.name);
-  }
-
-  static int naturalCompare(String a, String b) {
-    final re = RegExp(r'(\d+)|(\D+)');
-    final x = re.allMatches(a.toLowerCase()).toList(), y = re.allMatches(b.toLowerCase()).toList();
-    for (var i = 0; i < x.length && i < y.length; i++) {
-      final p = x[i][0]!, q = y[i][0]!;
-      final c = x[i][1] != null && y[i][1] != null ? int.parse(p).compareTo(int.parse(q)) : p.compareTo(q);
-      if (c != 0) return c;
-    }
-    return x.length.compareTo(y.length);
-  }
-}
+import '../server/live_tv.dart';
+import '../server/media_server.dart';
+import 'jellyfin_live_tv.dart';
 
 class QuickConnectRequest {
   const QuickConnectRequest({required this.secret, required this.code});
@@ -173,26 +18,9 @@ class QuickConnectRequest {
   final String code;
 }
 
-class JellyfinLibrary {
-  const JellyfinLibrary({required this.id, required this.name, this.collectionType});
-
-  final String id;
-  final String name;
-
-  /// `movies`, `tvshows`, `music`, `homevideos`, `mixed` (null), ...
-  final String? collectionType;
-
-  bool get isVideo =>
-      collectionType == null ||
-      const {'movies', 'tvshows', 'homevideos', 'musicvideos', 'mixed'}
-          .contains(collectionType);
-
-  /// A library of songs.
-  bool get isMusic => collectionType == 'music';
-}
-
 /// Thin client over the parts of the Jellyfin REST API this app needs.
-class JellyfinClient {
+/// Emby's API is close enough that [EmbyClient] only overrides what differs.
+class JellyfinClient implements MediaServer {
   JellyfinClient({
     required String serverUrl,
     required this.deviceId,
@@ -204,7 +32,7 @@ class JellyfinClient {
         // Diagnostics builds log every request (see DiagnosticHttpClient).
         _http = httpClient ?? (PlaybackDiagnostics.enabled ? DiagnosticHttpClient(http.Client()) : http.Client());
 
-  factory JellyfinClient.fromSession(JellyfinSession session, {required String deviceName}) =>
+  factory JellyfinClient.fromSession(ServerSession session, {required String deviceName}) =>
       JellyfinClient(
         serverUrl: session.serverUrl,
         deviceId: session.deviceId,
@@ -213,11 +41,16 @@ class JellyfinClient {
         userId: session.userId,
       );
 
+  @override
+  ServerKind get kind => ServerKind.jellyfin;
+
   static const clientName = 'Nightingale TV';
   static const clientVersion = '0.1.0';
   static const _timeout = Duration(seconds: 30);
 
+  @override
   final String serverUrl;
+  @override
   final String deviceId;
   final String deviceName;
   String? accessToken;
@@ -250,6 +83,7 @@ class JellyfinClient {
     return 'MediaBrowser ${parts.join(', ')}';
   }
 
+  @override
   Map<String, String> get authHeaders => {'Authorization': authorizationHeader};
 
   Uri uri(String path, [Map<String, Object?>? query]) {
@@ -261,7 +95,8 @@ class JellyfinClient {
     return Uri.parse('$serverUrl$path').replace(queryParameters: params.isEmpty ? null : params);
   }
 
-  Future<Object?> _send(String method, String path,
+  @protected
+  Future<Object?> send(String method, String path,
       {Map<String, Object?>? query, Object? body}) async {
     final request = http.Request(method, uri(path, query))
       ..headers.addAll(authHeaders)
@@ -278,19 +113,19 @@ class JellyfinClient {
     try {
       response = await http.Response.fromStream(await _http.send(request).timeout(_timeout));
     } on TimeoutException {
-      throw JellyfinException('The server took too long to respond.');
+      throw ServerException('The server took too long to respond.');
     } on http.ClientException catch (e) {
-      throw JellyfinException('Could not reach the server (${e.message}).');
+      throw ServerException('Could not reach the server (${e.message}).');
     } on Exception catch (e) {
-      throw JellyfinException('Could not reach the server ($e).');
+      throw ServerException('Could not reach the server ($e).');
     }
     if (response.statusCode == 401) {
-      throw JellyfinException('Wrong username or password, or the session expired.',
+      throw ServerException('Wrong username or password, or the session expired.',
           statusCode: 401);
     }
     if (response.statusCode >= 400) {
-      throw JellyfinException('Server error ${response.statusCode} on $path.',
-          statusCode: response.statusCode);
+      throw ServerException('Server error ${response.statusCode} on $path.',
+          statusCode: response.statusCode, detail: _detail(response.body));
     }
     if (response.body.isEmpty) return null;
     try {
@@ -300,30 +135,53 @@ class JellyfinClient {
     }
   }
 
-  /// Throws [JellyfinException] (401) if the sign-in is no longer valid.
-  Future<void> checkSession() => _send('GET', '/Users/Me');
+  static String _detail(String body) => body.length > 400 ? body.substring(0, 400) : body;
 
-  Future<Map<String, Object?>> _getMap(String path, [Map<String, Object?>? query]) async =>
-      (await _send('GET', path, query: query)) as Map<String, Object?>;
+  /// [send], for the Live TV client.
+  Future<Object?> request(String method, String path, {Map<String, Object?>? query, Object? body}) =>
+      send(method, path, query: query, body: body);
 
+  /// Whether the conversion at [template] keeps [source]'s video, as
+  /// [copiesVideo] decides it for this kind of server.
+  bool keepsSourceVideo(Uri template, Map<String, Object?> source) => copiesVideo(template, source);
+
+  /// The signed-in user (with its policy).
+  String get userPath => '/Users/Me';
+
+  @override
+  late final LiveTv liveTv = JellyfinLiveTv(this);
+
+  @override
+  Future<void> checkSession() => send('GET', '/Users/Me');
+
+  @protected
+  Future<Map<String, Object?>> getMap(String path, [Map<String, Object?>? query]) async =>
+      (await send('GET', path, query: query)) as Map<String, Object?>;
+
+  @override
   Future<ServerInfo> publicInfo() async {
     final Map<String, Object?> json;
     try {
-      json = await _getMap('/System/Info/Public');
-    } on JellyfinException catch (e) {
-      throw JellyfinException('No Jellyfin server found at $serverUrl. ${e.message}');
+      json = await getMap('/System/Info/Public');
+    } on ServerException catch (e) {
+      throw ServerException('No Jellyfin server found at $serverUrl. ${e.message}');
     } on TypeError {
-      throw JellyfinException('$serverUrl did not answer like a Jellyfin server.');
+      throw ServerException('$serverUrl did not answer like a Jellyfin server.');
     }
+    // Emby answers the same request, but without Jellyfin's product name
+    // ("Jellyfin Server") or its startup-wizard flag.
+    final jellyfin = '${json['ProductName'] ?? ''}'.contains('Jellyfin') || json.containsKey('StartupWizardCompleted');
+    final kind = jellyfin ? ServerKind.jellyfin : ServerKind.emby;
     return ServerInfo(
       url: serverUrl,
-      name: json['ServerName'] as String? ?? 'Jellyfin',
+      name: json['ServerName'] as String? ?? kind.label,
       version: json['Version'] as String? ?? '?',
       id: json['Id'] as String?,
+      kind: kind,
     );
   }
 
-  /// The server's own id (see [JellyfinSession.serverId]).
+  /// The server's own id (see [ServerSession.serverId]).
   Future<String?> serverId() async => (await publicInfo()).id;
 
   /// [serverId] from a client made just for it, closed afterwards.
@@ -335,61 +193,64 @@ class JellyfinClient {
     }
   }
 
-  JellyfinSession _sessionFrom(Map<String, Object?> json, String serverName) {
+  ServerSession _sessionFrom(Map<String, Object?> json, String serverName) {
     final user = json['User'] as Map<String, Object?>;
     accessToken = json['AccessToken'] as String;
     userId = user['Id'] as String;
-    return JellyfinSession(
+    return ServerSession(
       serverUrl: serverUrl,
       serverName: serverName,
       userId: userId!,
       userName: user['Name'] as String,
       accessToken: accessToken!,
       deviceId: deviceId,
+      kind: kind,
     );
   }
 
-  Future<JellyfinSession> authenticateByName(String username, String password,
+  Future<ServerSession> authenticateByName(String username, String password,
       {required String serverName}) async {
-    final json = await _send('POST', '/Users/AuthenticateByName',
+    final json = await send('POST', '/Users/AuthenticateByName',
         body: {'Username': username, 'Pw': password}) as Map<String, Object?>;
     return _sessionFrom(json, serverName);
   }
 
   Future<bool> quickConnectEnabled() async {
     try {
-      return await _send('GET', '/QuickConnect/Enabled') == true;
-    } on JellyfinException {
+      return await send('GET', '/QuickConnect/Enabled') == true;
+    } on ServerException {
       return false;
     }
   }
 
   Future<QuickConnectRequest> quickConnectInitiate() async {
-    final json = await _send('POST', '/QuickConnect/Initiate') as Map<String, Object?>;
+    final json = await send('POST', '/QuickConnect/Initiate') as Map<String, Object?>;
     return QuickConnectRequest(secret: json['Secret'] as String, code: json['Code'] as String);
   }
 
   Future<bool> quickConnectAuthorized(String secret) async {
-    final json = await _getMap('/QuickConnect/Connect', {'Secret': secret});
+    final json = await getMap('/QuickConnect/Connect', {'Secret': secret});
     return json['Authenticated'] == true;
   }
 
-  Future<JellyfinSession> authenticateWithQuickConnect(String secret,
+  Future<ServerSession> authenticateWithQuickConnect(String secret,
       {required String serverName}) async {
-    final json = await _send('POST', '/Users/AuthenticateWithQuickConnect',
+    final json = await send('POST', '/Users/AuthenticateWithQuickConnect',
         body: {'Secret': secret}) as Map<String, Object?>;
     return _sessionFrom(json, serverName);
   }
 
+  @override
   Future<void> logout() async {
-    await _send('POST', '/Sessions/Logout');
+    await send('POST', '/Sessions/Logout');
   }
 
-  Future<List<JellyfinLibrary>> libraries() async {
-    final json = await _getMap('/UserViews', {'userId': userId});
+  @override
+  Future<List<ServerLibrary>> libraries() async {
+    final json = await getMap(viewsPath, viewsQuery);
     return [
       for (final v in (json['Items'] as List).cast<Map<String, Object?>>())
-        JellyfinLibrary(
+        ServerLibrary(
           id: v['Id'] as String,
           name: v['Name'] as String,
           collectionType: v['CollectionType'] as String?,
@@ -403,9 +264,9 @@ class JellyfinClient {
     final results = <Map<String, Object?>>[];
     var start = 0;
     while (true) {
-      final page = await _getMap('/Items', {
+      final page = await getMap(itemsPath, {
         ...query,
-        'userId': userId,
+        ...itemsQuery,
         'StartIndex': start,
         'Limit': pageSize,
       });
@@ -417,8 +278,139 @@ class JellyfinClient {
     }
   }
 
+  /// Downloads the index for every video and music library the user can see:
+  /// shows, episodes and movies, plus music videos from the video libraries
+  /// and songs from the music libraries.
+  ///
+  /// Videos under any of [pools]' folders become commercials (tagged with the
+  /// pools they're in) and are left out of the programs, even when their
+  /// folder sits inside a library of shows or movies. A library that is itself
+  /// a pool folder isn't scanned for programs at all.
+  @override
+  Future<LibraryIndex> fetchLibraryIndex(
+      {List<CommercialPool> pools = const [],
+      void Function(String status)? onStatus,
+      void Function(List<ServerLibrary> libraries)? onLibraries}) async {
+    final libraries = (await this.libraries()).where((l) => l.isVideo || l.isMusic).toList();
+    onLibraries?.call(libraries);
+    final poolsByItem = <String, List<String>>{};
+    final commercials = <String, Map<String, Object?>>{};
+    final poolRoots = <String>{};
+    for (final pool in pools) {
+      for (final root in pool.roots) {
+        poolRoots.add(root.itemId);
+        onStatus?.call('Scanning ${pool.name}…');
+        final items = await itemsUnder(root.itemId);
+        for (final item in items) {
+          final id = item['Id'] as String;
+          commercials[id] = item;
+          final ids = poolsByItem.putIfAbsent(id, () => []);
+          if (!ids.contains(pool.id)) ids.add(pool.id);
+        }
+      }
+    }
+    final series = <Map<String, Object?>>[];
+    final episodes = <Map<String, Object?>>[];
+    final movies = <Map<String, Object?>>[];
+    final songs = <Map<String, Object?>>[];
+    final musicVideos = <Map<String, Object?>>[];
+    // Minimal fields and no images: music libraries can hold 50,000 songs.
+    const musicFields = 'Genres,ProductionYear,Artists,AlbumArtist,Album,AlbumId,OfficialRating,Etag,MediaSources';
+    for (final lib in libraries) {
+      if (poolRoots.contains(lib.id)) continue;
+      onStatus?.call('Scanning ${lib.name}…');
+      final scanStart = DateTime.now();
+      final common = {'ParentId': lib.id, 'Recursive': 'true', 'ImageTypeLimit': 1};
+      if (lib.isMusic) {
+        songs.addAll(await allItems({
+          ...common,
+          'IncludeItemTypes': 'Audio',
+          'IsMissing': 'false',
+          'Fields': musicFields,
+          'EnableImages': 'false',
+          'EnableUserData': 'false',
+        }));
+        PlaybackDiagnostics.note('SCAN', '${lib.name}: ${songs.length} songs so far, '
+            '${DateTime.now().difference(scanStart).inMilliseconds} ms');
+        continue;
+      }
+      series.addAll(await allItems({
+        ...common,
+        'IncludeItemTypes': 'Series',
+        'Fields': 'Genres,OfficialRating',
+      }));
+      episodes.addAll(await allItems({
+        ...common,
+        'IncludeItemTypes': 'Episode',
+        'IsMissing': 'false',
+        'Fields': 'Overview,Chapters,Etag,DateCreated',
+        'EnableImages': 'false',
+        'EnableUserData': 'false',
+      }));
+      movies.addAll(await allItems({
+        ...common,
+        'IncludeItemTypes': 'Movie',
+        'Fields': 'Overview,Genres,OfficialRating,Chapters,Etag',
+        'EnableImages': 'false',
+        'EnableUserData': 'false',
+      }));
+      musicVideos.addAll(await allItems({
+        ...common,
+        'IncludeItemTypes': 'MusicVideo',
+        'IsMissing': 'false',
+        'Fields': musicFields,
+        'EnableImages': 'false',
+        'EnableUserData': 'false',
+      }));
+      PlaybackDiagnostics.note('SCAN', '${lib.name}: ${DateTime.now().difference(scanStart).inMilliseconds} ms');
+    }
+    return LibraryIndex.fromJellyfinItems(
+      seriesItems: series,
+      episodeItems: episodes,
+      movieItems: movies,
+      commercialItems: commercials.values.toList(),
+      songItems: songs,
+      musicVideoItems: musicVideos,
+      poolsByItem: poolsByItem,
+    );
+  }
+
+  /// Every video under pool root [rootId] (a folder, show, season or
+  /// collection), with what the index keeps of commercials.
+  @protected
+  Future<List<Map<String, Object?>>> itemsUnder(String rootId) => allItems({
+        'ParentId': rootId,
+        'Recursive': 'true',
+        'IncludeItemTypes': 'Movie,Episode,Video,MusicVideo,Trailer',
+        'IsMissing': 'false',
+        'Fields': 'Chapters,Etag',
+        'EnableImages': 'false',
+        'EnableUserData': 'false',
+      });
+
+  /// The media source to name for [itemId]: Jellyfin's first source has the
+  /// item's id. Null leaves it to the server (its first source).
+  @protected
+  String? mediaSourceIdOf(String itemId) => itemId;
+
+  /// A playback report's body.
+  @protected
+  Map<String, Object?> reportJson(PlaybackReport report) => report.toJson();
+
+  /// Where libraries and items are listed, and what each listing is asked
+  /// with: Jellyfin names the user in the query, Emby in the path.
+  @protected
+  String get viewsPath => '/UserViews';
+  @protected
+  Map<String, Object?> get viewsQuery => {'userId': userId};
+  @protected
+  String get itemsPath => '/Items';
+  @protected
+  Map<String, Object?> get itemsQuery => {'userId': userId};
+
   /// The folders inside library [libraryId], as a tree (see
   /// [FolderNode.buildTree]).
+  @override
   Future<List<FolderNode>> folderTree(String libraryId) async => FolderNode.buildTree(await allItems({
         'ParentId': libraryId,
         'Recursive': 'true',
@@ -431,11 +423,12 @@ class JellyfinClient {
   /// The Commercial media segments of [itemId], in order. Servers without
   /// media segments (older than 10.10, or with none for this item) answer
   /// 404, which means there are none.
+  @override
   Future<List<MediaSegment>> commercialSegments(String itemId) async {
     final Object? json;
     try {
-      json = await _send('GET', '/MediaSegments/$itemId', query: {'includeSegmentTypes': 'Commercial'});
-    } on JellyfinException catch (e) {
+      json = await send('GET', '/MediaSegments/$itemId', query: {'includeSegmentTypes': 'Commercial'});
+    } on ServerException catch (e) {
       if (e.statusCode == 404) return const [];
       rethrow;
     }
@@ -454,9 +447,10 @@ class JellyfinClient {
   /// Must stay static-only (the direct-play spec): every segment that isn't
   /// a transcoded program part, and every analyzer read, comes from here.
   /// Transcode URLs come only from [playbackInfo].
+  @override
   Uri streamUri(String itemId) => uri('/Videos/$itemId/stream', {
         'static': 'true',
-        'mediaSourceId': itemId,
+        'mediaSourceId': mediaSourceIdOf(itemId),
       });
 
   /// The device profile sent with [playbackInfo]: direct play accepts every
@@ -491,19 +485,23 @@ class JellyfinClient {
         ],
       };
 
+  @override
+  Uri get pingUri => uri('/System/Ping');
+
   /// Asks Jellyfin whether [itemId] can be direct-played under [maxBitrate]
   /// (bits per second; null for no limit) on a device described by
   /// [profile] (the Linux one, [deviceProfile], when null). With
   /// [forceTranscode], direct play and stream copy are ruled out, so the
   /// answer is always a full transcode.
-  Future<PlaybackDecision> playbackInfo(String itemId,
+  @override
+  Future<PlaybackDecision> playbackDecision(String itemId,
       {int? maxBitrate,
       bool forceTranscode = false,
       Duration startAt = Duration.zero,
       Map<String, Object?>? profile}) async {
-    final json = await _send('POST', '/Items/$itemId/PlaybackInfo', body: {
+    final json = await send('POST', '/Items/$itemId/PlaybackInfo', body: {
       'UserId': userId,
-      'MediaSourceId': itemId,
+      'MediaSourceId': ?mediaSourceIdOf(itemId),
       'MaxStreamingBitrate': ?(maxBitrate ?? profile?['MaxStreamingBitrate']),
       'StartTimeTicks': startAt.inMicroseconds * 10,
       'AutoOpenLiveStream': false,
@@ -516,20 +514,24 @@ class JellyfinClient {
     }) as Map<String, Object?>;
     final sources = (json['MediaSources'] as List? ?? const []).cast<Map<String, Object?>>();
     final source = sources.where((s) => s['Id'] == itemId).firstOrNull ?? sources.firstOrNull;
-    if (source == null) throw JellyfinException('The server has no playable version of this item.');
+    if (source == null) throw ServerException('The server has no playable version of this item.');
     final url = source['TranscodingUrl'] as String?;
     if (!forceTranscode && source['SupportsDirectPlay'] == true) return const PlaybackDecision.direct();
-    if (url == null) throw JellyfinException('The server would not convert this item.');
+    if (url == null) throw ServerException('The server would not convert this item.');
     final template = transcodeTemplate(url);
     final video = (source['MediaStreams'] as List? ?? const [])
         .cast<Map<String, Object?>>()
         .where((m) => m['Type'] == 'Video')
         .firstOrNull;
     return PlaybackDecision.transcode(template,
-        directStream: !forceTranscode && keepsVideo(template, source),
+        directStream: !forceTranscode && copiesVideo(template, source),
         sourceBitrate: ((video?['BitRate'] ?? source['Bitrate']) as num?)?.toInt(),
         sourceCodec: video?['Codec'] as String?);
   }
+
+  /// Whether the conversion at [template] copies [source]'s video.
+  @protected
+  bool copiesVideo(Uri template, Map<String, Object?> source) => keepsVideo(template, source);
 
   /// Whether a conversion copies the video (only the container, audio or
   /// subtitles need converting): Jellyfin's reasons for it, from
@@ -568,7 +570,8 @@ class JellyfinClient {
 
   /// One transcode job's URL: [template] (see [transcodeTemplate]) joined at
   /// [startAt], under its own [playSessionId].
-  static Uri transcodeUri(Uri template, {required String playSessionId, required Duration startAt}) =>
+  @override
+  Future<Uri> transcodeUri(Uri template, {required String playSessionId, required Duration startAt}) async =>
       template.replace(queryParameters: {
         for (final e in template.queryParameters.entries)
           if (e.key.toLowerCase() != 'starttimeticks' && e.key.toLowerCase() != 'playsessionid') e.key: e.value,
@@ -576,87 +579,33 @@ class JellyfinClient {
         'StartTimeTicks': '${startAt.inMicroseconds * 10}',
       });
 
-  /// Stops the transcode job [playSessionId] started by this device.
-  Future<void> stopEncoding(String playSessionId) => _send('DELETE', '/Videos/ActiveEncodings',
+  @override
+  bool get transcodeKeepsSourceTime => false;
+
+  @override
+  Future<void> stopTranscode(String playSessionId) => send('DELETE', '/Videos/ActiveEncodings',
       query: {'deviceId': deviceId, 'playSessionId': playSessionId});
 
-  Uri imageUri(String itemId, String imageType, {int? maxHeight, String? tag}) =>
-      uri('/Items/$itemId/Images/$imageType', {
+  @override
+  Uri imageUri(String itemId, ImageKind kind, {int? maxHeight, String? tag}) =>
+      uri('/Items/$itemId/Images/${kind == ImageKind.logo ? 'Logo' : 'Primary'}', {
         'maxHeight': maxHeight,
         'tag': tag,
         'quality': 90,
       });
 
+  @override
   Future<void> reportPlaybackStart(PlaybackReport report) =>
-      _send('POST', '/Sessions/Playing', body: report.toJson());
+      send('POST', '/Sessions/Playing', body: reportJson(report));
 
+  @override
   Future<void> reportPlaybackProgress(PlaybackReport report) =>
-      _send('POST', '/Sessions/Playing/Progress', body: report.toJson());
+      send('POST', '/Sessions/Playing/Progress', body: reportJson(report));
 
+  @override
   Future<void> reportPlaybackStopped(PlaybackReport report) =>
-      _send('POST', '/Sessions/Playing/Stopped', body: report.toJson());
+      send('POST', '/Sessions/Playing/Stopped', body: reportJson(report));
 
+  @override
   void close() => _http.close();
-}
-
-/// What [JellyfinClient.playbackInfo] decided: direct play (from
-/// [JellyfinClient.streamUri]), or a conversion whose URL template is
-/// [transcodeTemplate]: a direct stream when it keeps the video
-/// ([directStream]), a transcode otherwise.
-class PlaybackDecision {
-  const PlaybackDecision.direct()
-      : transcodeTemplate = null,
-        directStream = false,
-        sourceBitrate = null,
-        sourceCodec = null;
-  const PlaybackDecision.transcode(Uri this.transcodeTemplate,
-      {this.directStream = false, this.sourceBitrate, this.sourceCodec});
-
-  final Uri? transcodeTemplate;
-
-  /// The conversion copies the video (remux, or audio only).
-  final bool directStream;
-
-  /// The original video's bitrate (bits per second) and codec, as Jellyfin
-  /// knows them; null when it doesn't.
-  final int? sourceBitrate;
-  final String? sourceCodec;
-
-  bool get transcode => transcodeTemplate != null;
-}
-
-enum PlayMethod {
-  directPlay('DirectPlay'),
-  directStream('DirectStream'),
-  transcode('Transcode');
-
-  const PlayMethod(this.json);
-
-  final String json;
-}
-
-class PlaybackReport {
-  const PlaybackReport({
-    required this.itemId,
-    required this.playSessionId,
-    required this.position,
-    this.isPaused = false,
-    this.playMethod = PlayMethod.directPlay,
-  });
-
-  final String itemId;
-  final String playSessionId;
-  final Duration position;
-  final bool isPaused;
-  final PlayMethod playMethod;
-
-  Map<String, Object?> toJson() => {
-        'ItemId': itemId,
-        'MediaSourceId': itemId,
-        'PlaySessionId': playSessionId,
-        'PositionTicks': position.inMicroseconds * 10,
-        'IsPaused': isPaused,
-        'CanSeek': false,
-        'PlayMethod': playMethod.json,
-      };
 }

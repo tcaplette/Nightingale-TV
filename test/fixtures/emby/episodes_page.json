@@ -1,0 +1,119 @@
+{
+ "Items": [
+  {
+   "Name": "Maple Street - S01E01 - Episode 1",
+   "ServerId": "36742d04fcf5437dbdbed483484e14d8",
+   "Id": "137",
+   "Etag": "7af3512e8f2fad577d1b618b196a2f4e",
+   "DateCreated": "2026-10-21T18:15:47.0000000Z",
+   "DateModified": "2026-10-21T18:15:47.0000000Z",
+   "RunTimeTicks": 4350020000,
+   "IndexNumber": 1,
+   "ParentIndexNumber": 1,
+   "IsFolder": false,
+   "Type": "Episode",
+   "SeriesName": "Maple Street",
+   "SeriesId": "130",
+   "SeasonId": "133",
+   "SeasonName": "Season 1",
+   "Chapters": [
+    {
+     "StartPositionTicks": 0,
+     "Name": "Act 1",
+     "MarkerType": "Chapter",
+     "ChapterIndex": 0
+    },
+    {
+     "StartPositionTicks": 1450000000,
+     "Name": "Act 2",
+     "MarkerType": "Chapter",
+     "ChapterIndex": 1
+    },
+    {
+     "StartPositionTicks": 2900000000,
+     "Name": "Act 3",
+     "MarkerType": "Chapter",
+     "ChapterIndex": 2
+    }
+   ],
+   "MediaType": "Video"
+  },
+  {
+   "Name": "Maple Street - S01E02 - Episode 2",
+   "ServerId": "36742d04fcf5437dbdbed483484e14d8",
+   "Id": "135",
+   "Etag": "7af3512e8f2fad577d1b618b196a2f4e",
+   "DateCreated": "2026-10-21T18:15:50.0000000Z",
+   "DateModified": "2026-10-21T18:15:50.0000000Z",
+   "RunTimeTicks": 4500170000,
+   "IndexNumber": 2,
+   "ParentIndexNumber": 1,
+   "IsFolder": false,
+   "Type": "Episode",
+   "SeriesName": "Maple Street",
+   "SeriesId": "130",
+   "SeasonId": "133",
+   "SeasonName": "Season 1",
+   "Chapters": [
+    {
+     "StartPositionTicks": 0,
+     "Name": "Act 1",
+     "MarkerType": "Chapter",
+     "ChapterIndex": 0
+    },
+    {
+     "StartPositionTicks": 1500000000,
+     "Name": "Act 2",
+     "MarkerType": "Chapter",
+     "ChapterIndex": 1
+    },
+    {
+     "StartPositionTicks": 3000000000,
+     "Name": "Act 3",
+     "MarkerType": "Chapter",
+     "ChapterIndex": 2
+    }
+   ],
+   "MediaType": "Video"
+  },
+  {
+   "Name": "Maple Street - S01E03 - Episode 3",
+   "ServerId": "36742d04fcf5437dbdbed483484e14d8",
+   "Id": "136",
+   "Etag": "7af3512e8f2fad577d1b618b196a2f4e",
+   "DateCreated": "2026-10-21T18:15:56.0000000Z",
+   "DateModified": "2026-10-21T18:15:56.0000000Z",
+   "RunTimeTicks": 4650320000,
+   "IndexNumber": 3,
+   "ParentIndexNumber": 1,
+   "IsFolder": false,
+   "Type": "Episode",
+   "SeriesName": "Maple Street",
+   "SeriesId": "130",
+   "SeasonId": "133",
+   "SeasonName": "Season 1",
+   "Chapters": [
+    {
+     "StartPositionTicks": 0,
+     "Name": "Act 1",
+     "MarkerType": "Chapter",
+     "ChapterIndex": 0
+    },
+    {
+     "StartPositionTicks": 1550000000,
+     "Name": "Act 2",
+     "MarkerType": "Chapter",
+     "ChapterIndex": 1
+    },
+    {
+     "StartPositionTicks": 3100000000,
+     "Name": "Act 3",
+     "MarkerType": "Chapter",
+     "ChapterIndex": 2
+    }
+   ],
+   "MediaType": "Video"
+  }
+ ],
+ "TotalRecordCount": 24
+}

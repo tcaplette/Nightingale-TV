@@ -11,6 +11,8 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:nightingale_tv/jellyfin/jellyfin_client.dart';
+import 'package:nightingale_tv/server/media_server.dart';
 import 'package:nightingale_tv/app_state.dart';
 import 'package:nightingale_tv/channels/channel.dart';
 import 'package:nightingale_tv/channels/logo_windows.dart';
@@ -44,7 +46,7 @@ void main() {
       try {
         await household.start();
         app = household.app!;
-        final client = app.clientFor(server);
+        final client = app.clientFor(ServerKind.jellyfin, server) as JellyfinClient;
         final info = await client.publicInfo();
         await app.completeSignIn(await client.authenticateByName(user, password, serverName: info.name), client);
         expect(app.phase, AppPhase.ready, reason: app.syncError ?? '');

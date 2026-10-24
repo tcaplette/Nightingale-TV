@@ -1,0 +1,58 @@
+# Builds the Linux version of Nightingale TV for a release, with the web
+# admin, and attaches it to that release, as
+# nightingale-tv-linux-x64-<version>.tar.gz (and its .sha256). The Docker
+# image (separate repo) downloads this file.
+#
+# Runs when a version tag is pushed:  git tag v1.1.0 && git push origin v1.1.0
+# It's built on Ubuntu 24.04, the same release the Docker image runs on, so
+# its libraries (GTK, libmpv2) match.
+name: Linux release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing tag to build (e.g. v1.1.0)
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  linux:
+    runs-on: ubuntu-24.04
+    env:
+      TAG: ${{ github.event.inputs.tag || github.ref_name }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TAG }}
+
+      - name: Build tools and libraries
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            clang cmake ninja-build pkg-config libgtk-3-dev libmpv-dev liblzma-dev
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: 3.47.7
+          channel: stable
+
+      # The Linux app with the web admin in its web/ folder; fails when the
+      # web admin doesn't build.
+      - name: Build and package
+        run: |
+          flutter pub get --enforce-lockfile
+          VERSION="${TAG#v}"
+          tool/build_linux_release.sh "$VERSION"
+          echo "FILE=dist/nightingale-tv-linux-x64-${VERSION}.tar.gz" >> "$GITHUB_ENV"
+
+      - name: Attach to the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release view "$TAG" >/dev/null 2>&1 || gh release create "$TAG" --verify-tag --title "$TAG" --notes ""
+          gh release upload "$TAG" "$FILE" "$FILE.sha256" --clobber

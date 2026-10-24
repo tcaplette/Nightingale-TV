@@ -1,0 +1,49 @@
+{
+ "MediaContainer": {
+  "size": 5,
+  "allowSync": false,
+  "title1": "Plex Library",
+  "Directory": [
+   {
+    "key": "1",
+    "title": "TV",
+    "type": "show",
+    "agent": "tv.plex.agents.none",
+    "scanner": "Plex TV Series",
+    "language": "en-US"
+   },
+   {
+    "key": "4",
+    "title": "Music",
+    "type": "artist",
+    "agent": "tv.plex.agents.none",
+    "scanner": "Plex Music",
+    "language": "en-US"
+   },
+   {
+    "key": "3",
+    "title": "Home Videos",
+    "type": "movie",
+    "agent": "tv.plex.agents.none",
+    "scanner": "Plex Video Files",
+    "language": "en-US"
+   },
+   {
+    "key": "2",
+    "title": "Movies",
+    "type": "movie",
+    "agent": "tv.plex.agents.none",
+    "scanner": "Plex Movie",
+    "language": "en-US"
+   },
+   {
+    "key": "9",
+    "title": "Photos",
+    "type": "photo",
+    "agent": "tv.plex.agents.none",
+    "scanner": "Plex Photo Scanner",
+    "language": "xn"
+   }
+  ]
+ }
+}

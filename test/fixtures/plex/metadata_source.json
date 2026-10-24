@@ -1,0 +1,23 @@
+{
+ "MediaContainer": {
+  "size": 1,
+  "Metadata": [
+   {
+    "ratingKey": "25",
+    "type": "episode",
+    "title": "Episode 1",
+    "duration": 435008,
+    "Media": [
+     {
+      "id": 17,
+      "bitrate": 2452,
+      "audioCodec": "ac3",
+      "videoCodec": "hevc",
+      "container": "mkv",
+      "videoProfile": "main 10"
+     }
+    ]
+   }
+  ]
+ }
+}

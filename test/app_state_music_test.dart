@@ -1,10 +1,12 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:math';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:nightingale_tv/app_state.dart';
+import 'package:nightingale_tv/channels/channel.dart';
 import 'package:nightingale_tv/channels/channel_generator.dart';
 import 'package:nightingale_tv/jellyfin/jellyfin_client.dart';
 
@@ -95,5 +97,28 @@ void main() {
     expect(e.availableAt!.isBefore(scan), isFalse);
     expect(app.premierePlan, isNotNull);
     expect(app.premierePlan!.homeOf.keys, containsAll(['alpha', 'beta']));
+  });
+
+  test("a music channel the user makes (web admin): songs shuffled, removable; a generated one isn't", () async {
+    app = await signedInApp(dir, fakeLibrary(songs: fakeMusic(40, year: 1985), musicVideos: fakeMusic(5, videos: true)));
+    await expectLater(app.createMusicChannel('Nothing', const ChannelSource(includeEpisodes: false)),
+        throwsA(isA<StateError>()));
+    await expectLater(app.createMusicChannel('Seventies', const ChannelSource(includeEpisodes: false, includeSongs: true, decades: [1970])),
+        throwsA(isA<StateError>().having((e) => e.message, 'message', 'Nothing in the library matches that.')));
+    final before = app.allChannels.length;
+    final ch = await app.createMusicChannel('Eighties', const ChannelSource(includeEpisodes: false, includeSongs: true, decades: [1980]));
+    expect(ch.isMusic, isTrue);
+    expect(ch.auto, isFalse);
+    expect(ch.order, PlaybackOrder.random);
+    expect(ch.playlist, hasLength(40));
+    expect(ch.number, greaterThan(app.allChannels.where((c) => c != ch).map((c) => c.number).reduce(max)));
+    expect(app.allChannels, hasLength(before + 1));
+    final group = await app.createGroup('Music');
+    await app.setInGroup(group, ch, true);
+    await app.deleteUserChannel(ch);
+    expect(app.channelById(ch.id), isNull);
+    expect(app.settings.groups.single.channelIds, isEmpty);
+    final generated = app.allChannels.first;
+    await expectLater(app.deleteUserChannel(generated), throwsA(isA<StateError>()));
   });
 }

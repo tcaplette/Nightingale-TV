@@ -1,0 +1,59 @@
+{
+ "MediaContainer": {
+  "size": 3,
+  "totalSize": 3,
+  "offset": 0,
+  "allowSync": true,
+  "identifier": "com.plexapp.plugins.library",
+  "librarySectionID": 1,
+  "librarySectionTitle": "TV",
+  "nocache": true,
+  "title1": "TV",
+  "title2": "All Shows",
+  "viewGroup": "show",
+  "viewMode": 65592,
+  "Metadata": [
+   {
+    "ratingKey": "1",
+    "key": "/library/metadata/1/children",
+    "type": "show",
+    "title": "Maple Street",
+    "summary": "",
+    "index": 1,
+    "viewCount": 1,
+    "lastViewedAt": 1792608633,
+    "leafCount": 8,
+    "viewedLeafCount": 1,
+    "childCount": 2,
+    "addedAt": 1792608387,
+    "updatedAt": 1792608392
+   },
+   {
+    "ratingKey": "12",
+    "key": "/library/metadata/12/children",
+    "type": "show",
+    "title": "Night Desk",
+    "summary": "",
+    "index": 1,
+    "leafCount": 8,
+    "viewedLeafCount": 0,
+    "childCount": 2,
+    "addedAt": 1792608388,
+    "updatedAt": 1792608392
+   },
+   {
+    "ratingKey": "23",
+    "key": "/library/metadata/23/children",
+    "type": "show",
+    "title": "Signal Hill",
+    "summary": "",
+    "index": 1,
+    "leafCount": 8,
+    "viewedLeafCount": 0,
+    "childCount": 2,
+    "addedAt": 1792608389,
+    "updatedAt": 1792608392
+   }
+  ]
+ }
+}

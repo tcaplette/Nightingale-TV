@@ -11,6 +11,7 @@ import '../remote/remote_control.dart';
 import 'export_settings.dart';
 import 'm3u_writer.dart';
 import 'xmltv_writer.dart';
+import '../server/media_server.dart';
 
 /// Plays a channel as one continuous stream (channel-streaming spec).
 abstract interface class ChannelStreamer {
@@ -83,8 +84,11 @@ class LineupServer {
     return app;
   }
 
-  /// The channels served: visible ones, by number; none while signed out.
-  List<Channel> lineupOf(AppState? app) => app?.channels ?? const [];
+  /// The channels served: visible generated ones, by number; none while
+  /// signed out. Live channels are never exported (lineup-export): the
+  /// server has its own Live TV, and re-serving an IPTV stream would loop
+  /// it or break the provider's connection limit.
+  List<Channel> lineupOf(AppState? app) => [for (final c in app?.channels ?? const <Channel>[]) if (!c.isLive) c];
 
   /// The address clients reached this server at.
   static ExportUrls urlsFor(HttpRequest request) {
@@ -212,7 +216,7 @@ class LineupServer {
     }
     var poster = _posters.remove(id);
     if (poster == null) {
-      final uri = client.imageUri(id, 'Primary', maxHeight: 600);
+      final uri = client.imageUri(id, ImageKind.primary, maxHeight: 600);
       final upstream = await _http
           .get(uri.replace(queryParameters: {...uri.queryParameters, 'format': 'Jpg'}), headers: client.authHeaders)
           .timeout(const Duration(seconds: 15));

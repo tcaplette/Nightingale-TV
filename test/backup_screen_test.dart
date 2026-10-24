@@ -373,7 +373,7 @@ void main() {
       server.listen((r) async {
         r.response.headers.contentType = ContentType.json;
         r.response.write(r.uri.path == '/System/Info/Public'
-            ? '{"ServerName":"Home","Version":"10.10.0","Id":"s1"}'
+            ? '{"ServerName":"Home","Version":"10.10.0","ProductName":"Jellyfin Server","Id":"s1"}'
             : 'false');
         await r.response.close();
       });

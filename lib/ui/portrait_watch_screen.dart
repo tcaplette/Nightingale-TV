@@ -326,7 +326,7 @@ class _PlayerButton extends StatelessWidget {
 }
 
 /// What the guide shows for [schedule] at [now], and after it.
-({ScheduledProgram now, ScheduledProgram next})? _nowNext(ChannelSchedule? schedule, DateTime now) {
+({ScheduledProgram now, ScheduledProgram next})? _nowNext(ProgramSchedule? schedule, DateTime now) {
   if (schedule == null) return null;
   final p = schedule.guideProgramAt(now);
   return (now: p, next: schedule.guideProgramAt(p.end));
@@ -372,6 +372,7 @@ class PortraitNowPanel extends StatelessWidget {
                     overflow: TextOverflow.ellipsis,
                     style: g.display(26, weight: FontWeight.w700, color: g.accent)),
               ),
+              if (channel.isLive) ...[const SizedBox(width: 12), const LiveTag(size: 24)],
             ],
           ),
           const SizedBox(height: 12),
@@ -441,7 +442,7 @@ class _ChannelRow extends StatelessWidget {
   });
 
   final Channel channel;
-  final ChannelSchedule? schedule;
+  final ProgramSchedule? schedule;
   final DateTime now;
   final bool tuned;
   final double gutter;

@@ -338,7 +338,7 @@ Future<bool> confirmRestore(BuildContext context, StoredBackup b, RestorePlan pl
         'It replaces everything on this TV. Your current setup is backed up first.'
       else
         'It sets up this TV as the backup has it.',
-      if (need.isNotEmpty) '${_list(need)} will need their Jellyfin password again.',
+      if (need.isNotEmpty) '${_list(need)} will need to sign in to their server again.',
       if (plan.exportMoves) 'Live TV export moves to this device; turn it off on the old one.',
     ].join('\n\n'),
     action: 'Restore',
@@ -498,7 +498,7 @@ Future<void> restoreOnFirstRun(BuildContext context) async {
           const SizedBox(height: 16),
           Text(
             'Set up this TV from a Nightingale TV backup: your profiles, channels, blocks and settings. '
-            'Each profile asks for its Jellyfin password once.',
+            'Each profile signs in to its server once.',
             style: g.body(28, color: g.textDim),
           ),
           const SizedBox(height: 40),
@@ -622,7 +622,7 @@ class _WelcomeBackScreenState extends State<WelcomeBackScreen> {
                 const SizedBox(height: 20),
                 Text(
                   'Restoring brings back your profiles, channels, blocks and settings. '
-                  'Each profile asks for its Jellyfin password once.',
+                  'Each profile signs in to its server once.',
                   style: g.body(26, color: g.textDim),
                 ),
                 const SizedBox(height: 40),

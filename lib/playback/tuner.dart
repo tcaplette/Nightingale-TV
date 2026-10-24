@@ -6,15 +6,19 @@ import 'package:flutter/foundation.dart';
 import '../app_state.dart';
 import '../channels/channel.dart';
 import '../channels/schedule.dart';
-import '../jellyfin/jellyfin_client.dart';
 import '../library/library_index.dart';
+import '../live/live_source.dart';
+import '../live/live_source_client.dart';
+import '../live/url_privacy.dart';
 import '../platform/platform_info.dart';
+import '../server/live_tv.dart';
 import 'android_device_profile.dart';
 import 'index_cache.dart';
 import 'playback_diagnostics.dart';
 import 'playback_proxy.dart';
 import 'report_plan.dart';
 import 'tuner_player.dart';
+import '../server/media_server.dart';
 
 enum TunerStatus {
   idle,
@@ -54,6 +58,11 @@ class Tuner extends ChangeNotifier {
       media.tracksStream.listen((_) => _applyCaptions()),
       media.completedStream.listen((completed) {
         if (!completed || status != TunerStatus.playing) return;
+        // A live stream never ends by itself: it dropped.
+        if (_live != null) {
+          _liveLost('the stream ended');
+          return;
+        }
         // A commercial shorter than its listed length holds its last
         // picture until the hand-over; a program part shows stand-by.
         if (inBreak) {
@@ -62,7 +71,8 @@ class Tuner extends ChangeNotifier {
         }
         _setStatus(TunerStatus.standby);
       }),
-      media.logStream.listen((line) => _diagnostics?.mpvLog(line)),
+      // mpv's log quotes stream URLs, which can hold an IPTV login.
+      media.logStream.listen((line) => _diagnostics?.mpvLog(scrubUrlsIn(line))),
       // The player moved on to the preloaded segment by itself.
       media.advanced.listen((_) => _onAdvanced()),
       media.errorStream.listen((message) {
@@ -138,7 +148,7 @@ class Tuner extends ChangeNotifier {
   /// "Stopped" reports for viewings left behind. They're sent at the next
   /// picture, or [stoppedReportDelay] after the tune, so they never hold up
   /// or compete with an open (fast-tune spec); quitting sends them at once.
-  final _stoppedQueue = <(JellyfinClient, PlaybackReport)>[];
+  final _stoppedQueue = <(MediaServer, PlaybackReport)>[];
   Timer? _stoppedTimer;
 
   /// How long a queued "stopped" report may wait for the next picture.
@@ -280,7 +290,7 @@ class Tuner extends ChangeNotifier {
     final client = app.client;
     final proxy = _proxy;
     if (client == null || proxy == null || !proxy.running) return;
-    unawaited(proxy.warm(client.uri('/System/Ping'), client.authHeaders).catchError((Object e) {
+    unawaited(proxy.warm(client.pingUri, client.authHeaders).catchError((Object e) {
       debugPrint('Playback proxy: warm-up failed: $e');
     }));
   }
@@ -302,11 +312,14 @@ class Tuner extends ChangeNotifier {
   /// the proxy adds them), or [url] itself when there's no proxy or it
   /// doesn't answer within [_proxyTimeout].
   /// [preload]: the next segment, served alongside the one on now.
-  Future<(Uri, Map<String, String>)> _route(Uri url, JellyfinClient client,
+  Future<(Uri, Map<String, String>)> _route(Uri url, MediaServer client,
       {IndexCacheKey? cache, Duration start = Duration.zero, bool preload = false}) async {
     final proxy = _proxy;
     final ready = _proxyReady;
-    if (proxy != null && ready != null) {
+    // An HLS playlist (Plex's transcodes) names its parts by relative paths,
+    // which only resolve against the server: the player opens it there.
+    final hls = url.path.endsWith('.m3u8');
+    if (proxy != null && ready != null && !hls) {
       try {
         if (await ready.timeout(_proxyTimeout)) {
           final routed = await proxy
@@ -358,11 +371,14 @@ class Tuner extends ChangeNotifier {
     final schedule = app.scheduleFor(ch);
     final current = program;
     if (schedule != null && current != null) programs.add(schedule.next(current));
+    if (ch.isLive) return const [];
     final list = app.channels;
     final index = list.indexWhere((c) => c.id == ch.id);
     if (index >= 0 && list.length > 1) {
       for (final delta in const [1, -1]) {
-        programs.add(app.scheduleFor(list[(index + delta) % list.length])?.programAt(now));
+        final neighbor = list[(index + delta) % list.length];
+        // Live channels have nothing to decide or read ahead.
+        if (!neighbor.isLive) programs.add(app.scheduleFor(neighbor)?.programAt(now));
       }
     }
     return [
@@ -390,7 +406,7 @@ class Tuner extends ChangeNotifier {
     if (recent.isEmpty && last != null) recent.add(last);
     for (final id in recent) {
       final ch = app.channelById(id);
-      final schedule = ch == null ? null : app.scheduleFor(ch);
+      final schedule = ch == null || ch.isLive ? null : app.scheduleFor(ch);
       for (final p in schedule?.programsBetween(now, now.add(const Duration(hours: 2))) ?? const <ScheduledProgram>[]) {
         add(p.item);
       }
@@ -456,6 +472,12 @@ class Tuner extends ChangeNotifier {
     final ch = channel;
     final current = segment;
     if (ch == null) return;
+    if (ch.isLive) {
+      // The guide changed; the stream plays on.
+      _setLiveProgramme(ch, _generation);
+      notifyListeners();
+      return;
+    }
     final schedule = app.scheduleFor(ch);
     final now = _clock();
     if (schedule == null || current == null || !current.end.isAfter(now)) {
@@ -529,6 +551,13 @@ class Tuner extends ChangeNotifier {
     _diagnostics?.tuneStarted(trigger ?? (atSegmentEnd ? 'segment' : 'retune'), 'ch=${ch.number}');
     // Whatever was preloaded goes before anything else opens.
     await _dropPreload();
+    if (generation != _generation) return;
+    if (ch.isLive) {
+      await _playLive(generation, ch);
+      return;
+    }
+    // Leaving a live channel ends its stream (the next one doesn't wait).
+    await _closeLive();
     if (generation != _generation) return;
 
     final schedule = app.scheduleFor(ch);
@@ -654,7 +683,7 @@ class Tuner extends ChangeNotifier {
   /// Makes [current] what's on now, whether it opens or was preloaded: the
   /// segment and program, the viewing's reports, break state and the
   /// hand-over timer. [startAt]: where in its item it starts.
-  void _setOnNow(int generation, Channel ch, JellyfinClient client, ChannelSchedule schedule, ScheduledProgram current,
+  void _setOnNow(int generation, Channel ch, MediaServer client, ProgramSchedule schedule, ScheduledProgram current,
       DateTime now, Duration startAt) {
     final step = reportStep(_report?.viewing, ch.id, current);
     // Sent after the new picture: the open doesn't wait for the server.
@@ -917,8 +946,10 @@ class Tuner extends ChangeNotifier {
   /// open should land, moving forward by less than a second. Seeks and resets
   /// jump or stand still, and a late tick from the file before is far away.
   void _onPosition(Duration position) {
+    _live?.moved(position, _clock());
     if (!_awaitingFirstFrame) return;
-    if ((position - _landing).abs() > const Duration(seconds: 30)) {
+    // A live stream's timeline starts wherever the broadcast is.
+    if (_live == null && (position - _landing).abs() > const Duration(seconds: 30)) {
       _lastTick = null;
       return;
     }
@@ -934,6 +965,10 @@ class Tuner extends ChangeNotifier {
   /// Playback of the open now (or the preloaded segment handed over to)
   /// started at [startedAt] in its media.
   void _onFirstFrame(Duration startedAt) {
+    if (_live != null) {
+      _onLiveFirstFrame();
+      return;
+    }
     final handover = _handover;
     _handover = null;
     if (handover != null && handover.preloaded) {
@@ -1091,6 +1126,7 @@ class Tuner extends ChangeNotifier {
       playSessionId: transcoding ? job.playSessionId : report.sessionId,
       position: position,
       isPaused: paused,
+      runtime: report.item.runtime,
       playMethod: !transcoding
           ? PlayMethod.directPlay
           : job.directStream
@@ -1127,34 +1163,39 @@ class Tuner extends ChangeNotifier {
 
   /// Where in the program's video the player is. A transcode starts at 0
   /// where it joined.
-  Duration get _itemPosition => media.position + (_active?.joinedAt ?? Duration.zero);
+  Duration get _itemPosition => media.position + (_active?.timeOffset ?? Duration.zero);
 
   /// Opens [current] as a new transcode job joined at [startAt] (Jellyfin
   /// seeks; mpv never does). False if it failed.
   /// [capKbps] is the cap it was decided under (null for none).
   Future<bool> _openTranscode(int generation, ScheduledProgram current, MediaEntry item, Uri template,
-      Duration startAt, JellyfinClient client,
+      Duration startAt, MediaServer client,
       {required int? capKbps, bool fallback = false, bool directStream = false}) async {
     final job = _active = _Transcode(
         playSessionId: _newSessionId(),
         item: item,
         template: template,
         joinedAt: startAt,
+        sourceTime: client.transcodeKeepsSourceTime,
         capKbps: capKbps,
         fallback: fallback,
         directStream: directStream);
     _mayFallBack = false;
     _armStartup(generation, restart: false);
     try {
-      final url = JellyfinClient.transcodeUri(template, playSessionId: job.playSessionId, startAt: startAt);
+      final url = await client.transcodeUri(template, playSessionId: job.playSessionId, startAt: startAt);
+      // A stream in the source's own times plays from the join point to the
+      // part's end; one that starts where it joined, from 0.
+      final start = job.sourceTime ? startAt : null;
+      final end = job.sourceTime ? current.itemTo : current.itemTo - startAt;
       _diagnostics?.opened(
           '${fallback ? 'transcode-fallback' : _method(template, directStream)}${capKbps == null ? '' : '@${capKbps}kbps'}', url,
-          end: current.itemTo - startAt);
-      _expectFirstFrame(Duration.zero);
+          start: start, end: end);
+      _expectFirstFrame(start ?? Duration.zero);
       final (routed, headers) = await _route(url, client);
       if (generation != _generation) return false;
       _readingFrom(routed);
-      await media.open(routed, headers: headers, end: current.itemTo - startAt);
+      await media.open(routed, headers: headers, start: start, end: end);
       _diagnostics?.openReturned();
     } on Object catch (e) {
       if (generation != _generation) return false;
@@ -1179,6 +1220,10 @@ class Tuner extends ChangeNotifier {
   /// setting on, or on Android); otherwise, and after playback started, the error state
   /// shows until the next segment.
   void _onPlaybackError(String message) {
+    if (_live != null) {
+      _onLiveError(message);
+      return;
+    }
     final handingOver = _handover?.preloaded == true;
     if (!handingOver && status != TunerStatus.tuning && status != TunerStatus.playing) return;
     if (status == TunerStatus.tuning && _mayFallBack) {
@@ -1210,7 +1255,7 @@ class Tuner extends ChangeNotifier {
     final cap = app.capInEffect;
     final PlaybackDecision decision;
     try {
-      decision = await client.playbackInfo(item.sourceId,
+      decision = await client.playbackDecision(item.sourceId,
           maxBitrate: cap == null ? null : cap * 1000,
           forceTranscode: true,
           startAt: current.positionAt(_clock()),
@@ -1241,6 +1286,11 @@ class Tuner extends ChangeNotifier {
     unawaited(_dropPreload());
     error = message;
     _setStatus(TunerStatus.error);
+    // A Plex server may answer at another address now: tune again there.
+    final generation = _generation;
+    unawaited(app.reachServerAgain().then((moved) {
+      if (moved && generation == _generation && status == TunerStatus.error) unawaited(retune());
+    }));
   }
 
   /// Stops the active transcode job, if any. Tuning doesn't wait for the
@@ -1252,7 +1302,7 @@ class Tuner extends ChangeNotifier {
     final client = app.client;
     if (job == null || client == null) return;
     _diagnostics?.event('stop transcode ${job.playSessionId} (status ${status.name})');
-    unawaited(_quietly(() => client.stopEncoding(job.playSessionId).timeout(const Duration(seconds: 5))));
+    unawaited(_quietly(() => client.stopTranscode(job.playSessionId).timeout(const Duration(seconds: 5))));
   }
 
   /// Stops the active transcode job and waits (briefly) for the server, for
@@ -1263,8 +1313,316 @@ class Tuner extends ChangeNotifier {
     _active = null;
     final client = app.client;
     if (job == null || client == null) return;
-    await _quietly(() => client.stopEncoding(job.playSessionId).timeout(exitTimeout));
+    await _quietly(() => client.stopTranscode(job.playSessionId).timeout(exitTimeout));
   }
+
+  // ---- Live channels (live-playback) -------------------------------------------
+
+  /// The live stream on now (or opening), with its reports and reconnects.
+  _LiveSession? _live;
+
+  /// What the stand-by or failure card says on a live channel.
+  String? liveMessage;
+
+  /// The channel on now is live.
+  bool get isLive => channel?.isLive ?? false;
+
+  /// How long a live stream may take to show its first picture.
+  @visibleForTesting
+  Duration liveStartTimeout = const Duration(seconds: 20);
+
+  /// A live picture that stands still this long reconnects; it's looked
+  /// at every [liveStallCheck].
+  @visibleForTesting
+  Duration liveStall = const Duration(seconds: 10);
+  @visibleForTesting
+  Duration liveStallCheck = const Duration(seconds: 1);
+
+  /// Server Live TV progress reports go this often.
+  @visibleForTesting
+  Duration liveReportEvery = _progressInterval;
+
+  /// Waits between reconnects: these, then [liveRetryEvery].
+  @visibleForTesting
+  List<Duration> liveRetries = const [
+    Duration(seconds: 1),
+    Duration(seconds: 2),
+    Duration(seconds: 4),
+    Duration(seconds: 8),
+  ];
+  @visibleForTesting
+  Duration liveRetryEvery = const Duration(seconds: 30);
+
+  /// Closing a live stream may hold up the next open, or quitting, this
+  /// long at most.
+  static const liveCloseTimeout = Duration(seconds: 2);
+
+  Timer? _liveBoundary;
+  Timer? _liveRetry;
+
+  /// Live channel [ch]'s current programme as what's on, and the timer that
+  /// moves it on at the guide's next boundary (the stream plays on).
+  void _setLiveProgramme(Channel ch, int generation) {
+    _liveBoundary?.cancel();
+    final schedule = app.scheduleFor(ch);
+    if (schedule == null) return;
+    final now = _clock();
+    program = segment = schedule.programAt(now);
+    final wait = program!.end.difference(now);
+    _liveBoundary = Timer(wait.isNegative ? Duration.zero : wait + const Duration(milliseconds: 1), () {
+      if (generation != _generation || channel?.id != ch.id) return;
+      _setLiveProgramme(ch, generation);
+      notifyListeners();
+    });
+  }
+
+  /// Opens live channel [ch] (design D8). [attempt] counts reconnects.
+  Future<void> _playLive(int generation, Channel ch, {int attempt = 0}) async {
+    _programEnd?.cancel();
+    _segmentEnd = null;
+    _liveRetry?.cancel();
+    _queueFinish();
+    unawaited(flushReports());
+    _stopTranscode();
+    _setLiveProgramme(ch, generation);
+    if (attempt == 0) {
+      liveMessage = null;
+      error = null;
+      _changingChannel = true;
+      _setStatus(TunerStatus.tuning);
+    }
+    // One live stream at a time: the one open goes first, so its tuner or
+    // connection is free for this one.
+    await _closeLive(wait: true);
+    if (generation != _generation) return;
+    final found = app.live.lookup(ch);
+    final source = found?.source;
+    final client = source == null ? null : app.live.clientFor(source);
+    if (found == null || source == null || client == null) {
+      _liveFailed(generation, ch, LiveFailure.unreachable, 'the source is not available', source: source, attempt: attempt);
+      return;
+    }
+    final info = found.info;
+    if (PlatformInfo.isAndroid && source.kind == LiveSourceKind.m3u) {
+      final scheme = Uri.tryParse(info.url ?? '')?.scheme.toLowerCase();
+      if (!const {'http', 'https', 'rtsp'}.contains(scheme)) {
+        _liveFailed(generation, ch, LiveFailure.unsupportedScheme, 'scheme $scheme', source: source, attempt: attempt, retry: false);
+        return;
+      }
+    }
+    final session = _live = _LiveSession(ch, source, client, generation, attempt);
+    _diagnostics?.tuneStarted(attempt == 0 ? 'live' : 'live-reconnect', 'ch=${ch.number} ${source.kind.name}');
+    session.startTimer = Timer(liveStartTimeout, () {
+      if (!identical(_live, session) || session.pictured) return;
+      _liveFailed(generation, ch, LiveFailure.other, 'no picture in ${liveStartTimeout.inSeconds} s',
+          source: source, attempt: attempt, message: "${ch.name} didn't start");
+    });
+    final opening = Completer<LiveStream?>();
+    session.opening = opening.future;
+    final LiveStream stream;
+    try {
+      final cap = app.capInEffect;
+      stream = await client.open(info,
+          maxBitrate: cap == null ? null : cap * 1000,
+          profile: PlatformInfo.isAndroid ? await app.deviceProfile(cap) : null);
+    } on Object catch (e) {
+      opening.complete(null);
+      if (!identical(_live, session)) return;
+      final failure = e is LiveTvException ? e.failure : LiveFailure.other;
+      _liveFailed(generation, ch, failure, scrubUrlsIn('$e'), source: source, attempt: attempt);
+      return;
+    }
+    opening.complete(stream);
+    if (!identical(_live, session) || generation != _generation) {
+      // Superseded while it opened: closed at once, so surfing leaves
+      // nothing open on the server.
+      _diagnostics?.event('live: superseded open of ${ch.number} closed');
+      unawaited(_quietly(() => client.close(stream)));
+      return;
+    }
+    session.stream = stream;
+    _diagnostics?.opened('live-${source.kind.name}-${stream.method.json}', Uri.parse(scrubUrl(stream.uri.toString())));
+    _expectFirstFrame(Duration.zero);
+    try {
+      await media.open(stream.uri, headers: stream.headers, live: true);
+      _diagnostics?.openReturned();
+    } on Object catch (e) {
+      if (identical(_live, session)) _onLiveError('$e');
+      return;
+    }
+    if (identical(_live, session)) await _applyCaptions();
+  }
+
+  /// The live stream's first picture (or its first after a reconnect).
+  void _onLiveFirstFrame() {
+    final s = _live!;
+    s.pictured = true;
+    s.startTimer?.cancel();
+    _diagnostics?.firstPicture();
+    if (s.attempt > 0) _diagnostics?.event('live: reconnected on attempt ${s.attempt}');
+    liveMessage = null;
+    error = null;
+    _setStatus(TunerStatus.playing);
+    unawaited(flushReports());
+    final stream = s.stream;
+    if (stream != null && s.client.reports) {
+      s.reportedAt = DateTime.now();
+      _quietly(() => s.client.reportStart(stream));
+      s.reportTimer = Timer.periodic(liveReportEvery, (_) {
+        if (identical(_live, s)) _quietly(() => s.client.reportProgress(stream, s.watched));
+      });
+    }
+    // A picture that stands still is a stall.
+    s.stallTimer = Timer.periodic(liveStallCheck, (_) {
+      if (!identical(_live, s) || status != TunerStatus.playing) return;
+      if (_clock().difference(s.lastMove ?? _clock()) >= liveStall) _liveLost('stalled for ${liveStall.inSeconds} s');
+    });
+    s.lastMove = _clock();
+  }
+
+  /// The player failed on a live stream: before the picture, a card naming
+  /// the cause; after it, a reconnect.
+  void _onLiveError(String message) {
+    final s = _live;
+    final ch = channel;
+    if (s == null || ch == null) return;
+    final failure = _playerFailure(message, s.source);
+    if (!s.pictured) {
+      if (failure == LiveFailure.other && s.source.kind == LiveSourceKind.m3u) {
+        // mpv only says it couldn't open: the provider's answer says why.
+        final info = app.live.lookup(ch)?.info;
+        if (info != null) {
+          unawaited(s.client.causeOfFailure(info).then((cause) {
+            if (!identical(_live, s)) return;
+            _liveFailed(s.generation, ch, cause ?? LiveFailure.other, scrubUrlsIn(message),
+                source: s.source, attempt: s.attempt);
+          }));
+          return;
+        }
+      }
+      _liveFailed(s.generation, ch, failure, scrubUrlsIn(message), source: s.source, attempt: s.attempt);
+    } else {
+      _liveLost(scrubUrlsIn(message), failure: failure == LiveFailure.other ? null : failure);
+    }
+  }
+
+  /// What a player error says about a live stream (the provider's HTTP
+  /// status, a connection that failed, a decoder).
+  static LiveFailure _playerFailure(String message, LiveSource source) {
+    final m = message.toLowerCase();
+    if (RegExp(r'\b(403|458|509)\b').hasMatch(m) && source.kind == LiveSourceKind.m3u) return LiveFailure.providerRefused;
+    if (RegExp(r'\b(401|403)\b').hasMatch(m)) return LiveFailure.refused;
+    if (RegExp(r'decod|codec|unsupported format|no video|mediacodec').hasMatch(m)) return LiveFailure.cantDecode;
+    if (RegExp(r'connection|resolve|timed out|timeout|unreachable|refused|network|host|eof|end of file|http 5\d\d|\b50[234]\b').hasMatch(m)) {
+      return LiveFailure.unreachable;
+    }
+    return LiveFailure.other;
+  }
+
+  /// A live stream that played dropped (ended, stalled or failed):
+  /// "Reconnecting…", then "Lost the signal", reopening from the source.
+  void _liveLost(String cause, {LiveFailure? failure}) {
+    final s = _live;
+    final ch = channel;
+    if (s == null || ch == null) return;
+    _diagnostics?.event('live: $cause');
+    _scheduleLiveRetry(s.generation, ch, s.attempt + 1, cause: cause, failure: failure, source: s.source);
+  }
+
+  /// Opening failed (or never showed a picture): a card naming [failure],
+  /// and a retry as after a drop unless [retry] is off. While reconnecting
+  /// after a drop, a reopen that fails for no stated reason keeps the
+  /// reconnecting card.
+  void _liveFailed(int generation, Channel ch, LiveFailure failure, String detail,
+      {LiveSource? source, required int attempt, bool retry = true, String? message}) {
+    if (generation != _generation) return;
+    // A decoder that isn't there won't be on a retry.
+    if (failure == LiveFailure.cantDecode) retry = false;
+    _diagnostics?.tuneFailed('live ${failure.name}: $detail');
+    if (retry && attempt > 0 && (failure == LiveFailure.other || failure == LiveFailure.unreachable)) {
+      _scheduleLiveRetry(generation, ch, attempt + 1, cause: detail, source: source);
+      return;
+    }
+    if (!retry) {
+      unawaited(_closeLive());
+      liveMessage = message ?? liveFailureText(failure, ch, source);
+      error = liveMessage;
+      _setStatus(TunerStatus.error);
+      return;
+    }
+    _scheduleLiveRetry(generation, ch, attempt + 1, cause: detail, failure: failure, source: source, message: message);
+  }
+
+  void _scheduleLiveRetry(int generation, Channel ch, int attempt,
+      {required String cause, LiveFailure? failure, LiveSource? source, String? message}) {
+    unawaited(_closeLive());
+    final wait = attempt <= liveRetries.length ? liveRetries[attempt - 1] : liveRetryEvery;
+    if (failure != null || message != null) {
+      // A card naming the cause, until a retry brings the picture back.
+      liveMessage = message ?? liveFailureText(failure!, ch, source);
+      error = liveMessage;
+      _setStatus(TunerStatus.error);
+    } else {
+      liveMessage = attempt <= liveRetries.length ? 'Reconnecting…' : 'Lost the signal on ${ch.name}';
+      _setStatus(TunerStatus.standby);
+    }
+    _diagnostics?.event('live: reopen #$attempt in ${wait.inSeconds} s ($cause)');
+    _liveRetry?.cancel();
+    _liveRetry = Timer(wait, () {
+      if (generation != _generation || channel?.id != ch.id) return;
+      unawaited(_playLive(generation, ch, attempt: attempt));
+    });
+    notifyListeners();
+  }
+
+  /// The card for [failure] on [ch] (live-playback "Live stand-by
+  /// messages").
+  String liveFailureText(LiveFailure failure, Channel ch, LiveSource? source) {
+    final server = app.session?.serverName ?? 'the server';
+    final name = source?.name ?? 'the source';
+    return switch (failure) {
+      LiveFailure.tunersBusy => "All of $server's tuners are in use",
+      LiveFailure.unreachable => "Can't reach $name",
+      LiveFailure.refused => "Your $server account can't watch this channel",
+      LiveFailure.providerRefused => '$name refused the stream. It may be playing on another device.',
+      LiveFailure.unsupportedScheme => "This channel's stream type isn't supported on this device",
+      LiveFailure.cantDecode => "This device can't play this channel's video",
+      LiveFailure.other => "${ch.name} didn't start",
+    };
+  }
+
+  /// Ends the live stream on now, if any: reported stopped and closed at
+  /// the source. With [wait], until that's done (or a stream still opening
+  /// has opened and been closed), at most [liveCloseTimeout].
+  Future<void> _closeLive({bool wait = false}) async {
+    _liveRetry?.cancel();
+    final s = _live;
+    _live = null;
+    if (s == null) return;
+    s.cancelTimers();
+    Future<void> close() async {
+      final stream = s.stream ?? await s.opening;
+      if (stream == null || stream.closed) return;
+      _diagnostics?.event('live: close ${s.channel.number}');
+      if (s.reportedAt != null && s.client.reports) await _quietly(() => s.client.reportStopped(stream, s.watched));
+      await _quietly(() => s.client.close(stream));
+      // An IPTV connection ends with the player's: before another live
+      // open (an awaited close), the player stops first. Otherwise the next
+      // open replaces the stream, and a late stop must not hit it.
+      if (wait && s.source.kind == LiveSourceKind.m3u && _live == null) await media.stop();
+    }
+
+    final closing = close();
+    if (wait) {
+      await closing.timeout(liveCloseTimeout, onTimeout: () {});
+    } else {
+      unawaited(closing);
+    }
+  }
+
+  /// Closes the live stream when the app quits, waiting at most
+  /// [liveCloseTimeout].
+  Future<void> closeLiveForExit() => _closeLive(wait: true);
 
   // ---- Sampling --------------------------------------------------------------
 
@@ -1392,6 +1750,10 @@ class Tuner extends ChangeNotifier {
     _queueFinish();
     await flushReports();
     _stopTranscode();
+    // Android out of sight, or full-screen settings: the live stream's
+    // tuner or connection is freed.
+    _liveBoundary?.cancel();
+    await _closeLive(wait: true);
     await media.stop();
     // Nothing plays (Android: out of sight): no pings, no fills.
     _fillDue = false;
@@ -1404,6 +1766,8 @@ class Tuner extends ChangeNotifier {
 
   @override
   void dispose() {
+    _liveBoundary?.cancel();
+    unawaited(_closeLive());
     _programEnd?.cancel();
     _cancelPreloadTimers();
     _progress?.cancel();
@@ -1427,7 +1791,7 @@ class Tuner extends ChangeNotifier {
 class _Report {
   _Report(this.client, this.item, this.sessionId, this.viewing);
 
-  final JellyfinClient client;
+  final MediaServer client;
   final MediaEntry item;
   final String sessionId;
   Viewing viewing;
@@ -1472,6 +1836,7 @@ class _Transcode {
       required this.template,
       required this.joinedAt,
       required this.capKbps,
+      this.sourceTime = false,
       this.fallback = false,
       this.directStream = false});
 
@@ -1481,6 +1846,13 @@ class _Transcode {
   final MediaEntry item;
   final Uri template;
   final Duration joinedAt;
+
+  /// The stream keeps the source's times (see
+  /// MediaServer.transcodeKeepsSourceTime).
+  final bool sourceTime;
+
+  /// What to add to the player's position for the item's own.
+  Duration get timeOffset => sourceTime ? Duration.zero : joinedAt;
 
   /// The cap it was decided under, in kbps (null for none).
   final int? capKbps;
@@ -1492,4 +1864,47 @@ class _Transcode {
   final bool directStream;
 
   String get itemId => item.id;
+}
+
+/// A live stream being watched (or opened): its source, its reports, and
+/// its reconnect state.
+class _LiveSession {
+  _LiveSession(this.channel, this.source, this.client, this.generation, this.attempt);
+
+  final Channel channel;
+  final LiveSource source;
+  final LiveSourceClient client;
+  final int generation;
+
+  /// Reconnects so far (0: the tune itself).
+  final int attempt;
+
+  /// Opening; completes with the stream (null if it failed).
+  Future<LiveStream?>? opening;
+  LiveStream? stream;
+  bool pictured = false;
+
+  /// When "playing" was reported, for the stopped report's position.
+  DateTime? reportedAt;
+  Duration get watched => reportedAt == null ? Duration.zero : DateTime.now().difference(reportedAt!);
+
+  Timer? startTimer;
+  Timer? reportTimer;
+  Timer? stallTimer;
+
+  /// When the picture last moved, and where it was.
+  DateTime? lastMove;
+  Duration? _last;
+
+  void moved(Duration position, DateTime now) {
+    if (position == _last) return;
+    _last = position;
+    lastMove = now;
+  }
+
+  void cancelTimers() {
+    startTimer?.cancel();
+    reportTimer?.cancel();
+    stallTimer?.cancel();
+  }
 }

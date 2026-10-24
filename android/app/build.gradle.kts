@@ -70,6 +70,10 @@ android {
 // with the OkHttp version that Media3 release is built against.
 dependencies {
     implementation("androidx.media3:media3-exoplayer:1.11.1")
+    // Plex's transcodes are HLS playlists.
+    implementation("androidx.media3:media3-exoplayer-hls:1.11.1")
+    // Live TV sources' rtsp:// streams (live-playback, "M3U streams").
+    implementation("androidx.media3:media3-exoplayer-rtsp:1.11.1")
     implementation("androidx.media3:media3-datasource-okhttp:1.11.1")
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
     // LevelingAudioProcessorTest.

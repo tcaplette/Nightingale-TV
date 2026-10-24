@@ -30,8 +30,14 @@ enum ExportProblem {
 /// while the app runs. Owned by [Household], like the phone remote.
 class ExportService extends ChangeNotifier {
   ExportService(this.household,
-      {this.serverFor, SsdpResponder Function()? ssdp, BroadcastArt? art, EncoderProbe? probe, ExportStreams? streams})
+      {this.serverFor,
+      SsdpResponder Function()? ssdp,
+      BroadcastArt? art,
+      EncoderProbe? probe,
+      ExportStreams? streams,
+      Future<bool> Function(String? lanHost)? bridgeNetwork})
       : _newSsdp = ssdp ?? SsdpResponder.new,
+        _bridgeNetwork = bridgeNetwork ?? onBridgeNetwork,
         art = art ?? BroadcastArt(Directory('${household.root.root.path}/export_cache')),
         probe = probe ?? EncoderProbe() {
     this.streams = streams ??
@@ -65,6 +71,7 @@ class ExportService extends ChangeNotifier {
     if (_settings.encoder == ExportEncoderChoice.automatic) hardwareEncoder = e.hardware;
     if (encoderInUse != e) {
       encoderInUse = e;
+      debugPrint('Live TV export: encoding with ${e.label} (${e.codec}).');
       notifyListeners();
     }
     return e;
@@ -75,7 +82,13 @@ class ExportService extends ChangeNotifier {
   final LineupServer Function(ExportService service, String profileId, ProfileExport export)? serverFor;
 
   ExportSettings _settings = ExportSettings.off;
+
+  /// As saved in `export.json`.
   ExportSettings get settings => _settings;
+
+  /// What's served: [settings], always on in server mode (lineup-export),
+  /// where the saved switch is left as it is.
+  ExportSettings get _live => household.serverMode && !_settings.enabled ? _settings.copyWith(enabled: true) : _settings;
 
   final _servers = <String, LineupServer>{};
   final _portErrors = <String, int>{};
@@ -90,8 +103,33 @@ class ExportService extends ChangeNotifier {
   final SsdpResponder Function() _newSsdp;
   SsdpResponder? _ssdp;
 
-  /// UDP 1900 couldn't be opened; tuners can still be added by address.
+  /// UDP 1900 couldn't be opened, or (server mode) the container is on a
+  /// bridge network that SSDP doesn't cross; tuners can still be added by
+  /// address.
   bool discoveryUnavailable = false;
+  bool _discoveryLogged = false;
+
+  final Future<bool> Function(String? lanHost) _bridgeNetwork;
+  bool _behindBridge = false;
+
+  /// Whether this machine is behind Docker's bridge network: `NTV_LAN_HOST`
+  /// is an address it doesn't have, or every address it has is in Docker's
+  /// bridge range (172.16.0.0/12). Announcements from there never reach the
+  /// home network.
+  static Future<bool> onBridgeNetwork(String? lanHost) async {
+    final List<InternetAddress> addresses;
+    try {
+      addresses = [
+        for (final i in await NetworkInterface.list(type: InternetAddressType.IPv4)) ...i.addresses,
+      ];
+    } on SocketException {
+      return false;
+    }
+    final lan = lanHost == null ? null : InternetAddress.tryParse(lanHost);
+    if (lan != null) return !addresses.any((a) => a.address == lan.address);
+    bool docker(InternetAddress a) => a.rawAddress[0] == 172 && a.rawAddress[1] >= 16 && a.rawAddress[1] < 32;
+    return addresses.isNotEmpty && addresses.every(docker);
+  }
 
   /// This PC's address on the home network, for showing URLs.
   String? lanHost;
@@ -99,7 +137,16 @@ class ExportService extends ChangeNotifier {
   Future<void> load() async {
     _settings = ExportSettings.fromJson(await household.root.readJson(_settingsFile));
     household.addListener(_onHousehold);
-    lanHost = await RemoteControl.lanAddress();
+    final lan = Platform.environment['NTV_LAN_HOST']?.trim();
+    lanHost = household.serverMode && lan != null && lan.isNotEmpty ? lan : await RemoteControl.lanAddress();
+    if (household.serverMode) _behindBridge = await _bridgeNetwork(lan != null && lan.isNotEmpty ? lan : null);
+    if (household.serverMode && !_settings.profiles.values.any((e) => e.exported)) {
+      // A server with nothing exported (restored from an Android TV, or
+      // new) exports everyone without a PIN (server-mode).
+      for (final p in household.profiles) {
+        if (!p.hasPin) await setProfileExported(p.id, true);
+      }
+    }
     await _apply();
   }
 
@@ -108,7 +155,7 @@ class ExportService extends ChangeNotifier {
   Future<void> unload() async {
     household.removeListener(_onHousehold);
     for (final app in _watched) {
-      app.removeListener(notifyListeners);
+      app.removeListener(_onApp);
     }
     _watched.clear();
     _portErrors.clear();
@@ -135,7 +182,11 @@ class ExportService extends ChangeNotifier {
 
   // ---- Settings ------------------------------------------------------------
 
-  Future<void> setEnabled(bool on) => _update(_settings.copyWith(enabled: on));
+  /// No switch in server mode: export is always on there.
+  Future<void> setEnabled(bool on) async {
+    if (!household.serverMode) await _update(_settings.copyWith(enabled: on));
+  }
+
   Future<void> setQuality(ExportQuality q) => _update(_settings.copyWith(quality: q));
   Future<void> setStreamLimit(int? limit) => _update(_settings.copyWith(streamLimit: () => limit));
   Future<void> setEncoder(ExportEncoderChoice e) => _update(_settings.copyWith(encoder: e));
@@ -187,7 +238,7 @@ class ExportService extends ChangeNotifier {
   /// Runs a server for each exported profile and stops the rest.
   Future<void> _apply() async {
     final wanted = {
-      for (final id in _settings.exportedProfileIds)
+      for (final id in _live.exportedProfileIds)
         if (household.profileById(id) != null) id,
     };
     for (final id in [..._servers.keys]) {
@@ -213,6 +264,7 @@ class ExportService extends ChangeNotifier {
         await server.start();
         _servers[id] = server;
         _portErrors.remove(id);
+        debugPrint('Live TV export: serving ${household.profileById(id)?.name} on port ${server.port ?? export.port}.');
       } on SocketException catch (e) {
         debugPrint('Live TV export: port ${export.port} is in use ($e).');
         _portErrors[id] = export.port;
@@ -220,7 +272,21 @@ class ExportService extends ChangeNotifier {
     }
     await _syncDiscovery();
     _watchApps();
+    _warmCards();
     notifyListeners();
+  }
+
+  void _onApp() {
+    _warmCards();
+    notifyListeners();
+  }
+
+  /// Exported profiles' cards are encoded before anyone tunes in.
+  void _warmCards() {
+    if (_servers.isEmpty) return;
+    for (final app in _watched) {
+      if (app.phase == AppPhase.ready && app.channels.isNotEmpty) streams.warm(app);
+    }
   }
 
   /// The exported profiles' states, so the screen follows sign-ins and
@@ -229,13 +295,13 @@ class ExportService extends ChangeNotifier {
 
   void _watchApps() {
     final now = {
-      for (final id in _settings.exportedProfileIds) ?household.appFor(id),
+      for (final id in _live.exportedProfileIds) ?household.appFor(id),
     };
     for (final app in _watched.difference(now)) {
-      app.removeListener(notifyListeners);
+      app.removeListener(_onApp);
     }
     for (final app in now.difference(_watched)) {
-      app.addListener(notifyListeners);
+      app.addListener(_onApp);
     }
     _watched
       ..clear()
@@ -244,8 +310,15 @@ class ExportService extends ChangeNotifier {
 
   /// SSDP runs while discovery is on and something is exported.
   Future<void> _syncDiscovery() async {
-    if (!_settings.enabled || !_settings.discovery || _servers.isEmpty) {
+    if (!_live.enabled || !_settings.discovery || _servers.isEmpty) {
       await _stopDiscovery();
+      return;
+    }
+    if (_behindBridge) {
+      final logged = discoveryUnavailable;
+      await _stopDiscovery();
+      if (!logged) debugPrint('Live TV export: discovery is off on a bridge network; add the tuner by address.');
+      discoveryUnavailable = true;
       return;
     }
     final ssdp = _ssdp ??= _newSsdp();
@@ -258,6 +331,8 @@ class ExportService extends ChangeNotifier {
     ]);
     try {
       await ssdp.start();
+      if (discoveryUnavailable || !_discoveryLogged) debugPrint('Live TV export: discovery is on (UDP 1900).');
+      _discoveryLogged = true;
       discoveryUnavailable = false;
     } on Object catch (e) {
       debugPrint('Live TV export: SSDP discovery unavailable ($e).');
@@ -305,7 +380,7 @@ class ExportService extends ChangeNotifier {
 
   /// Why [profileId]'s export isn't working, if it's exported and isn't.
   ExportProblem? problemOf(String profileId) {
-    if (!_settings.exportedProfileIds.contains(profileId)) return null;
+    if (!_live.exportedProfileIds.contains(profileId)) return null;
     if (_portErrors.containsKey(profileId)) return ExportProblem.portInUse;
     final app = household.appFor(profileId);
     // While a profile's state is still loading, it has no client yet; that
@@ -318,7 +393,9 @@ class ExportService extends ChangeNotifier {
   String? problemText(String profileId) => switch (problemOf(profileId)) {
         ExportProblem.portInUse => 'Port ${_settings.profiles[profileId]!.port} is in use by another program. '
             'Pick another port, then update it in Plex or Jellyfin.',
-        ExportProblem.signedOut => 'Sign in to this profile on the TV to export its channels.',
+        ExportProblem.signedOut => household.serverMode
+            ? 'Sign in to this profile here to export its channels.'
+            : 'Sign in to this profile on the TV to export its channels.',
         null => null,
       };
 

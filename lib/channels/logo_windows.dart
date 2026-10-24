@@ -24,7 +24,7 @@ const logoOpacity = 0.7;
   return (right: width * 0.05, bottom: height * 0.05, height: box, maxWidth: box * 2.5);
 }
 
-/// When the logo shows during [segments] (from [ChannelSchedule.playbackAt],
+/// When the logo shows during [segments] (from [ProgramSchedule.playbackAt],
 /// in order), clipped to [from, to) (channel-logo spec):
 /// - [LogoMode.always]: throughout every program part;
 /// - [LogoMode.nowAndThen]: for [logoWindowLength] from each part's start
@@ -76,7 +76,7 @@ DateTime nextQuarterHour(DateTime t) {
 }
 
 /// What [schedule] plays from [from] to [to], segment by segment.
-List<ScheduledProgram> playbackSegmentsBetween(ChannelSchedule schedule, DateTime from, DateTime to) {
+List<ScheduledProgram> playbackSegmentsBetween(ProgramSchedule schedule, DateTime from, DateTime to) {
   final result = <ScheduledProgram>[];
   var t = from;
   while (t.isBefore(to)) {

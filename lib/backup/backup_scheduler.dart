@@ -18,6 +18,10 @@ class BackupScheduler extends ChangeNotifier {
   final Household household;
   final BackupStore store;
 
+  /// Server mode: the accounts section every backup carries (see
+  /// [BackupArchive.server]).
+  Map<String, Object?> Function()? serverSection;
+
   /// The first daily check, after the launch's picture…
   @visibleForTesting
   static Duration firstCheck = const Duration(seconds: 15);
@@ -124,7 +128,7 @@ class BackupScheduler extends ChangeNotifier {
     final watch = Stopwatch()..start();
     await household.flushAll();
     final built = await BackupArchive.build(household.root.root,
-        reason: reason, device: PlatformInfo.deviceName, subject: subject);
+        reason: reason, device: PlatformInfo.deviceName, subject: subject, server: serverSection?.call());
     PlaybackDiagnostics.note('BACKUP', 'built $reason backup: ${built.bytes.length} bytes in ${watch.elapsedMilliseconds} ms');
     return built;
   }

@@ -1,0 +1,62 @@
+{
+ "Items": [
+  {
+   "Name": "Maple Street",
+   "ServerId": "36742d04fcf5437dbdbed483484e14d8",
+   "Id": "130",
+   "Genres": [],
+   "IsFolder": true,
+   "Type": "Series",
+   "GenreItems": [],
+   "UserData": {
+    "UnplayedItemCount": 8,
+    "PlaybackPositionTicks": 0,
+    "PlayCount": 0,
+    "IsFavorite": false,
+    "Played": false
+   },
+   "AirDays": [],
+   "ImageTags": {},
+   "BackdropImageTags": []
+  },
+  {
+   "Name": "Night Desk",
+   "ServerId": "36742d04fcf5437dbdbed483484e14d8",
+   "Id": "131",
+   "Genres": [],
+   "IsFolder": true,
+   "Type": "Series",
+   "GenreItems": [],
+   "UserData": {
+    "UnplayedItemCount": 8,
+    "PlaybackPositionTicks": 0,
+    "PlayCount": 0,
+    "IsFavorite": false,
+    "Played": false
+   },
+   "AirDays": [],
+   "ImageTags": {},
+   "BackdropImageTags": []
+  },
+  {
+   "Name": "Signal Hill",
+   "ServerId": "36742d04fcf5437dbdbed483484e14d8",
+   "Id": "132",
+   "Genres": [],
+   "IsFolder": true,
+   "Type": "Series",
+   "GenreItems": [],
+   "UserData": {
+    "UnplayedItemCount": 8,
+    "PlaybackPositionTicks": 0,
+    "PlayCount": 0,
+    "IsFavorite": false,
+    "Played": false
+   },
+   "AirDays": [],
+   "ImageTags": {},
+   "BackdropImageTags": []
+  }
+ ],
+ "TotalRecordCount": 3
+}

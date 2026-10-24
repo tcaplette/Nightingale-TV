@@ -258,7 +258,7 @@ class ProfilesScreen extends StatelessWidget {
           padding: ScreenLayout.of(context).pagePadding(const EdgeInsets.fromLTRB(120, 40, 120, 40)),
           children: [
             Text(
-              'Everyone gets their own Jellyfin sign-in, channels and programming blocks. '
+              'Everyone gets their own server sign-in, channels and programming blocks. '
               'Kid profiles only see shows and movies rated for their age.',
               style: g.body(28, color: g.textDim),
             ),
@@ -512,7 +512,7 @@ class _ProfileEditorScreenState extends State<ProfileEditorScreen> {
     final ok = await confirm(context,
         title: 'Delete ${widget.profile!.name}?',
         message: 'Their channels, programming blocks and settings are deleted, and this TV is '
-            'signed out of their Jellyfin account.',
+            'signed out of their server.',
         action: 'Delete');
     if (!ok || !mounted) return;
     try {

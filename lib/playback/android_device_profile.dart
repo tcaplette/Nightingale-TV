@@ -138,15 +138,20 @@ const _conversionFloor = 1500000;
 /// Unchanged when the source's bitrate isn't known. Never for a direct
 /// stream: Jellyfin re-encodes a copied video whose bitrate is over what its
 /// URL allows.
+///
+/// Plex's transcode URLs hold the limit as `maxVideoBitrate`, in kbps.
 Uri limitConversion(Uri template, {required int? sourceBitrate, String? sourceCodec}) {
   if (sourceBitrate == null || sourceBitrate <= 0) return template;
   final factor = _efficientCodecs.contains(sourceCodec?.toLowerCase()) ? 2 : 1;
   final limit = max(sourceBitrate * factor, _conversionFloor);
   final query = {...template.queryParameters};
-  final key = query.keys.firstWhere((k) => k.toLowerCase() == 'videobitrate', orElse: () => 'VideoBitrate');
+  final plex = template.path.contains('/transcode/universal/');
+  final key = query.keys.firstWhere((k) => k.toLowerCase() == (plex ? 'maxvideobitrate' : 'videobitrate'),
+      orElse: () => plex ? 'maxVideoBitrate' : 'VideoBitrate');
+  final unit = plex ? 1000 : 1;
   final current = int.tryParse(query[key] ?? '');
-  if (current != null && current <= limit) return template;
-  query[key] = '$limit';
+  if (current != null && current * unit <= limit) return template;
+  query[key] = '${limit ~/ unit}';
   return template.replace(queryParameters: query);
 }
 

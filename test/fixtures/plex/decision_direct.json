@@ -1,0 +1,48 @@
+{
+ "MediaContainer": {
+  "size": 1,
+  "directPlayDecisionCode": 1000,
+  "directPlayDecisionText": "Direct play OK.",
+  "generalDecisionCode": 1000,
+  "generalDecisionText": "Direct play OK.",
+  "Metadata": [
+   {
+    "ratingKey": "3",
+    "type": "episode",
+    "duration": 435001,
+    "Media": [
+     {
+      "audioCodec": "aac",
+      "bitrate": 5086,
+      "container": "mp4",
+      "id": "1",
+      "videoCodec": "h264",
+      "selected": true,
+      "Part": [
+       {
+        "container": "mp4",
+        "id": "1",
+        "key": "/library/parts/1/1792606547/file.mp4",
+        "decision": "directplay",
+        "Stream": [
+         {
+          "bitrate": 5001,
+          "codec": "h264",
+          "id": "1",
+          "streamType": 1
+         },
+         {
+          "bitrate": 76,
+          "codec": "aac",
+          "id": "2",
+          "streamType": 2
+         }
+        ]
+       }
+      ]
+     }
+    ]
+   }
+  ]
+ }
+}

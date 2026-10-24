@@ -55,8 +55,10 @@ abstract class TunerPlayer implements PlayerReadings {
 
   /// Opens [url], from [start], stopping at [end]. [exact]: start exactly at
   /// [start]; else at the keyframe before it, which shows a picture sooner.
+  /// [live]: an endless live stream (live-playback D9): no start or end,
+  /// played from the live point, interlaced video deinterlaced on desktop.
   Future<void> open(Uri url,
-      {required Map<String, String> headers, Duration? start, Duration? end, bool exact = true});
+      {required Map<String, String> headers, Duration? start, Duration? end, bool exact = true, bool live = false});
   Future<void> stop();
   Future<void> showCaptions(bool on);
   Future<void> dispose();
@@ -293,12 +295,17 @@ class MediaKitTunerPlayer implements TunerPlayer {
 
   @override
   Future<void> open(Uri url,
-      {required Map<String, String> headers, Duration? start, Duration? end, bool exact = true}) async {
+      {required Map<String, String> headers,
+      Duration? start,
+      Duration? end,
+      bool exact = true,
+      bool live = false}) async {
     await _dropQueue();
     _moved = false;
     _lastTick = null;
     await _onAir.setExact(exact);
-    await _onAir.player.open(Media(url.toString(), httpHeaders: headers, start: start, end: end));
+    final fields = await _onAir.setLive(live, headers);
+    await _onAir.player.open(Media(url.toString(), httpHeaders: fields, start: live ? null : start, end: live ? null : end));
   }
 
   @override
@@ -595,6 +602,37 @@ class _Deck {
   Future<void> setOption(String name, String value) async {
     final native = player.platform;
     if (native is NativePlayer) await native.setProperty(name, value);
+  }
+
+  /// The live options as set ([setLive]).
+  bool live = false;
+
+  /// mpv's own user agent, read before the first live open changed it.
+  String? _userAgent;
+
+  /// Sets mpv up for a live open, or back for a file (live-playback D9):
+  /// deinterlacing (libmpv 0.34 has no "auto": its yadif deinterlaces
+  /// interlaced frames and passes progressive ones), the cache on with a
+  /// short readahead, and the stream's user agent and referrer through
+  /// mpv's own options. Returns the other headers, for the open.
+  Future<Map<String, String>> setLive(bool on, Map<String, String> headers) async {
+    final rest = {...headers};
+    String? take(String name) {
+      final key = rest.keys.where((k) => k.toLowerCase() == name).firstOrNull;
+      return key == null ? null : rest.remove(key);
+    }
+
+    final agent = on ? take('user-agent') : null;
+    final referrer = on ? take('referer') : null;
+    if (!on && !live) return rest;
+    if (on && _userAgent == null) _userAgent = await property('user-agent');
+    live = on;
+    await setOption('deinterlace', on ? 'yes' : 'no');
+    await setOption('cache', on ? 'yes' : 'auto');
+    await setOption('demuxer-readahead-secs', on ? '5' : '1');
+    await setOption('user-agent', agent ?? _userAgent ?? '');
+    await setOption('referrer', referrer ?? '');
+    return rest;
   }
 
   /// An mpv property ("" when there's none).

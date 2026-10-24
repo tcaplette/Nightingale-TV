@@ -1,0 +1,53 @@
+{
+ "MediaContainer": {
+  "size": 1,
+  "directPlayDecisionCode": 3001,
+  "directPlayDecisionText": "Not enough bandwidth for direct play of this item. Required bandwidth is 10662kbps and only 4000kbps is available.",
+  "generalDecisionCode": 1001,
+  "generalDecisionText": "Direct play not available; Conversion OK.",
+  "transcodeDecisionCode": 1001,
+  "transcodeDecisionText": "Direct play not available; Conversion OK.",
+  "Metadata": [
+   {
+    "ratingKey": "3",
+    "type": "episode",
+    "duration": 435001,
+    "Media": [
+     {
+      "id": "1",
+      "audioCodec": "aac",
+      "bitrate": 3538,
+      "container": "mpegts",
+      "protocol": "hls",
+      "videoCodec": "h264",
+      "selected": true,
+      "Part": [
+       {
+        "id": "1",
+        "container": "mpegts",
+        "protocol": "hls",
+        "decision": "transcode",
+        "Stream": [
+         {
+          "bitrate": 3419,
+          "codec": "h264",
+          "id": "1",
+          "streamType": 1,
+          "decision": "transcode"
+         },
+         {
+          "bitrate": 119,
+          "codec": "aac",
+          "id": "2",
+          "streamType": 2,
+          "decision": "transcode"
+         }
+        ]
+       }
+      ]
+     }
+    ]
+   }
+  ]
+ }
+}

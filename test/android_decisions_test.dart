@@ -10,12 +10,12 @@ import 'package:nightingale_tv/app_state.dart';
 import 'package:nightingale_tv/channels/channel.dart';
 import 'package:nightingale_tv/channels/schedule.dart';
 import 'package:nightingale_tv/commercials/break_plan.dart';
-import 'package:nightingale_tv/jellyfin/jellyfin_client.dart';
 import 'package:nightingale_tv/platform/platform_info.dart';
 import 'package:nightingale_tv/playback/tuner.dart';
 
 import 'fake_playback.dart';
 import 'fixtures.dart';
+import 'package:nightingale_tv/server/media_server.dart';
 
 bool isStatic(Uri u) => u.path.endsWith('/stream') && u.queryParameters['static'] == 'true';
 bool isTranscode(Uri u) => u.path.endsWith('/stream.ts');

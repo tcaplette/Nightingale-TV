@@ -1,0 +1,198 @@
+{
+ "MediaContainer": {
+  "size": 4,
+  "totalSize": 30,
+  "offset": 0,
+  "allowSync": true,
+  "identifier": "com.plexapp.plugins.library",
+  "librarySectionID": 4,
+  "librarySectionTitle": "Music",
+  "nocache": true,
+  "title1": "Music",
+  "title2": "All Artists",
+  "viewGroup": "artist",
+  "viewMode": 65592,
+  "Metadata": [
+   {
+    "ratingKey": "101",
+    "key": "/library/metadata/101",
+    "parentRatingKey": "100",
+    "grandparentRatingKey": "95",
+    "type": "track",
+    "title": "Song 25",
+    "grandparentKey": "/library/metadata/95",
+    "parentKey": "/library/metadata/100",
+    "grandparentTitle": "DJ Marmalade",
+    "parentTitle": "Album 1",
+    "summary": "",
+    "index": 1,
+    "parentIndex": 1,
+    "year": 2026,
+    "duration": 140042,
+    "originallyAvailableAt": "2026-10-21",
+    "addedAt": 1792607945,
+    "updatedAt": 1792608408,
+    "Media": [
+     {
+      "id": 83,
+      "duration": 140042,
+      "bitrate": 128,
+      "audioChannels": 1,
+      "audioCodec": "mp3",
+      "container": "mp3",
+      "Part": [
+       {
+        "id": 83,
+        "key": "/library/parts/83/1792607945/file.mp3",
+        "duration": 140042,
+        "file": "/media/Music/DJ Marmalade/Album 1 (1991)/01 - Song 25.mp3",
+        "size": 2241280,
+        "container": "mp3"
+       }
+      ]
+     }
+    ],
+    "Genre": [
+     {
+      "tag": "Electronic"
+     }
+    ]
+   },
+   {
+    "ratingKey": "102",
+    "key": "/library/metadata/102",
+    "parentRatingKey": "100",
+    "grandparentRatingKey": "95",
+    "type": "track",
+    "title": "Song 26",
+    "grandparentKey": "/library/metadata/95",
+    "parentKey": "/library/metadata/100",
+    "grandparentTitle": "DJ Marmalade",
+    "parentTitle": "Album 1",
+    "summary": "",
+    "index": 2,
+    "parentIndex": 1,
+    "year": 2026,
+    "duration": 160026,
+    "originallyAvailableAt": "2026-10-21",
+    "addedAt": 1792607946,
+    "updatedAt": 1792608408,
+    "Media": [
+     {
+      "id": 84,
+      "duration": 160026,
+      "bitrate": 128,
+      "audioChannels": 1,
+      "audioCodec": "mp3",
+      "container": "mp3",
+      "Part": [
+       {
+        "id": 84,
+        "key": "/library/parts/84/1792607946/file.mp3",
+        "duration": 160026,
+        "file": "/media/Music/DJ Marmalade/Album 1 (1991)/02 - Song 26.mp3",
+        "size": 2561018,
+        "container": "mp3"
+       }
+      ]
+     }
+    ],
+    "Genre": [
+     {
+      "tag": "Electronic"
+     }
+    ]
+   },
+   {
+    "ratingKey": "103",
+    "key": "/library/metadata/103",
+    "parentRatingKey": "100",
+    "grandparentRatingKey": "95",
+    "type": "track",
+    "title": "Song 27",
+    "grandparentKey": "/library/metadata/95",
+    "parentKey": "/library/metadata/100",
+    "grandparentTitle": "DJ Marmalade",
+    "parentTitle": "Album 1",
+    "summary": "",
+    "index": 3,
+    "parentIndex": 1,
+    "year": 2026,
+    "duration": 180036,
+    "originallyAvailableAt": "2026-10-21",
+    "addedAt": 1792607947,
+    "updatedAt": 1792608408,
+    "Media": [
+     {
+      "id": 85,
+      "duration": 180036,
+      "bitrate": 128,
+      "audioChannels": 1,
+      "audioCodec": "mp3",
+      "container": "mp3",
+      "Part": [
+       {
+        "id": 85,
+        "key": "/library/parts/85/1792607947/file.mp3",
+        "duration": 180036,
+        "file": "/media/Music/DJ Marmalade/Album 1 (1991)/03 - Song 27.mp3",
+        "size": 2881175,
+        "container": "mp3"
+       }
+      ]
+     }
+    ],
+    "Genre": [
+     {
+      "tag": "Electronic"
+     }
+    ]
+   },
+   {
+    "ratingKey": "97",
+    "key": "/library/metadata/97",
+    "parentRatingKey": "96",
+    "grandparentRatingKey": "95",
+    "type": "track",
+    "title": "Song 28",
+    "grandparentKey": "/library/metadata/95",
+    "parentKey": "/library/metadata/96",
+    "grandparentTitle": "DJ Marmalade",
+    "parentTitle": "Album 2",
+    "summary": "",
+    "index": 1,
+    "parentIndex": 1,
+    "year": 2026,
+    "duration": 120033,
+    "originallyAvailableAt": "2026-10-21",
+    "addedAt": 1792607948,
+    "updatedAt": 1792608408,
+    "Media": [
+     {
+      "id": 80,
+      "duration": 120033,
+      "bitrate": 128,
+      "audioChannels": 1,
+      "audioCodec": "mp3",
+      "container": "mp3",
+      "Part": [
+       {
+        "id": 80,
+        "key": "/library/parts/80/1792607948/file.mp3",
+        "duration": 120033,
+        "file": "/media/Music/DJ Marmalade/Album 2 (1992)/01 - Song 28.mp3",
+        "size": 1921123,
+        "container": "mp3"
+       }
+      ]
+     }
+    ],
+    "Genre": [
+     {
+      "tag": "Electronic"
+     }
+    ]
+   }
+  ]
+ }
+}

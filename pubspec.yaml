@@ -30,6 +30,9 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
+  # The web admin's path URLs (/profiles/{id}/channels), not #/ ones.
+  flutter_web_plugins:
+    sdk: flutter
 
   media_kit: ^1.2.6
   media_kit_video: ^2.0.1
@@ -43,6 +46,9 @@ dependencies:
   window_manager: ^0.5.2
   crypto: ^3.0.7
   qr_flutter: ^4.1.0
+  xml: ^7.0.1
+  # Server mode's account database, over the system libsqlite3 (docker-web-admin D6).
+  sqlite3: ^2.9.4
 
 dev_dependencies:
   flutter_test:

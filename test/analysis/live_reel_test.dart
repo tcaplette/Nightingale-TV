@@ -14,6 +14,7 @@ import 'package:nightingale_tv/commercials/analysis/ffmpeg_runner.dart';
 import 'package:nightingale_tv/commercials/analysis/reel_cutter.dart';
 import 'package:nightingale_tv/commercials/analysis/stream_proxy.dart';
 import 'package:nightingale_tv/jellyfin/jellyfin_client.dart';
+import 'package:nightingale_tv/server/media_server.dart';
 
 void main() {
   final env = Platform.environment;
@@ -24,7 +25,7 @@ void main() {
       markTestSkipped('Set JF_SESSION and JF_REEL to run against a server.');
       return;
     }
-    final session = JellyfinSession.fromJson(
+    final session = ServerSession.fromJson(
         jsonDecode(await File(sessionFile.replaceFirst('~', env['HOME']!)).readAsString()) as Map<String, Object?>);
     final client = JellyfinClient.fromSession(session, deviceName: 'nightingale-tv-test');
     final item = (await client.allItems({'Ids': reelId, 'Fields': 'Chapters,Etag'})).single;

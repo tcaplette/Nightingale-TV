@@ -20,6 +20,7 @@ import '../ui/widgets/now_playing.dart';
 import '../ui/widgets/tv_canvas.dart';
 import 'lineup_server.dart';
 import 'offscreen_renderer.dart';
+import '../server/media_server.dart';
 
 /// A full-screen card an exported stream shows (design D6).
 sealed class BroadcastCard {
@@ -52,7 +53,7 @@ class OffAirCard extends BroadcastCard {
   final ({String when, String title})? next;
 
   /// The card for [schedule] at [now].
-  factory OffAirCard.at(ChannelSchedule schedule, DateTime now) {
+  factory OffAirCard.at(ProgramSchedule schedule, DateTime now) {
     final next = schedule.nextBlockAiring(now);
     if (next == null) return const OffAirCard();
     final when = next.start.difference(now) < const Duration(hours: 20)
@@ -150,7 +151,7 @@ class BroadcastArt implements LogoSource {
     if (client == null) return null;
     for (final id in [?song.albumId, song.id]) {
       try {
-        final uri = client.imageUri(id, 'Primary', maxHeight: 640);
+        final uri = client.imageUri(id, ImageKind.primary, maxHeight: 640);
         final r = await _http
             .get(uri.replace(queryParameters: {...uri.queryParameters, 'format': 'Jpg'}), headers: client.authHeaders)
             .timeout(const Duration(seconds: 15));
@@ -215,11 +216,14 @@ class BroadcastArt implements LogoSource {
       case ChannelIconKind.jellyfin:
         final client = app.client;
         if (client == null) return null;
-        final uri = client.imageUri(icon.value, 'Logo', maxHeight: 400);
+        final uri = client.imageUri(icon.value, ImageKind.logo, maxHeight: 400);
         final r = await _http
             .get(uri.replace(queryParameters: {...uri.queryParameters, 'format': 'Png'}), headers: client.authHeaders)
             .timeout(const Duration(seconds: 15));
         return r.statusCode == HttpStatus.ok ? _asPng(r.bodyBytes) : null;
+      case ChannelIconKind.remote:
+        // Only live channels have these, and they're never exported.
+        return null;
     }
   }
 

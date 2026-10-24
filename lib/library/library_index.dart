@@ -1,6 +1,5 @@
 import '../commercials/commercial_pool.dart';
-import '../jellyfin/jellyfin_client.dart';
-import '../playback/playback_diagnostics.dart';
+import '../server/media_server.dart';
 import '../profiles/profile.dart';
 
 enum MediaKind {
@@ -45,6 +44,7 @@ class MediaEntry {
     this.albumId,
     this.added,
     this.availableAt,
+    this.streamPath,
   }) : sourceId = sourceId ?? id;
 
   final String id;
@@ -100,6 +100,10 @@ class MediaEntry {
   /// [LibraryIndex.withAvailability]). Null until a scan assigns it.
   final DateTime? availableAt;
 
+  /// Plex only: the file's part path (`/library/parts/…`), which Plex can't
+  /// build from the id. Null on Jellyfin and Emby.
+  final String? streamPath;
+
   /// A song or a music video.
   bool get isMusic => kind == MediaKind.song || kind == MediaKind.musicVideo;
 
@@ -141,6 +145,7 @@ class MediaEntry {
         albumId: albumId,
         added: added,
         availableAt: clearAvailableAt ? null : availableAt ?? this.availableAt,
+        streamPath: streamPath,
       );
 
   /// Title shown in the guide: the show name for episodes, "Artist – Song"
@@ -193,6 +198,7 @@ class MediaEntry {
         if (albumId != null) 'albumId': albumId,
         if (added != null) 'added': added!.toUtc().toIso8601String(),
         if (availableAt != null) 'availableAt': availableAt!.toUtc().toIso8601String(),
+        if (streamPath != null) 'streamPath': streamPath,
       };
 
   /// Files written before clips, chapters, pools, music and premieres
@@ -226,6 +232,7 @@ class MediaEntry {
         albumId: j['albumId'] as String?,
         added: _time(j['added']),
         availableAt: _time(j['availableAt']),
+        streamPath: j['streamPath'] as String?,
       );
 
   static DateTime? _time(Object? s) => s is String ? DateTime.tryParse(s)?.toLocal() : null;
@@ -669,106 +676,10 @@ class LibraryIndex {
       (value as List?)?.cast<String>().toList() ?? const [];
 }
 
-/// Downloads the index for every video and music library the user can see:
-/// shows, episodes and movies, plus music videos from the video libraries
-/// and songs from the music libraries.
-///
-/// Videos under any of [pools]' folders become commercials (tagged with the
-/// pools they're in) and are left out of the programs, even when their
-/// folder sits inside a library of shows or movies. A library that is itself
-/// a pool folder isn't scanned for programs at all.
-Future<LibraryIndex> fetchLibraryIndex(JellyfinClient client,
-    {List<CommercialPool> pools = const [],
-    void Function(String status)? onStatus,
-    void Function(List<JellyfinLibrary> libraries)? onLibraries}) async {
-  final libraries = (await client.libraries()).where((l) => l.isVideo || l.isMusic).toList();
-  onLibraries?.call(libraries);
-  final poolsByItem = <String, List<String>>{};
-  final commercials = <String, Map<String, Object?>>{};
-  final poolRoots = <String>{};
-  for (final pool in pools) {
-    for (final root in pool.roots) {
-      poolRoots.add(root.itemId);
-      onStatus?.call('Scanning ${pool.name}…');
-      final items = await client.allItems({
-        'ParentId': root.itemId,
-        'Recursive': 'true',
-        'IncludeItemTypes': 'Movie,Episode,Video,MusicVideo,Trailer',
-        'IsMissing': 'false',
-        'Fields': 'Chapters,Etag',
-        'EnableImages': 'false',
-        'EnableUserData': 'false',
-      });
-      for (final item in items) {
-        final id = item['Id'] as String;
-        commercials[id] = item;
-        final ids = poolsByItem.putIfAbsent(id, () => []);
-        if (!ids.contains(pool.id)) ids.add(pool.id);
-      }
-    }
-  }
-  final series = <Map<String, Object?>>[];
-  final episodes = <Map<String, Object?>>[];
-  final movies = <Map<String, Object?>>[];
-  final songs = <Map<String, Object?>>[];
-  final musicVideos = <Map<String, Object?>>[];
-  // Minimal fields and no images: music libraries can hold 50,000 songs.
-  const musicFields = 'Genres,ProductionYear,Artists,AlbumArtist,Album,AlbumId,OfficialRating,Etag,MediaSources';
-  for (final lib in libraries) {
-    if (poolRoots.contains(lib.id)) continue;
-    onStatus?.call('Scanning ${lib.name}…');
-    final scanStart = DateTime.now();
-    final common = {'ParentId': lib.id, 'Recursive': 'true', 'ImageTypeLimit': 1};
-    if (lib.isMusic) {
-      songs.addAll(await client.allItems({
-        ...common,
-        'IncludeItemTypes': 'Audio',
-        'IsMissing': 'false',
-        'Fields': musicFields,
-        'EnableImages': 'false',
-        'EnableUserData': 'false',
-      }));
-      PlaybackDiagnostics.note('SCAN', '${lib.name}: ${songs.length} songs so far, '
-          '${DateTime.now().difference(scanStart).inMilliseconds} ms');
-      continue;
-    }
-    series.addAll(await client.allItems({
-      ...common,
-      'IncludeItemTypes': 'Series',
-      'Fields': 'Genres,OfficialRating',
-    }));
-    episodes.addAll(await client.allItems({
-      ...common,
-      'IncludeItemTypes': 'Episode',
-      'IsMissing': 'false',
-      'Fields': 'Overview,Chapters,Etag,DateCreated',
-      'EnableImages': 'false',
-      'EnableUserData': 'false',
-    }));
-    movies.addAll(await client.allItems({
-      ...common,
-      'IncludeItemTypes': 'Movie',
-      'Fields': 'Overview,Genres,OfficialRating,Chapters,Etag',
-      'EnableImages': 'false',
-      'EnableUserData': 'false',
-    }));
-    musicVideos.addAll(await client.allItems({
-      ...common,
-      'IncludeItemTypes': 'MusicVideo',
-      'IsMissing': 'false',
-      'Fields': musicFields,
-      'EnableImages': 'false',
-      'EnableUserData': 'false',
-    }));
-    PlaybackDiagnostics.note('SCAN', '${lib.name}: ${DateTime.now().difference(scanStart).inMilliseconds} ms');
-  }
-  return LibraryIndex.fromJellyfinItems(
-    seriesItems: series,
-    episodeItems: episodes,
-    movieItems: movies,
-    commercialItems: commercials.values.toList(),
-    songItems: songs,
-    musicVideoItems: musicVideos,
-    poolsByItem: poolsByItem,
-  );
-}
+/// Downloads the index for every video and music library the user can see
+/// on [client]'s server (see [MediaServer.fetchLibraryIndex]).
+Future<LibraryIndex> fetchLibraryIndex(MediaServer client,
+        {List<CommercialPool> pools = const [],
+        void Function(String status)? onStatus,
+        void Function(List<ServerLibrary> libraries)? onLibraries}) =>
+    client.fetchLibraryIndex(pools: pools, onStatus: onStatus, onLibraries: onLibraries);

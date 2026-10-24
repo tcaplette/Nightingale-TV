@@ -1,0 +1,10 @@
+{
+ "Id": "8845e2cc88714e40b8586d5fa3a70950",
+ "Name": "nightingale",
+ "Policy": {
+  "IsAdministrator": true,
+  "IsDisabled": false,
+  "EnableLiveTvManagement": false,
+  "EnableLiveTvAccess": true
+ }
+}

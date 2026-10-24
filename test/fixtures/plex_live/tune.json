@@ -1,0 +1,335 @@
+{
+ "MediaContainer": {
+  "size": 1,
+  "MediaSubscription": [
+   {
+    "key": "3",
+    "type": 4,
+    "createdAt": 1792630021,
+    "title": "This Episode",
+    "airingsType": "New Airings Only",
+    "channelIdentifier": "fake21.test",
+    "MediaGrabOperation": [
+     {
+      "rolling": true,
+      "mediaSubscriptionID": 3,
+      "mediaIndex": 0,
+      "id": "fake21.test-probe-1792630021",
+      "key": "/media/grabbers/operations/fake21.test-probe-1792630021",
+      "grabberIdentifier": "tv.plex.grabbers.hdhomerun",
+      "grabberProtocol": "livetv",
+      "percent": -1.0,
+      "currentSize": 0,
+      "deviceID": 1,
+      "status": "inprogress",
+      "provider": "tv.plex.providers.epg.xmltv:2",
+      "Metadata": {
+       "addedAt": 1792629688,
+       "contentRating": "TV-PG",
+       "duration": 1800000,
+       "grandparentGuid": "tv.plex.xmltv://show/The%20News",
+       "grandparentKey": "/tv.plex.providers.epg.xmltv:2/metadata/tv%2Eplex%2Exmltv%3A%2F%2Fshow%2FThe%2520News",
+       "grandparentRatingKey": "tv%2Eplex%2Exmltv%3A%2F%2Fshow%2FThe%2520News",
+       "grandparentTitle": "The News",
+       "guid": "tv.plex.xmltv://episode/The%20News/3/4",
+       "index": 4,
+       "key": "/livetv/sessions/ac4f7022-5ae9-4179-9de2-6c206202e2ab",
+       "onAir": "1",
+       "parentGuid": "tv.plex.xmltv://season/The%20News/3",
+       "parentIndex": 3,
+       "parentTitle": "Season 3",
+       "ratingKey": "129",
+       "skipParent": "1",
+       "summary": "Local headlines and weather. Airing 4.",
+       "title": "Part 4",
+       "type": "episode",
+       "Media": [
+        {
+         "aspectRatio": "1.78",
+         "audioChannels": 1,
+         "audioCodec": "aac",
+         "beginsAt": 1792630021,
+         "channelIdentifier": "fake21.test",
+         "container": "mpegts",
+         "endsAt": 1792630321,
+         "height": 720,
+         "id": "104",
+         "origin": "livetv",
+         "protocol": "hls",
+         "uuid": "ac4f7022-5ae9-4179-9de2-6c206202e2ab",
+         "videoCodec": "h264",
+         "videoResolution": "720",
+         "width": 1280,
+         "Part": [
+          {
+           "container": "mpegts",
+           "id": "104",
+           "key": "/livetv/sessions/ac4f7022-5ae9-4179-9de2-6c206202e2ab/probe-1792630021/index.m3u8?offset=-1.000000",
+           "protocol": "hls",
+           "Stream": [
+            {
+             "codec": "h264",
+             "displayTitle": "720p (H.264)",
+             "extendedDisplayTitle": "720p (H.264)",
+             "frameRate": 29.97,
+             "height": 720,
+             "id": "177",
+             "index": 0,
+             "level": 31,
+             "pixelAspectRatio": "1:1",
+             "profile": "high",
+             "streamType": 1,
+             "width": 1280
+            },
+            {
+             "audioChannelLayout": "mono",
+             "bitrate": 126,
+             "channels": 1,
+             "codec": "aac",
+             "displayTitle": "Unknown (AAC Mono)",
+             "extendedDisplayTitle": "Unknown (AAC Mono)",
+             "id": "178",
+             "index": 1,
+             "profile": "lc",
+             "samplingRate": 48000,
+             "selected": true,
+             "streamType": 2
+            }
+           ]
+          }
+         ]
+        }
+       ],
+       "TranscodeSession": {
+        "key": "/transcode/sessions/ac4f7022-5ae9-4179-9de2-6c206202e2ab",
+        "throttled": false,
+        "complete": false,
+        "progress": -1.0,
+        "size": -1,
+        "speed": 1.100000023841858,
+        "error": false,
+        "duration": 7200000,
+        "context": "static",
+        "sourceVideoCodec": "",
+        "sourceAudioCodec": "",
+        "videoDecision": "copy",
+        "audioDecision": "copy",
+        "protocol": "hls",
+        "container": "mpegts",
+        "videoCodec": "*",
+        "audioCodec": "*",
+        "audioChannels": 2,
+        "width": 1280,
+        "height": 720,
+        "transcodeHwRequested": false,
+        "transcodeHwFullPipeline": false,
+        "timeStamp": 1792629959.931264,
+        "maxOffsetAvailable": 61.928533,
+        "minOffsetAvailable": 0.06673300266265869
+       }
+      }
+     }
+    ],
+    "Timeline": {
+     "Metadata": [
+      {
+       "ratingKey": "tv%2Eplex%2Exmltv%3A%2F%2Fepisode%2FThe%2520News%2F3%2F4",
+       "key": "/tv.plex.providers.epg.xmltv:2/metadata/tv%2Eplex%2Exmltv%3A%2F%2Fepisode%2FThe%2520News%2F3%2F4",
+       "skipParent": true,
+       "grandparentRatingKey": "tv%2Eplex%2Exmltv%3A%2F%2Fshow%2FThe%2520News",
+       "guid": "tv.plex.xmltv://episode/The%20News/3/4",
+       "parentGuid": "tv.plex.xmltv://season/The%20News/3",
+       "grandparentGuid": "tv.plex.xmltv://show/The%20News",
+       "type": "episode",
+       "title": "Part 4",
+       "grandparentKey": "/tv.plex.providers.epg.xmltv:2/metadata/tv%2Eplex%2Exmltv%3A%2F%2Fshow%2FThe%2520News",
+       "grandparentTitle": "The News",
+       "parentTitle": "Season 3",
+       "contentRating": "TV-PG",
+       "summary": "Local headlines and weather. Airing 4.",
+       "index": 4,
+       "parentIndex": 3,
+       "duration": 1800000,
+       "addedAt": 1792629688,
+       "onAir": true,
+       "Media": [
+        {
+         "id": 1,
+         "duration": 1800000,
+         "audioChannels": 2,
+         "videoResolution": "480",
+         "channelCallSign": "Fake H264",
+         "channelIdentifier": "fake21.test",
+         "channelThumb": "http://127.0.0.1:5104/logo/2.1.png",
+         "channelTitle": "2.1 Fake H264",
+         "channelVcn": "2.1",
+         "premiere": "1",
+         "protocol": "livetv",
+         "beginsAt": 1792629000,
+         "endsAt": 1792630800,
+         "onAir": true,
+         "channelID": 1
+        }
+       ]
+      },
+      {
+       "ratingKey": "tv%2Eplex%2Exmltv%3A%2F%2Fepisode%2FThe%2520News%2F3%2F5",
+       "key": "/tv.plex.providers.epg.xmltv:2/metadata/tv%2Eplex%2Exmltv%3A%2F%2Fepisode%2FThe%2520News%2F3%2F5",
+       "skipParent": true,
+       "grandparentRatingKey": "tv%2Eplex%2Exmltv%3A%2F%2Fshow%2FThe%2520News",
+       "guid": "tv.plex.xmltv://episode/The%20News/3/5",
+       "parentGuid": "tv.plex.xmltv://season/The%20News/3",
+       "grandparentGuid": "tv.plex.xmltv://show/The%20News",
+       "type": "episode",
+       "title": "Part 5",
+       "grandparentKey": "/tv.plex.providers.epg.xmltv:2/metadata/tv%2Eplex%2Exmltv%3A%2F%2Fshow%2FThe%2520News",
+       "grandparentTitle": "The News",
+       "parentTitle": "Season 3",
+       "contentRating": "TV-PG",
+       "summary": "Local headlines and weather. Airing 5.",
+       "index": 5,
+       "parentIndex": 3,
+       "duration": 1800000,
+       "addedAt": 1792629688,
+       "Media": [
+        {
+         "id": 2,
+         "duration": 1800000,
+         "audioChannels": 2,
+         "videoResolution": "480",
+         "channelCallSign": "Fake H264",
+         "channelIdentifier": "fake21.test",
+         "channelThumb": "http://127.0.0.1:5104/logo/2.1.png",
+         "channelTitle": "2.1 Fake H264",
+         "channelVcn": "2.1",
+         "protocol": "livetv",
+         "beginsAt": 1792630800,
+         "endsAt": 1792632600,
+         "channelID": 1
+        }
+       ]
+      },
+      {
+       "ratingKey": "tv%2Eplex%2Exmltv%3A%2F%2Fepisode%2FThe%2520News%2F3%2F6",
+       "key": "/tv.plex.providers.epg.xmltv:2/metadata/tv%2Eplex%2Exmltv%3A%2F%2Fepisode%2FThe%2520News%2F3%2F6",
+       "skipParent": true,
+       "grandparentRatingKey": "tv%2Eplex%2Exmltv%3A%2F%2Fshow%2FThe%2520News",
+       "guid": "tv.plex.xmltv://episode/The%20News/3/6",
+       "parentGuid": "tv.plex.xmltv://season/The%20News/3",
+       "grandparentGuid": "tv.plex.xmltv://show/The%20News",
+       "type": "episode",
+       "title": "Part 6",
+       "grandparentKey": "/tv.plex.providers.epg.xmltv:2/metadata/tv%2Eplex%2Exmltv%3A%2F%2Fshow%2FThe%2520News",
+       "grandparentTitle": "The News",
+       "parentTitle": "Season 3",
+       "contentRating": "TV-PG",
+       "summary": "Local headlines and weather. Airing 6.",
+       "index": 6,
+       "parentIndex": 3,
+       "duration": 1800000,
+       "addedAt": 1792629688,
+       "Media": [
+        {
+         "id": 3,
+         "duration": 1800000,
+         "audioChannels": 2,
+         "videoResolution": "480",
+         "channelCallSign": "Fake H264",
+         "channelIdentifier": "fake21.test",
+         "channelThumb": "http://127.0.0.1:5104/logo/2.1.png",
+         "channelTitle": "2.1 Fake H264",
+         "channelVcn": "2.1",
+         "protocol": "livetv",
+         "beginsAt": 1792632600,
+         "endsAt": 1792634400,
+         "channelID": 1
+        }
+       ]
+      }
+     ]
+    },
+    "AlsoAiring": {
+     "Metadata": [
+      {
+       "ratingKey": "tv%2Eplex%2Exmltv%3A%2F%2Fepisode%2FFake%2520Drama%2F3%2F2",
+       "key": "/tv.plex.providers.epg.xmltv:2/metadata/tv%2Eplex%2Exmltv%3A%2F%2Fepisode%2FFake%2520Drama%2F3%2F2",
+       "skipParent": true,
+       "grandparentRatingKey": "tv%2Eplex%2Exmltv%3A%2F%2Fshow%2FFake%2520Drama",
+       "guid": "tv.plex.xmltv://episode/Fake%20Drama/3/2",
+       "parentGuid": "tv.plex.xmltv://season/Fake%20Drama/3",
+       "grandparentGuid": "tv.plex.xmltv://show/Fake%20Drama",
+       "type": "episode",
+       "title": "Part 2",
+       "grandparentKey": "/tv.plex.providers.epg.xmltv:2/metadata/tv%2Eplex%2Exmltv%3A%2F%2Fshow%2FFake%2520Drama",
+       "grandparentTitle": "Fake Drama",
+       "parentTitle": "Season 3",
+       "contentRating": "TV-PG",
+       "summary": "A test drama in two acts. Airing 2.",
+       "index": 2,
+       "parentIndex": 3,
+       "duration": 3600000,
+       "addedAt": 1792629688,
+       "onAir": true,
+       "Media": [
+        {
+         "id": 96,
+         "duration": 3600000,
+         "audioChannels": 2,
+         "videoResolution": "480",
+         "channelCallSign": "Fake MPEG2",
+         "channelIdentifier": "fake41.test",
+         "channelThumb": "http://127.0.0.1:5104/logo/4.1.png",
+         "channelTitle": "4.1 Fake MPEG2",
+         "channelVcn": "4.1",
+         "protocol": "livetv",
+         "beginsAt": 1792627200,
+         "endsAt": 1792630800,
+         "onAir": true,
+         "channelID": 2
+        }
+       ]
+      },
+      {
+       "ratingKey": "tv%2Eplex%2Exmltv%3A%2F%2Fepisode%2FCaptioned%2520Hour%2F1%2F3",
+       "key": "/tv.plex.providers.epg.xmltv:2/metadata/tv%2Eplex%2Exmltv%3A%2F%2Fepisode%2FCaptioned%2520Hour%2F1%2F3",
+       "skipParent": true,
+       "grandparentRatingKey": "tv%2Eplex%2Exmltv%3A%2F%2Fshow%2FCaptioned%2520Hour",
+       "guid": "tv.plex.xmltv://episode/Captioned%20Hour/1/3",
+       "parentGuid": "tv.plex.xmltv://season/Captioned%20Hour/1",
+       "grandparentGuid": "tv.plex.xmltv://show/Captioned%20Hour",
+       "type": "episode",
+       "title": "Part 3",
+       "grandparentKey": "/tv.plex.providers.epg.xmltv:2/metadata/tv%2Eplex%2Exmltv%3A%2F%2Fshow%2FCaptioned%2520Hour",
+       "grandparentTitle": "Captioned Hour",
+       "parentTitle": "Season 1",
+       "summary": "Closed captions on every line. Airing 3.",
+       "index": 3,
+       "parentIndex": 1,
+       "duration": 1800000,
+       "addedAt": 1792629688,
+       "onAir": true,
+       "Media": [
+        {
+         "id": 144,
+         "duration": 1800000,
+         "audioChannels": 2,
+         "videoResolution": "480",
+         "channelCallSign": "fake captions",
+         "channelIdentifier": "fake71.test",
+         "channelThumb": "http://127.0.0.1:5104/logo/7.1.png",
+         "channelTitle": "7.1 fake captions",
+         "channelVcn": "7.1",
+         "protocol": "livetv",
+         "beginsAt": 1792629000,
+         "endsAt": 1792630800,
+         "onAir": true,
+         "channelID": 3
+        }
+       ]
+      }
+     ]
+    }
+   }
+  ]
+ }
+}

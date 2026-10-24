@@ -68,6 +68,22 @@ abstract final class PlatformInfo {
     }
   }
 
+  /// Has a touch screen to tap links on: a phone or tablet, not a TV or a
+  /// PC.
+  static bool get hasTouch => isAndroid && !isTelevision;
+
+  /// Opens [url] in the browser; false when there's none to open it.
+  static Future<bool> openUrl(String url) async {
+    try {
+      if (isAndroid) return await _channel.invokeMethod<bool>('openUrl', url) ?? false;
+      final result = await Process.run('xdg-open', [url]);
+      return result.exitCode == 0;
+    } on Object catch (e) {
+      debugPrint('Could not open $url: $e');
+      return false;
+    }
+  }
+
   /// Forgets the looked-up name and the override, between tests.
   @visibleForTesting
   static void debugReset() {

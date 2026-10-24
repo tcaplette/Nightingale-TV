@@ -62,7 +62,7 @@ void main() {
       jellyfin = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
       jellyfin.listen((request) async {
         if (request.uri.path == '/System/Info/Public' && serverId != null) {
-          request.response.write('{"ServerName":"Home","Version":"10.11.11","Id":"$serverId"}');
+          request.response.write('{"ServerName":"Home","Version":"10.11.11","ProductName":"Jellyfin Server","Id":"$serverId"}');
           await request.response.close();
           return;
         }

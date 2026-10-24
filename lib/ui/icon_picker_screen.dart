@@ -246,7 +246,10 @@ class _IconPickerScreenState extends State<IconPickerScreen> {
         final app = AppScope.read(context);
         final shows = app.library.series.where((s) => s.hasLogo).toList()
           ..sort((a, b) => a.name.compareTo(b.name));
-        if (shows.isEmpty) return _Empty('None of your shows have a logo image in Jellyfin.');
+        if (shows.isEmpty) {
+          final kind = app.session?.kind;
+          return _Empty('None of your shows have a logo image on your ${kind == null ? '' : '${kind.label} '}server.');
+        }
         return ListView(children: [
           _TileWrap(children: [
             for (final s in shows)

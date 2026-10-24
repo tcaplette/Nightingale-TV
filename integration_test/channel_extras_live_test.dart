@@ -18,6 +18,8 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
 import 'package:media_kit/media_kit.dart';
+import 'package:nightingale_tv/jellyfin/jellyfin_client.dart';
+import 'package:nightingale_tv/server/media_server.dart';
 import 'package:nightingale_tv/app_scope.dart';
 import 'package:nightingale_tv/app_state.dart';
 import 'package:nightingale_tv/channels/channel.dart';
@@ -120,7 +122,7 @@ void main() {
     await tester.runAsync(() async {
       await household.start();
       app = household.app!;
-      final client = app.clientFor(server);
+      final client = app.clientFor(ServerKind.jellyfin, server) as JellyfinClient;
       final info = await client.publicInfo();
       final session = await client.authenticateByName(user, password, serverName: info.name);
       await app.completeSignIn(session, client);

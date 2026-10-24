@@ -1,0 +1,30 @@
+{
+ "MediaSources": [
+  {
+   "Id": "mediasource_137",
+   "Container": "mp4",
+   "Size": 276576195,
+   "Bitrate": 5086435,
+   "SupportsDirectPlay": false,
+   "SupportsDirectStream": false,
+   "SupportsTranscoding": true,
+   "TranscodingUrl": "/videos/137/stream.ts?DeviceId=probe-dev&MediaSourceId=mediasource_137&PlaySessionId=3f87686897224a15b36c55fbfb959bc1&api_key=emby-token&VideoCodec=h264&AudioCodec=aac&VideoBitrate=1923574&AudioBitrate=76426&AudioStreamIndex=1&TranscodingMaxAudioChannels=2&TranscodeReasons=ContainerBitrateExceedsLimit",
+   "MediaStreams": [
+    {
+     "Type": "Video",
+     "Codec": "h264",
+     "BitRate": 5001443,
+     "Index": 0
+    },
+    {
+     "Type": "Audio",
+     "Codec": "aac",
+     "BitRate": 76426,
+     "Index": 1
+    }
+   ],
+   "ItemId": "137"
+  }
+ ],
+ "PlaySessionId": "3f87686897224a15b36c55fbfb959bc1"
+}

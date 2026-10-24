@@ -43,7 +43,7 @@ class StreamContext {
   final Channel channel;
 
   /// The channel's schedule right now; null once it's hidden or deleted.
-  final ChannelSchedule? Function() schedule;
+  final ProgramSchedule? Function() schedule;
 
   /// [c]'s 1 s chunk, in this stream's format.
   final Future<Uint8List> Function(BroadcastCard c) card;
@@ -145,9 +145,7 @@ class ChannelStream {
     final ahead = _ahead;
     _ahead = null;
     if (ahead != null) _release(ahead);
-    for (final p in [..._encoders]) {
-      _kill(p);
-    }
+    final exits = [for (final p in [..._encoders]) _kill(p)];
     final muxer = _muxer;
     if (muxer != null) {
       try {
@@ -155,14 +153,22 @@ class ChannelStream {
       } on Object {
         // Already gone.
       }
-      _kill(muxer);
+      exits.add(_kill(muxer));
     }
     if (!_done.isCompleted) _done.complete();
+    // Back once every process has gone, so quitting leaves none behind.
+    await Future.wait(exits);
   }
 
-  static void _kill(Process p) {
+  /// Asks [p] to stop, and makes it after 2 s; done once it has exited.
+  static Future<void> _kill(Process p) async {
     p.kill(ProcessSignal.sigterm);
-    Timer(const Duration(seconds: 2), () => p.kill(ProcessSignal.sigkill));
+    try {
+      await p.exitCode.timeout(const Duration(seconds: 2));
+    } on TimeoutException {
+      p.kill(ProcessSignal.sigkill);
+      await p.exitCode.timeout(const Duration(seconds: 1), onTimeout: () => -1);
+    }
   }
 
   Future<void> _write(Uint8List bytes) async {
@@ -190,6 +196,14 @@ class ChannelStream {
     if (plan is _ProgramPlan) {
       await _startEncoder(plan);
       final tuning = TuningCardSpec(ctx.channel);
+      // A tuning card that wasn't encoded ahead: black until it is, so the
+      // first bytes don't wait on it.
+      var tuningReady = false;
+      final made = ctx.card(tuning).then((_) => tuningReady = true, onError: (Object _) => tuningReady = true);
+      await Future.any([made, Future<void>.delayed(const Duration(milliseconds: 250))]);
+      while (!_stopped && !tuningReady && !plan.ready) {
+        await _writeCard(const BlackCard(), 1);
+      }
       while (!_stopped && (!plan.ready || _wallAt(_streamTime).isBefore(plan.t.subtract(minSegment)))) {
         await _writeCard(tuning, 1);
       }
@@ -422,7 +436,7 @@ class ChannelStream {
     // changed, or at stop) is still running: stop it.
     if (p != null && !plan.finished) {
       plan.finished = true;
-      if (_encoders.remove(p)) _kill(p);
+      if (_encoders.remove(p)) unawaited(_kill(p));
     }
     if (plan.opened) {
       plan.opened = false;

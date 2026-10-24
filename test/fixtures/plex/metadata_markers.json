@@ -1,0 +1,168 @@
+{
+ "MediaContainer": {
+  "size": 1,
+  "allowSync": true,
+  "identifier": "com.plexapp.plugins.library",
+  "librarySectionID": 1,
+  "librarySectionTitle": "TV",
+  "Metadata": [
+   {
+    "ratingKey": "3",
+    "key": "/library/metadata/3",
+    "parentRatingKey": "2",
+    "grandparentRatingKey": "1",
+    "type": "episode",
+    "title": "Maple Street S01E01",
+    "grandparentKey": "/library/metadata/1",
+    "parentKey": "/library/metadata/2",
+    "librarySectionTitle": "TV",
+    "librarySectionID": 1,
+    "librarySectionKey": "/library/sections/1",
+    "grandparentTitle": "Maple Street",
+    "parentTitle": "Season 1",
+    "summary": "",
+    "index": 1,
+    "parentIndex": 1,
+    "duration": 435001,
+    "addedAt": 1792606547,
+    "updatedAt": 1792608393,
+    "chapterSource": "media",
+    "Media": [
+     {
+      "id": 1,
+      "duration": 435001,
+      "bitrate": 5086,
+      "width": 1280,
+      "height": 720,
+      "aspectRatio": 1.78,
+      "audioChannels": 2,
+      "audioCodec": "aac",
+      "videoCodec": "h264",
+      "videoResolution": "720",
+      "container": "mp4",
+      "videoFrameRate": "NTSC",
+      "optimizedForStreaming": 0,
+      "has64bitOffsets": false,
+      "videoProfile": "high",
+      "Part": [
+       {
+        "id": 1,
+        "key": "/library/parts/1/1792606547/file.mp4",
+        "duration": 435001,
+        "file": "/media/TV/Maple Street (1987)/Season 01/Maple Street - S01E01 - Episode 1.mp4",
+        "size": 276576195,
+        "container": "mp4",
+        "has64bitOffsets": false,
+        "optimizedForStreaming": false,
+        "videoProfile": "high",
+        "Stream": [
+         {
+          "id": 1,
+          "streamType": 1,
+          "default": true,
+          "codec": "h264",
+          "index": 0,
+          "bitrate": 5001,
+          "bitDepth": 8,
+          "chromaLocation": "left",
+          "chromaSubsampling": "4:2:0",
+          "codedHeight": 720,
+          "codedWidth": 1280,
+          "frameRate": 29.97,
+          "hasScalingMatrix": false,
+          "height": 720,
+          "level": 31,
+          "profile": "high",
+          "refFrames": 4,
+          "scanType": "progressive",
+          "streamIdentifier": "1",
+          "width": 1280,
+          "displayTitle": "720p",
+          "extendedDisplayTitle": "720p (H.264)"
+         },
+         {
+          "id": 2,
+          "streamType": 2,
+          "selected": true,
+          "default": true,
+          "codec": "aac",
+          "index": 1,
+          "channels": 2,
+          "bitrate": 76,
+          "samplingRate": 48000,
+          "streamIdentifier": "2",
+          "displayTitle": "Unknown (AAC Stereo)",
+          "extendedDisplayTitle": "Unknown (AAC Stereo)"
+         }
+        ]
+       }
+      ]
+     }
+    ],
+    "Image": [
+     {
+      "alt": "Maple Street S01E01",
+      "type": "snapshot",
+      "url": "/library/metadata/3/thumb/1792608393"
+     }
+    ],
+    "Chapter": [
+     {
+      "id": 4,
+      "filter": "thumb=4",
+      "tag": "Act 1",
+      "index": 1,
+      "startTimeOffset": 0,
+      "endTimeOffset": 145000
+     },
+     {
+      "id": 5,
+      "filter": "thumb=5",
+      "tag": "Act 2",
+      "index": 2,
+      "startTimeOffset": 145000,
+      "endTimeOffset": 290000
+     },
+     {
+      "id": 6,
+      "filter": "thumb=6",
+      "tag": "Act 3",
+      "index": 3,
+      "startTimeOffset": 290000,
+      "endTimeOffset": 435000
+     }
+    ],
+    "Marker": [
+     {
+      "id": 51,
+      "type": "intro",
+      "startTimeOffset": 0,
+      "endTimeOffset": 30000,
+      "final": false
+     },
+     {
+      "id": 53,
+      "type": "commercial",
+      "startTimeOffset": 290000,
+      "endTimeOffset": 410000,
+      "final": false
+     },
+     {
+      "id": 52,
+      "type": "commercial",
+      "startTimeOffset": 145000,
+      "endTimeOffset": 265000,
+      "final": false
+     },
+     {
+      "id": 54,
+      "type": "credits",
+      "startTimeOffset": 425000,
+      "endTimeOffset": 435000,
+      "final": true
+     }
+    ]
+   }
+  ]
+ }
+}

@@ -1,0 +1,13 @@
+{
+ "id": 116893047,
+ "code": "KZ84",
+ "product": "Nightingale TV",
+ "trusted": false,
+ "qr": "https://plex.tv/api/v2/pins/qr/KZ84",
+ "clientIdentifier": "nightingale-dev-probe",
+ "expiresIn": 892,
+ "createdAt": "2026-10-21T18:21:32Z",
+ "expiresAt": "2026-10-21T18:36:32Z",
+ "authToken": null,
+ "newRegistration": null
+}

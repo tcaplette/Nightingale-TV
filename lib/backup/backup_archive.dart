@@ -12,8 +12,11 @@ import '../channels/channel.dart';
 import '../channels/program_block.dart';
 import '../data/app_storage.dart';
 import '../export/export_settings.dart';
+import '../live/live_source.dart';
+import '../live/live_source_files.dart';
 import '../profiles/household.dart';
 import '../profiles/profile.dart';
+import '../server/media_server.dart';
 
 /// Why a backup couldn't be made, read or restored, as one plain sentence.
 class BackupException implements Exception {
@@ -68,7 +71,7 @@ class BackupSummary {
 /// One profile's part of a backup: its saved state, as saved, and where it
 /// signs in. Never its sign-in token or its Jellyfin device id.
 class ProfileBackup {
-  const ProfileBackup({this.settings, this.channels, this.blocks, this.signIn});
+  const ProfileBackup({this.settings, this.channels, this.blocks, this.signIn, this.liveSources, this.liveFiles = const {}});
 
   /// `settings.json` without `installId`.
   final Map<String, Object?>? settings;
@@ -78,6 +81,13 @@ class ProfileBackup {
   /// Server URL, name and id, user id and name.
   final Map<String, Object?>? signIn;
 
+  /// `live_sources.json` as saved (live-tv-sources), and the playlist and
+  /// guide files picked on the device, by name, each gzip-compressed and
+  /// base64-encoded (a guide can be hundreds of megabytes of XML). Never
+  /// the cached channel lists or guide data.
+  final Map<String, Object?>? liveSources;
+  final Map<String, String> liveFiles;
+
   String? get serverId => signIn?['serverId'] as String?;
 
   Map<String, Object?> toJson() => {
@@ -85,6 +95,8 @@ class ProfileBackup {
         'channels': ?channels,
         'blocks': ?blocks,
         'signIn': ?signIn,
+        'liveSources': ?liveSources,
+        if (liveFiles.isNotEmpty) 'liveFiles': liveFiles,
       };
 
   static ProfileBackup fromJson(Object? json) {
@@ -94,16 +106,25 @@ class ProfileBackup {
       channels: json['channels'] as List<Object?>?,
       blocks: json['blocks'] as List<Object?>?,
       signIn: json['signIn'] as Map<String, Object?>?,
+      liveSources: json['liveSources'] as Map<String, Object?>?,
+      liveFiles: (json['liveFiles'] as Map?)?.cast<String, String>() ?? const {},
     );
   }
+
+  /// Names a picked playlist or guide is copied in with
+  /// ([LiveSourceStore.savePicked]), so no other name is ever written.
+  static final liveFileName = RegExp(r'^[A-Za-z0-9_-]{1,80}-(playlist|guide)(\.[A-Za-z0-9]{1,5}){0,2}$');
 
   /// The sign-in hint fields of a saved session (or hint).
   static Map<String, Object?>? hintFrom(Object? session) {
     if (session is! Map<String, Object?>) return null;
     if (session['serverUrl'] is! String || session['userName'] is! String) return null;
+    // Jellyfin hints have no kind, as before server kinds existed.
+    final kind = ServerKind.fromJson(session['kind']);
     return {
+      if (kind != ServerKind.jellyfin) 'kind': kind.name,
       'serverUrl': session['serverUrl'],
-      'serverName': session['serverName'] ?? 'Jellyfin',
+      'serverName': session['serverName'] ?? kind.label,
       'serverId': ?session['serverId'],
       'userId': ?session['userId'],
       'userName': session['userName'],
@@ -126,6 +147,7 @@ class BackupArchive {
     this.remote,
     required this.profiles,
     required this.logos,
+    this.server,
   });
 
   static const formatName = 'nightingale-tv-backup';
@@ -169,6 +191,24 @@ class BackupArchive {
   /// Custom channel logos by file name.
   final Map<String, Uint8List> logos;
 
+  /// A server's user accounts (docker-web-admin D9):
+  /// `{"users": [{"name", "role", "disabled", "profiles": [ids]}]}`, never
+  /// ids, password hashes, salts or sessions. Null in backups made on a TV,
+  /// which also ignores it on restore.
+  final Map<String, Object?>? server;
+
+  /// Server files a backup never holds: the account database (and
+  /// docker-server-core's password file). [build] reads only the files it
+  /// names, so these can't get in; a restore leaves them where they are.
+  static const neverBackedUp = [
+    'nightingale.db',
+    'nightingale.db-wal',
+    'nightingale.db-shm',
+    'nightingale.db-journal',
+    'admin.json',
+    'admin.json.migrated',
+  ];
+
   /// What the content is, without when, why or where it was made: equal
   /// fingerprints mean nothing changed.
   late final String fingerprint = sha256.convert(utf8.encode(jsonEncode(_canonical(_content())))).toString();
@@ -178,10 +218,17 @@ class BackupArchive {
           for (final p in householdProfiles)
             if (p is Map<String, Object?> && p['name'] is String) p['name'] as String,
         ],
-        channels: profiles.values.fold(0, (n, p) => n + (p.channels?.length ?? 0)),
+        // Live channels are kept with their sources, not in channels.json.
+        channels: profiles.values.fold(0, (n, p) => n + (p.channels?.length ?? 0) + _liveChannels(p.liveSources)),
         blocks: profiles.values.fold(0, (n, p) => n + (p.blocks?.length ?? 0)),
         logos: logos.length,
       );
+
+  static int _liveChannels(Map<String, Object?>? live) => [
+        if (live?['sources'] case final List<Object?> sources)
+          for (final s in sources)
+            if (s case {'chosen': final Map<String, Object?> chosen}) chosen.length,
+      ].fold(0, (n, c) => n + c);
 
   /// The profile named in [householdProfiles] by [id].
   String? profileName(String id) => [
@@ -199,6 +246,7 @@ class BackupArchive {
         'household': {'profiles': householdProfiles, 'export': export, 'remote': remote},
         'profiles': {for (final e in profiles.entries) e.key: e.value.toJson()},
         'logos': {for (final e in logos.entries) e.key: base64.encode(e.value)},
+        'server': ?server,
       };
 
   Map<String, Object?> toJson() => {
@@ -271,6 +319,7 @@ class BackupArchive {
         remote: household['remote'],
         profiles: {for (final e in parts.entries) e.key: ProfileBackup.fromJson(e.value)},
         logos: {for (final e in logos.entries) e.key: base64.decode(e.value as String)},
+        server: json['server'] is Map<String, Object?> ? json['server'] as Map<String, Object?> : null,
       );
     } on Object {
       throw BackupException(damaged);
@@ -312,6 +361,15 @@ class BackupArchive {
         for (final b in part.blocks ?? const []) {
           ProgramBlock.fromJson(b as Map<String, Object?>);
         }
+        what = 'Live TV sources';
+        if (part.liveSources case final live?) {
+          for (final s in live['sources'] as List? ?? const []) {
+            LiveSource.fromJson(s as Map<String, Object?>);
+          }
+        }
+        for (final name in part.liveFiles.keys) {
+          if (!ProfileBackup.liveFileName.hasMatch(name)) throw const FormatException('live file');
+        }
       } on Object {
         throw BackupException('This backup is damaged: ${p.name}\'s $what can\'t be read.');
       }
@@ -351,11 +409,15 @@ class BackupArchive {
   /// profile's settings (without `installId`), channels, blocks and sign-in
   /// hint, and the logos. Never a token, a device id, the library index,
   /// analysis results, caches or logs. Pending writes must be flushed first.
-  static Future<BuiltBackup> build(Directory root, {required String reason, required String device, String? subject, DateTime? createdAt}) {
+  ///
+  /// [server] is the server's account section (server mode only).
+  static Future<BuiltBackup> build(Directory root,
+      {required String reason, required String device, String? subject, DateTime? createdAt, Map<String, Object?>? server}) {
     final path = root.path;
     final at = (createdAt ?? DateTime.now()).toUtc();
     Future<BuiltBackup> work() async {
-      final archive = await _read(Directory(path), reason: reason, device: device, subject: subject, createdAt: at);
+      final archive =
+          await _read(Directory(path), reason: reason, device: device, subject: subject, createdAt: at, server: server);
       return BuiltBackup(archive.encode(), archive.fingerprint, archive.summary, at);
     }
 
@@ -363,7 +425,7 @@ class BackupArchive {
   }
 
   static Future<BackupArchive> _read(Directory root,
-      {required String reason, required String device, String? subject, required DateTime createdAt}) async {
+      {required String reason, required String device, String? subject, required DateTime createdAt, Map<String, Object?>? server}) async {
     final top = AppStorage.existing(root);
     final household = await top.readRaw('profiles.json');
     final list = household is List ? household.cast<Object?>() : const <Object?>[];
@@ -375,12 +437,26 @@ class BackupArchive {
       final settings = await storage.readRaw('settings.json');
       final channels = await storage.readRaw('channels.json');
       final blocks = await storage.readRaw('blocks.json');
+      final live = await storage.readRaw(LiveSourceStore.fileName);
+      final liveFiles = <String, String>{};
+      if (live is Map<String, Object?>) {
+        for (final s in live['sources'] as List? ?? const []) {
+          if (s is! Map<String, Object?>) continue;
+          for (final name in [s['playlistFile'], s['guideFile']]) {
+            if (name is! String || !ProfileBackup.liveFileName.hasMatch(name)) continue;
+            final f = File('${storage.root.path}/${LiveSourceStore.filesFolder}/$name');
+            if (await f.exists()) liveFiles[name] = base64.encode(gzip.encode(await f.readAsBytes()));
+          }
+        }
+      }
       profiles[id] = ProfileBackup(
         settings: settings is Map<String, Object?> ? ({...settings}..remove('installId')) : null,
         channels: channels is List ? channels.cast<Object?>() : null,
         blocks: blocks is List ? blocks.cast<Object?>() : null,
         signIn: ProfileBackup.hintFrom(await storage.readRaw('session.json')) ??
             ProfileBackup.hintFrom(await storage.readRaw(signInHintFile)),
+        liveSources: live is Map<String, Object?> ? live : null,
+        liveFiles: liveFiles,
       );
     }
     final logos = <String, Uint8List>{};
@@ -401,6 +477,7 @@ class BackupArchive {
       remote: await top.readRaw('remote.json'),
       profiles: profiles,
       logos: logos,
+      server: server,
     );
   }
 

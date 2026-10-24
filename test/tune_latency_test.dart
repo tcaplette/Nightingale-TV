@@ -46,7 +46,10 @@ void main() {
     client = FakeClient(log);
     app.client = client;
     player = FakePlayer(log);
-    now = DateTime.now();
+    // A fixed time of day: what's on next (and so what's asked ahead)
+    // depends on it, and some times put a break where a program is expected.
+    final today = DateTime.now();
+    now = DateTime(today.year, today.month, today.day, 13, 50);
     tuner = Tuner(app, player: player, clock: () => now)
       ..prefetch = false
       ..preload = false

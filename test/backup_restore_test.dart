@@ -24,6 +24,7 @@ import 'package:nightingale_tv/profiles/profile.dart';
 
 import 'backup_fixtures.dart';
 import 'fixtures.dart';
+import 'package:nightingale_tv/server/media_server.dart';
 
 /// Settings without the nightly premiere slot, whose new episodes depend
 /// on when each device first saw them.
@@ -62,7 +63,7 @@ JellyfinClient _server() {
   );
 }
 
-JellyfinSession _session(String serverId) => JellyfinSession(
+ServerSession _session(String serverId) => ServerSession(
       serverUrl: 'http://127.0.0.1:9',
       serverName: 'Home',
       userId: 'u-mom',
@@ -261,6 +262,72 @@ void main() {
       expect(h.app!.channelById(first.id)!.name, name);
     });
 
+    test("a profile with Live TV sources: they come back, and after their refresh so do the channels as they were",
+        () async {
+      await writeHousehold(dir, momAndKids(), fakeLibrary());
+      final h = await open(dir);
+      await h.select(mom);
+      final app = h.app!;
+      // A playlist and a guide picked from files (so the refresh needs no network).
+      final picked = Directory('${dir.path}/picked')..createSync();
+      final m3u = File('${picked.path}/list.m3u')
+        ..writeAsStringSync('#EXTM3U\n${[
+          for (final n in ['2.1', '4.1', '7.1']) '#EXTINF:-1 tvg-id="c$n" tvg-chno="$n",Channel $n\nhttp://p/$n.ts',
+        ].join('\n')}\n');
+      final now = DateTime.now().toUtc();
+      String t(DateTime d) => '${d.year}${'${d.month}'.padLeft(2, '0')}${'${d.day}'.padLeft(2, '0')}'
+          '${'${d.hour}'.padLeft(2, '0')}0000 +0000';
+      final start = DateTime.utc(now.year, now.month, now.day, now.hour);
+      final guide = File('${picked.path}/guide.xml')
+        ..writeAsStringSync('<tv><channel id="c4.1"><display-name>Channel 4.1</display-name></channel>'
+            '<programme start="${t(start)}" stop="${t(start.add(const Duration(hours: 3)))}" channel="c4.1">'
+            '<title>The News</title></programme></tv>');
+      final source = await app.addM3uSource(
+          name: 'Files',
+          playlist: (name: 'list.m3u', path: m3u.path, bytes: null),
+          guide: (name: 'guide.xml', path: guide.path, bytes: null));
+      await app.chooseLiveChannels(source, {'c2.1', 'c4.1'});
+      await app.refreshLiveSource(source, channels: false);
+      final ch = app.allChannels.firstWhere((c) => c.live?.key == 'c4.1');
+      await app.updateChannel(ch, favorite: true);
+      final group = await app.createGroup('Locals');
+      await app.setInGroup(group, ch, true);
+      final numbers = {for (final c in app.allChannels) if (c.isLive) c.live!.key: c.number};
+      await app.storage.flush();
+
+      final backup = (await h.backups!.backUp(BackupReason.manual))!;
+      final archive = BackupArchive.check(await h.backups!.store.read(backup));
+      final part = archive.profiles[mom.id]!;
+      expect((part.liveSources!['sources'] as List).single, containsPair('name', 'Files'));
+      expect(part.liveFiles.keys, unorderedEquals([source.playlistFile, source.guideFile]));
+      expect(archive.summary.channels, archive.profiles.values.fold(0, (n, p) => n + (p.channels?.length ?? 0)) + 2,
+          reason: 'the chosen live channels count');
+      final text = utf8.decode(BackupArchive.gunzip(await h.backups!.store.read(backup)));
+      expect(text, isNot(contains('The News')), reason: 'no cached guide data');
+      expect(text, isNot(contains('live_cache')));
+
+      // Gone here: the sources, their files and cache.
+      final profileDir = storageOf(dir, mom.id).root;
+      await Directory('${profileDir.path}/live_files').delete(recursive: true);
+      await Directory('${profileDir.path}/live_cache').delete(recursive: true);
+      await File('${profileDir.path}/live_sources.json').delete();
+
+      await BackupRestorer(h).restore(await h.backups!.store.read(backup));
+      expect(await Directory('${profileDir.path}/live_cache').exists(), isFalse);
+      await h.select(h.profiles.first);
+      final again = h.app!;
+      final restored = again.live.sources.single;
+      expect(restored.name, 'Files');
+      // As at a start: the refresh brings the channels back.
+      await again.refreshLiveSource(restored);
+      final live = [for (final c in again.allChannels) if (c.isLive) c];
+      expect({for (final c in live) c.live!.key: c.number}, numbers);
+      final news = live.firstWhere((c) => c.live!.key == 'c4.1');
+      expect(news.favorite, isTrue);
+      expect(again.settings.groups.single.channelIds, [news.id]);
+      expect(again.scheduleFor(news)!.programAt(DateTime.now()).title, 'The News');
+    });
+
     test('sign-ins the restore drops are signed out of Jellyfin; kept ones aren\'t', () async {
       await writeHousehold(dir, momAndKids(), fakeLibrary());
       final h = await open(dir);
@@ -281,6 +348,25 @@ void main() {
       await BackupRestorer(h, signOut: (s) async => throw const SocketException('unreachable')).restore(again);
       await pumpEventQueue();
       expect(h.profiles.map((p) => p.name), ['Mom', 'Kids']);
+    });
+
+    test('on the same device a Plex or Emby sign-in stays only on the same kind and server', () async {
+      final [mom, kids] = momAndKids();
+      await writeHousehold(dir, momAndKids(), fakeLibrary());
+      await writeProfile(dir, mom, fakeLibrary(), serverId: 'machine-1', kind: 'plex');
+      await writeProfile(dir, kids, fakeLibrary(), serverId: 'emby-1', kind: 'emby');
+      final h = await open(dir);
+      final bytes = (await h.backups!.build(BackupReason.manual)).bytes;
+      expect((await BackupRestorer(h).plan(BackupArchive.check(bytes))).needPassword, isEmpty);
+      // Kids is now on a Jellyfin server that happens to have the same id.
+      await writeProfile(dir, kids, fakeLibrary(), serverId: 'emby-1');
+      final plan = await BackupRestorer(h).plan(BackupArchive.check(bytes));
+      expect(plan.needPassword, ['Kids']);
+      await BackupRestorer(h, signOut: (s) async {}).restore(bytes);
+      final kept = await storageOf(dir, mom.id).readRaw('session.json') as Map;
+      expect((kept['kind'], kept['accountToken']), ('plex', accountTokenFor(mom.id)));
+      final hint = await storageOf(dir, kids.id).readRaw(AppState.signInHintFile) as Map;
+      expect((hint['kind'], hint['serverId']), ('emby', 'emby-1'));
     });
 
     test('a backup turned down changes nothing and saves no backup', () async {
@@ -352,6 +438,10 @@ void main() {
         final app = h.app!;
         await app.completeSignIn(_session('s1'), _server());
         expect(app.phase, AppPhase.ready);
+        // A sign-in that knows its server's id (every Plex one) opens that
+        // server's analysis results without looking the id up.
+        await pumpEventQueue();
+        expect(app.analysisCache, isNotNull);
         final onNew = {
           for (final c in app.allChannels)
             c.id: (c.name, app.scheduleFor(c)?.programAt(now).title, app.scheduleFor(c)?.programAt(now).start),

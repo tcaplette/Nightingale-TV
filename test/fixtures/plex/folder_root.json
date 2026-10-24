@@ -1,0 +1,20 @@
+{
+ "MediaContainer": {
+  "size": 1,
+  "allowSync": true,
+  "content": "secondary",
+  "identifier": "com.plexapp.plugins.library",
+  "librarySectionID": 3,
+  "librarySectionTitle": "Home Videos",
+  "title1": "Home Videos",
+  "title2": "By Folder",
+  "viewGroup": "secondary",
+  "viewMode": 65592,
+  "Metadata": [
+   {
+    "key": "/library/sections/3/folder?parent=15",
+    "title": "Commercials"
+   }
+  ]
+ }
+}

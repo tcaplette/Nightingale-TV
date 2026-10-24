@@ -146,8 +146,12 @@ class ExoTunerPlayer implements TunerPlayer {
 
   @override
   Future<void> open(Uri url,
-      {required Map<String, String> headers, Duration? start, Duration? end, bool exact = true}) async {
-    _at = start ?? Duration.zero;
+      {required Map<String, String> headers,
+      Duration? start,
+      Duration? end,
+      bool exact = true,
+      bool live = false}) async {
+    _at = live ? Duration.zero : start ?? Duration.zero;
     _isPlaying = false;
     cues.value = ExoCues.none;
     final id = await _ready;
@@ -155,9 +159,10 @@ class ExoTunerPlayer implements TunerPlayer {
     await _call<void>('open', {
       'url': url.toString(),
       'headers': headers,
-      'startMs': start?.inMilliseconds,
-      'endMs': end?.inMilliseconds,
+      'startMs': live ? null : start?.inMilliseconds,
+      'endMs': live ? null : end?.inMilliseconds,
       'exact': exact,
+      'live': live,
     });
   }
 

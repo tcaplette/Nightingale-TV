@@ -4,6 +4,7 @@ import 'package:flutter/widgets.dart';
 import 'package:nightingale_tv/jellyfin/jellyfin_client.dart';
 import 'package:nightingale_tv/playback/playback_diagnostics.dart';
 import 'package:nightingale_tv/playback/tuner_player.dart';
+import 'package:nightingale_tv/server/media_server.dart';
 
 /// A Jellyfin that decides on bitrate the way the real one does, and logs
 /// every call the tuner makes as it's made.
@@ -18,14 +19,14 @@ class FakeClient extends JellyfinClient {
   final bitrates = <String, int>{};
   final decisions = <({String id, int? maxBitrate, bool force, Map<String, Object?>? profile})>[];
 
-  /// What [playbackInfo] answers for a source that plays directly (unless
+  /// What [playbackDecision] answers for a source that plays directly (unless
   /// it's over the cap or forced): direct play when null, else a
   /// conversion, a direct stream if true.
   final converts = <String, bool>{};
   final stopped = <String>[];
   final reports = <(String kind, PlaybackReport report)>[];
 
-  /// Answers [playbackInfo] only once this completes (when set).
+  /// Answers [playbackDecision] only once this completes (when set).
   Completer<void>? holdDecisions;
 
   /// Answers the playback reports only once this completes (when set): a
@@ -33,7 +34,7 @@ class FakeClient extends JellyfinClient {
   Completer<void>? holdReports;
 
   @override
-  Future<PlaybackDecision> playbackInfo(String itemId,
+  Future<PlaybackDecision> playbackDecision(String itemId,
       {int? maxBitrate,
       bool forceTranscode = false,
       Duration startAt = Duration.zero,
@@ -50,8 +51,14 @@ class FakeClient extends JellyfinClient {
     return PlaybackDecision.transcode(template, directStream: converted, sourceBitrate: source, sourceCodec: 'hevc');
   }
 
+  /// Transcodes in the source's own times, as Plex's are.
+  bool sourceTime = false;
+
   @override
-  Future<void> stopEncoding(String playSessionId) async {
+  bool get transcodeKeepsSourceTime => sourceTime;
+
+  @override
+  Future<void> stopTranscode(String playSessionId) async {
     stopped.add(playSessionId);
     log.add('stop:$playSessionId');
   }
@@ -86,6 +93,9 @@ class FakePlayer implements TunerPlayer {
 
   final List<String> log;
   final opens = <({Uri url, Map<String, String> headers, Duration? start, Duration? end, bool exact})>[];
+
+  /// URLs opened as live streams.
+  final liveOpens = <Uri>[];
   OpenResult Function(Uri url) onOpen = (_) => OpenResult.plays;
 
   /// How far before [start] a keyframe join lands.
@@ -121,8 +131,13 @@ class FakePlayer implements TunerPlayer {
 
   @override
   Future<void> open(Uri url,
-      {required Map<String, String> headers, Duration? start, Duration? end, bool exact = true}) async {
+      {required Map<String, String> headers,
+      Duration? start,
+      Duration? end,
+      bool exact = true,
+      bool live = false}) async {
     opens.add((url: url, headers: headers, start: start, end: end, exact: exact));
+    if (live) liveOpens.add(url);
     log.add('open:${url.path}');
     queued = null;
     _moved = false;
@@ -158,6 +173,9 @@ class FakePlayer implements TunerPlayer {
 
   /// A playback error some time after starting.
   void failNow() => _error.add('stream broke');
+
+  /// A playback error saying [message].
+  void debugError(String message) => _error.add(message);
 
   /// The file ends with nothing queued (before its scheduled end).
   void complete() => _completed.add(true);

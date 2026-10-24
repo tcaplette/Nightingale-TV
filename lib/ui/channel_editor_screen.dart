@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
 import '../app_scope.dart';
+import '../channels/schedule.dart';
+import '../live/live_tv_manager.dart';
 import '../channels/channel.dart';
 import '../commercials/break_plan.dart';
 import '../theme/tv_theme.dart';
@@ -203,8 +205,11 @@ class _ChannelEditorScreenState extends State<ChannelEditorScreen> {
     final app = AppScope.read(context);
     final g = context.guide;
     final schedule = app.scheduleFor(ch);
-    final loop = schedule?.loop?.loopLength;
+    final loop = schedule is ChannelSchedule ? schedule.loop?.loopLength : null;
     final blockCount = app.blocks.where((b) => b.channelId == ch.id).length;
+    // A live channel (live-tv-sources): its source's stream, with no
+    // playlist, order, breaks, blocks or premieres to set.
+    final live = ch.isLive ? app.live.lookup(ch) : null;
 
     final portrait = ScreenLayout.of(context).isPortrait;
 
@@ -230,7 +235,13 @@ class _ChannelEditorScreenState extends State<ChannelEditorScreen> {
                     style: g.display(portrait ? 40 : 56, weight: FontWeight.w800),
                   ),
                   Text(
-                    [
+                    ch.isLive
+                        ? [
+                            'Live',
+                            if (live != null) live.source.name,
+                            if (live?.info.number case final n?) 'channel $n there',
+                          ].join(' · ')
+                        : [
                       if (ch.blockOnly) 'Programming blocks only' else '${ch.playlist.length} programs',
                       if (loop != null) 'repeats every ${_loopText(loop)}',
                       if (blockCount > 0) '$blockCount programming block${blockCount == 1 ? '' : 's'}',
@@ -266,6 +277,12 @@ class _ChannelEditorScreenState extends State<ChannelEditorScreen> {
                 if (icon != null) await app.updateChannel(ch, icon: icon);
               },
             ),
+            if (live != null)
+              TvButton(
+                label: "Source's logo",
+                icon: Icons.settings_input_antenna,
+                onPressed: () => app.updateChannel(ch, icon: LiveTvManager.defaultIcon(live.info)),
+              ),
             TvButton(
               label: 'Number −',
               icon: Icons.remove,
@@ -278,8 +295,8 @@ class _ChannelEditorScreenState extends State<ChannelEditorScreen> {
             ),
           ],
         ),
-        if (!ch.blockOnly) const SizedBox(height: 16),
-        if (!ch.blockOnly)
+        if (!ch.blockOnly && !ch.isLive) const SizedBox(height: 16),
+        if (!ch.blockOnly && !ch.isLive)
           Wrap(
             spacing: 16,
             runSpacing: 16,
@@ -297,6 +314,7 @@ class _ChannelEditorScreenState extends State<ChannelEditorScreen> {
                 ),
             ],
           ),
+        if (!ch.isLive) ...[
         const SizedBox(height: 28),
         Text('COMMERCIALS', style: g.display(24, weight: FontWeight.w800, color: g.accent)),
         const SizedBox(height: 10),
@@ -338,6 +356,7 @@ class _ChannelEditorScreenState extends State<ChannelEditorScreen> {
             ),
           ],
         ),
+        ],
         const SizedBox(height: 28),
         Text('CHANNEL LOGO', style: g.display(24, weight: FontWeight.w800, color: g.accent)),
         const SizedBox(height: 10),
@@ -360,7 +379,7 @@ class _ChannelEditorScreenState extends State<ChannelEditorScreen> {
               ),
           ],
         ),
-        if (!ch.blockOnly && !ch.isMusic) ...[
+        if (!ch.blockOnly && !ch.isMusic && !ch.isLive) ...[
           const SizedBox(height: 16),
           TvToggle(
             label: 'New episode premieres',

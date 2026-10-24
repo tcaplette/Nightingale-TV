@@ -1,3 +1,5 @@
+import '../channels/program_block.dart';
+
 String formatTime(DateTime t, {bool withPeriod = true}) {
   final h = t.hour % 12 == 0 ? 12 : t.hour % 12;
   final m = t.minute.toString().padLeft(2, '0');
@@ -44,3 +46,13 @@ String formatRecent(DateTime t, {DateTime? now}) {
   if (days == 1) return 'yesterday ${formatTime(t)}';
   return formatMoment(t);
 }
+
+/// "7:00 AM" for [minute] minutes after midnight.
+String formatClockMinute(int minute) => formatTime(DateTime(2000, 1, 1, minute ~/ 60, minute % 60));
+
+/// "Sat · 7:00 AM – 12:00 PM · Dec 1 – Dec 25"
+String describeBlock(ProgramBlock b) => [
+      describeDays(b.days),
+      '${formatClockMinute(b.startMinute)} – ${formatClockMinute(b.endMinute)}',
+      if (b.hasSeason) '${b.seasonStart} – ${b.seasonEnd}',
+    ].join('  ·  ');

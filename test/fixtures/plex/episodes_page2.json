@@ -1,0 +1,1076 @@
+{
+ "MediaContainer": {
+  "size": 19,
+  "totalSize": 24,
+  "offset": 5,
+  "allowSync": true,
+  "identifier": "com.plexapp.plugins.library",
+  "librarySectionID": 1,
+  "librarySectionTitle": "TV",
+  "nocache": true,
+  "title1": "TV",
+  "title2": "All Shows",
+  "viewGroup": "show",
+  "viewMode": 65592,
+  "Metadata": [
+   {
+    "ratingKey": "9",
+    "key": "/library/metadata/9",
+    "parentRatingKey": "7",
+    "grandparentRatingKey": "1",
+    "type": "episode",
+    "title": "Maple Street S02E02",
+    "grandparentKey": "/library/metadata/1",
+    "parentKey": "/library/metadata/7",
+    "grandparentTitle": "Maple Street",
+    "parentTitle": "Season 2",
+    "summary": "",
+    "index": 2,
+    "parentIndex": 2,
+    "duration": 390023,
+    "addedAt": 1792606671,
+    "updatedAt": 1792608393,
+    "chapterSource": "media",
+    "Media": [
+     {
+      "id": 6,
+      "duration": 390023,
+      "bitrate": 5094,
+      "width": 1280,
+      "height": 720,
+      "aspectRatio": 1.78,
+      "audioChannels": 2,
+      "audioCodec": "aac",
+      "videoCodec": "h264",
+      "videoResolution": "720",
+      "container": "mp4",
+      "videoFrameRate": "NTSC",
+      "optimizedForStreaming": 0,
+      "has64bitOffsets": false,
+      "videoProfile": "high",
+      "Part": [
+       {
+        "id": 6,
+        "key": "/library/parts/6/1792606671/file.mp4",
+        "duration": 390023,
+        "file": "/media/TV/Maple Street (1987)/Season 02/Maple Street - S02E02 - Episode 2.mp4",
+        "size": 248334596,
+        "container": "mp4",
+        "has64bitOffsets": false,
+        "optimizedForStreaming": false,
+        "videoProfile": "high"
+       }
+      ]
+     }
+    ],
+    "Image": [
+     {
+      "alt": "Maple Street S02E02",
+      "type": "snapshot",
+      "url": "/library/metadata/9/thumb/1792608393"
+     }
+    ]
+   },
+   {
+    "ratingKey": "10",
+    "key": "/library/metadata/10",
+    "parentRatingKey": "7",
+    "grandparentRatingKey": "1",
+    "type": "episode",
+    "title": "Maple Street S02E03",
+    "grandparentKey": "/library/metadata/1",
+    "parentKey": "/library/metadata/7",
+    "grandparentTitle": "Maple Street",
+    "parentTitle": "Season 2",
+    "summary": "",
+    "index": 3,
+    "parentIndex": 2,
+    "duration": 405005,
+    "addedAt": 1792606682,
+    "updatedAt": 1792608393,
+    "chapterSource": "media",
+    "Media": [
+     {
+      "id": 7,
+      "duration": 405005,
+      "bitrate": 5091,
+      "width": 1280,
+      "height": 720,
+      "aspectRatio": 1.78,
+      "audioChannels": 2,
+      "audioCodec": "aac",
+      "videoCodec": "h264",
+      "videoResolution": "720",
+      "container": "mp4",
+      "videoFrameRate": "NTSC",
+      "optimizedForStreaming": 0,
+      "has64bitOffsets": false,
+      "videoProfile": "high",
+      "Part": [
+       {
+        "id": 7,
+        "key": "/library/parts/7/1792606682/file.mp4",
+        "duration": 405005,
+        "file": "/media/TV/Maple Street (1987)/Season 02/Maple Street - S02E03 - Episode 3.mp4",
+        "size": 257712353,
+        "container": "mp4",
+        "has64bitOffsets": false,
+        "optimizedForStreaming": false,
+        "videoProfile": "high"
+       }
+      ]
+     }
+    ],
+    "Image": [
+     {
+      "alt": "Maple Street S02E03",
+      "type": "snapshot",
+      "url": "/library/metadata/10/thumb/1792608393"
+     }
+    ]
+   },
+   {
+    "ratingKey": "11",
+    "key": "/library/metadata/11",
+    "parentRatingKey": "7",
+    "grandparentRatingKey": "1",
+    "type": "episode",
+    "title": "Maple Street S02E04",
+    "grandparentKey": "/library/metadata/1",
+    "parentKey": "/library/metadata/7",
+    "grandparentTitle": "Maple Street",
+    "parentTitle": "Season 2",
+    "summary": "",
+    "index": 4,
+    "parentIndex": 2,
+    "duration": 420020,
+    "addedAt": 1792606697,
+    "updatedAt": 1792608393,
+    "chapterSource": "media",
+    "Media": [
+     {
+      "id": 8,
+      "duration": 420020,
+      "bitrate": 5093,
+      "width": 1280,
+      "height": 720,
+      "aspectRatio": 1.78,
+      "audioChannels": 2,
+      "audioCodec": "aac",
+      "videoCodec": "h264",
+      "videoResolution": "720",
+      "container": "mp4",
+      "videoFrameRate": "NTSC",
+      "optimizedForStreaming": 0,
+      "has64bitOffsets": false,
+      "videoProfile": "high",
+      "Part": [
+       {
+        "id": 8,
+        "key": "/library/parts/8/1792606697/file.mp4",
+        "duration": 420020,
+        "file": "/media/TV/Maple Street (1987)/Season 02/Maple Street - S02E04 - Episode 4.mp4",
+        "size": 267376313,
+        "container": "mp4",
+        "has64bitOffsets": false,
+        "optimizedForStreaming": false,
+        "videoProfile": "high"
+       }
+      ]
+     }
+    ],
+    "Image": [
+     {
+      "alt": "Maple Street S02E04",
+      "type": "snapshot",
+      "url": "/library/metadata/11/thumb/1792608393"
+     }
+    ]
+   },
+   {
+    "ratingKey": "14",
+    "key": "/library/metadata/14",
+    "parentRatingKey": "13",
+    "grandparentRatingKey": "12",
+    "type": "episode",
+    "title": "Episode 1",
+    "grandparentKey": "/library/metadata/12",
+    "parentKey": "/library/metadata/13",
+    "grandparentTitle": "Night Desk",
+    "parentTitle": "Season 1",
+    "summary": "",
+    "index": 1,
+    "parentIndex": 1,
+    "duration": 435008,
+    "addedAt": 1792607389,
+    "updatedAt": 1792608393,
+    "chapterSource": "media",
+    "Media": [
+     {
+      "id": 9,
+      "duration": 435008,
+      "bitrate": 2763,
+      "width": 1280,
+      "height": 720,
+      "aspectRatio": 1.78,
+      "audioChannels": 6,
+      "audioCodec": "dca",
+      "videoCodec": "h264",
+      "videoResolution": "720",
+      "container": "mkv",
+      "videoFrameRate": "NTSC",
+      "audioProfile": "dts",
+      "videoProfile": "high",
+      "Part": [
+       {
+        "id": 9,
+        "key": "/library/parts/9/1792607389/file.mkv",
+        "duration": 435008,
+        "file": "/media/TV/Night Desk (1979)/Season 01/Night Desk - S01E01 - Episode 1.mkv",
+        "size": 150231192,
+        "audioProfile": "dts",
+        "container": "mkv",
+        "videoProfile": "high"
+       }
+      ]
+     }
+    ],
+    "Image": [
+     {
+      "alt": "Episode 1",
+      "type": "snapshot",
+      "url": "/library/metadata/14/thumb/1792608393"
+     }
+    ]
+   },
+   {
+    "ratingKey": "15",
+    "key": "/library/metadata/15",
+    "parentRatingKey": "13",
+    "grandparentRatingKey": "12",
+    "type": "episode",
+    "title": "Episode 2",
+    "grandparentKey": "/library/metadata/12",
+    "parentKey": "/library/metadata/13",
+    "grandparentTitle": "Night Desk",
+    "parentTitle": "Season 1",
+    "summary": "",
+    "index": 2,
+    "parentIndex": 1,
+    "duration": 450016,
+    "addedAt": 1792607423,
+    "updatedAt": 1792608393,
+    "chapterSource": "media",
+    "Media": [
+     {
+      "id": 10,
+      "duration": 450016,
+      "bitrate": 2764,
+      "width": 1280,
+      "height": 720,
+      "aspectRatio": 1.78,
+      "audioChannels": 6,
+      "audioCodec": "dca",
+      "videoCodec": "h264",
+      "videoResolution": "720",
+      "container": "mkv",
+      "videoFrameRate": "NTSC",
+      "audioProfile": "dts",
+      "videoProfile": "high",
+      "Part": [
+       {
+        "id": 10,
+        "key": "/library/parts/10/1792607423/file.mkv",
+        "duration": 450016,
+        "file": "/media/TV/Night Desk (1979)/Season 01/Night Desk - S01E02 - Episode 2.mkv",
+        "size": 155499229,
+        "audioProfile": "dts",
+        "container": "mkv",
+        "videoProfile": "high"
+       }
+      ]
+     }
+    ],
+    "Image": [
+     {
+      "alt": "Episode 2",
+      "type": "snapshot",
+      "url": "/library/metadata/15/thumb/1792608393"
+     }
+    ]
+   },
+   {
+    "ratingKey": "16",
+    "key": "/library/metadata/16",
+    "parentRatingKey": "13",
+    "grandparentRatingKey": "12",
+    "type": "episode",
+    "title": "Episode 3",
+    "grandparentKey": "/library/metadata/12",
+    "parentKey": "/library/metadata/13",
+    "grandparentTitle": "Night Desk",
+    "parentTitle": "Season 1",
+    "summary": "",
+    "index": 3,
+    "parentIndex": 1,
+    "duration": 465031,
+    "addedAt": 1792607448,
+    "updatedAt": 1792608393,
+    "chapterSource": "media",
+    "Media": [
+     {
+      "id": 11,
+      "duration": 465031,
+      "bitrate": 2764,
+      "width": 1280,
+      "height": 720,
+      "aspectRatio": 1.78,
+      "audioChannels": 6,
+      "audioCodec": "dca",
+      "videoCodec": "h264",
+      "videoResolution": "720",
+      "container": "mkv",
+      "videoFrameRate": "NTSC",
+      "audioProfile": "dts",
+      "videoProfile": "high",
+      "Part": [
+       {
+        "id": 11,
+        "key": "/library/parts/11/1792607448/file.mkv",
+        "duration": 465031,
+        "file": "/media/TV/Night Desk (1979)/Season 01/Night Desk - S01E03 - Episode 3.mkv",
+        "size": 160687544,
+        "audioProfile": "dts",
+        "container": "mkv",
+        "videoProfile": "high"
+       }
+      ]
+     }
+    ],
+    "Image": [
+     {
+      "alt": "Episode 3",
+      "type": "snapshot",
+      "url": "/library/metadata/16/thumb/1792608393"
+     }
+    ]
+   },
+   {
+    "ratingKey": "17",
+    "key": "/library/metadata/17",
+    "parentRatingKey": "13",
+    "grandparentRatingKey": "12",
+    "type": "episode",
+    "title": "Episode 4",
+    "grandparentKey": "/library/metadata/12",
+    "parentKey": "/library/metadata/13",
+    "grandparentTitle": "Night Desk",
+    "parentTitle": "Season 1",
+    "summary": "",
+    "index": 4,
+    "parentIndex": 1,
+    "duration": 360026,
+    "addedAt": 1792607436,
+    "updatedAt": 1792608393,
+    "chapterSource": "media",
+    "Media": [
+     {
+      "id": 12,
+      "duration": 360026,
+      "bitrate": 2761,
+      "width": 1280,
+      "height": 720,
+      "aspectRatio": 1.78,
+      "audioChannels": 6,
+      "audioCodec": "dca",
+      "videoCodec": "h264",
+      "videoResolution": "720",
+      "container": "mkv",
+      "videoFrameRate": "NTSC",
+      "audioProfile": "dts",
+      "videoProfile": "high",
+      "Part": [
+       {
+        "id": 12,
+        "key": "/library/parts/12/1792607436/file.mkv",
+        "duration": 360026,
+        "file": "/media/TV/Night Desk (1979)/Season 01/Night Desk - S01E04 - Episode 4.mkv",
+        "size": 124260826,
+        "audioProfile": "dts",
+        "container": "mkv",
+        "videoProfile": "high"
+       }
+      ]
+     }
+    ],
+    "Image": [
+     {
+      "alt": "Episode 4",
+      "type": "snapshot",
+      "url": "/library/metadata/17/thumb/1792608393"
+     }
+    ]
+   },
+   {
+    "ratingKey": "19",
+    "key": "/library/metadata/19",
+    "parentRatingKey": "18",
+    "grandparentRatingKey": "12",
+    "type": "episode",
+    "title": "Episode 1",
+    "grandparentKey": "/library/metadata/12",
+    "parentKey": "/library/metadata/18",
+    "grandparentTitle": "Night Desk",
+    "parentTitle": "Season 2",
+    "summary": "",
+    "index": 1,
+    "parentIndex": 2,
+    "duration": 375008,
+    "addedAt": 1792607495,
+    "updatedAt": 1792608394,
+    "chapterSource": "media",
+    "Media": [
+     {
+      "id": 13,
+      "duration": 375008,
+      "bitrate": 2761,
+      "width": 1280,
+      "height": 720,
+      "aspectRatio": 1.78,
+      "audioChannels": 6,
+      "audioCodec": "dca",
+      "videoCodec": "h264",
+      "videoResolution": "720",
+      "container": "mkv",
+      "videoFrameRate": "NTSC",
+      "audioProfile": "dts",
+      "videoProfile": "high",
+      "Part": [
+       {
+        "id": 13,
+        "key": "/library/parts/13/1792607495/file.mkv",
+        "duration": 375008,
+        "file": "/media/TV/Night Desk (1979)/Season 02/Night Desk - S02E01 - Episode 1.mkv",
+        "size": 129440192,
+        "audioProfile": "dts",
+        "container": "mkv",
+        "videoProfile": "high"
+       }
+      ]
+     }
+    ],
+    "Image": [
+     {
+      "alt": "Episode 1",
+      "type": "snapshot",
+      "url": "/library/metadata/19/thumb/1792608394"
+     }
+    ]
+   },
+   {
+    "ratingKey": "20",
+    "key": "/library/metadata/20",
+    "parentRatingKey": "18",
+    "grandparentRatingKey": "12",
+    "type": "episode",
+    "title": "Episode 2",
+    "grandparentKey": "/library/metadata/12",
+    "parentKey": "/library/metadata/18",
+    "grandparentTitle": "Night Desk",
+    "parentTitle": "Season 2",
+    "summary": "",
+    "index": 2,
+    "parentIndex": 2,
+    "duration": 390023,
+    "addedAt": 1792607539,
+    "updatedAt": 1792608394,
+    "chapterSource": "media",
+    "Media": [
+     {
+      "id": 14,
+      "duration": 390023,
+      "bitrate": 2763,
+      "width": 1280,
+      "height": 720,
+      "aspectRatio": 1.78,
+      "audioChannels": 6,
+      "audioCodec": "dca",
+      "videoCodec": "h264",
+      "videoResolution": "720",
+      "container": "mkv",
+      "videoFrameRate": "NTSC",
+      "audioProfile": "dts",
+      "videoProfile": "high",
+      "Part": [
+       {
+        "id": 14,
+        "key": "/library/parts/14/1792607539/file.mkv",
+        "duration": 390023,
+        "file": "/media/TV/Night Desk (1979)/Season 02/Night Desk - S02E02 - Episode 2.mkv",
+        "size": 134693311,
+        "audioProfile": "dts",
+        "container": "mkv",
+        "videoProfile": "high"
+       }
+      ]
+     }
+    ],
+    "Image": [
+     {
+      "alt": "Episode 2",
+      "type": "snapshot",
+      "url": "/library/metadata/20/thumb/1792608394"
+     }
+    ]
+   },
+   {
+    "ratingKey": "21",
+    "key": "/library/metadata/21",
+    "parentRatingKey": "18",
+    "grandparentRatingKey": "12",
+    "type": "episode",
+    "title": "Episode 3",
+    "grandparentKey": "/library/metadata/12",
+    "parentKey": "/library/metadata/18",
+    "grandparentTitle": "Night Desk",
+    "parentTitle": "Season 2",
+    "summary": "",
+    "index": 3,
+    "parentIndex": 2,
+    "duration": 405004,
+    "addedAt": 1792607567,
+    "updatedAt": 1792608394,
+    "chapterSource": "media",
+    "Media": [
+     {
+      "id": 15,
+      "duration": 405004,
+      "bitrate": 2763,
+      "width": 1280,
+      "height": 720,
+      "aspectRatio": 1.78,
+      "audioChannels": 6,
+      "audioCodec": "dca",
+      "videoCodec": "h264",
+      "videoResolution": "720",
+      "container": "mkv",
+      "videoFrameRate": "NTSC",
+      "audioProfile": "dts",
+      "videoProfile": "high",
+      "Part": [
+       {
+        "id": 15,
+        "key": "/library/parts/15/1792607567/file.mkv",
+        "duration": 405004,
+        "file": "/media/TV/Night Desk (1979)/Season 02/Night Desk - S02E03 - Episode 3.mkv",
+        "size": 139868612,
+        "audioProfile": "dts",
+        "container": "mkv",
+        "videoProfile": "high"
+       }
+      ]
+     }
+    ],
+    "Image": [
+     {
+      "alt": "Episode 3",
+      "type": "snapshot",
+      "url": "/library/metadata/21/thumb/1792608394"
+     }
+    ]
+   },
+   {
+    "ratingKey": "22",
+    "key": "/library/metadata/22",
+    "parentRatingKey": "18",
+    "grandparentRatingKey": "12",
+    "type": "episode",
+    "title": "Episode 4",
+    "grandparentKey": "/library/metadata/12",
+    "parentKey": "/library/metadata/18",
+    "grandparentTitle": "Night Desk",
+    "parentTitle": "Season 2",
+    "summary": "",
+    "index": 4,
+    "parentIndex": 2,
+    "duration": 420019,
+    "addedAt": 1792607589,
+    "updatedAt": 1792608394,
+    "chapterSource": "media",
+    "Media": [
+     {
+      "id": 16,
+      "duration": 420019,
+      "bitrate": 2763,
+      "width": 1280,
+      "height": 720,
+      "aspectRatio": 1.78,
+      "audioChannels": 6,
+      "audioCodec": "dca",
+      "videoCodec": "h264",
+      "videoResolution": "720",
+      "container": "mkv",
+      "videoFrameRate": "NTSC",
+      "audioProfile": "dts",
+      "videoProfile": "high",
+      "Part": [
+       {
+        "id": 16,
+        "key": "/library/parts/16/1792607589/file.mkv",
+        "duration": 420019,
+        "file": "/media/TV/Night Desk (1979)/Season 02/Night Desk - S02E04 - Episode 4.mkv",
+        "size": 145063297,
+        "audioProfile": "dts",
+        "container": "mkv",
+        "videoProfile": "high"
+       }
+      ]
+     }
+    ],
+    "Image": [
+     {
+      "alt": "Episode 4",
+      "type": "snapshot",
+      "url": "/library/metadata/22/thumb/1792608394"
+     }
+    ]
+   },
+   {
+    "ratingKey": "25",
+    "key": "/library/metadata/25",
+    "parentRatingKey": "24",
+    "grandparentRatingKey": "23",
+    "type": "episode",
+    "title": "Episode 1",
+    "grandparentKey": "/library/metadata/23",
+    "parentKey": "/library/metadata/24",
+    "grandparentTitle": "Signal Hill",
+    "parentTitle": "Season 1",
+    "summary": "",
+    "index": 1,
+    "parentIndex": 1,
+    "duration": 435008,
+    "addedAt": 1792606950,
+    "updatedAt": 1792608396,
+    "chapterSource": "media",
+    "Media": [
+     {
+      "id": 17,
+      "duration": 435008,
+      "bitrate": 2452,
+      "width": 1280,
+      "height": 720,
+      "aspectRatio": 1.78,
+      "audioChannels": 6,
+      "audioCodec": "ac3",
+      "videoCodec": "hevc",
+      "videoResolution": "720",
+      "container": "mkv",
+      "videoFrameRate": "NTSC",
+      "videoProfile": "main 10",
+      "Part": [
+       {
+        "id": 17,
+        "key": "/library/parts/17/1792606950/file.mkv",
+        "duration": 435008,
+        "file": "/media/TV/Signal Hill (1993)/Season 01/Signal Hill - S01E01 - Episode 1.mkv",
+        "size": 133339439,
+        "container": "mkv",
+        "videoProfile": "main 10"
+       }
+      ]
+     }
+    ],
+    "Image": [
+     {
+      "alt": "Episode 1",
+      "type": "snapshot",
+      "url": "/library/metadata/25/thumb/1792608396"
+     }
+    ]
+   },
+   {
+    "ratingKey": "26",
+    "key": "/library/metadata/26",
+    "parentRatingKey": "24",
+    "grandparentRatingKey": "23",
+    "type": "episode",
+    "title": "Episode 2",
+    "grandparentKey": "/library/metadata/23",
+    "parentKey": "/library/metadata/24",
+    "grandparentTitle": "Signal Hill",
+    "parentTitle": "Season 1",
+    "summary": "",
+    "index": 2,
+    "parentIndex": 1,
+    "duration": 450021,
+    "addedAt": 1792607011,
+    "updatedAt": 1792608396,
+    "chapterSource": "media",
+    "Media": [
+     {
+      "id": 18,
+      "duration": 450021,
+      "bitrate": 2453,
+      "width": 1280,
+      "height": 720,
+      "aspectRatio": 1.78,
+      "audioChannels": 6,
+      "audioCodec": "ac3",
+      "videoCodec": "hevc",
+      "videoResolution": "720",
+      "container": "mkv",
+      "videoFrameRate": "NTSC",
+      "videoProfile": "main 10",
+      "Part": [
+       {
+        "id": 18,
+        "key": "/library/parts/18/1792607011/file.mkv",
+        "duration": 450021,
+        "file": "/media/TV/Signal Hill (1993)/Season 01/Signal Hill - S01E02 - Episode 2.mkv",
+        "size": 137961527,
+        "container": "mkv",
+        "videoProfile": "main 10"
+       }
+      ]
+     }
+    ],
+    "Image": [
+     {
+      "alt": "Episode 2",
+      "type": "snapshot",
+      "url": "/library/metadata/26/thumb/1792608396"
+     }
+    ]
+   },
+   {
+    "ratingKey": "27",
+    "key": "/library/metadata/27",
+    "parentRatingKey": "24",
+    "grandparentRatingKey": "23",
+    "type": "episode",
+    "title": "Episode 3",
+    "grandparentKey": "/library/metadata/23",
+    "parentKey": "/library/metadata/24",
+    "grandparentTitle": "Signal Hill",
+    "parentTitle": "Season 1",
+    "summary": "",
+    "index": 3,
+    "parentIndex": 1,
+    "duration": 465036,
+    "addedAt": 1792607040,
+    "updatedAt": 1792608396,
+    "chapterSource": "media",
+    "Media": [
+     {
+      "id": 19,
+      "duration": 465036,
+      "bitrate": 2455,
+      "width": 1280,
+      "height": 720,
+      "aspectRatio": 1.78,
+      "audioChannels": 6,
+      "audioCodec": "ac3",
+      "videoCodec": "hevc",
+      "videoResolution": "720",
+      "container": "mkv",
+      "videoFrameRate": "NTSC",
+      "videoProfile": "main 10",
+      "Part": [
+       {
+        "id": 19,
+        "key": "/library/parts/19/1792607040/file.mkv",
+        "duration": 465036,
+        "file": "/media/TV/Signal Hill (1993)/Season 01/Signal Hill - S01E03 - Episode 3.mkv",
+        "size": 142706552,
+        "container": "mkv",
+        "videoProfile": "main 10"
+       }
+      ]
+     }
+    ],
+    "Image": [
+     {
+      "alt": "Episode 3",
+      "type": "snapshot",
+      "url": "/library/metadata/27/thumb/1792608396"
+     }
+    ]
+   },
+   {
+    "ratingKey": "28",
+    "key": "/library/metadata/28",
+    "parentRatingKey": "24",
+    "grandparentRatingKey": "23",
+    "type": "episode",
+    "title": "Episode 4",
+    "grandparentKey": "/library/metadata/23",
+    "parentKey": "/library/metadata/24",
+    "grandparentTitle": "Signal Hill",
+    "parentTitle": "Season 1",
+    "summary": "",
+    "index": 4,
+    "parentIndex": 1,
+    "duration": 360031,
+    "addedAt": 1792606986,
+    "updatedAt": 1792608396,
+    "chapterSource": "media",
+    "Media": [
+     {
+      "id": 20,
+      "duration": 360031,
+      "bitrate": 2451,
+      "width": 1280,
+      "height": 720,
+      "aspectRatio": 1.78,
+      "audioChannels": 6,
+      "audioCodec": "ac3",
+      "videoCodec": "hevc",
+      "videoResolution": "720",
+      "container": "mkv",
+      "videoFrameRate": "NTSC",
+      "videoProfile": "main 10",
+      "Part": [
+       {
+        "id": 20,
+        "key": "/library/parts/20/1792606986/file.mkv",
+        "duration": 360031,
+        "file": "/media/TV/Signal Hill (1993)/Season 01/Signal Hill - S01E04 - Episode 4.mkv",
+        "size": 110292907,
+        "container": "mkv",
+        "videoProfile": "main 10"
+       }
+      ]
+     }
+    ],
+    "Image": [
+     {
+      "alt": "Episode 4",
+      "type": "snapshot",
+      "url": "/library/metadata/28/thumb/1792608396"
+     }
+    ]
+   },
+   {
+    "ratingKey": "30",
+    "key": "/library/metadata/30",
+    "parentRatingKey": "29",
+    "grandparentRatingKey": "23",
+    "type": "episode",
+    "title": "Episode 1",
+    "grandparentKey": "/library/metadata/23",
+    "parentKey": "/library/metadata/29",
+    "grandparentTitle": "Signal Hill",
+    "parentTitle": "Season 2",
+    "summary": "",
+    "index": 1,
+    "parentIndex": 2,
+    "year": 2026,
+    "duration": 375013,
+    "addedAt": 1792607223,
+    "updatedAt": 1792608396,
+    "chapterSource": "media",
+    "Media": [
+     {
+      "id": 21,
+      "duration": 375013,
+      "bitrate": 2450,
+      "width": 1280,
+      "height": 720,
+      "aspectRatio": 1.78,
+      "audioChannels": 6,
+      "audioCodec": "ac3",
+      "videoCodec": "hevc",
+      "videoResolution": "720",
+      "container": "mkv",
+      "videoFrameRate": "NTSC",
+      "videoProfile": "main 10",
+      "Part": [
+       {
+        "id": 21,
+        "key": "/library/parts/21/1792607223/file.mkv",
+        "duration": 375013,
+        "file": "/media/TV/Signal Hill (1993)/Season 02/Signal Hill - S02E01 - Episode 1.mkv",
+        "size": 114849101,
+        "container": "mkv",
+        "videoProfile": "main 10"
+       }
+      ]
+     }
+    ],
+    "Image": [
+     {
+      "alt": "Episode 1",
+      "type": "snapshot",
+      "url": "/library/metadata/30/thumb/1792608396"
+     }
+    ]
+   },
+   {
+    "ratingKey": "31",
+    "key": "/library/metadata/31",
+    "parentRatingKey": "29",
+    "grandparentRatingKey": "23",
+    "type": "episode",
+    "title": "Episode 2",
+    "grandparentKey": "/library/metadata/23",
+    "parentKey": "/library/metadata/29",
+    "grandparentTitle": "Signal Hill",
+    "parentTitle": "Season 2",
+    "summary": "",
+    "index": 2,
+    "parentIndex": 2,
+    "year": 2026,
+    "duration": 390028,
+    "addedAt": 1792607273,
+    "updatedAt": 1792608396,
+    "chapterSource": "media",
+    "Media": [
+     {
+      "id": 22,
+      "duration": 390028,
+      "bitrate": 2452,
+      "width": 1280,
+      "height": 720,
+      "aspectRatio": 1.78,
+      "audioChannels": 6,
+      "audioCodec": "ac3",
+      "videoCodec": "hevc",
+      "videoResolution": "720",
+      "container": "mkv",
+      "videoFrameRate": "NTSC",
+      "videoProfile": "main 10",
+      "Part": [
+       {
+        "id": 22,
+        "key": "/library/parts/22/1792607273/file.mkv",
+        "duration": 390028,
+        "file": "/media/TV/Signal Hill (1993)/Season 02/Signal Hill - S02E02 - Episode 2.mkv",
+        "size": 119519620,
+        "container": "mkv",
+        "videoProfile": "main 10"
+       }
+      ]
+     }
+    ],
+    "Image": [
+     {
+      "alt": "Episode 2",
+      "type": "snapshot",
+      "url": "/library/metadata/31/thumb/1792608396"
+     }
+    ]
+   },
+   {
+    "ratingKey": "32",
+    "key": "/library/metadata/32",
+    "parentRatingKey": "29",
+    "grandparentRatingKey": "23",
+    "type": "episode",
+    "title": "Episode 3",
+    "grandparentKey": "/library/metadata/23",
+    "parentKey": "/library/metadata/29",
+    "grandparentTitle": "Signal Hill",
+    "parentTitle": "Season 2",
+    "summary": "",
+    "index": 3,
+    "parentIndex": 2,
+    "year": 2026,
+    "duration": 405024,
+    "addedAt": 1792607305,
+    "updatedAt": 1792608396,
+    "chapterSource": "media",
+    "Media": [
+     {
+      "id": 23,
+      "duration": 405024,
+      "bitrate": 2451,
+      "width": 1280,
+      "height": 720,
+      "aspectRatio": 1.78,
+      "audioChannels": 6,
+      "audioCodec": "ac3",
+      "videoCodec": "hevc",
+      "videoResolution": "720",
+      "container": "mkv",
+      "videoFrameRate": "NTSC",
+      "videoProfile": "main 10",
+      "Part": [
+       {
+        "id": 23,
+        "key": "/library/parts/23/1792607305/file.mkv",
+        "duration": 405024,
+        "file": "/media/TV/Signal Hill (1993)/Season 02/Signal Hill - S02E03 - Episode 3.mkv",
+        "size": 124110303,
+        "container": "mkv",
+        "videoProfile": "main 10"
+       }
+      ]
+     }
+    ],
+    "Image": [
+     {
+      "alt": "Episode 3",
+      "type": "snapshot",
+      "url": "/library/metadata/32/thumb/1792608396"
+     }
+    ]
+   },
+   {
+    "ratingKey": "33",
+    "key": "/library/metadata/33",
+    "parentRatingKey": "29",
+    "grandparentRatingKey": "23",
+    "type": "episode",
+    "title": "Episode 4",
+    "grandparentKey": "/library/metadata/23",
+    "parentKey": "/library/metadata/29",
+    "grandparentTitle": "Signal Hill",
+    "parentTitle": "Season 2",
+    "summary": "",
+    "index": 4,
+    "parentIndex": 2,
+    "year": 2026,
+    "duration": 420024,
+    "addedAt": 1792607330,
+    "updatedAt": 1792608397,
+    "chapterSource": "media",
+    "Media": [
+     {
+      "id": 24,
+      "duration": 420024,
+      "bitrate": 2451,
+      "width": 1280,
+      "height": 720,
+      "aspectRatio": 1.78,
+      "audioChannels": 6,
+      "audioCodec": "ac3",
+      "videoCodec": "hevc",
+      "videoResolution": "720",
+      "container": "mkv",
+      "videoFrameRate": "NTSC",
+      "videoProfile": "main 10",
+      "Part": [
+       {
+        "id": 24,
+        "key": "/library/parts/24/1792607330/file.mkv",
+        "duration": 420024,
+        "file": "/media/TV/Signal Hill (1993)/Season 02/Signal Hill - S02E04 - Episode 4.mkv",
+        "size": 128696134,
+        "container": "mkv",
+        "videoProfile": "main 10"
+       }
+      ]
+     }
+    ],
+    "Image": [
+     {
+      "alt": "Episode 4",
+      "type": "snapshot",
+      "url": "/library/metadata/33/thumb/1792608397"
+     }
+    ]
+   }
+  ]
+ }
+}

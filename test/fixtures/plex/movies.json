@@ -1,0 +1,126 @@
+{
+ "MediaContainer": {
+  "size": 2,
+  "totalSize": 2,
+  "offset": 0,
+  "allowSync": true,
+  "identifier": "com.plexapp.plugins.library",
+  "librarySectionID": 2,
+  "librarySectionTitle": "Movies",
+  "title1": "Movies",
+  "title2": "All Movies",
+  "viewGroup": "movie",
+  "viewMode": 65592,
+  "Metadata": [
+   {
+    "ratingKey": "34",
+    "key": "/library/metadata/34",
+    "type": "movie",
+    "title": "Copper Moon (1991)",
+    "subtype": "clip",
+    "summary": "",
+    "duration": 840010,
+    "addedAt": 1792607901,
+    "updatedAt": 1792608395,
+    "chapterSource": "media",
+    "Media": [
+     {
+      "id": 25,
+      "duration": 840010,
+      "bitrate": 2454,
+      "width": 1280,
+      "height": 720,
+      "aspectRatio": 1.78,
+      "audioChannels": 6,
+      "audioCodec": "ac3",
+      "videoCodec": "hevc",
+      "videoResolution": "720",
+      "container": "mkv",
+      "videoFrameRate": "NTSC",
+      "videoProfile": "main 10",
+      "Part": [
+       {
+        "id": 25,
+        "key": "/library/parts/25/1792607901/file.mkv",
+        "duration": 840010,
+        "file": "/media/Movies/Copper Moon (1991)/Copper Moon (1991).mkv",
+        "size": 257653103,
+        "container": "mkv",
+        "videoProfile": "main 10"
+       }
+      ]
+     }
+    ],
+    "Image": [
+     {
+      "alt": "Copper Moon (1991)",
+      "type": "coverPoster",
+      "url": "/library/metadata/34/thumb/1792608395"
+     },
+     {
+      "alt": "Copper Moon (1991)",
+      "type": "background",
+      "url": "/library/metadata/34/art/1792608395"
+     }
+    ]
+   },
+   {
+    "ratingKey": "35",
+    "key": "/library/metadata/35",
+    "type": "movie",
+    "title": "The Long Hallway",
+    "titleSort": "Long Hallway",
+    "subtype": "clip",
+    "summary": "",
+    "duration": 900032,
+    "addedAt": 1792607841,
+    "updatedAt": 1792608396,
+    "chapterSource": "media",
+    "Media": [
+     {
+      "id": 26,
+      "duration": 900032,
+      "bitrate": 2085,
+      "width": 1280,
+      "height": 720,
+      "aspectRatio": 1.78,
+      "audioChannels": 2,
+      "audioCodec": "aac",
+      "videoCodec": "h264",
+      "videoResolution": "720",
+      "container": "mp4",
+      "videoFrameRate": "NTSC",
+      "optimizedForStreaming": 0,
+      "has64bitOffsets": false,
+      "videoProfile": "high",
+      "Part": [
+       {
+        "id": 26,
+        "key": "/library/parts/26/1792607841/file.mp4",
+        "duration": 900032,
+        "file": "/media/Movies/The Long Hallway (1984)/The Long Hallway (1984).mp4",
+        "size": 234527958,
+        "container": "mp4",
+        "has64bitOffsets": false,
+        "optimizedForStreaming": false,
+        "videoProfile": "high"
+       }
+      ]
+     }
+    ],
+    "Image": [
+     {
+      "alt": "The Long Hallway",
+      "type": "coverPoster",
+      "url": "/library/metadata/35/thumb/1792608396"
+     },
+     {
+      "alt": "The Long Hallway",
+      "type": "background",
+      "url": "/library/metadata/35/art/1792608396"
+     }
+    ]
+   }
+  ]
+ }
+}

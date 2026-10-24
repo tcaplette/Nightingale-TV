@@ -11,10 +11,12 @@ import '../backup/backup_scheduler.dart';
 import '../backup/backup_store.dart';
 import '../data/app_storage.dart';
 import '../export/export_service.dart';
-import '../jellyfin/jellyfin_client.dart';
 import '../platform/platform_info.dart';
 import '../remote/remote_control.dart';
+import 'analysis_queue.dart';
 import 'profile.dart';
+import '../server/media_server.dart';
+import '../server/server_clients.dart';
 
 /// Everyone who watches this TV: the profiles, which one is watching now,
 /// and that profile's [AppState].
@@ -22,10 +24,14 @@ import 'profile.dart';
 /// Each profile keeps its own Jellyfin sign-in, library, channels and blocks
 /// under `profiles/<id>/`; custom logos are shared.
 class Household extends ChangeNotifier {
-  Household(this.root, {this.runAnalysis = true});
+  Household(this.root, {this.runAnalysis = true, this.serverMode = false});
 
   /// Analyze media in the background (off in some tests).
   final bool runAnalysis;
+
+  /// Server mode (server-mode): nobody is ever on screen; exported profiles
+  /// run off-screen and the setup page signs profiles in.
+  final bool serverMode;
 
   static const _profilesFile = 'profiles.json';
 
@@ -77,6 +83,13 @@ class Household extends ChangeNotifier {
   /// one on screen, there is never more than one per profile.
   final _offScreen = <String, AppState>{};
 
+  /// Server mode: states the setup page opened for profiles that aren't
+  /// exported (signing in, restoring), until [releaseSetup].
+  final _setup = <String, AppState>{};
+
+  /// Server mode: exported profiles analyze media one at a time.
+  late final AnalysisQueue? analysisQueue = serverMode ? AnalysisQueue() : null;
+
   bool get started => _started;
   List<Profile> get profiles => _profiles;
 
@@ -98,7 +111,7 @@ class Household extends ChangeNotifier {
     if (json is List) {
       _profiles = [for (final p in json.cast<Map<String, Object?>>()) Profile.fromJson(p)];
     }
-    if (_profiles.isEmpty && json == null && backups != null && !await _hasLegacySetup()) {
+    if (_profiles.isEmpty && json == null && backups != null && !serverMode && !await _hasLegacySetup()) {
       // A first run with backups here (Android brought one back, or a copied
       // data folder): offer the newest before making a profile.
       final newest = await backups!.store.newest();
@@ -113,10 +126,13 @@ class Household extends ChangeNotifier {
   }
 
   /// Nothing set up yet, so a restore needs no backup first: no profiles,
-  /// or a new install's first profile that hasn't signed in.
+  /// or a new install's first profile that hasn't signed in. In server mode
+  /// the server may have restarted before it was set up, so that profile
+  /// counts whatever the start, while it has no PIN.
   Future<bool> hasNothingToKeep() async {
     if (!await File('${root.root.path}/$_profilesFile').exists()) return true;
-    if (!firstRun || _profiles.length != 1) return false;
+    if (_profiles.length != 1) return false;
+    if (!firstRun && !(serverMode && !_profiles.single.hasPin)) return false;
     final storage = AppStorage.existing(Directory('${root.root.path}/profiles/${_profiles.single.id}'));
     return await storage.readRaw('session.json') == null && await storage.readRaw('channels.json') == null;
   }
@@ -153,7 +169,7 @@ class Household extends ChangeNotifier {
     }
     _started = true;
     final only = _profiles.length == 1 ? _profiles.single : null;
-    if (only != null && !only.hasPin) {
+    if (only != null && !only.hasPin && !serverMode) {
       await select(only);
     } else {
       notifyListeners();
@@ -163,6 +179,30 @@ class Household extends ChangeNotifier {
   /// [p]'s state, on screen or kept for Live TV export; null when neither.
   AppState? appFor(String profileId) =>
       _current?.id == profileId ? _app : _offScreen[profileId];
+
+  /// Server mode: [profileId]'s state for the setup page: the off-screen
+  /// one when the profile is exported, otherwise a temporary background
+  /// state, kept until [releaseSetup] (design D3).
+  Future<AppState?> appForSetup(String profileId) async {
+    final existing = appFor(profileId) ?? _setup[profileId];
+    if (existing != null) {
+      // An exported profile still loading: signing in needs it loaded.
+      await _starting[existing];
+      return existing;
+    }
+    final p = profileById(profileId);
+    if (p == null) return null;
+    final app = _setup[profileId] = await _newApp(p, background: true);
+    await app.start();
+    return app;
+  }
+
+  /// The setup page is done with [profileId]'s temporary state: closed,
+  /// unless the profile is exported by now (then it's already off-screen).
+  Future<void> releaseSetup(String profileId) async {
+    final app = _setup.remove(profileId);
+    if (app != null && !identical(_offScreen[profileId], app)) await app.close();
+  }
 
   Profile? profileById(String id) => _profiles.where((p) => p.id == id).firstOrNull;
 
@@ -176,14 +216,26 @@ class Household extends ChangeNotifier {
     for (final id in ids) {
       final p = profileById(id);
       if (p == null || id == _current?.id || _offScreen.containsKey(id)) continue;
+      if (_setup.remove(id) case final app?) {
+        // Signed in on the setup page just now: that state is kept.
+        _offScreen[id] = app;
+        continue;
+      }
       _startOffScreen(p, await _newApp(p, background: true));
     }
+    _syncAnalysisQueue();
     notifyListeners();
   }
 
+  void _syncAnalysisQueue() => analysisQueue?.setProfiles(
+      [for (final p in _profiles) if (_exported.contains(p.id)) p.id], (id) => appFor(id)?.analysisState);
+
+  /// Off-screen states' starts, until each has started.
+  final _starting = <AppState, Future<void>>{};
+
   void _startOffScreen(Profile p, AppState app) {
     _offScreen[p.id] = app;
-    unawaited(() async {
+    final start = _starting[app] = () async {
       try {
         await app.start();
         if (p.needsRescan && identical(_offScreen[p.id], app)) {
@@ -194,7 +246,8 @@ class Household extends ChangeNotifier {
       } on Object catch (e) {
         debugPrint('Couldn\'t load ${p.name} for Live TV export: $e');
       }
-    }());
+    }();
+    unawaited(start.whenComplete(() => _starting.remove(app)));
   }
 
   Future<AppState> _newApp(Profile p, {bool background = false}) async => AppState(await storageFor(p),
@@ -202,15 +255,25 @@ class Household extends ChangeNotifier {
       runAnalysis: runAnalysis,
       background: background,
       exportBusy: exportStreaming,
+      analysisAllowed: analysisQueue?.allowedFor(p.id),
       safetyBackup: backups == null ? null : (reason) => backups!.safetyBackup(reason));
 
   /// Waits for every state file write asked for so far, the household's and
   /// each open profile's.
   Future<void> flushAll() async {
     await root.flush();
-    for (final app in [?_app, ..._offScreen.values]) {
+    for (final app in [?_app, ..._offScreen.values, ..._setup.values]) {
       await app.storage.flush();
     }
+  }
+
+  /// Closes every profile's state (stopping its analysis) and waits for
+  /// every state file write: server mode's shutdown.
+  Future<void> closeAll() async {
+    for (final app in [?_app, ..._offScreen.values, ..._setup.values]) {
+      await app.close();
+    }
+    await flushAll();
   }
 
   /// Closes everything (every profile's state, Live TV export, the phone
@@ -219,10 +282,12 @@ class Household extends ChangeNotifier {
   /// restart (D14). Back to "Who's watching?", or straight in with one
   /// profile and no PIN.
   Future<void> reload(Future<void> Function() whileClosed) async {
-    final apps = [?_app, ..._offScreen.values];
+    final apps = [?_app, ..._offScreen.values, ..._setup.values];
     _app = null;
     _current = null;
     _offScreen.clear();
+    _setup.clear();
+    _syncAnalysisQueue();
     _exported = const {};
     _started = false;
     welcomeBack = null;
@@ -354,6 +419,7 @@ class Household extends ChangeNotifier {
       // Kept for Live TV export: reload it under the new limit.
       await app.close();
       _startOffScreen(draft, await _newApp(draft, background: true));
+      _syncAnalysisQueue();
     }
     notifyListeners();
   }
@@ -368,10 +434,12 @@ class Household extends ChangeNotifier {
     await backups?.safetyBackup(BackupReason.beforeDelete, subject: p.name);
     _exported = {..._exported}..remove(p.id);
     await _offScreen.remove(p.id)?.close();
+    await _setup.remove(p.id)?.close();
+    _syncAnalysisQueue();
     final storage = await storageFor(p);
     final session = await storage.readJson('session.json');
     if (session is Map<String, Object?>) {
-      final client = JellyfinClient.fromSession(JellyfinSession.fromJson(session),
+      final client = sessionClient(ServerSession.fromJson(session),
           deviceName: PlatformInfo.deviceName);
       try {
         await client.logout();

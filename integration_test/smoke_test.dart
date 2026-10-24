@@ -39,6 +39,7 @@ import 'package:nightingale_tv/main.dart';
 import 'package:nightingale_tv/playback/tuner.dart';
 import 'package:nightingale_tv/profiles/household.dart';
 import 'package:nightingale_tv/ui/tv_screen.dart';
+import 'package:nightingale_tv/server/media_server.dart';
 
 final _env = Platform.environment;
 
@@ -49,14 +50,14 @@ Future<bool> _signIn(AppState app, void Function() borrowed) async {
   final sessionFile = _env['JF_SESSION'];
   if (sessionFile != null) {
     final json = jsonDecode(await File(sessionFile.replaceFirst('~', _env['HOME']!)).readAsString());
-    final session = JellyfinSession.fromJson(json as Map<String, Object?>);
+    final session = ServerSession.fromJson(json as Map<String, Object?>);
     borrowed();
     await app.completeSignIn(session, JellyfinClient.fromSession(session, deviceName: app.deviceName));
     return true;
   }
   final server = _env['JF_SERVER'], user = _env['JF_USER'], password = _env['JF_PW'];
   if (server == null || user == null || password == null) return false;
-  final client = app.clientFor(server);
+  final client = app.clientFor(ServerKind.jellyfin, server) as JellyfinClient;
   final info = await client.publicInfo();
   final session = await client.authenticateByName(user, password, serverName: info.name);
   await app.completeSignIn(session, client);
@@ -243,7 +244,7 @@ void main() {
       await _signIn(app, () => borrowed = true);
     });
     expect(app.phase, AppPhase.ready, reason: app.syncError ?? '');
-    final client = app.client!;
+    final client = app.client! as JellyfinClient;
 
     // A pool on the commercials folder.
     final folderNames = [
@@ -314,7 +315,7 @@ void main() {
     (ChannelSchedule, List<({Duration from, Duration to})>)? layoutOf(MediaEntry item) {
       for (final ch in app.channels) {
         if (!ch.playlist.contains(item.id)) continue;
-        final schedule = app.scheduleFor(ch)!;
+        final schedule = app.scheduleFor(ch)! as ChannelSchedule;
         final layout = schedule.layoutFor(item, DateTime.now());
         return (
           schedule,

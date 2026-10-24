@@ -18,6 +18,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:integration_test/integration_test.dart';
 import 'package:media_kit/media_kit.dart';
+import 'package:nightingale_tv/jellyfin/jellyfin_client.dart';
+import 'package:nightingale_tv/server/media_server.dart';
 import 'package:nightingale_tv/app_scope.dart';
 import 'package:nightingale_tv/app_state.dart';
 import 'package:nightingale_tv/channels/channel_groups.dart';
@@ -93,12 +95,12 @@ void main() {
     await tester.runAsync(() async {
       await household.start();
       app = household.app!;
-      final client = app.clientFor(server);
+      final client = app.clientFor(ServerKind.jellyfin, server) as JellyfinClient;
       final info = await client.publicInfo();
       await app.completeSignIn(await client.authenticateByName(user, password, serverName: info.name), client);
     });
     expect(app.phase, AppPhase.ready, reason: app.syncError ?? '');
-    final client = app.client!;
+    final client = app.client! as JellyfinClient;
 
     /// Each music video's play count and last played time in Jellyfin.
     Future<Map<String, String>> userData() async {

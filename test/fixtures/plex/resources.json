@@ -1,0 +1,18 @@
+[
+ {"name": "Basement", "product": "Plex Media Server", "productVersion": "1.43.5.11029-6bf8af3f0", "platform": "Linux",
+  "clientIdentifier": "a3d6b40a0ad0cc860ae7dc0c6d6a0139a5518e21", "provides": "server", "owned": true,
+  "accessToken": "owned-server-token", "sourceTitle": null, "presence": true, "home": false, "relay": true,
+  "connections": [
+   {"protocol": "https", "address": "203.0.113.7", "port": 32400, "uri": "https://203-0-113-7.0123abc.plex.direct:32400", "local": false, "relay": false, "IPv6": false},
+   {"protocol": "http", "address": "192.168.1.20", "port": 32400, "uri": "http://192.168.1.20:32400", "local": true, "relay": false, "IPv6": false},
+   {"protocol": "https", "address": "192.168.1.20", "port": 32400, "uri": "https://192-168-1-20.0123abc.plex.direct:32400", "local": true, "relay": false, "IPv6": false},
+   {"protocol": "https", "address": "198.51.100.4", "port": 8443, "uri": "https://198-51-100-4.0123abc.plex.direct:8443", "local": false, "relay": true, "IPv6": false}
+  ]},
+ {"name": "Grandpa's Plex", "product": "Plex Media Server", "clientIdentifier": "f00dfeed", "provides": "server", "owned": false,
+  "accessToken": "shared-server-token", "sourceTitle": "gramps", "presence": false, "relay": true,
+  "connections": [
+   {"protocol": "https", "address": "198.51.100.9", "port": 8443, "uri": "https://198-51-100-9.99ff.plex.direct:8443", "local": false, "relay": true, "IPv6": false}
+  ]},
+ {"name": "Living room TV", "product": "Plex for Android (TV)", "clientIdentifier": "tv-1", "provides": "client,player", "owned": true,
+  "accessToken": "x", "presence": true, "connections": []}
+]

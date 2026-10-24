@@ -8,7 +8,6 @@ import 'package:nightingale_tv/channels/channel.dart';
 import 'package:nightingale_tv/channels/schedule.dart';
 import 'package:nightingale_tv/commercials/analysis/stream_proxy.dart';
 import 'package:nightingale_tv/commercials/break_plan.dart';
-import 'package:nightingale_tv/jellyfin/jellyfin_client.dart';
 import 'package:nightingale_tv/library/library_index.dart';
 import 'package:nightingale_tv/playback/tuner.dart';
 import 'package:nightingale_tv/playback/tuner_player.dart';
@@ -16,6 +15,7 @@ import 'package:nightingale_tv/playback/tuner_player.dart';
 import 'fake_playback.dart';
 import 'fixtures.dart';
 import 'media_files.dart';
+import 'package:nightingale_tv/server/media_server.dart';
 
 bool isStatic(Uri u) => u.path.endsWith('/stream') && u.queryParameters['static'] == 'true';
 bool isTranscode(Uri u) => u.path.endsWith('/stream.ts');
@@ -77,7 +77,7 @@ void main() {
   Future<void> setPlayback({bool on = true, int? mbps}) =>
       app.setPlayback(PlaybackSettings(transcodeIfNeeded: on, maxKbps: mbps == null ? null : mbps * 1000));
 
-  ChannelSchedule scheduleOf(Channel ch) => app.scheduleFor(ch)!;
+  ChannelSchedule scheduleOf(Channel ch) => app.scheduleFor(ch)! as ChannelSchedule;
 
   bool isPart(ScheduledProgram s) => !s.isBreak && s.item != null && !s.isCommercial;
 
@@ -206,6 +206,18 @@ void main() {
       expect(ad.isCommercial, isTrue);
       expect(isStatic(player.opens.last.url), isTrue);
       expect(client.decisions, hasLength(1), reason: 'commercials skip the decision');
+    });
+
+    test('a transcode in the source\'s own times (Plex) starts at the join point and ends at the part\'s end', () async {
+      client.sourceTime = true;
+      await setPlayback(mbps: 8);
+      final part = await tuneIntoPart(app.channels.first);
+      final open = player.opens.single;
+      expect(isTranscode(open.url), isTrue);
+      final joinedAt = part.positionAt(part.start.add(const Duration(seconds: 10)));
+      expect(open.start, joinedAt);
+      expect(open.end, part.itemTo);
+      expect(tuner.status, TunerStatus.playing);
     });
 
     test('a program under the cap direct-plays, with one decision across its parts', () async {

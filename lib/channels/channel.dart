@@ -43,6 +43,10 @@ enum ChannelIconKind {
 
   /// A user-uploaded image in the logos folder (`value` = file name).
   custom,
+
+  /// An image at a URL (`value`): a Live TV source's channel logo. Sent
+  /// with the server's sign-in when it's on the profile's server.
+  remote,
 }
 
 enum BadgeShape { roundedSquare, circle, oval, shield }
@@ -78,6 +82,21 @@ class ChannelIcon {
         color: j['color'] as int? ?? 0xFFFFD23F,
         shape: BadgeShape.values.byName(j['shape'] as String? ?? BadgeShape.roundedSquare.name),
       );
+}
+
+/// Where a live channel comes from (live-tv-sources): its Live TV source
+/// and its key there, which survives refreshes.
+class LiveRef {
+  const LiveRef({required this.sourceId, required this.key, this.sourceNumber});
+
+  final String sourceId;
+  final String key;
+
+  /// The source's own channel number ("2.1"), shown beside the name.
+  final String? sourceNumber;
+
+  /// The channel id of [key] on [sourceId].
+  static String channelId(String sourceId, String key) => 'live:$sourceId:$key';
 }
 
 /// What content a channel draws from. Kept so channels can be refreshed when
@@ -147,7 +166,37 @@ class Channel {
     this.commercialPlan,
     this.logoMode,
     this.premieres = true,
+    this.live,
   });
+
+  /// A live channel (live-tv-sources): it plays its source's stream and has
+  /// no playlist. Live channels are saved with their source, never in
+  /// `channels.json`.
+  factory Channel.live({
+    required LiveRef ref,
+    required int number,
+    required String name,
+    required ChannelIcon icon,
+    bool hidden = false,
+    bool favorite = false,
+    LogoMode? logoMode = LogoMode.off,
+  }) =>
+      Channel(
+        id: LiveRef.channelId(ref.sourceId, ref.key),
+        number: number,
+        name: name,
+        icon: icon,
+        source: const ChannelSource(includeEpisodes: false),
+        order: PlaybackOrder.cyclic,
+        playlist: const [],
+        anchor: DateTime.fromMillisecondsSinceEpoch(0),
+        hidden: hidden,
+        favorite: favorite,
+        auto: false,
+        logoMode: logoMode,
+        premieres: false,
+        live: ref,
+      );
 
   final String id;
   int number;
@@ -179,6 +228,11 @@ class Channel {
 
   /// Can be a show's home channel for new episode premieres.
   bool premieres;
+
+  /// Set for a live channel: where its stream comes from.
+  final LiveRef? live;
+
+  bool get isLive => live != null;
 
   /// A music channel (songs or music videos).
   bool get isMusic => source.isMusic;

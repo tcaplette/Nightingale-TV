@@ -22,3 +22,26 @@ class NewTag extends StatelessWidget {
     );
   }
 }
+
+/// The "LIVE" tag on a live channel's programme (live-playback), in the
+/// channel banner and the info panel.
+class LiveTag extends StatelessWidget {
+  const LiveTag({super.key, this.size = 20});
+
+  final double size;
+
+  static const label = 'LIVE';
+
+  @override
+  Widget build(BuildContext context) {
+    final g = context.guide;
+    return Container(
+      padding: EdgeInsets.symmetric(horizontal: size * 0.45, vertical: size * 0.1),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(size * 0.25),
+        border: Border.all(color: g.nowLine, width: size * 0.12),
+      ),
+      child: Text(label, style: g.display(size, weight: FontWeight.w900, color: g.nowLine)),
+    );
+  }
+}

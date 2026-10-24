@@ -26,21 +26,23 @@ class ChannelGroup {
 abstract final class GuideTabs {
   static const all = 'all';
   static const favorites = 'favorites';
+  static const live = 'auto:live';
   static const movies = 'auto:movies';
   static const music = 'auto:music';
   static const kids = 'auto:kids';
 
   /// The tabs worked out from the lineup (never stored).
-  static const automatic = [movies, music, kids];
+  static const automatic = [live, movies, music, kids];
 
   /// For new profiles and profiles from before tabs.
-  static const defaultOrder = [all, favorites, movies, music, kids];
+  static const defaultOrder = [all, favorites, live, movies, music, kids];
 
   static bool isAutomatic(String id) => automatic.contains(id);
 
   static String? builtinName(String id) => switch (id) {
         all => 'All',
         favorites => 'Favorites',
+        live => 'Live TV',
         movies => 'Movies',
         music => 'Music',
         kids => 'Kids',
@@ -51,6 +53,7 @@ abstract final class GuideTabs {
   static String? rule(String id) => switch (id) {
         all => 'Every channel.',
         favorites => 'Channels you marked as favorites.',
+        live => 'Channels from your Live TV sources.',
         movies => 'Channels that play movies and no episodes or music.',
         music => 'Music video and radio channels.',
         kids => 'Channels where everything that plays, blocks included, is rated TV-Y, TV-Y7, TV-G or G.',
@@ -58,8 +61,9 @@ abstract final class GuideTabs {
       };
 
   /// [order] with every built-in tab and every group in it once: missing
-  /// built-ins go where the default order has them, missing groups after
-  /// Favorites; ids of deleted groups are dropped. All always comes first.
+  /// built-ins go where the default order has them (Live TV, newer than the
+  /// rest, just before Movies), missing groups after Favorites; ids of
+  /// deleted groups are dropped. All always comes first.
   static List<String> normalize(List<String> order, Iterable<ChannelGroup> groups) {
     final groupIds = [for (final g in groups) g.id];
     final known = {...defaultOrder, ...groupIds};
@@ -69,6 +73,10 @@ abstract final class GuideTabs {
     }
     for (final (i, id) in defaultOrder.indexed) {
       if (result.contains(id)) continue;
+      if (id == live && result.contains(movies)) {
+        result.insert(result.indexOf(movies), live);
+        continue;
+      }
       final before = defaultOrder.sublist(0, i).lastWhere(result.contains, orElse: () => all);
       result.insert(result.indexOf(before) + 1, id);
     }
@@ -92,14 +100,19 @@ class AutoGroups {
   /// Kid profiles have no Kids tab: their whole lineup is kid-safe.
   final bool kidProfile;
 
-  bool isMovies(Channel c) => !c.blockOnly && c.source.includeMovies && !c.source.includeEpisodes && !c.isMusic;
+  /// Kid profiles have no live channels, and no Live TV tab.
+  bool isLive(Channel c) => !kidProfile && c.isLive;
 
-  bool isMusic(Channel c) => !c.blockOnly && c.isMusic;
+  bool isMovies(Channel c) =>
+      !c.blockOnly && !c.isLive && c.source.includeMovies && !c.source.includeEpisodes && !c.isMusic;
+
+  bool isMusic(Channel c) => !c.blockOnly && !c.isLive && c.isMusic;
 
   /// Every item [c] plays, in its loop and its blocks, is rated TV-G/G or
-  /// younger. Unrated items (or none at all) keep it out.
+  /// younger. Unrated items (or none at all) keep it out; live channels
+  /// can't be checked ahead of time, so they're never in it.
   bool isKids(Channel c) {
-    if (kidProfile) return false;
+    if (kidProfile || c.isLive) return false;
     final ids = [
       if (!c.blockOnly) ...c.playlist,
       for (final b in blocks)
@@ -120,6 +133,7 @@ class AutoGroups {
   bool contains(String tabId, Channel c) => switch (tabId) {
         GuideTabs.all => true,
         GuideTabs.favorites => c.favorite,
+        GuideTabs.live => isLive(c),
         GuideTabs.movies => isMovies(c),
         GuideTabs.music => isMusic(c),
         GuideTabs.kids => isKids(c),

@@ -100,6 +100,30 @@ void main() {
       }
     });
 
+    test('profiles on different servers: each hint names its kind, and no Plex token is kept', () async {
+      final [mom, kids] = momAndKids();
+      await writeHousehold(dir, momAndKids(), fakeLibrary());
+      await writeProfile(dir, mom, fakeLibrary(), serverId: 'machine-1', kind: 'plex');
+      await writeProfile(dir, kids, fakeLibrary(), serverId: 'emby-1', kind: 'emby');
+      final built = await build();
+      final text = utf8.decode(gzip.decode(built.bytes));
+      final json = unzip(built.bytes);
+      expect(part(json, mom.id)['signIn'], containsPair('kind', 'plex'));
+      expect(part(json, mom.id)['signIn'], containsPair('serverId', 'machine-1'));
+      expect(part(json, kids.id)['signIn'], containsPair('kind', 'emby'));
+      expect(part(json, kids.id)['signIn'], containsPair('serverId', 'emby-1'));
+      for (final p in [mom, kids]) {
+        expect(text, isNot(contains(tokenFor(p.id))));
+        expect(text, isNot(contains(accountTokenFor(p.id))));
+      }
+      expect(text, isNot(contains('accountToken')));
+    });
+
+    test('a Jellyfin hint has no kind, as before server kinds existed', () async {
+      final built = await household();
+      expect(part(unzip(built.bytes), momAndKids().first.id)['signIn'], isNot(contains('kind')));
+    });
+
     test('leaves out the library index, analysis results and caches', () async {
       await writeHousehold(dir, momAndKids(), fakeLibrary());
       await Directory('${dir.path}/analysis').create();

@@ -458,18 +458,25 @@ class PlaybackDiagnostics {
     _worstBuild = _worstRaster = Duration.zero;
   }
 
+  /// A sample under way when the log closes finishes after it: what it
+  /// would write is dropped.
+  bool _closed = false;
+
   void _write(String tag, String message) {
+    if (_closed) return;
     _sink.writeln(_line(tag, message));
     _echo(tag, message);
   }
 
   Future<void> close() async {
+    if (_closed) return;
     if (identical(active, this)) active = null;
     _timer?.cancel();
     _freezeTimer?.cancel();
     SchedulerBinding.instance.removeTimingsCallback(_onTimings);
     _endTune('app closed');
     _write('STOP', '');
+    _closed = true;
     await _sink.flush();
     await _sink.close();
   }

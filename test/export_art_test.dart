@@ -6,6 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:image/image.dart' as img;
+import 'package:nightingale_tv/server/media_server.dart';
 import 'package:nightingale_tv/app_state.dart';
 import 'package:nightingale_tv/channels/channel.dart';
 import 'package:nightingale_tv/channels/schedule.dart';
@@ -143,7 +144,7 @@ void main() {
 
   testWidgets("a song's Now Playing card draws once per song, with its album art", (tester) async {
     await tester.runAsync(() async {
-      app.client = app.clientFor('https://jf.example');
+      app.client = app.clientFor(ServerKind.jellyfin, 'https://jf.example');
       const song = MediaEntry(
           id: 's1', kind: MediaKind.song, title: 'Take On Me', runtime: Duration(minutes: 4), artist: 'a-ha', albumId: 'al1');
       final start = DateTime(2026, 10, 20, 19);

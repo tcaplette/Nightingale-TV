@@ -1,0 +1,15 @@
+{
+ "Services": [
+  {
+   "Name": "Emby",
+   "Status": "Ok",
+   "HasUpdateAvailable": false,
+   "IsVisible": false,
+   "Tuners": []
+  }
+ ],
+ "IsEnabled": true,
+ "EnabledUsers": [
+  "8845e2cc88714e40b8586d5fa3a70950"
+ ]
+}

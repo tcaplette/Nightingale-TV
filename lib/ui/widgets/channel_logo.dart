@@ -8,6 +8,7 @@ import '../../app_state.dart';
 import '../../channels/channel.dart';
 import '../../icons/icon_catalog.dart';
 import '../../theme/tv_theme.dart';
+import '../../server/media_server.dart';
 
 /// Renders any [ChannelIcon] kind, centered in a [width]×[size] box.
 class ChannelLogo extends StatelessWidget {
@@ -43,16 +44,27 @@ class ChannelLogo extends StatelessWidget {
       ChannelIconKind.jellyfin => app().client == null
           ? _fallback(context)
           : Image.network(
-              app().client!.imageUri(icon.value, 'Logo', maxHeight: 160).toString(),
+              app().client!.imageUri(icon.value, ImageKind.logo, maxHeight: 160).toString(),
               headers: app().client!.authHeaders,
               fit: BoxFit.contain,
               filterQuality: FilterQuality.medium,
               errorBuilder: (_, _, _) => _fallback(context),
             ),
       ChannelIconKind.custom => _customImage(context, app().icons.fileFor(icon.value)),
+      ChannelIconKind.remote => Image.network(
+          icon.value,
+          headers: _headersFor(icon.value, app().client),
+          fit: BoxFit.contain,
+          filterQuality: FilterQuality.medium,
+          errorBuilder: (_, _, _) => _fallback(context),
+        ),
     };
     return SizedBox(width: width ?? size, height: size, child: Align(alignment: alignment, child: child));
   }
+
+  /// The sign-in goes only to the profile's own server.
+  static Map<String, String>? _headersFor(String url, MediaServer? client) =>
+      client != null && url.startsWith(client.serverUrl) ? client.authHeaders : null;
 
   Widget _customImage(BuildContext context, File file) {
     if (file.path.endsWith('.svg')) {

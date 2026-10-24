@@ -57,6 +57,45 @@ void main() {
   AutoGroups auto({List<ProgramBlock> blocks = const [], bool kidProfile = false}) =>
       AutoGroups(library, blocks, kidProfile: kidProfile);
 
+  group('Live TV tab', () {
+    final live = Channel.live(
+        ref: const LiveRef(sourceId: 'src', key: 'wxyz', sourceNumber: '2.1'),
+        number: 100,
+        name: 'WXYZ',
+        icon: const ChannelIcon.builtin('tv'));
+    final live2 = Channel.live(
+        ref: const LiveRef(sourceId: 'src', key: 'kabc'), number: 101, name: 'KABC', icon: const ChannelIcon.builtin('tv'));
+
+    test('holds live channels only, in number order', () {
+      final tabs = resolveGuideTabs(
+          visible: [...lineup, live, live2], groups: const [], order: GuideTabs.defaultOrder, hidden: const {}, auto: auto());
+      expect([for (final t in tabs) t.id], ['all', 'favorites', 'auto:live', 'auto:movies', 'auto:music', 'auto:kids']);
+      expect(tabs.firstWhere((t) => t.id == GuideTabs.live).channels.map((c) => c.number), [100, 101]);
+      expect(tabs.first.channels, hasLength(7));
+    });
+
+    test('live channels are never in Kids, Movies or Music', () {
+      final a = auto();
+      expect((a.isKids(live), a.isMovies(live), a.isMusic(live), a.isLive(live)), (false, false, false, true));
+      expect(a.isLive(kids), isFalse);
+    });
+
+    test('a kid profile has no Live TV tab', () {
+      final tabs = resolveGuideTabs(
+          visible: [...lineup, live], groups: const [], order: GuideTabs.defaultOrder, hidden: const {}, auto: auto(kidProfile: true));
+      expect(tabs.map((t) => t.id), isNot(contains(GuideTabs.live)));
+      expect(tabs.map((t) => t.id), isNot(contains(GuideTabs.kids)));
+    });
+
+    test("a saved order from before Live TV gets it just before Movies (the spec's upgrade)", () {
+      final groups = [ChannelGroup(id: 'group:sat', name: 'Saturday')];
+      expect(GuideTabs.normalize(['all', 'favorites', 'group:sat', 'auto:music', 'auto:movies', 'auto:kids'], groups),
+          ['all', 'favorites', 'group:sat', 'auto:music', 'auto:live', 'auto:movies', 'auto:kids']);
+      expect(GuideTabs.builtinName(GuideTabs.live), 'Live TV');
+      expect(GuideTabs.rule(GuideTabs.live), isNotNull);
+    });
+  });
+
   group('automatic tabs', () {
     test('Favorites, Movies and Music from the lineup', () {
       final a = auto();
@@ -123,7 +162,7 @@ void main() {
     test('All is first and never hidden; new groups go after Favorites; deleted ones drop', () {
       final groups = [ChannelGroup(id: 'group:a', name: 'A'), ChannelGroup(id: 'group:b', name: 'B')];
       expect(GuideTabs.normalize(['auto:music', 'group:a', 'group:old', 'all'], groups),
-          ['all', 'favorites', 'group:b', 'auto:movies', 'auto:music', 'auto:kids', 'group:a']);
+          ['all', 'favorites', 'group:b', 'auto:live', 'auto:movies', 'auto:music', 'auto:kids', 'group:a']);
       final tabs = resolveGuideTabs(
           visible: lineup, groups: const [], order: GuideTabs.defaultOrder, hidden: {GuideTabs.all}, auto: auto());
       expect(tabs.first.id, GuideTabs.all);

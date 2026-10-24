@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:nightingale_tv/jellyfin/jellyfin_client.dart';
+import 'package:nightingale_tv/server/media_server.dart';
 
 /// Folder listings captured from the test server (names, ids and parents
 /// only).
@@ -99,7 +100,7 @@ void main() {
 
     test('other errors are reported', () async {
       final client = _client((r) async => http.Response('', 500));
-      expect(client.commercialSegments('item1'), throwsA(isA<JellyfinException>()));
+      expect(client.commercialSegments('item1'), throwsA(isA<ServerException>()));
     });
   });
 
@@ -112,7 +113,7 @@ void main() {
   });
 
   test('sessions keep the server id through JSON and device renames', () {
-    const session = JellyfinSession(
+    const session = ServerSession(
       serverUrl: 'https://jf.example',
       serverName: 'Home',
       userId: 'u1',
@@ -120,9 +121,9 @@ void main() {
       accessToken: 't',
       deviceId: 'd',
     );
-    expect(JellyfinSession.fromJson(session.toJson()).serverId, isNull);
+    expect(ServerSession.fromJson(session.toJson()).serverId, isNull);
     final known = session.withServerId('srv');
-    expect(JellyfinSession.fromJson(known.toJson()).serverId, 'srv');
+    expect(ServerSession.fromJson(known.toJson()).serverId, 'srv');
     expect(known.withDeviceId('d2').serverId, 'srv');
   });
 
@@ -145,7 +146,7 @@ void main() {
           ],
         });
       });
-      final decision = await client.playbackInfo('item1', maxBitrate: 8000000, startAt: const Duration(minutes: 10));
+      final decision = await client.playbackDecision('item1', maxBitrate: 8000000, startAt: const Duration(minutes: 10));
       expect(decision.transcode, isFalse);
       expect(sent.method, 'POST');
       expect(sent.url.path, '/Items/item1/PlaybackInfo');
@@ -181,7 +182,7 @@ void main() {
               },
             ],
           }));
-      final decision = await client.playbackInfo('item1', maxBitrate: 2000000);
+      final decision = await client.playbackDecision('item1', maxBitrate: 2000000);
       final template = decision.transcodeTemplate!;
       expect(template.origin, 'https://jf.example');
       expect(template.path, '/videos/item1/stream.ts');
@@ -189,7 +190,7 @@ void main() {
       expect(template.queryParameters['VideoCodec'], 'h264');
       expect(template.queryParameters.containsKey(''), isFalse);
 
-      final job = JellyfinClient.transcodeUri(template, playSessionId: 'job1', startAt: const Duration(seconds: 90));
+      final job = await client.transcodeUri(template, playSessionId: 'job1', startAt: const Duration(seconds: 90));
       expect(job.queryParameters['PlaySessionId'], 'job1');
       expect(job.queryParameters['StartTimeTicks'], '900000000');
       expect(job.queryParameters['DeviceId'], 'd');
@@ -212,7 +213,7 @@ void main() {
           ],
         });
       });
-      final decision = await client.playbackInfo('item1', forceTranscode: true);
+      final decision = await client.playbackDecision('item1', forceTranscode: true);
       expect(decision.transcode, isTrue);
       expect([body['EnableDirectPlay'], body['EnableDirectStream'], body['AllowVideoStreamCopy'], body['AllowAudioStreamCopy']],
           everyElement(isFalse));
@@ -226,16 +227,16 @@ void main() {
               {'Id': 'item1', 'SupportsDirectPlay': false},
             ],
           }));
-      expect(client.playbackInfo('item1', maxBitrate: 2000000), throwsA(isA<JellyfinException>()));
+      expect(client.playbackDecision('item1', maxBitrate: 2000000), throwsA(isA<ServerException>()));
     });
 
-    test('stopEncoding deletes the job by device and session', () async {
+    test('stopTranscode deletes the job by device and session', () async {
       late http.Request sent;
       final client = _client((r) async {
         sent = r;
         return http.Response('', 204);
       });
-      await client.stopEncoding('job1');
+      await client.stopTranscode('job1');
       expect(sent.method, 'DELETE');
       expect(sent.url.path, '/Videos/ActiveEncodings');
       expect(sent.url.queryParameters, {'deviceId': 'd', 'playSessionId': 'job1'});

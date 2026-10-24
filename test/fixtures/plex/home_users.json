@@ -1,0 +1,5 @@
+{"id": 777, "name": "The Home", "guestUserID": 1, "subscription": false,
+ "users": [
+  {"id": 1001, "uuid": "dad-uuid", "title": "Dad", "username": "dad", "thumb": "https://plex.tv/users/dad/avatar", "hasPassword": true, "restricted": false, "admin": true, "guest": false, "protected": true},
+  {"id": 1002, "uuid": "kids-uuid", "title": "Kids", "username": "", "thumb": "https://plex.tv/users/kids/avatar", "hasPassword": false, "restricted": true, "admin": false, "guest": false, "protected": false}
+ ]}

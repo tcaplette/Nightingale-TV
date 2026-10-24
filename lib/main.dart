@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:ui' show PlatformDispatcher;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -23,6 +24,11 @@ import 'playback/playback_diagnostics.dart';
 import 'playback/tuner.dart';
 import 'profiles/household.dart';
 import 'remote/remote_control.dart';
+import 'server/server_log.dart';
+import 'setup/accounts.dart';
+import 'setup/server_db.dart';
+import 'setup/setup_server.dart';
+import 'setup/web_files.dart';
 import 'theme/tv_theme.dart';
 import 'ui/backup_screen.dart';
 import 'ui/login_screen.dart';
@@ -31,7 +37,8 @@ import 'ui/sync_screen.dart';
 import 'ui/tv_screen.dart';
 import 'ui/widgets/tv_canvas.dart';
 
-Future<void> main() async {
+Future<void> main(List<String> args) async {
+  if (serverModeRequested(args, Platform.environment)) return _serverMain();
   PlaybackDiagnostics.mark('main');
   if (PlaybackDiagnostics.enabled) SlotLayout.log = (line) => PlaybackDiagnostics.note('BREAKFILL', line);
   WidgetsFlutterBinding.ensureInitialized();
@@ -87,6 +94,65 @@ Future<void> main() async {
   PlaybackDiagnostics.mark('remote and export loaded');
   // The daily backup check waits for the launch's picture.
   household.backups!.start();
+}
+
+/// Server mode (server-mode): the Linux build started with `--server` or
+/// `NIGHTINGALE_TV_SERVER=1`. Android ignores both.
+@visibleForTesting
+bool serverModeRequested(List<String> args, Map<String, String> env) =>
+    Platform.isLinux && (args.contains('--server') || env['NIGHTINGALE_TV_SERVER'] == '1');
+
+/// The household with nothing on screen: no TV UI, no playback (mpv isn't
+/// initialized), no phone remote. The window stays black; it exists for
+/// [OffscreenRenderer], which draws the stream cards and logos (design D2).
+Future<void> _serverMain() async {
+  ServerLog.install();
+  FlutterError.onError = (details) => ServerLog.info('Error: ${details.exceptionAsString()}\n${details.stack ?? ''}');
+  PlatformDispatcher.instance.onError = (error, stack) {
+    ServerLog.info('Error: $error\n$stack');
+    return true;
+  };
+  WidgetsFlutterBinding.ensureInitialized();
+  await PlatformInfo.init();
+  runApp(const ColoredBox(color: Colors.black));
+  ServerLog.info('Nightingale TV server starting on ${PlatformInfo.deviceName} '
+      '(time zone ${Platform.environment['TZ'] ?? DateTime.now().timeZoneName}, ${DateTime.now().timeZoneName}).');
+
+  final env = Platform.environment;
+  final household = Household(await AppStorage.open(), serverMode: true);
+  household.backups = BackupScheduler(household, BackupStore(Directory('${household.root.root.path}/backups')));
+  final reset = env['NTV_RESET_PASSWORD'] == '1';
+  final Accounts accounts;
+  try {
+    accounts = await Accounts.load(household.root.root, reset: reset, log: ServerLog.info);
+  } on ServerDbException catch (e) {
+    ServerLog.info(e.message);
+    exit(1);
+  }
+  if (reset) ServerLog.info('Every session was ended (NTV_RESET_PASSWORD=1). Use the setup link to set an admin\'s password.');
+  final lanHost = env['NTV_LAN_HOST']?.trim();
+  final setup = SetupServer(household, accounts,
+      port: int.tryParse(env['NTV_SETUP_PORT'] ?? '') ?? SetupServer.defaultPort,
+      lanHost: lanHost,
+      web: WebFiles.fromEnvironment(env));
+  // Before the household, so /health answers (503) while it starts.
+  try {
+    await setup.start();
+  } on SocketException {
+    ServerLog.info('Setup port ${setup.port} is in use by another program.');
+    exit(1);
+  }
+  exitHooks.add(setup.stop);
+  watchServerSignals(household.closeAll);
+  await household.start();
+  ServerLog.info('Household loaded: ${household.profiles.map((p) => p.name).join(', ')}.');
+  await setup.rememberSecrets();
+  await startExport(household);
+  household.backups!.start();
+  ServerLog.info('Web admin on port ${setup.port}.');
+  setup.logSetupLink(lanHost != null && lanHost.isNotEmpty
+      ? lanHost
+      : await RemoteControl.lanAddress() ?? PlatformInfo.deviceName);
 }
 
 /// Sets up Live TV export, which needs ffmpeg and an always-on PC: on
@@ -229,6 +295,8 @@ class _ProfileSessionState extends State<ProfileSession> {
     super.initState();
     _remote?.tuner = _tuner;
     exitHooks.add(_tuner.stopTranscodeForExit);
+    // A live stream is closed at its server or provider (at most 2 s).
+    exitHooks.add(_tuner.closeLiveForExit);
     // Viewings left behind are reported after the next picture; quitting
     // sends them at once.
     exitHooks.add(_tuner.flushReports);
@@ -257,6 +325,7 @@ class _ProfileSessionState extends State<ProfileSession> {
   void dispose() {
     _lifecycle?.dispose();
     exitHooks.remove(_tuner.stopTranscodeForExit);
+    exitHooks.remove(_tuner.closeLiveForExit);
     exitHooks.remove(_tuner.flushReports);
     if (_remote?.tuner == _tuner) _remote?.tuner = null;
     final tuner = _tuner;

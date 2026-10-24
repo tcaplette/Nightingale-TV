@@ -7,10 +7,10 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:nightingale_tv/app_state.dart';
-import 'package:nightingale_tv/jellyfin/jellyfin_client.dart';
 
 import 'fake_playback.dart';
 import 'fixtures.dart';
+import 'package:nightingale_tv/server/media_server.dart';
 
 void main() {
   late Directory dir;
@@ -39,8 +39,8 @@ void main() {
 
     // The tune joins it.
     final joined = app.decide('src', 4000);
-    client.holdDecisions!.completeError(JellyfinException('Could not reach the server (Connection refused).'));
-    await expectLater(joined.timeout(const Duration(seconds: 5)), throwsA(isA<JellyfinException>()));
+    client.holdDecisions!.completeError(ServerException('Could not reach the server (Connection refused).'));
+    await expectLater(joined.timeout(const Duration(seconds: 5)), throwsA(isA<ServerException>()));
     expect(uncaught, isEmpty, reason: 'nothing escapes as uncaught');
     expect(app.deciding('src', 4000), isFalse);
   });

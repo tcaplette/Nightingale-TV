@@ -28,6 +28,7 @@ class ScheduledProgram {
     this.isPremiere = false,
     this.label,
     this.songs,
+    this.isLive = false,
   })  : layoutStart = layoutStart ?? start,
         itemFrom = itemFrom ?? start.difference(layoutStart ?? start);
 
@@ -64,6 +65,10 @@ class ScheduledProgram {
   /// name), holding the hour's [songs] in order; [item] is the first.
   final String? label;
   final List<ScheduledProgram>? songs;
+
+  /// An airing on a live channel (from its source's guide, or the
+  /// "No guide information" hour where it has none).
+  final bool isLive;
 
   bool get isOffAir => item == null;
 
@@ -362,6 +367,36 @@ class BlockSchedule {
   }
 }
 
+/// What the guide, the banner, the tuner and the phone remote read of a
+/// channel's schedule: a generated channel's [ChannelSchedule], or a live
+/// channel's guide (live-tv-sources D2).
+abstract interface class ProgramSchedule {
+  /// The program airing at [t] (the whole slot).
+  ScheduledProgram programAt(DateTime t);
+
+  /// What actually plays at [t].
+  ScheduledProgram playbackAt(DateTime t);
+
+  ScheduledProgram next(ScheduledProgram p);
+
+  /// Programs overlapping [from, to), in order.
+  List<ScheduledProgram> programsBetween(DateTime from, DateTime to);
+
+  /// What the guide shows at [t].
+  ScheduledProgram guideProgramAt(DateTime t);
+
+  /// Guide cells overlapping [from, to), in order.
+  List<ScheduledProgram> guideProgramsBetween(DateTime from, DateTime to);
+
+  /// The next programming block to start after [t], if any.
+  ({String title, DateTime start})? nextBlockAiring(DateTime t);
+
+  /// Whether [segment] is the last of [slot]'s program to air.
+  bool isLastPart(ScheduledProgram slot, ScheduledProgram segment);
+
+  bool get hasBreaks;
+}
+
 /// A channel's commercial breaks: its plan (already Off when its pools have
 /// no clips), where clips come from, and where programs can break.
 class BreakContext {
@@ -377,7 +412,7 @@ class BreakContext {
 /// Everything on a channel: programming blocks during their windows, the
 /// channel's regular loop around them, and "Off Air" for block-only
 /// channels outside their blocks.
-class ChannelSchedule {
+class ChannelSchedule implements ProgramSchedule {
   ChannelSchedule._(this.loop, this.blocks, this.breaks, this._seed, this._slotPlans,
       {this.premieres, this.musicName});
 
@@ -396,6 +431,7 @@ class ChannelSchedule {
   final Map<(Duration, bool), SlotPlan> _slotPlans;
   final _layouts = <(String, DateTime), SlotLayout>{};
 
+  @override
   bool get hasBreaks => !breaks.plan.isOff;
 
   /// Builds [channel]'s schedule; programs get [breaks]' plan, in blocks
@@ -438,6 +474,7 @@ class ChannelSchedule {
       });
 
   /// The program airing at [t].
+  @override
   ScheduledProgram programAt(DateTime t) {
     for (final b in blocks) {
       final airing = b.airingAt(t);
@@ -514,6 +551,7 @@ class ChannelSchedule {
   /// What actually plays at [t]: a part of the program, a commercial, or
   /// "Off Air". [programAt] gives the whole slot instead,
   /// which is what the guide shows.
+  @override
   ScheduledProgram playbackAt(DateTime t) {
     final slot = programAt(t);
     final item = slot.item;
@@ -550,6 +588,7 @@ class ChannelSchedule {
   /// Whether [segment] (from [playbackAt]) is the last of [slot]'s program
   /// to air: no part of the show plays after it before the slot ends, which
   /// a programming block can make early.
+  @override
   bool isLastPart(ScheduledProgram slot, ScheduledProgram segment) {
     final item = slot.item;
     if (item == null || segment.isBreak) return false;
@@ -570,6 +609,7 @@ class ChannelSchedule {
   ProgramBreakInfo breakInfoFor(MediaEntry item, DateTime asOf) => breaks.points.pointsFor(item, asOf);
 
   /// Programs overlapping [from, to), in order.
+  @override
   List<ScheduledProgram> programsBetween(DateTime from, DateTime to) {
     final result = <ScheduledProgram>[];
     var p = programAt(from);
@@ -580,11 +620,13 @@ class ChannelSchedule {
     return result;
   }
 
+  @override
   ScheduledProgram next(ScheduledProgram p) => programAt(p.end);
 
   /// What the guide shows at [t]: [programAt], except on a music channel,
   /// where it's the hour-long cell (music-channels: a 3-minute song would
   /// be an unreadable cell).
+  @override
   ScheduledProgram guideProgramAt(DateTime t) {
     final name = musicName;
     if (name == null) return programAt(t);
@@ -596,6 +638,7 @@ class ChannelSchedule {
   }
 
   /// Guide cells overlapping [from, to), in order (see [guideProgramAt]).
+  @override
   List<ScheduledProgram> guideProgramsBetween(DateTime from, DateTime to) {
     if (musicName == null) return programsBetween(from, to);
     final result = <ScheduledProgram>[];
@@ -607,6 +650,7 @@ class ChannelSchedule {
 
   /// The next programming block to start after [t] (within about a year),
   /// e.g. for "back on the air" messages on block-only channels.
+  @override
   ({String title, DateTime start})? nextBlockAiring(DateTime t) {
     ({String title, DateTime start})? best;
     for (final b in blocks) {

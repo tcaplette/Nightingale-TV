@@ -1,0 +1,94 @@
+{
+ "MediaContainer": {
+  "size": 5,
+  "totalSize": 5,
+  "offset": 0,
+  "allowSync": true,
+  "identifier": "com.plexapp.plugins.library",
+  "librarySectionID": 4,
+  "librarySectionTitle": "Music",
+  "nocache": true,
+  "title1": "Music",
+  "title2": "All Artists",
+  "viewGroup": "artist",
+  "viewMode": 65592,
+  "Metadata": [
+   {
+    "ratingKey": "95",
+    "key": "/library/metadata/95/children",
+    "type": "artist",
+    "title": "DJ Marmalade",
+    "summary": "",
+    "index": 1,
+    "addedAt": 1792608396,
+    "updatedAt": 1792608408,
+    "Genre": [
+     {
+      "tag": "Electronic"
+     }
+    ]
+   },
+   {
+    "ratingKey": "113",
+    "key": "/library/metadata/113/children",
+    "type": "artist",
+    "title": "Hollow Pines",
+    "summary": "",
+    "index": 1,
+    "addedAt": 1792608397,
+    "updatedAt": 1792608408,
+    "Genre": [
+     {
+      "tag": "Folk"
+     }
+    ]
+   },
+   {
+    "ratingKey": "86",
+    "key": "/library/metadata/86/children",
+    "type": "artist",
+    "title": "The Paper Kites Club",
+    "titleSort": "Paper Kites Club",
+    "summary": "",
+    "index": 1,
+    "addedAt": 1792608396,
+    "updatedAt": 1792608409,
+    "Genre": [
+     {
+      "tag": "Rock"
+     }
+    ]
+   },
+   {
+    "ratingKey": "104",
+    "key": "/library/metadata/104/children",
+    "type": "artist",
+    "title": "Static Orchard",
+    "summary": "",
+    "index": 1,
+    "addedAt": 1792608397,
+    "updatedAt": 1792608409,
+    "Genre": [
+     {
+      "tag": "Rock"
+     }
+    ]
+   },
+   {
+    "ratingKey": "77",
+    "key": "/library/metadata/77/children",
+    "type": "artist",
+    "title": "Vera Lune",
+    "summary": "",
+    "index": 1,
+    "addedAt": 1792608396,
+    "updatedAt": 1792608409,
+    "Genre": [
+     {
+      "tag": "Pop"
+     }
+    ]
+   }
+  ]
+ }
+}

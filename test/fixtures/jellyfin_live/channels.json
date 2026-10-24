@@ -1,0 +1,70 @@
+{
+ "Items": [
+  {
+   "Id": "81d990986b8a488cdadeb5d6a5c275d0",
+   "Name": "Fake H264",
+   "Number": "2.1",
+   "ChannelNumber": "2.1",
+   "Type": "TvChannel",
+   "ChannelType": "TV",
+   "ImageTags": {
+    "Primary": "5cf825f7e6b780dd3b75d3e0ce30f6a2"
+   },
+   "MediaType": "Video",
+   "ServerId": "0247c601efe44309b53c7dfae12c8bbb"
+  },
+  {
+   "Id": "3df0204b6528653f47361b80bbbd458b",
+   "Name": "Fake MPEG2",
+   "Number": "4.1",
+   "ChannelNumber": "4.1",
+   "Type": "TvChannel",
+   "ChannelType": "TV",
+   "ImageTags": {
+    "Primary": "51d9aef67cadb682d0d2fd1c80895616"
+   },
+   "MediaType": "Video",
+   "ServerId": "0247c601efe44309b53c7dfae12c8bbb"
+  },
+  {
+   "Id": "5a7a2914e5ff1316638a1a54ac22229f",
+   "Name": "Fake-Captions",
+   "Number": "7.1",
+   "ChannelNumber": "7.1",
+   "Type": "TvChannel",
+   "ChannelType": "TV",
+   "ImageTags": {
+    "Primary": "d9be963efd53682f8f6d31ed6f1c1a7b"
+   },
+   "MediaType": "Video",
+   "ServerId": "0247c601efe44309b53c7dfae12c8bbb"
+  },
+  {
+   "Id": "eb4f67106028ba972475175a7863d5f9",
+   "Name": "Fake HLS",
+   "Number": "9.1",
+   "ChannelNumber": "9.1",
+   "Type": "TvChannel",
+   "ChannelType": "TV",
+   "ImageTags": {
+    "Primary": "118729af998f9fbee28e0ea7b320f7d0"
+   },
+   "MediaType": "Video",
+   "ServerId": "0247c601efe44309b53c7dfae12c8bbb"
+  },
+  {
+   "Id": "7779da888554180353ac12dfa8532f13",
+   "Name": "Fake No Guide",
+   "Number": "11.1",
+   "ChannelNumber": "11.1",
+   "Type": "TvChannel",
+   "ChannelType": "TV",
+   "ImageTags": {
+    "Primary": "ad8a3b74b789758b5e63303f2456ddd4"
+   },
+   "MediaType": "Video",
+   "ServerId": "0247c601efe44309b53c7dfae12c8bbb"
+  }
+ ],
+ "TotalRecordCount": 5
+}

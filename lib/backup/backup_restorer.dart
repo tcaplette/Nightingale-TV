@@ -5,13 +5,16 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 
 import '../app_state.dart';
+import '../live/live_download.dart';
+import '../live/live_source_files.dart';
 import '../data/app_storage.dart';
-import '../jellyfin/jellyfin_client.dart';
 import '../platform/platform_info.dart';
 import '../playback/playback_diagnostics.dart';
 import '../profiles/household.dart';
 import '../ui/format.dart';
 import 'backup_archive.dart';
+import '../server/media_server.dart';
+import '../server/server_clients.dart';
 
 /// What a restore will do, for its confirmation.
 class RestorePlan {
@@ -33,17 +36,17 @@ class RestorePlan {
 /// first, then staged in `restore.tmp/` and swapped in under a journal, so
 /// a crash at any moment leaves the old setup or the new one, never a mix.
 class BackupRestorer {
-  BackupRestorer(this.household, {@visibleForTesting Future<void> Function(JellyfinSession session)? signOut})
+  BackupRestorer(this.household, {@visibleForTesting Future<void> Function(ServerSession session)? signOut})
       : _signOut = signOut ?? _logout;
 
   final Household household;
 
-  /// Signs a sign-in the restore drops out of Jellyfin, as deleting a
+  /// Signs a sign-in the restore drops out of its server, as deleting a
   /// profile does, so the server doesn't keep a device nobody uses.
-  final Future<void> Function(JellyfinSession session) _signOut;
+  final Future<void> Function(ServerSession session) _signOut;
 
-  static Future<void> _logout(JellyfinSession session) async {
-    final client = JellyfinClient.fromSession(session, deviceName: PlatformInfo.deviceName);
+  static Future<void> _logout(ServerSession session) async {
+    final client = sessionClient(session, deviceName: PlatformInfo.deviceName);
     try {
       await client.logout();
     } finally {
@@ -52,7 +55,7 @@ class BackupRestorer {
   }
 
   /// Sign-ins on this device that the restore doesn't keep (D6).
-  final _dropped = <JellyfinSession>[];
+  final _dropped = <ServerSession>[];
 
   static const _staging = 'restore.tmp';
   static const _journal = 'restore.json';
@@ -75,14 +78,19 @@ class BackupRestorer {
   }
 
   /// Profiles that exist here, are signed in, and are on the server the
-  /// backup has for them: they keep their sign-in and library (D6).
+  /// backup has for them (same kind and id): they keep their sign-in and
+  /// library (D6).
   static Future<Set<String>> _keptSignIns(Directory root, BackupArchive archive) async {
     final kept = <String>{};
     for (final e in archive.profiles.entries) {
       final backupServer = e.value.serverId;
       if (backupServer == null) continue;
+      final backupKind = ServerKind.fromJson(e.value.signIn?['kind']);
       final session = await AppStorage.existing(Directory('${root.path}/profiles/${e.key}')).readRaw('session.json');
-      if (session is Map<String, Object?> && session['accessToken'] is String && session['serverId'] == backupServer) {
+      if (session is Map<String, Object?> &&
+          session['accessToken'] is String &&
+          session['serverId'] == backupServer &&
+          ServerKind.fromJson(session['kind']) == backupKind) {
         kept.add(e.key);
       }
     }
@@ -157,7 +165,7 @@ class BackupRestorer {
         final session = await AppStorage.existing(dir).readRaw('session.json');
         if (session is! Map<String, Object?>) continue;
         try {
-          _dropped.add(JellyfinSession.fromJson(session));
+          _dropped.add(ServerSession.fromJson(session));
         } on Object {
           // Unreadable: nothing to sign out.
         }
@@ -172,7 +180,7 @@ class BackupRestorer {
       final dir = Directory('${staging.path}/profiles/$id');
       await dir.create();
       final out = AppStorage.existing(dir);
-      // This device's own Jellyfin device id, never the backup's (D7).
+      // This device's own device id, never the backup's (D7).
       final settingsHere = await current.readRaw('settings.json');
       final installId = settingsHere is Map<String, Object?> && settingsHere['installId'] is String
           ? settingsHere['installId'] as String
@@ -184,6 +192,17 @@ class BackupRestorer {
       }
       if (part.channels case final channels?) await out.writeJson('channels.json', channels);
       if (part.blocks case final blocks?) await out.writeJson('blocks.json', blocks);
+      // Live TV sources and their picked files; their channels and guide are
+      // fetched again at the next start (live-tv-sources).
+      if (part.liveSources case final live?) await out.writeJson(LiveSourceStore.fileName, live, private: true);
+      if (part.liveFiles.isNotEmpty) {
+        final files = Directory('${dir.path}/${LiveSourceStore.filesFolder}');
+        await files.create();
+        for (final e in part.liveFiles.entries) {
+          // Checked against ProfileBackup.liveFileName: no path leaves the folder.
+          await _unpack(e.value, File('${files.path}/${e.key}'));
+        }
+      }
       if (kept.contains(id)) {
         await out.writeJson('session.json', await current.readRaw('session.json'), private: true);
         final library = File('${here.path}/library.json');
@@ -205,6 +224,22 @@ class BackupRestorer {
     final journal = AppStorage.existing(root);
     await journal.writeJson(_journal, {'phase': 'swap', 'files': present});
     await journal.flush();
+  }
+
+  /// A backed-up live file ([ProfileBackup.liveFiles]) written to [to],
+  /// refusing more than a guide may hold.
+  static Future<void> _unpack(String encoded, File to) async {
+    final sink = to.openWrite();
+    var size = 0;
+    try {
+      await for (final chunk in Stream<List<int>>.value(base64.decode(encoded)).transform(gzip.decoder)) {
+        size += chunk.length;
+        if (size > LiveDownloader.maxGuideBytes) throw BackupException(BackupArchive.tooBig);
+        sink.add(chunk);
+      }
+    } finally {
+      await sink.close();
+    }
   }
 
   /// Finishes a restore whose journal says it's swapping, or throws away a

@@ -15,9 +15,11 @@ class PlaybackScreen extends StatelessWidget {
   static const toggleLabel = 'Transcode only if needed (experimental)';
 
   static const toggleHelp = "Off: Nightingale TV always plays your original files at full quality, and your "
-      "Jellyfin server does no extra work. On: your Jellyfin server converts a show or movie only when it's above "
+      "server does no extra work. On: your server converts a show or movie only when it's above "
       "the maximum bitrate, or when the original file won't play. Converting uses your server's processor or "
       "graphics card. Commercials always play the original files.";
+
+  static const relayNotice = 'Connected through Plex Relay; quality is limited.';
 
   static const bitrateHelp = 'Pick a lower bitrate if shows buffer or stutter over Wi-Fi or a remote connection. '
       'Original never converts because of bitrate.';
@@ -50,6 +52,10 @@ class PlaybackScreen extends StatelessWidget {
         child: ListView(
           padding: ScreenLayout.of(context).pagePadding(const EdgeInsets.fromLTRB(100, 40, 100, 40)),
           children: [
+            if (app.plexRelay) ...[
+              Text(relayNotice, style: g.body(26, color: g.nowLine)),
+              const SizedBox(height: 28),
+            ],
             Text('CONVERTING', style: g.display(26, weight: FontWeight.w800, color: g.accent)),
             const SizedBox(height: 14),
             Align(

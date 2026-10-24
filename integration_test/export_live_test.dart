@@ -5,12 +5,19 @@
 //   JF_SERVER=https://... JF_USER=... JF_PW=... \
 //     flutter test integration_test/export_live_test.dart
 //
+// or from a Plex or Emby profile, on the local test servers (tool/test_servers):
+//
+//   MEDIA_SERVER=plex [PLEX_TOKEN=... once the server is claimed] flutter test integration_test/export_live_test.dart -d linux
+//   MEDIA_SERVER=emby EMBY_USER=... EMBY_PASSWORD=... flutter test ...
+//
 // Prints how long the stream took to start and how sources opened, and
 // checks the captured stream with ffprobe.
 import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:nightingale_tv/jellyfin/jellyfin_client.dart';
+import 'package:nightingale_tv/server/media_server.dart';
 import 'package:nightingale_tv/app_state.dart';
 import 'package:nightingale_tv/data/app_storage.dart';
 import 'package:nightingale_tv/export/export_service.dart';
@@ -22,7 +29,9 @@ final _env = Platform.environment;
 void main() {
   testWidgets('a real channel streams continuously over HTTP', (tester) async {
     final server = _env['JF_SERVER'], user = _env['JF_USER'], password = _env['JF_PW'];
-    if (server == null || user == null || password == null) {
+    final plex = _env['MEDIA_SERVER'] == 'plex';
+    final emby = _env['MEDIA_SERVER'] == 'emby';
+    if (!plex && !emby && (server == null || user == null || password == null)) {
       markTestSkipped('Set JF_SERVER, JF_USER and JF_PW to run against a server.');
       return;
     }
@@ -34,9 +43,35 @@ void main() {
       try {
         await household.start();
         app = household.app!;
-        final client = app.clientFor(server);
-        final info = await client.publicInfo();
-        await app.completeSignIn(await client.authenticateByName(user, password, serverName: info.name), client);
+        if (plex) {
+          // The local test server, as it answers this machine without a token.
+          const url = 'http://127.0.0.1:32400';
+          final probe = app.clientFor(ServerKind.plex, url);
+          final info = await probe.publicInfo();
+          probe.close();
+          final session = ServerSession(
+            kind: ServerKind.plex,
+            serverUrl: url,
+            serverName: info.name,
+            serverId: info.id,
+            userId: 'local',
+            userName: 'local',
+            // A claimed server wants the account's token (PLEX_TOKEN).
+            accessToken: _env['PLEX_TOKEN'] ?? '',
+            deviceId: app.settings.installId,
+          );
+          await app.completeSignIn(session, app.clientForSession(session));
+        } else if (emby) {
+          // The local Emby test server (EMBY_USER, EMBY_PASSWORD).
+          final client = app.clientFor(ServerKind.emby, 'http://127.0.0.1:8096') as JellyfinClient;
+          final info = await client.publicInfo();
+          await app.completeSignIn(
+              await client.authenticateByName(_env['EMBY_USER']!, _env['EMBY_PASSWORD']!, serverName: info.name), client);
+        } else {
+          final client = app.clientFor(ServerKind.jellyfin, server!) as JellyfinClient;
+          final info = await client.publicInfo();
+          await app.completeSignIn(await client.authenticateByName(user!, password!, serverName: info.name), client);
+        }
         expect(app.phase, AppPhase.ready, reason: app.syncError ?? '');
         final profile = household.current!;
 

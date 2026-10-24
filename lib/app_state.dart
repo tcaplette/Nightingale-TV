@@ -3,11 +3,13 @@ import 'dart:convert';
 import 'dart:math';
 
 import 'package:flutter/foundation.dart';
+import 'package:http/http.dart' show Client;
 
 import 'channels/channel.dart';
 import 'channels/channel_generator.dart';
 import 'channels/channel_groups.dart';
 import 'channels/channel_groups.dart' as channel_groups show m3uGroupFor;
+import 'channels/channel_numbers.dart';
 import 'channels/premieres.dart';
 import 'channels/program_block.dart';
 import 'channels/schedule.dart';
@@ -22,11 +24,24 @@ import 'commercials/commercial_catalog.dart';
 import 'commercials/commercial_pool.dart';
 import 'data/app_storage.dart';
 import 'icons/custom_icons.dart';
-import 'jellyfin/jellyfin_client.dart';
 import 'library/library_index.dart';
+import 'live/live_data.dart';
+import 'live/live_download.dart';
+import 'live/live_refresher.dart';
+import 'live/live_source.dart';
+import 'live/live_source_files.dart';
+import 'live/live_source_client.dart';
+import 'live/live_tv_manager.dart';
 import 'platform/platform_info.dart';
 import 'playback/android_device_profile.dart';
 import 'playback/playback_diagnostics.dart';
+import 'server/live_tv.dart';
+import 'server/media_server.dart';
+import 'server/plex/plex_account.dart';
+import 'server/plex/plex_client.dart';
+import 'server/plex/plex_connections.dart';
+import 'server/server_clients.dart';
+import 'ui/format.dart';
 
 /// A choice for the maximum streaming bitrate: Original (no [kbps]) or a
 /// fixed cap.
@@ -309,14 +324,17 @@ class AppState extends ChangeNotifier {
       this.runAnalysis = true,
       this._background = false,
       this.exportBusy,
+      this.analysisAllowed,
       this.safetyBackup,
       @visibleForTesting this._sessionClient})
       : icons = CustomIconStore(storage.logosDir) {
+    analysisAllowed?.addListener(_onAnalysisAllowed);
     playbackActivity.addListener(_pushBudget);
     playingBitrate.addListener(_pushBudget);
     playbackBusy.addListener(_updateAnalysisBusy);
     exportBusy?.addListener(_updateAnalysisBusy);
     _syncStaleCheck();
+    live.addListener(_onLiveChanged);
   }
 
   // ---- Launch: background requests wait for the first picture --------------
@@ -398,15 +416,52 @@ class AppState extends ChangeNotifier {
   final Future<void> Function(String reason)? safetyBackup;
 
   /// Builds the client for a saved sign-in at [start] (tests give a fake).
-  final JellyfinClient Function(JellyfinSession session)? _sessionClient;
+  final MediaServer Function(ServerSession session)? _sessionClient;
 
   /// True while Live TV export is streaming anything; analysis holds off
   /// meanwhile, as it does while the TV tunes.
   final ValueListenable<bool>? exportBusy;
 
+  /// Server mode's turn to analyze (the household's analysis queue): media
+  /// analysis runs while it's true, on screen or not. Null on the TV, where
+  /// only the profile on screen analyzes.
+  final ValueListenable<bool>? analysisAllowed;
+
+  bool get _analysisAllowedNow => analysisAllowed?.value ?? !_background;
+
+  /// What analysis is doing; [AnalyzerState.idle] when it has nothing to
+  /// do or can't run, so the analysis queue can pass the turn on.
+  ValueListenable<AnalyzerState> get analysisState => _analysisState;
+  final _analysisState = ValueNotifier(AnalyzerState.starting);
+
+  void _syncAnalysisIdle() {
+    final analyzer = _analyzer;
+    _analysisState.value = switch (phase) {
+      _ when _closed || !runAnalysis => AnalyzerState.idle,
+      AppPhase.signedOut => AnalyzerState.idle,
+      AppPhase.starting || AppPhase.syncing => AnalyzerState.starting,
+      AppPhase.ready => analyzer?.state.value ??
+          (_analysis == null || client == null ? AnalyzerState.idle : AnalyzerState.starting),
+    };
+  }
+
+  @override
+  void notifyListeners() {
+    _syncAnalysisIdle();
+    super.notifyListeners();
+  }
+
+  void _onAnalysisAllowed() {
+    if (_analysisAllowedNow) {
+      _startAnalysis();
+    } else {
+      unawaited(_stopAnalysis().then((_) => _syncAnalysisIdle()));
+    }
+  }
+
   /// Kept loaded for Live TV export while another profile is on screen: no
-  /// analysis, and the library is refreshed on a timer, since nobody opens
-  /// this profile to trigger it.
+  /// analysis (unless [analysisAllowed] says so), and the library is
+  /// refreshed on a timer, since nobody opens this profile to trigger it.
   bool get background => _background;
   bool _background;
   Timer? _staleCheck;
@@ -434,8 +489,8 @@ class AppState extends ChangeNotifier {
   String syncStatus = '';
   String? syncError;
   late AppSettings settings;
-  JellyfinSession? session;
-  JellyfinClient? client;
+  ServerSession? session;
+  MediaServer? client;
 
   /// Where a restored profile signed in, for pre-filling sign-in: server URL,
   /// name and id, user id and name. Null otherwise.
@@ -443,7 +498,7 @@ class AppState extends ChangeNotifier {
   LibraryIndex library = LibraryIndex.empty;
   List<Channel> _channels = [];
   List<ProgramBlock> _blocks = [];
-  final Map<String, ChannelSchedule?> _schedules = {};
+  final Map<String, ProgramSchedule?> _schedules = {};
 
   String get deviceName => PlatformInfo.deviceName;
 
@@ -456,7 +511,8 @@ class AppState extends ChangeNotifier {
   /// Programming blocks, in the order they were created.
   List<ProgramBlock> get blocks => _blocks;
 
-  ChannelSchedule? scheduleFor(Channel c) {
+  ProgramSchedule? scheduleFor(Channel c) {
+    if (c.isLive) return live.scheduleFor(c);
     final premieres = premierePlan;
     return _schedules.putIfAbsent(
         c.id, () => ChannelSchedule.build(c, library, _blocks, _breakContext(planFor(c)), premieres));
@@ -597,6 +653,220 @@ class AppState extends ChangeNotifier {
     await _saveChannels();
   }
 
+  // ---- Live TV sources (live-tv-sources) ---------------------------------------
+
+  /// The profile's Live TV sources and their channels.
+  late final live = LiveTvManager(storage, signedIn: () {
+    final c = client, s = session;
+    return c == null || s == null ? null : (client: c, session: s);
+  });
+
+  /// Kid profiles keep their sources saved but get no live channels.
+  bool get liveEnabled => maxRatingRank == null;
+
+  /// The lineup has generated channels (live ones don't count: a profile
+  /// with an M3U source and no library scan yet still needs its lineup).
+  bool get _hasGenerated => _channels.any((c) => !c.isLive);
+
+  /// A fresh generated lineup, numbered around the live channels' numbers.
+  List<Channel> _generated() {
+    final fresh = ChannelGenerator(library).generate();
+    final held = {
+      if (liveEnabled)
+        for (final s in live.sources)
+          for (final c in s.chosen.values) c.number,
+    };
+    if (fresh.isNotEmpty && held.isNotEmpty) ChannelNumbers.numberSkipping(fresh, held, start: fresh.first.number);
+    return fresh;
+  }
+
+  /// Every number in the lineup.
+  Set<int> get _takenNumbers => {for (final c in _channels) c.number};
+
+  late final _liveRefresher = LiveRefresher(
+    sources: () => liveEnabled ? live.sources : const [],
+    stateOf: (s) => live.entryFor(s).state,
+    refresh: (s, {required channels, required guide}) => refreshLiveSource(s, channels: channels, guide: guide),
+  );
+
+  /// Refreshes run for the profile on screen, once the launch's tune has
+  /// its picture.
+  void _startLiveRefresh() {
+    // Nothing to keep fresh without sources; adding one starts it.
+    if (!liveEnabled || _background || _closed || phase != AppPhase.ready || live.sources.isEmpty) return;
+    _afterLaunchTune(() {
+      if (!_background && !_closed) _liveRefresher.start();
+    });
+  }
+
+  /// Refreshes [source] (see [LiveTvManager.refresh]).
+  Future<void> refreshLiveSource(LiveSource source, {bool channels = true, bool guide = true}) async {
+    final groupsChanged = await live.refresh(source,
+        channels: channels, guide: guide, taken: () => _takenNumbers, groups: settings.groups);
+    if (groupsChanged) await _saveSettings();
+  }
+
+  /// "Refresh now" on a source.
+  Future<void> refreshLiveNow(LiveSource source) => _liveRefresher.refreshNow(source);
+
+  /// The guide reached [until] on [ch]: a server source fetches on to it.
+  void needLiveGuideUntil(Channel ch, DateTime until) {
+    final source = ch.live == null ? null : live.sourceById(ch.live!.sourceId);
+    if (source != null) unawaited(live.extendGuide(source, until));
+  }
+
+  /// The lineup's live channels as the sources have them now.
+  void _onLiveChanged() {
+    if (_closed) return;
+    final before = [for (final c in _channels) if (c.isLive) '${c.id}#${c.number}#${c.hidden}'];
+    final after = liveEnabled ? [for (final c in live.lineupChannels()) '${c.id}#${c.number}#${c.hidden}'] : const <String>[];
+    if (before.length != after.length || !before.toSet().containsAll(after)) {
+      _setChannels(_channels);
+    } else {
+      notifyListeners();
+    }
+  }
+
+  /// Adds [source] with the [channels] it was read with, choosing the
+  /// default ones (all of a small lineup, none of a big one).
+  Future<void> addLiveSource(LiveSource source, List<LiveChannelInfo> channels) async {
+    await live.addSource(source, channels);
+    final chosen = LiveTvManager.defaultChoice(channels);
+    await chooseLiveChannels(source, chosen);
+    // Its guide is read even with nothing chosen yet: the picker shows
+    // which channels have guide data.
+    if (chosen.isEmpty) unawaited(refreshLiveSource(source, channels: false));
+    _startLiveRefresh();
+  }
+
+  /// Makes [keys] [source]'s chosen channels, then loads their guide.
+  Future<void> chooseLiveChannels(LiveSource source, Set<String> keys) async {
+    final groupsChanged = await live.choose(source, keys, taken: _takenNumbers, groups: settings.groups);
+    if (groupsChanged) await _saveSettings();
+    _setChannels(_channels);
+    if (keys.isNotEmpty) unawaited(refreshLiveSource(source, channels: false));
+  }
+
+  /// Whether the profile's server has Live TV this user may watch, and if
+  /// not why; null when there's no server (or it can't be asked).
+  Future<LiveTvAvailability?> liveTvAvailability() async {
+    final tv = client?.liveTv;
+    if (tv == null) return null;
+    try {
+      return await tv.availability();
+    } on ServerException catch (e) {
+      debugPrint('Live TV availability: ${e.message}');
+      return null;
+    }
+  }
+
+  /// Adds the profile's server's Live TV as a source, with every channel
+  /// chosen if it has 150 or fewer. Throws [LiveSourceException].
+  Future<LiveSource> addServerLiveSource() async {
+    final s = session;
+    if (s == null) throw const LiveSourceException('Not signed in');
+    final source = LiveSource(
+      id: LiveSource.newId(),
+      kind: LiveSourceKind.server,
+      name: '${s.serverName} Live TV',
+      serverKind: s.kind,
+      serverId: s.serverId,
+    );
+    final reader = live.clientFor(source);
+    if (reader == null) throw LiveSourceException("Couldn't reach ${s.serverName}");
+    final channels = await reader.fetchChannels();
+    if (channels.isEmpty) throw LiveSourceException('${s.serverName} has no Live TV channels');
+    await addLiveSource(source, channels);
+    return source;
+  }
+
+  /// Reads the playlist [source] describes (URL or file) and its header's
+  /// guide; throws [LiveSourceException] saying why it can't be used.
+  Future<List<LiveChannelInfo>> readM3u(LiveSource source) async {
+    final playlist = await M3uSource.readPlaylist(source, store: live.store, downloader: live.downloader);
+    if ((source.guideUrl == null && source.guideFile == null) || source.guideFromPlaylist) {
+      source.guideUrl = playlist.guideUrls.firstOrNull;
+      source.guideFromPlaylist = source.guideUrl != null;
+    }
+    return playlist.channels;
+  }
+
+  /// Adds an M3U playlist source once its playlist reads with at least one
+  /// channel ([playlist] or [playlistUrl]; the guide is optional, the
+  /// playlist header's when none is given). Picked files are copied into
+  /// the profile folder. Throws [LiveSourceException], saving nothing.
+  Future<LiveSource> addM3uSource({
+    required String name,
+    String? playlistUrl,
+    PickedLiveFile? playlist,
+    String? guideUrl,
+    PickedLiveFile? guide,
+  }) async {
+    final id = LiveSource.newId();
+    final source = LiveSource(
+      id: id,
+      kind: LiveSourceKind.m3u,
+      name: name.trim().isEmpty ? 'M3U playlist' : name.trim(),
+      playlistUrl: playlist == null ? _blankToNull(playlistUrl) : null,
+      guideUrl: guide == null ? _blankToNull(guideUrl) : null,
+    );
+    if (playlist != null) source.playlistFile = await live.store.savePicked(playlist, id, 'playlist');
+    try {
+      if (guide != null) source.guideFile = await live.store.savePicked(guide, id, 'guide');
+      final channels = await readM3u(source);
+      await addLiveSource(source, channels);
+      return source;
+    } on Object {
+      await live.store.deleteFiles(source);
+      rethrow;
+    }
+  }
+
+  /// Changes an M3U source's name, playlist or guide (each kept when
+  /// null), then refreshes it. The playlist must still read. Throws
+  /// [LiveSourceException], changing nothing.
+  Future<void> editM3uSource(LiveSource source,
+      {String? name, String? playlistUrl, PickedLiveFile? playlist, String? guideUrl, PickedLiveFile? guide, bool clearGuide = false}) async {
+    final draft = LiveSource(
+      id: source.id,
+      kind: source.kind,
+      name: source.name,
+      playlistUrl: playlist != null ? null : (playlistUrl == null ? source.playlistUrl : _blankToNull(playlistUrl)),
+      playlistFile: playlist != null || playlistUrl != null ? null : source.playlistFile,
+      guideUrl: clearGuide || guide != null ? null : (guideUrl == null ? source.guideUrl : _blankToNull(guideUrl)),
+      guideFile: clearGuide || guide != null || guideUrl != null ? null : source.guideFile,
+      guideFromPlaylist: !clearGuide && guide == null && guideUrl == null && source.guideFromPlaylist,
+    );
+    if (playlist != null) {
+      draft.playlistFile = await live.store.savePicked(playlist, '${source.id}-new', 'playlist');
+    }
+    await readM3u(draft);
+    if (playlist != null) {
+      source.playlistFile = await live.store.savePicked(playlist, source.id, 'playlist');
+      await live.store.fileFor(draft.playlistFile!).delete();
+    } else {
+      source.playlistFile = draft.playlistFile;
+    }
+    source
+      ..name = name?.trim().isNotEmpty == true ? name!.trim() : source.name
+      ..playlistUrl = draft.playlistUrl
+      ..guideUrl = draft.guideUrl
+      ..guideFile = guide != null ? await live.store.savePicked(guide, source.id, 'guide') : draft.guideFile
+      ..guideFromPlaylist = draft.guideFromPlaylist;
+    await live.save();
+    unawaited(refreshLiveNow(source));
+  }
+
+  static String? _blankToNull(String? s) => s == null || s.trim().isEmpty ? null : s.trim();
+
+  /// Removes [source] and its channels from the lineup, groups and
+  /// favorites.
+  Future<void> removeLiveSource(LiveSource source) async {
+    if (await live.removeSource(source, settings.groups)) await _saveSettings();
+    if (live.sources.isEmpty) _liveRefresher.stop();
+    _setChannels(_channels);
+  }
+
   // ---- Commercial breaks ---------------------------------------------------
 
   /// The clips the pools hold right now (and recently).
@@ -628,9 +898,11 @@ class AppState extends ChangeNotifier {
     _background = on;
     _syncStaleCheck();
     if (on) {
-      await _stopAnalysis();
+      _liveRefresher.stop();
+      if (!_analysisAllowedNow) await _stopAnalysis();
     } else {
       _startAnalysis();
+      _startLiveRefresh();
     }
     notifyListeners();
   }
@@ -713,7 +985,7 @@ class AppState extends ChangeNotifier {
         // Only Android waits for its profile: elsewhere the request goes at
         // once, as it always has.
         final profile = PlatformInfo.isAndroid ? await deviceProfile(capKbps) : null;
-        final decision = await c.playbackInfo(source, maxBitrate: maxBitrate, startAt: startAt, profile: profile);
+        final decision = await c.playbackDecision(source, maxBitrate: maxBitrate, startAt: startAt, profile: profile);
         var template = decision.transcodeTemplate;
         // On Android a re-encode with no cap asks for what keeps the original
         // picture, not Jellyfin's ceiling.
@@ -752,6 +1024,8 @@ class AppState extends ChangeNotifier {
     if ((cap == null && !android) || visible.isEmpty) return;
     // As the TV screen picks it.
     final ch = visible.where((c) => c.id == settings.lastChannelId).firstOrNull ?? visible.first;
+    // A live channel opens its stream from its source, with no decision.
+    if (ch.isLive) return;
     final now = DateTime.now();
     final on = scheduleFor(ch)?.playbackAt(now);
     final item = on?.item;
@@ -821,6 +1095,8 @@ class AppState extends ChangeNotifier {
   /// The plan [c] airs with: [configuredPlanFor], or Off while none of the
   /// pools it uses has clips.
   BreakPlan planFor(Channel c) {
+    // Live channels never get breaks (live-playback).
+    if (c.isLive) return BreakPlan.off;
     final plan = configuredPlanFor(c);
     return plan.isOff || !hasClipsFor(plan) ? BreakPlan.off : plan;
   }
@@ -872,8 +1148,10 @@ class AppState extends ChangeNotifier {
       _setPhase(AppPhase.signedOut);
       return;
     }
-    session = JellyfinSession.fromJson(sessionJson);
-    client = _sessionClient?.call(session!) ?? JellyfinClient.fromSession(session!, deviceName: deviceName);
+    session = ServerSession.fromJson(sessionJson);
+    client = _sessionClient?.call(session!) ?? clientForSession(session!);
+    // A Plex server may have another address now (a phone away from home).
+    if (session!.kind == ServerKind.plex) unawaited(reachServerAgain(checkFirst: true));
     // One-time sign-in upgrades; they wait for the launch's picture.
     _afterLaunchTune(() {
       unawaited(_renameDevice());
@@ -886,6 +1164,8 @@ class AppState extends ChangeNotifier {
     // Blocks whenever they're saved: a restored lineup has them without a
     // library index.
     await _loadBlocks();
+    await live.load();
+    PlaybackDiagnostics.mark('live sources read');
     if (libraryJson is Map<String, Object?> && channelsJson is List) {
       library = LibraryIndex.fromJson(libraryJson);
       PlaybackDiagnostics.mark('library parsed');
@@ -902,6 +1182,7 @@ class AppState extends ChangeNotifier {
       _setPhase(AppPhase.ready);
       PlaybackDiagnostics.mark('ready (channels set)');
       _startAnalysis();
+      _startLiveRefresh();
       final age = DateTime.now().difference(library.fetchedAt);
       if (age > libraryMaxAge) {
         // It downloads the whole library: after the launch's picture.
@@ -941,10 +1222,10 @@ class AppState extends ChangeNotifier {
     final id = AppSettings.migrateDeviceId(old.deviceId);
     if (id == old.deviceId) return;
     final renamed = old.withDeviceId(id);
-    final candidate = JellyfinClient.fromSession(renamed, deviceName: deviceName);
+    final candidate = clientForSession(renamed);
     try {
       await candidate.checkSession();
-    } on JellyfinException catch (e) {
+    } on ServerException catch (e) {
       debugPrint('Kept the old Jellyfin device ID: ${e.message}');
       candidate.close();
       return;
@@ -974,9 +1255,13 @@ class AppState extends ChangeNotifier {
     try {
       // The public endpoint needs no sign-in, so a client being replaced
       // (device rename) can't fail this.
-      id = await JellyfinClient(serverUrl: c.serverUrl, deviceId: c.deviceId, deviceName: deviceName)
-          .serverIdOnce();
-    } on JellyfinException catch (e) {
+      final probe = clientFor(c.kind, c.serverUrl);
+      try {
+        id = (await probe.publicInfo()).id;
+      } finally {
+        probe.close();
+      }
+    } on ServerException catch (e) {
       debugPrint('Could not read the server id: ${e.message}');
       return;
     }
@@ -997,18 +1282,99 @@ class AppState extends ChangeNotifier {
 
   // ---- Sign in / out ------------------------------------------------------
 
-  JellyfinClient clientFor(String serverUrl) => JellyfinClient(
-        serverUrl: serverUrl,
-        deviceId: settings.installId,
-        deviceName: deviceName,
-      );
+  /// A client for the [kind] of server at [serverUrl], not signed in yet.
+  MediaServer clientFor(ServerKind kind, String serverUrl) =>
+      serverClient(kind, serverUrl, deviceId: settings.installId, deviceName: deviceName);
 
-  Future<void> completeSignIn(JellyfinSession newSession, JellyfinClient newClient) async {
+  /// A client for a saved sign-in.
+  MediaServer clientForSession(ServerSession session) {
+    final client = sessionClient(session, deviceName: deviceName);
+    // Plex's part paths come from the loaded library.
+    if (client is PlexClient) client.index = () => library;
+    return client;
+  }
+
+  /// Connected through Plex's relay, which limits quality.
+  bool get plexRelay => session?.relay == true;
+
+  Future<bool>? _reaching;
+  DateTime? _reachedAt;
+
+  /// When the server doesn't answer: a Plex profile looks its server up
+  /// again with its Plex account, picks an address by the connection rules
+  /// and saves it, without signing out (server-sign-in spec). True when the
+  /// address changed. At most once every 30 seconds; other servers have
+  /// only the one address. With [checkFirst], the saved address is tried
+  /// first, and kept if it answers.
+  Future<bool> reachServerAgain({bool checkFirst = false}) {
+    final s = session;
+    if (s == null || s.kind != ServerKind.plex || s.accountToken == null || s.serverId == null) {
+      return Future.value(false);
+    }
+    if (_reaching case final inFlight?) return inFlight;
+    final last = _reachedAt;
+    if (last != null && DateTime.now().difference(last) < const Duration(seconds: 30)) return Future.value(false);
+    _reachedAt = DateTime.now();
+    return _reaching = _rediscoverPlex(s, checkFirst: checkFirst).whenComplete(() => _reaching = null);
+  }
+
+  Future<bool> _rediscoverPlex(ServerSession s, {required bool checkFirst}) async {
+    if (checkFirst) {
+      final http = Client();
+      try {
+        if (await answersAt(http, PlexConnection(uri: s.serverUrl, relay: s.relay), s.serverId!)) return false;
+      } finally {
+        http.close();
+      }
+    }
+    final account = PlexAccount(clientId: s.deviceId, deviceName: deviceName);
+    try {
+      final found = await rediscover(account, accountToken: s.accountToken!, machineId: s.serverId!);
+      if (found.resource == null) {
+        // The share was removed: as an expired sign-in.
+        await _expireSession();
+        return false;
+      }
+      final c = found.connection;
+      if (c == null || session != s) return false;
+      if (c.uri == s.serverUrl && c.relay == s.relay && found.resource!.accessToken == s.accessToken) return false;
+      PlaybackDiagnostics.note('PLEX', 'address ${s.serverUrl} → ${c.uri}${c.relay ? ' (relay)' : ''}');
+      final moved = s.withServerUrl(c.uri, relay: c.relay, accessToken: found.resource!.accessToken);
+      final previous = client;
+      session = moved;
+      client = clientForSession(moved);
+      _decisions.clear();
+      await storage.writeJson(_sessionFile, moved.toJson(), private: true);
+      previous?.close();
+      notifyListeners();
+      return true;
+    } on ServerException catch (e) {
+      if (e.statusCode == 401) await _expireSession();
+      debugPrint('Could not look the Plex server up again: ${e.message}');
+      return false;
+    } finally {
+      account.close();
+    }
+  }
+
+  Future<void> _expireSession() async {
+    await signOut();
+    syncError = 'Your session expired. Please sign in again.';
+    notifyListeners();
+  }
+
+  Future<void> completeSignIn(ServerSession newSession, MediaServer newClient) async {
     session = newSession;
     client = newClient;
     _decisions.clear();
     await storage.writeJson(_sessionFile, newSession.toJson(), private: true);
-    await _recordServerId();
+    // A Plex sign-in knows its server's id from the start; Jellyfin and Emby
+    // ones look it up.
+    if (newSession.serverId case final id?) {
+      _onServerId(id);
+    } else {
+      await _recordServerId();
+    }
     await _adoptRestoredLineup();
     await refreshLibrary();
   }
@@ -1020,7 +1386,7 @@ class AppState extends ChangeNotifier {
   Future<void> _adoptRestoredLineup() async {
     final hint = signInHint ?? await storage.readJson(signInHintFile);
     signInHint = null;
-    if (_channels.isNotEmpty) return;
+    if (_hasGenerated) return;
     final channelsJson = await storage.readJson(_channelsFile);
     final serverId = hint is Map<String, Object?> ? hint['serverId'] : null;
     if (channelsJson is List && serverId != null && serverId == session?.serverId) {
@@ -1044,7 +1410,7 @@ class AppState extends ChangeNotifier {
     if (cache != null) await AnalysisCache.release(cache);
     try {
       await client?.logout();
-    } on JellyfinException {
+    } on ServerException {
       // Signing out locally still works if the server is unreachable.
     }
     client?.close();
@@ -1066,6 +1432,9 @@ class AppState extends ChangeNotifier {
 
   bool _refreshing = false;
 
+  /// A library scan is running.
+  bool get isRefreshingLibrary => _refreshing;
+
   /// The lineup was restored from a backup and has no library index yet:
   /// its first scan is like a first sign-in's, and keeps every anchor.
   bool _restoredLineup = false;
@@ -1083,7 +1452,7 @@ class AppState extends ChangeNotifier {
     notifyListeners();
     if (!background || phase != AppPhase.ready) _setPhase(AppPhase.syncing);
     try {
-      syncStatus = 'Connecting to ${session?.serverName ?? 'Jellyfin'}…';
+      syncStatus = 'Connecting to ${session?.serverName ?? 'your server'}…';
       notifyListeners();
       var fresh = await fetchLibraryIndex(c, pools: settings.commercialPools, onStatus: (s) {
         syncStatus = s;
@@ -1094,7 +1463,7 @@ class AppState extends ChangeNotifier {
       // When this profile could first know each episode (episode-premieres):
       // a profile with no lineup yet is on its first scan.
       final restored = _restoredLineup;
-      fresh = fresh.withAvailability(_channels.isEmpty || restored ? null : library, DateTime.now());
+      fresh = fresh.withAvailability(!_hasGenerated || restored ? null : library, DateTime.now());
       syncStatus = 'Building channels…';
       notifyListeners();
       final previous = library;
@@ -1107,11 +1476,11 @@ class AppState extends ChangeNotifier {
         _restoredLineup = false;
         _updateCatalog(rebase: false);
       }
-      if (_channels.isNotEmpty) {
+      if (_hasGenerated) {
         _mergeLibraryIntoChannels(previous, plansBefore);
       } else {
         _schedules.clear();
-        _setChannels(ChannelGenerator(library).generate());
+        _setChannels(_generated());
       }
       // New pool contents may bring clips (or take them away).
       _updateCatalog();
@@ -1120,14 +1489,17 @@ class AppState extends ChangeNotifier {
       await _saveBlocks();
       _setPhase(AppPhase.ready);
       _startAnalysis();
+      _startLiveRefresh();
       _analyzer?.poke();
-    } on JellyfinException catch (e) {
+    } on ServerException catch (e) {
       syncError = e.message;
       if (e.statusCode == 401) {
         // The token was revoked (e.g. device removed in the dashboard).
-        await signOut();
-        syncError = 'Your session expired. Please sign in again.';
-        notifyListeners();
+        await _expireSession();
+      } else if (e.unreachable && await reachServerAgain()) {
+        // A Plex server at another address: scan there.
+        _refreshAgain = true;
+        syncError = null;
       } else {
         // First sync: the sync screen shows the error with a retry button.
         // Background refresh: keep showing the cached lineup.
@@ -1145,7 +1517,7 @@ class AppState extends ChangeNotifier {
 
   /// Names whole-library pool folders after their library (upgrades from
   /// before pools don't know the names, and libraries can be renamed).
-  void _labelLibraryRoots(List<JellyfinLibrary> libraries) {
+  void _labelLibraryRoots(List<ServerLibrary> libraries) {
     final names = {for (final l in libraries) l.id: l.name};
     var changed = false;
     for (final pool in settings.commercialPools) {
@@ -1165,6 +1537,7 @@ class AppState extends ChangeNotifier {
   void _mergeLibraryIntoChannels(LibraryIndex previous, Map<String, BreakPlan> plansBefore) {
     final now = DateTime.now();
     for (final ch in _channels) {
+      if (ch.isLive) continue;
       if (ch.blockOnly) {
         _schedules.remove(ch.id);
         continue;
@@ -1184,10 +1557,10 @@ class AppState extends ChangeNotifier {
     _schedules.clear();
     // Add channels the bigger library now qualifies for.
     final existingIds = {for (final c in _channels) c.id};
-    var next = _channels.fold(1, (n, c) => max(n, c.number)) + 1;
     for (final c in ChannelGenerator(library).generate()) {
       if (existingIds.contains(c.id)) continue;
-      c.number = next++;
+      // After the generated ones, skipping numbers live channels hold.
+      c.number = ChannelNumbers.nextGenerated(_channels);
       _channels.add(c);
     }
     _setChannels(_channels);
@@ -1313,10 +1686,9 @@ class AppState extends ChangeNotifier {
   Future<void> resetChannels() async {
     await safetyBackup?.call('before-reset');
     _schedules.clear();
-    final fresh = ChannelGenerator(library).generate();
-    var next = fresh.fold(1, (n, c) => max(n, c.number)) + 1;
+    final fresh = _generated();
     for (final c in _channels.where((c) => c.blockOnly)) {
-      c.number = next++;
+      c.number = ChannelNumbers.nextGenerated([...fresh, ..._channels.where((c) => c.isLive)]);
       fresh.add(c);
     }
     _setChannels(fresh);
@@ -1446,7 +1818,7 @@ class AppState extends ChangeNotifier {
   void _startAnalysis() {
     final cache = _analysis;
     final c = client;
-    if (!runAnalysis || _background || _closed || _analyzer != null || cache == null || c == null || phase != AppPhase.ready) {
+    if (!runAnalysis || !_analysisAllowedNow || _closed || _analyzer != null || cache == null || c == null || phase != AppPhase.ready) {
       return;
     }
     // The analyzer only ever reads the static stream (direct-play spec).
@@ -1461,6 +1833,7 @@ class AppState extends ChangeNotifier {
       work: _analysisWork,
       busy: _analysisBusy,
     )..start();
+    _analyzer!.state.addListener(_syncAnalysisIdle);
     notifyListeners();
   }
 
@@ -1482,6 +1855,7 @@ class AppState extends ChangeNotifier {
     final analyzer = _analyzer;
     _analyzer = null;
     _proxy = null;
+    analyzer?.state.removeListener(_syncAnalysisIdle);
     await analyzer?.stop();
   }
 
@@ -1538,14 +1912,19 @@ class AppState extends ChangeNotifier {
   Future<void> close() async {
     if (_closed) return;
     _closed = true;
+    analysisAllowed?.removeListener(_onAnalysisAllowed);
     _staleCheck?.cancel();
     _launchTimer?.cancel();
     playbackActivity.removeListener(_onLaunchActivity);
     playbackBusy.removeListener(_updateAnalysisBusy);
     exportBusy?.removeListener(_updateAnalysisBusy);
     await _stopAnalysis();
+    _syncAnalysisIdle();
     _analysis?.removeListener(_onAnalysis);
     if (_analysis case final cache?) await AnalysisCache.release(cache);
+    _liveRefresher.stop();
+    live.removeListener(_onLiveChanged);
+    live.dispose();
     client?.close();
   }
 
@@ -1655,6 +2034,27 @@ class AppState extends ChangeNotifier {
       .where((b) => blocksOverlap(b, block))
       .firstOrNull;
 
+  /// Why [draft] can't be saved, if it can't: the blocks editor's rules,
+  /// for the TV and the web admin. [newChannel]: it gets a new channel on
+  /// save; [lineupMode]: it plays a lineup of shows rather than a mix.
+  String? blockProblem(ProgramBlock draft, {bool newChannel = false, bool lineupMode = false}) {
+    if (draft.title.trim().isEmpty) return 'Give the block a title.';
+    if (draft.days.isEmpty) return 'Pick at least one day.';
+    if (draft.startMinute == draft.endMinute) return 'The block has to end at a different time than it starts.';
+    if (!newChannel && channelById(draft.channelId) == null) return 'Choose a channel.';
+    if (lineupMode && !draft.hasLineup) return 'Add a show to the lineup.';
+    if (blockPlaylist(draft).isEmpty) {
+      return lineupMode
+          ? "The lineup's shows have no episodes. Pick other shows."
+          : 'Choose some shows or movies for the block to play.';
+    }
+    if (!newChannel) {
+      final clash = blockConflict(draft);
+      if (clash != null) return 'This overlaps "${clash.title}" (${describeBlock(clash)}) on the same channel.';
+    }
+    return null;
+  }
+
   /// Resolves what [block] plays, so editors can show it: its mix, or its
   /// lineup's shows, each show's episodes in airing order.
   List<String> blockPlaylist(ProgramBlock block) => block.hasLineup
@@ -1739,7 +2139,7 @@ class AppState extends ChangeNotifier {
     final now = DateTime.now();
     final ch = Channel(
       id: 'user:${now.microsecondsSinceEpoch.toRadixString(36)}',
-      number: _channels.fold(1, (n, c) => max(n, c.number)) + 1,
+      number: ChannelNumbers.nextGenerated(_channels),
       name: name.trim().isEmpty ? 'Block Channel' : name.trim(),
       icon: const ChannelIcon.builtin('live_tv'),
       source: const ChannelSource(),
@@ -1754,12 +2154,60 @@ class AppState extends ChangeNotifier {
     return ch;
   }
 
+  /// A music channel of [source]'s songs or music videos, shuffled, with
+  /// the next free number. Throws [StateError] when nothing matches.
+  Future<Channel> createMusicChannel(String name, ChannelSource source) async {
+    if (!source.isMusic) throw StateError('Choose songs or music videos.');
+    final now = DateTime.now();
+    final id = 'user:${now.microsecondsSinceEpoch.toRadixString(36)}';
+    final playlist = buildPlaylist(library, source, PlaybackOrder.random, seed: stableHash(id));
+    if (playlist.isEmpty) throw StateError('Nothing in the library matches that.');
+    final ch = Channel(
+      id: id,
+      number: ChannelNumbers.nextGenerated(_channels),
+      name: name.trim().isEmpty ? 'Music' : name.trim(),
+      icon: ChannelIcon.builtin(source.includeMusicVideos ? 'music_video' : 'music_note'),
+      source: source,
+      order: PlaybackOrder.random,
+      playlist: playlist,
+      anchor: now,
+      auto: false,
+    );
+    _setChannels([..._channels, ch]);
+    await _saveChannels();
+    return ch;
+  }
+
+  /// Removes a channel the user added (a block or music channel), with its
+  /// blocks and group places. Generated and live channels can only be
+  /// hidden.
+  Future<void> deleteUserChannel(Channel ch) async {
+    if (ch.auto || ch.isLive) throw StateError('Only channels you added can be removed. Hide this one instead.');
+    _blocks = _blocks.where((b) => b.channelId != ch.id).toList();
+    for (final g in settings.groups) {
+      g.channelIds = [for (final id in g.channelIds) if (id != ch.id) id];
+    }
+    _autoGroups = null;
+    _schedules.clear();
+    _setChannels([for (final c in _channels) if (c.id != ch.id) c]);
+    await _saveChannels();
+    await _saveBlocks();
+    await _saveSettings();
+  }
+
   static bool _sameJson(Object? a, Object? b) => a.toString() == b.toString();
 
   // ---- Persistence --------------------------------------------------------
 
   void _setChannels(List<Channel> list) {
-    _channels = [...list]..sort((a, b) => a.number.compareTo(b.number));
+    // Edits to live channels are theirs before they're rebuilt; they're
+    // saved with the lineup.
+    if (liveEnabled) live.takeEdits(list.where((c) => c.isLive));
+    _channels = [
+      for (final c in list)
+        if (!c.isLive) c,
+      if (liveEnabled) ...live.lineupChannels(),
+    ]..sort((a, b) => a.number.compareTo(b.number));
     // Which channel is each show's premiere home may have changed.
     _premieresChanged();
     notifyListeners();
@@ -1770,8 +2218,12 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> _saveChannels() =>
-      storage.writeJson(_channelsFile, [for (final c in _channels) c.toJson()]);
+  /// Generated channels go to `channels.json` as always; live channels'
+  /// settings to their sources (live-tv-sources D1).
+  Future<void> _saveChannels() async {
+    await storage.writeJson(_channelsFile, [for (final c in _channels) if (!c.isLive) c.toJson()]);
+    if (_channels.any((c) => c.isLive)) await live.saveFrom(_channels.where((c) => c.isLive));
+  }
 
   Future<void> _saveBlocks() =>
       storage.writeJson(_blocksFile, [for (final b in _blocks) b.toJson()]);

@@ -1,0 +1,14 @@
+{
+ "MediaContainer": {
+  "size": 1,
+  "Metadata": [
+   {
+    "ratingKey": "128",
+    "type": "collection",
+    "subtype": "movie",
+    "title": "Trailers",
+    "childCount": 20
+   }
+  ]
+ }
+}

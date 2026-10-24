@@ -1,0 +1,53 @@
+{
+ "MediaContainer": {
+  "size": 1,
+  "directPlayDecisionCode": 3000,
+  "directPlayDecisionText": "App cannot direct play this item. No direct play video profile exists for protocol http, with container mkv, video codec h264, and audio codec dca.",
+  "generalDecisionCode": 1001,
+  "generalDecisionText": "Direct play not available; Conversion OK.",
+  "transcodeDecisionCode": 1001,
+  "transcodeDecisionText": "Direct play not available; Conversion OK.",
+  "Metadata": [
+   {
+    "ratingKey": "14",
+    "type": "episode",
+    "duration": 435008,
+    "Media": [
+     {
+      "id": "9",
+      "audioCodec": "aac",
+      "bitrate": 3531,
+      "container": "mpegts",
+      "protocol": "hls",
+      "videoCodec": "h264",
+      "selected": true,
+      "Part": [
+       {
+        "id": "9",
+        "container": "mpegts",
+        "protocol": "hls",
+        "decision": "transcode",
+        "Stream": [
+         {
+          "bitrate": 2763,
+          "codec": "h264",
+          "id": "17",
+          "streamType": 1,
+          "decision": "copy"
+         },
+         {
+          "bitrate": 768,
+          "codec": "aac",
+          "id": "18",
+          "streamType": 2,
+          "decision": "transcode"
+         }
+        ]
+       }
+      ]
+     }
+    ]
+   }
+  ]
+ }
+}

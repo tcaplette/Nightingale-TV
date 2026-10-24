@@ -3,10 +3,10 @@ import 'package:flutter/services.dart';
 
 import '../app_scope.dart';
 import '../commercials/commercial_pool.dart';
-import '../jellyfin/jellyfin_client.dart';
 import '../theme/tv_theme.dart';
 import 'widgets/screen_layout.dart';
 import 'widgets/tv_focus.dart';
+import '../server/media_server.dart';
 
 /// Pick the Jellyfin folders a pool draws from: libraries on the left, the
 /// folders of the opened library (or folder) on the right.
@@ -29,10 +29,10 @@ class FolderPickerScreen extends StatefulWidget {
 
 class _FolderPickerScreenState extends State<FolderPickerScreen> {
   late final Map<String, PoolRoot> _picked = {for (final r in widget.initial) r.itemId: r};
-  late Future<List<JellyfinLibrary>> _libraries;
+  late Future<List<ServerLibrary>> _libraries;
   final _trees = <String, Future<List<FolderNode>>>{};
 
-  JellyfinLibrary? _library;
+  ServerLibrary? _library;
 
   /// Folders opened inside [_library], outermost first.
   final _path = <FolderNode>[];
@@ -55,9 +55,9 @@ class _FolderPickerScreenState extends State<FolderPickerScreen> {
     super.dispose();
   }
 
-  Future<List<JellyfinLibrary>> _loadLibraries() async {
+  Future<List<ServerLibrary>> _loadLibraries() async {
     final client = AppScope.read(context).client;
-    if (client == null) throw JellyfinException('Not signed in.');
+    if (client == null) throw ServerException('Not signed in.');
     final libraries = (await client.libraries()).where((l) => l.isVideo).toList();
     if (libraries.isNotEmpty) _focusWhenBuilt(_nodeFor('lib:${libraries.first.id}'), onlyIfIdle: true);
     return libraries;
@@ -80,9 +80,9 @@ class _FolderPickerScreenState extends State<FolderPickerScreen> {
     WidgetsBinding.instance.scheduleFrame();
   }
 
-  Future<List<FolderNode>> _treeOf(JellyfinLibrary lib) => _trees.putIfAbsent(lib.id, () async {
+  Future<List<FolderNode>> _treeOf(ServerLibrary lib) => _trees.putIfAbsent(lib.id, () async {
         final client = AppScope.read(context).client;
-        if (client == null) throw JellyfinException('Not signed in.');
+        if (client == null) throw ServerException('Not signed in.');
         return client.folderTree(lib.id);
       });
 
@@ -91,7 +91,7 @@ class _FolderPickerScreenState extends State<FolderPickerScreen> {
         _trees.clear();
       });
 
-  String _label(JellyfinLibrary lib, [List<FolderNode> path = const []]) =>
+  String _label(ServerLibrary lib, [List<FolderNode> path = const []]) =>
       [lib.name, for (final n in path) n.name].join(' › ');
 
   void _toggle(String itemId, PoolRoot Function() root) => setState(() {
@@ -99,7 +99,7 @@ class _FolderPickerScreenState extends State<FolderPickerScreen> {
       });
 
   /// Shows [lib]'s folders, focusing the first.
-  void _openLibrary(JellyfinLibrary lib) {
+  void _openLibrary(ServerLibrary lib) {
     setState(() {
       _library = lib;
       _path.clear();
@@ -144,7 +144,7 @@ class _FolderPickerScreenState extends State<FolderPickerScreen> {
   void _done() => Navigator.of(context).pop(_picked.values.toList());
 
   /// Whether a folder above this one (or its library) is picked already.
-  bool _coveredByParent(JellyfinLibrary lib, List<FolderNode> above) =>
+  bool _coveredByParent(ServerLibrary lib, List<FolderNode> above) =>
       _picked.containsKey(lib.id) || above.any((n) => _picked.containsKey(n.id));
 
   @override
@@ -154,7 +154,7 @@ class _FolderPickerScreenState extends State<FolderPickerScreen> {
       title: widget.poolName == null ? 'Choose folders' : 'Folders for ${widget.poolName}',
       hints: '▲▼ Move    OK Tick    ▶ Open    ◀ Back up    ESC Cancel',
       onBack: _back,
-      child: FutureBuilder<List<JellyfinLibrary>>(
+      child: FutureBuilder<List<ServerLibrary>>(
         future: _libraries,
         builder: (context, snapshot) {
           if (snapshot.hasError) return _error(g, snapshot.error!);

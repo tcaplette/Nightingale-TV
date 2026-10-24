@@ -1,0 +1,46 @@
+{
+ "MediaSources": [
+  {
+   "Id": "c521706589facf385f4ee2ae7118afa3",
+   "Protocol": "Http",
+   "Path": "http://172.18.0.3:8096/LiveTv/LiveStreamFiles/8a087810568048209259fd6c6192be56/stream.ts",
+   "Container": "ts",
+   "IsInfiniteStream": true,
+   "IsRemote": false,
+   "SupportsDirectPlay": false,
+   "SupportsDirectStream": false,
+   "SupportsTranscoding": true,
+   "RequiresOpening": true,
+   "RequiresClosing": true,
+   "LiveStreamId": "e2329f4997b378e64ccf8fa396deb76e_af999c25a00715699361240d4c6c7a53_c521706589facf385f4ee2ae7118afa3",
+   "TranscodingUrl": "/videos/3df0204b-6528-653f-4736-1b80bbbd458b/stream.ts?DeviceId=probe-live&MediaSourceId=c521706589facf385f4ee2ae7118afa3&VideoCodec=h264&AudioCodec=aac,mp3&AudioStreamIndex=-1&VideoBitrate=999872000&AudioBitrate=128000&MaxFramerate=29.97003&MaxWidth=1920&MaxHeight=1080&PlaySessionId=88c38b42b07944e8ba07fe73b48ec6f6&ApiKey=REDACTED&LiveStreamId=e2329f4997b378e64ccf8fa396deb76e_af999c25a00715699361240d4c6c7a53_c521706589facf385f4ee2ae7118afa3&TranscodingMaxAudioChannels=2&RequireAvc=false&EnableAudioVbrEncoding=true&mpeg2video-level=4&mpeg2video-videobitdepth=8&mpeg2video-profile=main&h264-profile=baseline,constrainedbaseline,main,high&h264-videobitdepth=8&TranscodeReasons=VideoCodecNotSupported,AudioCodecNotSupported",
+   "TranscodingSubProtocol": "http",
+   "TranscodingContainer": "ts",
+   "Bitrate": 20384000,
+   "RequiredHttpHeaders": {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
+   },
+   "MediaStreams": [
+    {
+     "Type": "Video",
+     "Codec": "mpeg2video",
+     "Index": -1,
+     "IsInterlaced": true,
+     "Width": 1920,
+     "Height": 1080,
+     "BitRate": 20000000,
+     "Profile": "Main"
+    },
+    {
+     "Type": "Audio",
+     "Codec": "ac3",
+     "Index": -1,
+     "IsInterlaced": false,
+     "BitRate": 384000,
+     "Channels": 1
+    }
+   ]
+  }
+ ],
+ "PlaySessionId": "88c38b42b07944e8ba07fe73b48ec6f6"
+}

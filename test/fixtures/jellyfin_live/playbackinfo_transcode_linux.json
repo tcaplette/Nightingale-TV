@@ -1,0 +1,47 @@
+{
+ "MediaSources": [
+  {
+   "Id": "df2a766c82a199f72ae2836b30e6cb21",
+   "Protocol": "Http",
+   "Path": "http://172.18.0.3:8096/LiveTv/LiveStreamFiles/136dbd9ffd724c59b4da6546807be7e5/stream.ts",
+   "Container": "ts",
+   "IsInfiniteStream": true,
+   "IsRemote": false,
+   "SupportsDirectPlay": false,
+   "SupportsDirectStream": false,
+   "SupportsTranscoding": true,
+   "RequiresOpening": true,
+   "RequiresClosing": true,
+   "LiveStreamId": "e2329f4997b378e64ccf8fa396deb76e_af999c25a00715699361240d4c6c7a53_df2a766c82a199f72ae2836b30e6cb21",
+   "TranscodingUrl": "/videos/81d99098-6b8a-488c-dade-b5d6a5c275d0/stream.ts?DeviceId=probe-live&MediaSourceId=df2a766c82a199f72ae2836b30e6cb21&VideoCodec=h264&AudioCodec=aac&AudioStreamIndex=-1&VideoBitrate=7872383&AudioBitrate=127617&MaxFramerate=29.97003&PlaySessionId=519536128fa8423e82622856560efbee&ApiKey=REDACTED&LiveStreamId=e2329f4997b378e64ccf8fa396deb76e_af999c25a00715699361240d4c6c7a53_df2a766c82a199f72ae2836b30e6cb21&TranscodingMaxAudioChannels=2&RequireAvc=false&EnableAudioVbrEncoding=true&h264-level=31&h264-videobitdepth=8&h264-profile=high&TranscodeReasons=AudioCodecNotSupported,ContainerBitrateExceedsLimit",
+   "TranscodingSubProtocol": "http",
+   "TranscodingContainer": "ts",
+   "Bitrate": 8127617,
+   "RequiredHttpHeaders": {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
+   },
+   "MediaStreams": [
+    {
+     "Type": "Video",
+     "Codec": "h264",
+     "Index": -1,
+     "IsInterlaced": false,
+     "Width": 1280,
+     "Height": 720,
+     "BitRate": 8000000,
+     "Profile": "High"
+    },
+    {
+     "Type": "Audio",
+     "Codec": "aac",
+     "Index": -1,
+     "IsInterlaced": false,
+     "BitRate": 127617,
+     "Channels": 1,
+     "Profile": "LC"
+    }
+   ]
+  }
+ ],
+ "PlaySessionId": "519536128fa8423e82622856560efbee"
+}

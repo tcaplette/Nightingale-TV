@@ -20,10 +20,14 @@ String logoNameFor(int i) => '${i.toRadixString(16).padLeft(16, '0')}.png';
 /// The access token [writeProfile] signs [id] in with.
 String tokenFor(String id) => 'secret-token-$id';
 
-/// Writes [p]'s files under [root]: signed in to [serverId] with a cached
-/// [library] and lineup, and one programming block. Returns its install id.
+/// The Plex account token [writeProfile] gives a Plex sign-in of [id].
+String accountTokenFor(String id) => 'secret-account-$id';
+
+/// Writes [p]'s files under [root]: signed in to [serverId] (a [kind]
+/// server: null for Jellyfin, `emby` or `plex`) with a cached [library] and
+/// lineup, and one programming block. Returns its install id.
 Future<String> writeProfile(Directory root, Profile p, LibraryIndex library,
-    {String serverId = 's1', bool signedIn = true, Map<String, Object?>? settings}) async {
+    {String serverId = 's1', bool signedIn = true, Map<String, Object?>? settings, String? kind}) async {
   final dir = Directory('${root.path}/profiles/${p.id}');
   final app = await signedInApp(dir, library, serverId: serverId, settings: settings);
   await app.saveBlock(app.newBlock()..title = 'Cartoons');
@@ -39,6 +43,8 @@ Future<String> writeProfile(Directory root, Profile p, LibraryIndex library,
       'userName': p.name.toLowerCase(),
       'accessToken': tokenFor(p.id),
       'deviceId': installId,
+      'kind': ?kind,
+      if (kind == 'plex') 'accountToken': accountTokenFor(p.id),
     });
   } else {
     await storage.delete('session.json');

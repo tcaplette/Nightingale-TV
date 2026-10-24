@@ -9,11 +9,14 @@ import 'package:nightingale_tv/channels/channel.dart';
 import 'package:nightingale_tv/channels/premieres.dart';
 import 'package:nightingale_tv/data/app_storage.dart';
 import 'package:nightingale_tv/export/export_service.dart';
+import 'package:nightingale_tv/export/hdhomerun.dart';
 import 'package:nightingale_tv/export/lineup_server.dart';
 import 'package:nightingale_tv/export/m3u_writer.dart';
 import 'package:nightingale_tv/export/ssdp_responder.dart';
 import 'package:nightingale_tv/export/xmltv_writer.dart';
 import 'package:nightingale_tv/library/library_index.dart';
+import 'package:nightingale_tv/live/live_data.dart';
+import 'package:nightingale_tv/live/live_source.dart';
 import 'package:nightingale_tv/profiles/household.dart';
 import 'package:nightingale_tv/profiles/profile.dart';
 import 'package:nightingale_tv/remote/remote_control.dart';
@@ -265,6 +268,32 @@ void main() {
       expect(gh.contentType?.mimeType, 'application/xml');
       expect(xml, contains('<channel id="${app.channels.first.number}">'));
       expect((await get(port, '/nope')).$1, 404);
+    });
+
+    test("a profile's live channels are never exported (lineup-export)", () async {
+      final port = await export(mom);
+      final app = household.appFor(mom.id)!;
+      final source = LiveSource(id: 'iptv', kind: LiveSourceKind.m3u, name: 'IPTV', playlistUrl: 'http://127.0.0.1:9/x.m3u');
+      await app.live.addSource(source, [
+        for (var i = 0; i < 3; i++) LiveChannelInfo(key: 'k$i', name: 'Live $i', number: '${i + 2}.1', url: 'http://p/$i.ts'),
+      ]);
+      await app.chooseLiveChannels(source, {'k0', 'k1', 'k2'});
+      final live = [for (final c in app.channels) if (c.isLive) c];
+      expect(live.map((c) => c.number), [100, 101, 102]);
+      final generated = [for (final c in app.channels) if (!c.isLive) c];
+
+      final m3u = (await get(port, '/lineup.m3u')).$2;
+      final xml = (await get(port, '/xmltv.xml')).$2;
+      // What the HDHomeRun endpoints serve as lineup.json.
+      final lineup = lineupJson(service.serverOf(mom.id)!.lineupOf(app), _urls);
+      for (final c in live) {
+        expect(m3u, isNot(contains('tvg-chno="${c.number}"')));
+        expect(xml, isNot(contains('<channel id="${c.number}">')));
+        expect((await get(port, '/stream/${c.number}.ts')).$1, 404);
+      }
+      expect(m3u, isNot(contains('Live 0')));
+      expect([for (final e in lineup) e['GuideNumber']], [for (final c in generated) '${c.number}']);
+      expect(m3u, contains('tvg-chno="${generated.first.number}"'));
     });
 
     test('the guide is cached until the profile changes something', () async {

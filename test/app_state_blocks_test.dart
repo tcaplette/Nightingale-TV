@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:nightingale_tv/channels/schedule.dart';
 import 'package:nightingale_tv/app_state.dart';
 import 'package:nightingale_tv/channels/channel.dart';
 import 'package:nightingale_tv/channels/program_block.dart';
@@ -115,7 +116,7 @@ void main() {
       ..channelId = ch.id
       ..source = const ChannelSource(seriesKeys: ['gamma|2000']);
     await app.saveBlock(block);
-    expect(app.scheduleFor(ch)!.blocks, hasLength(1));
+    expect((app.scheduleFor(ch)! as ChannelSchedule).blocks, hasLength(1));
 
     await app.resetChannels();
     expect(app.channelById(ch.id)?.blockOnly, isTrue);
@@ -126,9 +127,9 @@ void main() {
       ..title = 'Takeover'
       ..source = const ChannelSource(seriesKeys: ['gamma|2000']);
     await app.saveBlock(takeover);
-    expect(app.scheduleFor(regular)!.blocks, hasLength(1));
+    expect((app.scheduleFor(regular)! as ChannelSchedule).blocks, hasLength(1));
     await app.deleteBlock(takeover);
-    expect(app.scheduleFor(regular)!.blocks, isEmpty);
+    expect((app.scheduleFor(regular)! as ChannelSchedule).blocks, isEmpty);
   });
 
   test('signing out clears blocks', () async {
