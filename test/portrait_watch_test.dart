@@ -5,10 +5,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:nightingale_tv/app_exit.dart';
+import 'package:nightingale_tv/channels/break_notices.dart';
+import 'package:nightingale_tv/commercials/break_plan.dart';
 import 'package:nightingale_tv/main.dart' show hasPhoneRemote;
 import 'package:nightingale_tv/platform/android_back_bridge.dart';
 import 'package:nightingale_tv/platform/orientation.dart';
 import 'package:nightingale_tv/platform/platform_info.dart';
+import 'package:nightingale_tv/playback/tuner.dart';
 import 'package:nightingale_tv/ui/guide_view.dart';
 import 'package:nightingale_tv/ui/menu_screen.dart';
 import 'package:nightingale_tv/ui/portrait_watch_screen.dart';
@@ -17,6 +20,7 @@ import 'package:nightingale_tv/ui/widgets/screen_layout.dart';
 import 'package:nightingale_tv/ui/widgets/tv_canvas.dart';
 import 'package:nightingale_tv/ui/widgets/tv_focus.dart';
 
+import 'fixtures.dart';
 import 'portrait_harness.dart';
 
 void main() {
@@ -388,6 +392,46 @@ void main() {
         });
       }
     });
+  });
+
+  testWidgets('a break notice shows in the bottom-left corner of the portrait player', (tester) async {
+    runAs(TargetPlatform.android);
+    setWindow(tester, pixel8);
+    var start = DateTime.now();
+    final testStart = tester.binding.clock.now();
+    final h = await PortraitHarness.start(tester,
+        library: fakeLibrary(commercials: const [Duration(seconds: 30), Duration(seconds: 15)]),
+        clock: () => start.add(tester.binding.clock.now().difference(testStart)));
+    await tester.runAsync(() => h.app.setGlobalPlan(BreakPlan.automatic));
+    final ch = h.app.channels.first;
+    final schedule = h.app.scheduleFor(ch)!;
+    // 3 seconds into the next "Commercial break" countdown.
+    var t = DateTime.now();
+    while (breakNoticeAt(schedule, t)?.kind != BreakNoticeKind.breakStarts) {
+      t = t.add(const Duration(seconds: 1));
+    }
+    start = t.add(const Duration(seconds: 3)).subtract(tester.binding.clock.now().difference(testStart));
+    h.tuner
+      ..channel = ch
+      ..status = TunerStatus.playing;
+    await h.show(
+        tester,
+        PortraitWatchScreen(
+            picture: const TvPicture(), onTune: (_) {}, onMenu: () {}, onFullScreen: () {}));
+    await tester.pump(const Duration(milliseconds: 500));
+    final card = find.byType(BreakNoticeCard);
+    expect(card, findsOneWidget);
+    expect(find.textContaining('Commercial break in '), findsOneWidget);
+    // Inside the player, in its bottom-left corner, scaled with the picture.
+    final player = tester.getRect(find.byType(TvPicture));
+    final box = tester.getRect(find.descendant(of: card, matching: find.byType(Container)).first);
+    expect(player.contains(box.topLeft) && player.contains(box.bottomRight - const Offset(1, 1)), isTrue,
+        reason: '$box in $player');
+    final scale = player.width / 1920;
+    expect(box.left - player.left, closeTo(90 * scale, 1));
+    expect(player.bottom - box.bottom, closeTo(70 * scale, 1));
+    h.tuner.status = TunerStatus.idle;
+    await h.end(tester);
   });
 
   testWidgets('the now panel says "Commercial break" during a break', (tester) async {

@@ -9,6 +9,7 @@ import '../../channels/channel.dart';
 import '../../channels/schedule.dart';
 import '../../theme/tv_theme.dart';
 import 'channel_logo.dart';
+import 'nightingale_mark.dart';
 
 /// How far the art and text sit from their place at [t]: a few pixels,
 /// changing each minute, so nothing stays put on the screen for hours (the
@@ -198,7 +199,7 @@ class _Art extends StatelessWidget {
   }
 }
 
-/// Stands in for missing album art.
+/// Stands in for missing album art: the Nightingale bird, since it sings.
 class MusicNoteTile extends StatelessWidget {
   const MusicNoteTile({super.key});
 
@@ -214,7 +215,7 @@ class MusicNoteTile extends StatelessWidget {
         ),
       ),
       child: LayoutBuilder(
-        builder: (context, box) => Icon(Icons.music_note, size: box.maxHeight * 0.5, color: g.accent),
+        builder: (context, box) => Center(child: NightingaleMark(height: box.maxHeight * 0.4, color: g.accent)),
       ),
     );
   }

@@ -35,6 +35,8 @@ import 'ui/login_screen.dart';
 import 'ui/profiles_screen.dart';
 import 'ui/sync_screen.dart';
 import 'ui/tv_screen.dart';
+import 'ui/widgets/nightingale_mark.dart';
+import 'ui/widgets/screen_layout.dart';
 import 'ui/widgets/tv_canvas.dart';
 
 Future<void> main(List<String> args) async {
@@ -239,12 +241,9 @@ class NightingaleTvApp extends StatelessWidget {
         builder: (context, _) {
           final app = household.app;
           if (app == null) {
+            if (!household.started) return const _Starting();
             final welcome = household.welcomeBack;
-            return _shell(!household.started
-                ? const ColoredBox(color: Colors.black)
-                : welcome != null
-                    ? WelcomeBackScreen(backup: welcome)
-                    : const ProfilePickerScreen());
+            return _shell(welcome != null ? WelcomeBackScreen(backup: welcome) : const ProfilePickerScreen());
           }
           // A new session (and screen stack) per profile.
           return ProfileSession(key: ObjectKey(app), app: app, child: _shell(const _Root()));
@@ -268,6 +267,29 @@ class NightingaleTvApp extends StatelessWidget {
                     }))),
         home: home,
       );
+}
+
+/// While the household or a profile loads: the launch screen's bird on
+/// black, the same size and place as Android's splash, so the hand-over
+/// doesn't show. [inCanvas]: inside the [TvCanvas], whose scaling it undoes.
+class _Starting extends StatelessWidget {
+  const _Starting({this.inCanvas = false});
+
+  final bool inCanvas;
+
+  @override
+  Widget build(BuildContext context) {
+    var height = 120 / nightingaleMarkAspect;
+    if (inCanvas) {
+      final view = View.of(context);
+      final window = view.physicalSize / view.devicePixelRatio;
+      height /= TvCanvas.canvasScale(window, portrait: ScreenLayout.of(context).isPortrait);
+    }
+    return ColoredBox(
+      color: Colors.black,
+      child: Center(child: NightingaleMark(height: height, color: GuideTheme.cableGuide.accent)),
+    );
+  }
 }
 
 /// Owns the [Tuner] for one profile's [AppState] while it's watching.
@@ -345,7 +367,7 @@ class _Root extends StatelessWidget {
   Widget build(BuildContext context) {
     final app = AppScope.of(context);
     return switch (app.phase) {
-      AppPhase.starting => const ColoredBox(color: Colors.black),
+      AppPhase.starting => const _Starting(inCanvas: true),
       AppPhase.signedOut => LoginScreen(key: const ValueKey('login'), message: app.syncError),
       AppPhase.syncing => const SyncScreen(),
       AppPhase.ready => const TvScreen(),

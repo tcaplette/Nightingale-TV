@@ -9,6 +9,7 @@ import '../server/plex/plex_account.dart';
 import '../server/sign_in_flow.dart';
 import '../theme/tv_theme.dart';
 import 'backup_screen.dart';
+import 'widgets/nightingale_mark.dart';
 import 'widgets/screen_layout.dart';
 import 'widgets/tv_focus.dart';
 
@@ -182,7 +183,7 @@ class _LoginScreenState extends State<LoginScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(Icons.live_tv, size: compact ? 96 : 140, color: g.accent),
+          NightingaleTv(height: compact ? 96 : 140),
           SizedBox(height: compact ? 20 : 32),
           Text('Your library.\nOn the air, 24/7.', style: g.display(compact ? 56 : 84, weight: FontWeight.w800)),
           SizedBox(height: compact ? 16 : 24),

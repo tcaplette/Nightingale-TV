@@ -350,6 +350,9 @@ class PlaybackDiagnostics {
   /// A tuner event: an open, a status change, an error.
   void event(String what) => _write('EVENT', what);
 
+  /// A break notice's cut came (break-notices D7).
+  void notice(String what) => _write('NOTICE', what);
+
   /// A new segment opened: [kind] is direct or transcode.
   void opened(String kind, Uri url, {Duration? start, Duration? end}) {
     _tune

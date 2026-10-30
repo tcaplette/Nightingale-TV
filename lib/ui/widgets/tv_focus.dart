@@ -251,9 +251,12 @@ class TvToggle extends StatelessWidget {
 
 /// Screen frame used by the menu-style screens: title bar, body, key hints.
 class TvPage extends StatefulWidget {
-  const TvPage({super.key, required this.title, required this.child, this.hints, this.onBack});
+  const TvPage({super.key, required this.title, required this.child, this.hints, this.onBack, this.leading});
 
   final String title;
+
+  /// Shown before the title, such as the app's mark on its own screens.
+  final Widget? leading;
   final Widget child;
   final String? hints;
   final VoidCallback? onBack;
@@ -334,8 +337,12 @@ class _TvPageState extends State<TvPage> {
               color: g.header,
               padding: const EdgeInsets.symmetric(horizontal: 80),
               alignment: Alignment.centerLeft,
-              child: Text(widget.title.toUpperCase(),
-                  style: g.display(52, weight: FontWeight.w800, color: g.accent)),
+              child: Row(children: [
+                if (widget.leading case final leading?) ...[leading, const SizedBox(width: 24)],
+                Flexible(
+                  child: Text(widget.title.toUpperCase(), style: g.display(52, weight: FontWeight.w800, color: g.accent)),
+                ),
+              ]),
             ),
             Expanded(child: KeyedSubtree(key: _body, child: widget.child)),
             if (hints != null)
@@ -373,6 +380,7 @@ class _TvPageState extends State<TvPage> {
                     _BackArrow(onPressed: onBack)
                   else
                     SizedBox(width: layout.gutter),
+                  if (widget.leading case final leading?) ...[leading, const SizedBox(width: 16)],
                   Expanded(
                     child: Text(widget.title.toUpperCase(),
                         maxLines: 1,

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../ui/widgets/nightingale_mark.dart';
 import 'api_client.dart';
 import 'pages/backups_page.dart';
 import 'pages/blocks_page.dart';
@@ -282,7 +283,11 @@ class Shell extends StatelessWidget {
             child: ListView(padding: const EdgeInsets.symmetric(horizontal: 12), children: [
               Padding(
                 padding: const EdgeInsets.fromLTRB(16, 20, 16, 4),
-                child: Text('Nightingale TV', style: Theme.of(context).textTheme.titleLarge),
+                child: Row(children: [
+                  NightingaleMark(height: 24, color: scheme.primary),
+                  const SizedBox(width: 12),
+                  Flexible(child: Text('Nightingale TV', style: Theme.of(context).textTheme.titleLarge)),
+                ]),
               ),
               const Padding(padding: EdgeInsets.fromLTRB(4, 8, 4, 8), child: ProfileSwitcher()),
               for (final (i, d) in shown.indexed) ...[

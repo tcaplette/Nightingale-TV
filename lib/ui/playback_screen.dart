@@ -7,8 +7,9 @@ import '../theme/tv_theme.dart';
 import 'widgets/screen_layout.dart';
 import 'widgets/tv_focus.dart';
 
-/// "Transcode only if needed", the maximum streaming bitrate, and volume
-/// leveling. Off by default: everything direct-plays, audio untouched.
+/// "Transcode only if needed", the maximum streaming bitrate, volume
+/// leveling and break notices. Off by default: everything direct-plays,
+/// audio untouched; break notices are on.
 class PlaybackScreen extends StatelessWidget {
   const PlaybackScreen({super.key});
 
@@ -32,6 +33,10 @@ class PlaybackScreen extends StatelessWidget {
   /// Added to [levelingHelp] on Android, where leveling turns passthrough off.
   static const levelingAndroidHelp = 'While it\'s on, surround audio (Dolby, DTS) is decoded by this device '
       'instead of being passed through to a receiver.';
+
+  static const noticesLabel = 'Break notices';
+
+  static const noticesHelp = 'Show a countdown before commercials start and before the program comes back.';
 
   static String levelingHelpText() =>
       PlatformInfo.isAndroid ? '$levelingHelp $levelingAndroidHelp' : levelingHelp;
@@ -102,6 +107,19 @@ class PlaybackScreen extends StatelessWidget {
             ),
             const SizedBox(height: 12),
             ConstrainedBox(constraints: const BoxConstraints(maxWidth: 1100), child: Text(levelingHelpText(), style: g.body(24, color: g.textDim))),
+            const SizedBox(height: 40),
+            Text('COMMERCIALS', style: g.display(26, weight: FontWeight.w800, color: g.accent)),
+            const SizedBox(height: 14),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: TvToggle(
+                label: noticesLabel,
+                on: playback.breakNotices,
+                onPressed: () => app.setPlayback(playback.copyWith(breakNotices: !playback.breakNotices)),
+              ),
+            ),
+            const SizedBox(height: 12),
+            ConstrainedBox(constraints: const BoxConstraints(maxWidth: 1100), child: Text(noticesHelp, style: g.body(24, color: g.textDim))),
           ],
         ),
       ),

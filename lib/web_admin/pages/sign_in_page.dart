@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../ui/widgets/nightingale_mark.dart';
 import '../api_client.dart';
 import '../app.dart';
 import '../widgets/common.dart';
@@ -21,10 +22,16 @@ class _Card extends StatelessWidget {
                   padding: const EdgeInsets.all(24),
                   child: AutofillGroup(
                     child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-                      Semantics(
-                        header: true,
-                        child: Text('Nightingale TV', style: Theme.of(context).textTheme.headlineSmall),
-                      ),
+                      Row(children: [
+                        NightingaleMark(height: 28, color: Theme.of(context).colorScheme.primary),
+                        const SizedBox(width: 12),
+                        Flexible(
+                          child: Semantics(
+                            header: true,
+                            child: Text('Nightingale TV', style: Theme.of(context).textTheme.headlineSmall),
+                          ),
+                        ),
+                      ]),
                       const SizedBox(height: 16),
                       ...children,
                     ]),

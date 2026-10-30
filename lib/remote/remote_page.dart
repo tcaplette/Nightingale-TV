@@ -1,3 +1,5 @@
+import '../ui/widgets/nightingale_mark.dart';
+
 /// The phone remote page. Self-contained (no outside files or fonts), so it
 /// works on a home network with no internet.
 const remotePageHtml = r'''<!doctype html>
@@ -31,6 +33,7 @@ const remotePageHtml = r'''<!doctype html>
     grid-row: span 3; background: var(--accent); color: var(--on-accent); border-radius: 12px;
     min-width: 64px; height: 64px; display: grid; place-items: center; font-weight: 900; font-size: 30px; padding: 0 8px;
   }
+  .num svg { width: 44px; height: auto; }
   .chname { color: var(--accent); font-weight: 800; text-transform: uppercase; letter-spacing: .03em; font-size: 13px;
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .title { font-weight: 800; font-size: 20px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -74,7 +77,7 @@ const remotePageHtml = r'''<!doctype html>
 <body>
 <div class="wrap">
   <section class="now" aria-live="polite">
-    <div class="num" id="num">TV</div>
+    <div class="num" id="num">''' + nightingaleMarkSvg + r'''</div>
     <div class="chname" id="chname">Nightingale TV</div>
     <div class="title" id="title">Connecting…</div>
     <div class="sub" id="sub"></div>
@@ -124,6 +127,8 @@ const remotePageHtml = r'''<!doctype html>
 <script>
   const headers = { 'Content-Type': 'application/json', 'X-Nightingale-Remote': '1' };
   const $ = (id) => document.getElementById(id);
+  // The bird fills the number box until a profile is watching.
+  const mark = $('num').firstElementChild;
   let state = null;
 
   async function post(path, body) {
@@ -173,7 +178,7 @@ const remotePageHtml = r'''<!doctype html>
   function render(s) {
     state = s;
     if (!s.profile) {
-      $('num').textContent = 'TV';
+      $('num').replaceChildren(mark);
       $('chname').textContent = 'Nightingale TV';
       $('title').textContent = 'Who\'s watching?';
       $('sub').textContent = 'Pick a profile with the arrows and OK.';

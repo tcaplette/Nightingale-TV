@@ -4,6 +4,7 @@ import 'dart:math';
 import 'package:flutter/foundation.dart';
 
 import '../app_state.dart';
+import '../channels/break_notices.dart';
 import '../channels/channel.dart';
 import '../channels/schedule.dart';
 import '../library/library_index.dart';
@@ -115,6 +116,21 @@ class Tuner extends ChangeNotifier {
   final AppState app;
   final TunerPlayer media;
   final DateTime Function() _clock;
+
+  /// The schedule's time for the picture on screen: the clock, but behind
+  /// it by as much as the segment on now runs past its scheduled end (a
+  /// part joined early on a keyframe plays that much longer), so overlays
+  /// worked out from the schedule (break notices) match the real cut.
+  DateTime pictureNow() {
+    final now = _clock(), seg = segment, end = _segmentEnd;
+    if (seg == null || end == null || !end.isAfter(seg.end)) return now;
+    return now.subtract(end.difference(seg.end));
+  }
+
+  /// A break notice that came up, the scheduled cut it counts down to
+  /// ([at]) and when that cut shows on screen ([cut]): logged with how
+  /// early or late the segment changed (diagnostics only).
+  ({BreakNoticeKind kind, DateTime at, DateTime cut, int channel})? _notice;
   final _subscriptions = <StreamSubscription<Object?>>[];
 
   /// With NIGHTINGALE_TV_DEBUG_PLAYBACK=1, a log of how playback is going.
@@ -689,6 +705,7 @@ class Tuner extends ChangeNotifier {
     // Sent after the new picture: the open doesn't wait for the server.
     if (step == ReportStep.finish || step == ReportStep.finishAndStart) _queueFinish();
     segment = current;
+    _logNotice(ch, current);
     program = schedule.programAt(current.start.isAfter(now) ? current.start : now);
     error = null;
     _endSegmentAt(current.end, generation);
@@ -737,6 +754,28 @@ class Tuner extends ChangeNotifier {
       _diagnostics?.event('the preloaded segment was dropped by the player; opening it');
     }
     await _playCurrent(generation, atSegmentEnd: true);
+  }
+
+  /// A break notice came up on screen, counting down to [at]; with
+  /// diagnostics on, a `NOTICE` line follows when the segment changes
+  /// (break-notices D7).
+  void noteBreakNotice(BreakNoticeKind kind, DateTime at) {
+    final ch = channel;
+    if (_diagnostics == null || ch == null) return;
+    _notice = (kind: kind, at: at, cut: at.add(_clock().difference(pictureNow())), channel: ch.number);
+  }
+
+  /// [current] is on now on [ch]: how far the change was from the cut a
+  /// notice counted down to.
+  void _logNotice(Channel ch, ScheduledProgram current) {
+    final n = _notice;
+    if (n == null) return;
+    _notice = null;
+    if (n.channel != ch.number || current.start != n.at) return;
+    final off = _clock().difference(n.cut).inMilliseconds / 1000;
+    final late = n.cut.difference(n.at).inMilliseconds;
+    _diagnostics?.notice('kind=${n.kind.name} ch=${n.channel} at=${n.at.toIso8601String()} '
+        '${late == 0 ? '' : 'shown-cut=+${late}ms '}change=${off >= 0 ? '+' : ''}${off.toStringAsFixed(3)}s');
   }
 
   /// The player reached the end of the segment on now and moved on to the

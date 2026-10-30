@@ -21,6 +21,11 @@ class MainActivity : FlutterActivity() {
         // Like a TV: the screen never dims, locks or starts the screensaver
         // while the app is in front (and only then, so no wakelock).
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        // Android 12+: the splash goes at once, not with its fade, since the
+        // launch screen under it shows the same bird in the same place.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            splashScreen.setOnExitAnimationListener { it.remove() }
+        }
     }
 
     override fun onDestroy() {

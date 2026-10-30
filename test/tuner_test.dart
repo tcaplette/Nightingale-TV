@@ -617,6 +617,18 @@ test('rapid surfing over five transcoding channels leaves at most one job runnin
       await settle();
       expect(tuner.status, TunerStatus.playing);
       expect(tuner.segmentEndsAt, part.end.add(const Duration(seconds: 3)));
+      // Overlays from the schedule (break notices) follow the picture.
+      expect(tuner.pictureNow(), now.subtract(const Duration(seconds: 3)));
+    });
+
+    test('with no keyframe join, the picture runs on the clock', () async {
+      final ch = app.channels.first;
+      final part = longPart(ch);
+      now = part.start.add(const Duration(seconds: 30));
+      await tuner.tune(ch);
+      await settle();
+      expect(tuner.segmentEndsAt, part.end);
+      expect(tuner.pictureNow(), now);
     });
   });
 

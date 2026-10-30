@@ -18,6 +18,7 @@ void main() {
   late Directory dir;
   late AppState app;
   late Tuner tuner;
+  late FakePlayer player;
 
   Future<void> show(WidgetTester tester, PlaybackSettings playback) async {
     tester.view.physicalSize = const Size(1920, 4000);
@@ -28,7 +29,8 @@ void main() {
       app = await signedInApp(dir, fakeLibrary());
       await app.setPlayback(playback);
     });
-    tuner = Tuner(app, player: FakePlayer([]));
+    player = FakePlayer([]);
+    tuner = Tuner(app, player: player);
     await tester.pumpWidget(MaterialApp(
       theme: GuideTheme.cableGuide.toThemeData(),
       home: AppScope(app: app, tuner: tuner, child: const PlaybackScreen()),
@@ -130,6 +132,53 @@ void main() {
     await tester.tap(find.text(PlaybackScreen.levelingLabel));
     await tester.pumpAndSettle();
     expect(app.settings.playback, const PlaybackSettings(volumeLeveling: true));
+  });
+
+  testWidgets('break notices: shown under COMMERCIALS, on by default, with help text', (tester) async {
+    await show(tester, PlaybackSettings.off);
+    expect(find.text('COMMERCIALS'), findsOneWidget);
+    final toggle = tester.widget<TvToggle>(find.widgetWithText(TvToggle, PlaybackScreen.noticesLabel));
+    expect(toggle.on, isTrue);
+    expect(toggle.radio, isFalse);
+    expect(find.text(PlaybackScreen.noticesHelp), findsOneWidget);
+  });
+
+  for (final transcode in [false, true]) {
+    testWidgets('break notices: the D-pad reaches it and OK saves it, with no re-tune or decisions cleared '
+        '(converting ${transcode ? 'on' : 'off'})', (tester) async {
+      await show(tester, PlaybackSettings.off.copyWith(transcodeIfNeeded: transcode));
+      app.saveDecision('src1', null, null, directStream: true);
+      expect(focusedLabel(), PlaybackScreen.toggleLabel);
+      for (var i = 0; i < 12 && focusedLabel() != PlaybackScreen.noticesLabel; i++) {
+        await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+        await tester.pumpAndSettle();
+      }
+      expect(focusedLabel(), PlaybackScreen.noticesLabel, reason: 'transcode $transcode');
+      await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+      await tester.pumpAndSettle();
+      expect(app.settings.playback, PlaybackSettings(transcodeIfNeeded: transcode, breakNotices: false));
+      expect(tester.widget<TvToggle>(find.widgetWithText(TvToggle, PlaybackScreen.noticesLabel)).on, isFalse);
+      expect(app.savedDecision('src1', null), isNotNull, reason: 'notices change no playback');
+      expect(player.opens, isEmpty, reason: 'no re-tune');
+      await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+      await tester.pumpAndSettle();
+      expect(app.settings.playback.breakNotices, isTrue);
+      expect(app.savedDecision('src1', null), isNotNull);
+      final saved = await tester.runAsync(() => app.storage.readJson('settings.json'));
+      expect(((saved as Map)['playback'] as Map)['breakNotices'], true);
+    });
+  }
+
+  testWidgets('break notices: a tap saves it', (tester) async {
+    await show(tester, PlaybackSettings.off);
+    await tester.tap(find.text(PlaybackScreen.noticesLabel));
+    await tester.pumpAndSettle();
+    expect(app.settings.playback, const PlaybackSettings(breakNotices: false));
+    // Other settings still clear decisions.
+    app.saveDecision('src1', null, null);
+    await tester.tap(find.text(PlaybackScreen.levelingLabel));
+    await tester.pumpAndSettle();
+    expect(app.savedDecision('src1', null), isNull);
   });
 
   testWidgets('picking a cap saves it', (tester) async {

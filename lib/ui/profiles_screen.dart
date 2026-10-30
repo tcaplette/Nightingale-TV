@@ -7,6 +7,7 @@ import '../profiles/profile.dart';
 import '../theme/tv_theme.dart';
 import 'menu_screen.dart';
 import 'pin_dialog.dart';
+import 'widgets/nightingale_mark.dart';
 import 'widgets/screen_layout.dart';
 import 'widgets/tv_focus.dart';
 
@@ -113,6 +114,7 @@ class ProfilePickerScreen extends StatelessWidget {
     final layout = ScreenLayout.of(context);
     return TvPage(
       title: 'Nightingale TV',
+      leading: NightingaleMark(height: layout.isPortrait ? 36 : 48, color: g.accent),
       hints: '◀▶ Move    OK Choose',
       child: Center(
         child: SingleChildScrollView(

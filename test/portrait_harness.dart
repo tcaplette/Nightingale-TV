@@ -51,7 +51,9 @@ class PortraitHarness {
 
   AppState get app => household.app!;
 
-  static Future<PortraitHarness> start(WidgetTester tester, {LibraryIndex? library}) async {
+  /// [clock] is the tuner's (the real time by default).
+  static Future<PortraitHarness> start(WidgetTester tester,
+      {LibraryIndex? library, DateTime Function()? clock}) async {
     late Directory dir;
     late Household h;
     await tester.runAsync(() async {
@@ -62,7 +64,7 @@ class PortraitHarness {
       await h.select(h.profiles.first);
       h.app!.client = FakeClient([]);
     });
-    final tuner = Tuner(h.app!, player: FakePlayer([]))
+    final tuner = Tuner(h.app!, player: FakePlayer([]), clock: clock)
       ..prefetch = false
       ..preload = false;
     final harness = PortraitHarness._(h, tuner, dir);

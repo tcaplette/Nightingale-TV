@@ -1,3 +1,5 @@
+import '../ui/widgets/nightingale_mark.dart';
+
 /// The page a phone or computer opens to move a backup (backup-restore
 /// D12). Self-contained (no outside files or fonts), like the remote's, so
 /// it works on a home network with no internet. Its links are relative to
@@ -24,7 +26,9 @@ const transferPageHtml = r'''<!doctype html>
     padding: max(20px, env(safe-area-inset-top)) 18px max(24px, env(safe-area-inset-bottom));
   }
   .wrap { max-width: 560px; margin: 0 auto; }
-  h1 { color: var(--accent); font-size: 26px; font-weight: 900; text-transform: uppercase; letter-spacing: .03em; margin: 8px 0 6px; }
+  h1 { color: var(--accent); font-size: 26px; font-weight: 900; text-transform: uppercase; letter-spacing: .03em; margin: 8px 0 6px;
+    display: flex; align-items: center; gap: 12px; }
+  h1 svg { width: 42px; height: auto; flex: none; }
   p { color: var(--dim); margin: 0 0 18px; }
   .card { background: var(--panel); border: 2px solid var(--line); border-radius: 16px; padding: 18px; margin-bottom: 16px; }
   .card h2 { font-size: 19px; margin: 0 0 6px; }
@@ -44,7 +48,7 @@ const transferPageHtml = r'''<!doctype html>
 </head>
 <body>
 <div class="wrap">
-  <h1>Nightingale TV</h1>
+  <h1>''' + nightingaleMarkSvg + r'''Nightingale TV</h1>
   <p>Move a backup between this TV and this device. Keep the TV's dialog open while you do.</p>
   <div class="card">
     <h2>Download backup</h2>

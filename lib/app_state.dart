@@ -59,9 +59,11 @@ typedef _Asked = ({Decision? decision, Object? error, StackTrace? stack});
 /// per profile, since it's about this machine and its network.
 class PlaybackSettings {
   /// A fixed [maxKbps] cap, or Original when it's null.
-  const PlaybackSettings({this.transcodeIfNeeded = false, this.maxKbps, this.volumeLeveling = false});
+  const PlaybackSettings(
+      {this.transcodeIfNeeded = false, this.maxKbps, this.volumeLeveling = false, this.breakNotices = true});
 
-  /// A setting never saved: off, with Original chosen.
+  /// A setting never saved: transcoding and leveling off, with Original
+  /// chosen; break notices on.
   static const off = PlaybackSettings();
 
   /// Convert a program when it's over the cap or won't direct-play.
@@ -73,6 +75,9 @@ class PlaybackSettings {
 
   /// Even out loudness between programs and commercials as they play.
   final bool volumeLeveling;
+
+  /// Count down before commercials start and before the program comes back.
+  final bool breakNotices;
 
   /// In this order, Original first.
   static const presets = <BitratePreset>[
@@ -96,39 +101,52 @@ class PlaybackSettings {
   /// Original. Nothing observed during playback lowers it.
   int? capKbps() => transcodeIfNeeded ? maxKbps : null;
 
-  PlaybackSettings copyWith({bool? transcodeIfNeeded, BitratePreset? bitrate, bool? volumeLeveling}) =>
+  /// Whether playback decisions made under [other] still hold: everything
+  /// but [breakNotices], which changes no playback, is the same.
+  bool decidesLike(PlaybackSettings other) => copyWith(breakNotices: other.breakNotices) == other;
+
+  PlaybackSettings copyWith(
+          {bool? transcodeIfNeeded, BitratePreset? bitrate, bool? volumeLeveling, bool? breakNotices}) =>
       PlaybackSettings(
         transcodeIfNeeded: transcodeIfNeeded ?? this.transcodeIfNeeded,
         maxKbps: bitrate == null ? maxKbps : bitrate.kbps,
         volumeLeveling: volumeLeveling ?? this.volumeLeveling,
+        breakNotices: breakNotices ?? this.breakNotices,
       );
 
   Map<String, Object?> toJson() => {
         'transcodeIfNeeded': transcodeIfNeeded,
         'bitrate': maxKbps ?? 'original',
         'volumeLeveling': volumeLeveling,
+        'breakNotices': breakNotices,
       };
 
   /// A missing or unreadable setting is off with Original chosen. A saved
   /// "auto" (removed) is Original, with the toggle as it was; a saved cap
   /// snaps to the preset at or below it (4 Mbps for anything lower). Saved
   /// before Auto (as `maxBitrateMbps`), the same rules apply. Volume
-  /// leveling is off unless saved as on.
+  /// leveling is off unless saved as on; break notices are on unless saved
+  /// as off.
   factory PlaybackSettings.fromJson(Object? json) {
     if (json is! Map<String, Object?>) return off;
     final on = json['transcodeIfNeeded'] == true;
     final leveling = json['volumeLeveling'] == true;
+    final notices = json['breakNotices'] != false;
     final bitrate = json['bitrate'];
     if (bitrate is num) {
-      return PlaybackSettings(transcodeIfNeeded: on, maxKbps: capAtOrBelow(bitrate), volumeLeveling: leveling);
+      return PlaybackSettings(
+          transcodeIfNeeded: on, maxKbps: capAtOrBelow(bitrate), volumeLeveling: leveling, breakNotices: notices);
     }
     if (!json.containsKey('bitrate')) {
       if (json['maxBitrateMbps'] case final num mbps) {
         return PlaybackSettings(
-            transcodeIfNeeded: on, maxKbps: capAtOrBelow(mbps * 1000), volumeLeveling: leveling);
+            transcodeIfNeeded: on,
+            maxKbps: capAtOrBelow(mbps * 1000),
+            volumeLeveling: leveling,
+            breakNotices: notices);
       }
     }
-    return PlaybackSettings(transcodeIfNeeded: on, volumeLeveling: leveling);
+    return PlaybackSettings(transcodeIfNeeded: on, volumeLeveling: leveling, breakNotices: notices);
   }
 
   @override
@@ -136,14 +154,15 @@ class PlaybackSettings {
       other is PlaybackSettings &&
       other.transcodeIfNeeded == transcodeIfNeeded &&
       other.maxKbps == maxKbps &&
-      other.volumeLeveling == volumeLeveling;
+      other.volumeLeveling == volumeLeveling &&
+      other.breakNotices == breakNotices;
 
   @override
-  int get hashCode => Object.hash(transcodeIfNeeded, maxKbps, volumeLeveling);
+  int get hashCode => Object.hash(transcodeIfNeeded, maxKbps, volumeLeveling, breakNotices);
 
   @override
   String toString() => 'PlaybackSettings(${transcodeIfNeeded ? 'on' : 'off'}, ${preset.label}, '
-      'leveling ${volumeLeveling ? 'on' : 'off'})';
+      'leveling ${volumeLeveling ? 'on' : 'off'}, notices ${breakNotices ? 'on' : 'off'})';
 }
 
 /// What the TV is doing, as far as bandwidth goes.
@@ -995,7 +1014,7 @@ class AppState extends ChangeNotifier {
         final kept = (template: template, directStream: decision.directStream);
         // A setting changed meanwhile cleared the decisions; this one
         // was asked under the old one.
-        if (settings.playback == playback) _decisions[key] = kept;
+        if (settings.playback.decidesLike(playback)) _decisions[key] = kept;
         return kept;
       } finally {
         _deciding.remove(key);
@@ -1730,8 +1749,8 @@ class AppState extends ChangeNotifier {
   /// re-tunes.
   Future<void> setPlayback(PlaybackSettings playback) async {
     if (playback == settings.playback) return;
+    if (!playback.decidesLike(settings.playback)) _decisions.clear();
     settings.playback = playback;
-    _decisions.clear();
     volumeLeveling.value = playback.volumeLeveling;
     _pushBudget();
     notifyListeners();

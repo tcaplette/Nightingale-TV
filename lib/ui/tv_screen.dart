@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 
 import '../app_exit.dart';
 import '../app_scope.dart';
+import '../channels/break_notices.dart';
 import '../app_state.dart';
 import '../channels/channel.dart';
 import '../channels/schedule.dart';
@@ -478,15 +479,16 @@ class _TvScreenState extends State<TvScreen> {
   }
 }
 
-/// The picture: the video, the song card, the status cards, the logo bug and
-/// the Up next card, on the 1920×1080 canvas. The TV screen draws its
+/// The picture: the video, the song card, the status cards, the logo bug,
+/// the Up next card and break notices, on the 1920×1080 canvas. The TV screen draws its
 /// banner and buttons over it; the portrait watch screen shows it in its
 /// player. One [GlobalKey] keeps it (and the video) the same widget when the
 /// layout changes.
 class TvPicture extends StatelessWidget {
   const TvPicture({super.key, this.bannerUp = false});
 
-  /// The channel banner is up: the logo bug and Up next card make way.
+  /// The channel banner is up: the logo bug, Up next card and break
+  /// notices make way.
   final bool bannerUp;
 
   @override
@@ -565,6 +567,29 @@ class TvPicture extends StatelessWidget {
                 lastPart: schedule.isLastPart(tuner.program!, tuner.segment!),
                 hidden: bannerUp,
               ),
+            ),
+          if (tuner.channel case final ch? when tuner.status == TunerStatus.playing)
+            // The setting can change while the TV is under the Playback
+            // screen.
+            ListenableBuilder(
+              listenable: AppScope.read(context),
+              builder: (context, _) => switch (AppScope.read(context)) {
+                final app when app.settings.playback.breakNotices => switch (app.scheduleFor(ch)) {
+                    final schedule? => Positioned(
+                        left: 90,
+                        bottom: 70,
+                        child: BreakNoticeCard(
+                          key: ValueKey(ch.id),
+                          schedule: schedule,
+                          hidden: bannerUp,
+                          clock: tuner.pictureNow,
+                          onShown: tuner.noteBreakNotice,
+                        ),
+                      ),
+                    null => const SizedBox.shrink(),
+                  },
+                _ => const SizedBox.shrink(),
+              },
             ),
         ],
       ),
@@ -857,6 +882,167 @@ class _UpNextCardState extends State<UpNextCard> {
                     ],
                   ),
                 ),
+        ),
+      ),
+    );
+  }
+}
+
+/// The break notice on at [now], as its headline and second line (D4).
+({String headline, String? detail}) breakNoticeText(BreakNotice notice, DateTime now) {
+  final left = (notice.at.difference(now).inMicroseconds / Duration.microsecondsPerSecond).ceil().clamp(1, 1 << 30);
+  switch (notice.kind) {
+    case BreakNoticeKind.breakStarts:
+      return (headline: '$commercialBreakLabel in $left', detail: null);
+    case BreakNoticeKind.resumes:
+      final r = notice.resumes;
+      return (
+        headline: 'Programming resumes in $left',
+        detail: r == null
+            ? null
+            : notice.continues
+                ? 'Back to ${r.title}'
+                : 'Up next: ${notice.opensBlock ?? r.title}',
+      );
+  }
+}
+
+/// The corner card that counts down to a commercial break, and to the
+/// program coming back after one (break-notices spec), worked out from
+/// [schedule] and the clock. Display only: it never takes focus or a tap.
+class BreakNoticeCard extends StatefulWidget {
+  const BreakNoticeCard(
+      {super.key, required this.schedule, required this.hidden, this.clock = DateTime.now, this.onShown});
+
+  /// How long before a break it counts down…
+  static const breakLead = breakNoticeLead;
+
+  /// …and before the program comes back.
+  static const resumeLead = resumeNoticeLead;
+
+  final ProgramSchedule schedule;
+
+  /// The channel banner is up, and already says "Commercial break".
+  final bool hidden;
+  final DateTime Function() clock;
+
+  /// A notice came up, counting down to a cut (diagnostics).
+  final void Function(BreakNoticeKind kind, DateTime at)? onShown;
+
+  @override
+  State<BreakNoticeCard> createState() => _BreakNoticeCardState();
+}
+
+class _BreakNoticeCardState extends State<BreakNoticeCard> {
+  Timer? _timer;
+  BreakNotice? _notice;
+
+  /// What it says now; kept as it slides out.
+  ({String headline, String? detail})? _text;
+
+  /// What screen readers announce: the text it came up with.
+  String? _announced;
+
+  @override
+  void initState() {
+    super.initState();
+    _check();
+  }
+
+  @override
+  void didUpdateWidget(BreakNoticeCard old) {
+    super.didUpdateWidget(old);
+    if (old.hidden != widget.hidden || old.schedule != widget.schedule) _check();
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  /// Shows the notice on now, and wakes up when its number next changes,
+  /// or at the next whole second (sooner if a notice starts before then).
+  void _check() {
+    _timer?.cancel();
+    final now = widget.clock();
+    final notice = widget.hidden ? null : breakNoticeAt(widget.schedule, now);
+    final text = notice == null ? _text : breakNoticeText(notice, now);
+    final shown = _notice;
+    final appears = notice != null && (shown == null || shown.at != notice.at || shown.kind != notice.kind);
+    if (appears) widget.onShown?.call(notice.kind, notice.at);
+    if (mounted && (notice != _notice || text != _text)) {
+      setState(() {
+        _notice = notice;
+        _text = text;
+        if (appears) _announced = [text!.headline, ?text.detail].join('. ');
+      });
+    }
+    const second = Duration(seconds: 1);
+    Duration wait;
+    if (notice != null) {
+      final rest = notice.at.difference(now).inMicroseconds % second.inMicroseconds;
+      wait = Duration(microseconds: rest == 0 ? second.inMicroseconds : rest);
+    } else {
+      wait = Duration(microseconds: second.inMicroseconds - now.microsecondsSinceEpoch % second.inMicroseconds);
+      final soon = widget.hidden ? null : breakNoticeAt(widget.schedule, now.add(second));
+      if (soon != null) {
+        final lead = soon.kind == BreakNoticeKind.breakStarts ? BreakNoticeCard.breakLead : BreakNoticeCard.resumeLead;
+        final from = soon.at.subtract(lead).difference(now);
+        if (from > Duration.zero && from < wait) wait = from;
+      }
+    }
+    // Just past the change, so the number has moved on.
+    _timer = Timer(wait + const Duration(milliseconds: 1), _check);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final g = context.guide;
+    final visible = _notice != null;
+    final text = _text;
+    return IgnorePointer(
+      child: ExcludeFocus(
+        child: Semantics(
+          liveRegion: visible,
+          label: visible ? _announced : null,
+          child: ExcludeSemantics(
+            child: AnimatedSlide(
+              offset: visible ? Offset.zero : const Offset(-1.3, 0),
+              duration: const Duration(milliseconds: 400),
+              curve: Curves.easeOutCubic,
+              child: AnimatedOpacity(
+                opacity: visible ? 1 : 0,
+                duration: const Duration(milliseconds: 400),
+                child: text == null
+                    ? const SizedBox.shrink()
+                    : Container(
+                        width: 560,
+                        padding: const EdgeInsets.fromLTRB(28, 20, 28, 24),
+                        decoration: BoxDecoration(
+                          color: g.panel.withValues(alpha: 0.94),
+                          borderRadius: BorderRadius.circular(g.radius * 2),
+                          border: Border(left: BorderSide(color: g.accent, width: 8)),
+                        ),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(text.headline,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: g.display(40, weight: FontWeight.w800)),
+                            if (text.detail case final detail?)
+                              Text(detail,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: g.body(24, color: g.textDim)),
+                          ],
+                        ),
+                      ),
+              ),
+            ),
+          ),
         ),
       ),
     );

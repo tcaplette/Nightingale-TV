@@ -84,11 +84,13 @@ void main() {
       expect(AppSettings.fromJson(s.toJson()).playback, playback);
     }
     const eight = PlaybackSettings(transcodeIfNeeded: true, maxKbps: 8000);
-    expect(eight.toJson(), {'transcodeIfNeeded': true, 'bitrate': 8000, 'volumeLeveling': false});
+    expect(eight.toJson(),
+        {'transcodeIfNeeded': true, 'bitrate': 8000, 'volumeLeveling': false, 'breakNotices': true});
     expect(eight.capKbps(), 8000);
-    expect(PlaybackSettings.off.toJson(), {'transcodeIfNeeded': false, 'bitrate': 'original', 'volumeLeveling': false});
+    expect(PlaybackSettings.off.toJson(),
+        {'transcodeIfNeeded': false, 'bitrate': 'original', 'volumeLeveling': false, 'breakNotices': true});
     expect(const PlaybackSettings(transcodeIfNeeded: true).toJson(),
-        {'transcodeIfNeeded': true, 'bitrate': 'original', 'volumeLeveling': false});
+        {'transcodeIfNeeded': true, 'bitrate': 'original', 'volumeLeveling': false, 'breakNotices': true});
   });
 
   test('volume leveling is off by default and round-trips through JSON', () {
@@ -127,6 +129,49 @@ void main() {
         const PlaybackSettings(maxKbps: 4000, volumeLeveling: true));
     expect(PlaybackSettings.fromJson({'maxBitrateMbps': 8, 'volumeLeveling': true}),
         const PlaybackSettings(maxKbps: 8000, volumeLeveling: true));
+  });
+
+  test('break notices are on by default and round-trip through JSON', () {
+    expect(AppSettings.fresh().playback.breakNotices, isTrue);
+    expect(PlaybackSettings.off.breakNotices, isTrue);
+    for (final playback in const [
+      PlaybackSettings(breakNotices: false),
+      PlaybackSettings(transcodeIfNeeded: true, maxKbps: 8000, volumeLeveling: true, breakNotices: false),
+      PlaybackSettings(maxKbps: 4000),
+    ]) {
+      final s = AppSettings.fresh()..playback = playback;
+      expect(AppSettings.fromJson(s.toJson()).playback, playback);
+    }
+    const quiet = PlaybackSettings(breakNotices: false);
+    expect(quiet.toJson()['breakNotices'], false);
+    expect(quiet, isNot(PlaybackSettings.off));
+    expect(quiet.hashCode, isNot(PlaybackSettings.off.hashCode));
+    expect(PlaybackSettings.off.copyWith(breakNotices: false), quiet);
+    expect(quiet.copyWith(volumeLeveling: true).breakNotices, isFalse, reason: 'other changes keep it');
+    expect(quiet.toString(), contains('notices off'));
+  });
+
+  test('settings saved before break notices load with them on and the rest unchanged', () {
+    expect(PlaybackSettings.fromJson({'transcodeIfNeeded': true, 'bitrate': 8000, 'volumeLeveling': true}),
+        const PlaybackSettings(transcodeIfNeeded: true, maxKbps: 8000, volumeLeveling: true, breakNotices: true));
+    expect(PlaybackSettings.fromJson({'transcodeIfNeeded': true, 'maxBitrateMbps': 12}),
+        const PlaybackSettings(transcodeIfNeeded: true, maxKbps: 12000));
+    final s = AppSettings.fromJson({
+      'installId': 'nightingaletv-abc',
+      'playback': {'transcodeIfNeeded': false, 'bitrate': 'original', 'volumeLeveling': true},
+    });
+    expect(s.playback, const PlaybackSettings(volumeLeveling: true));
+    expect(s.playback.breakNotices, isTrue);
+  });
+
+  test('an unreadable break notices value is on', () {
+    for (final v in ['no', 0, null, <String, Object?>{}]) {
+      expect(PlaybackSettings.fromJson({'transcodeIfNeeded': true, 'bitrate': 8000, 'breakNotices': v}),
+          const PlaybackSettings(transcodeIfNeeded: true, maxKbps: 8000), reason: '$v');
+    }
+    expect(PlaybackSettings.fromJson({'breakNotices': false}).breakNotices, isFalse);
+    expect(PlaybackSettings.fromJson({'maxBitrateMbps': 8, 'breakNotices': false}),
+        const PlaybackSettings(maxKbps: 8000, breakNotices: false));
   });
 
   test('the cap is remembered while the toggle is off, but not in effect', () {
