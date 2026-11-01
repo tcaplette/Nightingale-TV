@@ -74,6 +74,8 @@ void main() {
     expect(radio.number, before.values.reduce((a, b) => a > b ? a : b) + 1);
     expect(radio.playlist, hasLength(maxMusicPlaylist));
     expect(app.library.songs, hasLength(3100));
+    expect(app.lastRefresh?.songs, 3100);
+    expect(app.lastRefresh?.channels, greaterThan(0));
 
     // More songs: the playlist keeps its fixed sample, in its order.
     final playlist = [...radio.playlist];
@@ -82,7 +84,9 @@ void main() {
     final after = app.channelById(radio.id)!;
     expect(after.playlist, hasLength(maxMusicPlaylist));
     final kept = [for (final id in playlist) if (after.playlist.contains(id)) id];
-    expect(after.playlist.take(kept.length), kept, reason: 'the old songs keep their order');
+    final old = [for (final id in after.playlist) if (kept.contains(id)) id];
+    final turn = kept.indexOf(old.first);
+    expect(old, [...kept.skip(turn), ...kept.take(turn)], reason: 'the old songs keep their order around the loop');
   });
 
   test('newly found episodes become available at the scan; premieres follow', () async {

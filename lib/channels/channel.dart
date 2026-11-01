@@ -258,6 +258,7 @@ class ChannelSource {
     this.decades = const [],
     this.roots = const [],
     this.ratingFloor,
+    this.excluded = const [],
   });
 
   /// Normalized genre names (see `normalizeGenre`). Empty = any genre.
@@ -282,6 +283,11 @@ class ChannelSource {
   /// Music ignores it.
   final RatingFloor? ratingFloor;
 
+  /// Generated genre channels only: the shows (series keys) and movies (ids)
+  /// of the genre that air on a sibling channel instead, so each title has
+  /// one genre channel (see `ChannelGenerator.spreadTitles`).
+  final List<String> excluded;
+
   /// Plays songs or music videos.
   bool get isMusic => includeSongs || includeMusicVideos;
 
@@ -300,6 +306,7 @@ class ChannelSource {
     bool? includeMovies,
     List<PoolRoot>? roots,
     RatingFloor? Function()? ratingFloor,
+    List<String>? excluded,
   }) =>
       ChannelSource(
         genres: genres ?? this.genres,
@@ -311,6 +318,7 @@ class ChannelSource {
         decades: decades,
         roots: roots ?? this.roots,
         ratingFloor: ratingFloor != null ? ratingFloor() : this.ratingFloor,
+        excluded: excluded ?? this.excluded,
       );
 
   Map<String, Object?> toJson() => {
@@ -323,6 +331,7 @@ class ChannelSource {
         if (decades.isNotEmpty) 'decades': decades,
         if (roots.isNotEmpty) 'roots': [for (final r in roots) r.toJson()],
         if (ratingFloor != null) 'ratingFloor': ratingFloor!.name,
+        if (excluded.isNotEmpty) 'excluded': excluded,
       };
 
   factory ChannelSource.fromJson(Map<String, Object?> j) => ChannelSource(
@@ -335,6 +344,7 @@ class ChannelSource {
         decades: (j['decades'] as List?)?.cast<int>() ?? const [],
         roots: [for (final r in (j['roots'] as List? ?? const []).cast<Map<String, Object?>>()) PoolRoot.fromJson(r)],
         ratingFloor: RatingFloor.fromName(j['ratingFloor']),
+        excluded: (j['excluded'] as List?)?.cast<String>() ?? const [],
       );
 }
 

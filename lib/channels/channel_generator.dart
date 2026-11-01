@@ -216,6 +216,15 @@ class ChannelGenerator {
           const ChannelSource(), PlaybackOrder.random);
     }
 
+    // Marathon channels for the biggest shows. Those shows air there (and
+    // on All Shows), leaving the genre channels to the others.
+    int episodesOf(String show) => library.episodesBySeries[show]?.length ?? 0;
+    final bigShows = (library.series.where((s) => episodesOf(s.key) >= options.minEpisodesForShowChannel).toList()
+          ..sort((a, b) => episodesOf(b.key).compareTo(episodesOf(a.key))))
+        .take(options.maxShowChannels)
+        .toList();
+    final marathon = {for (final s in bigShows) s.key};
+
     // Genre channels, biggest first, skipping near-duplicates.
     final showsByGenre = <String, Set<String>>{};
     for (final s in library.series) {
@@ -223,8 +232,7 @@ class ChannelGenerator {
         showsByGenre.putIfAbsent(g, () => {}).add(s.key);
       }
     }
-    int episodeCount(Set<String> shows) =>
-        shows.fold(0, (n, k) => n + (library.episodesBySeries[k]?.length ?? 0));
+    int episodeCount(Set<String> shows) => shows.fold(0, (n, k) => n + episodesOf(k));
     final genres = showsByGenre.entries
         .where((e) =>
             e.value.length >= options.minSeriesPerGenre &&
@@ -234,22 +242,24 @@ class ChannelGenerator {
         .toList()
       ..sort((a, b) => episodeCount(b.value).compareTo(episodeCount(a.value)));
     final usedShowSets = <Set<String>>[];
+    final candidates = <String>[];
     for (final g in genres) {
       if (usedShowSets.any((used) => _jaccard(used, g.value) >= options.overlapThreshold)) continue;
       usedShowSets.add(g.value);
-      final style = _genreStyle[g.key] ?? (g.key, 'live_tv');
-      add('auto:genre:${g.key}', style.$1, ChannelIcon.builtin(style.$2),
-          ChannelSource(genres: [g.key]), PlaybackOrder.cyclic);
+      candidates.add(g.key);
+    }
+    // Each show airs on one genre channel; a genre left without enough of
+    // its own gives way.
+    final showsOf = {for (final g in candidates) g: showsByGenre[g]!.difference(marathon)};
+    final genreShows = _pickAndShare(candidates, candidates.length, showsOf, episodesOf,
+        (shows) => shows.length < options.minSeriesPerGenre || episodeCount(shows) < options.minEpisodesPerGenre);
+    for (final MapEntry(key: g, value: mine) in genreShows.entries) {
+      final style = _genreStyle[g] ?? (g, 'live_tv');
+      add('auto:genre:$g', style.$1, ChannelIcon.builtin(style.$2),
+          ChannelSource(genres: [g], excluded: _sorted(showsByGenre[g]!.difference(mine))), PlaybackOrder.cyclic);
     }
 
-    // Marathon channels for the biggest shows.
-    final bigShows = library.series
-        .where((s) =>
-            (library.episodesBySeries[s.key]?.length ?? 0) >= options.minEpisodesForShowChannel)
-        .toList()
-      ..sort((a, b) => library.episodesBySeries[b.key]!.length
-          .compareTo(library.episodesBySeries[a.key]!.length));
-    for (final s in bigShows.take(options.maxShowChannels)) {
+    for (final s in bigShows) {
       add(
         'auto:show:${s.key}',
         s.name,
@@ -261,25 +271,33 @@ class ChannelGenerator {
       );
     }
 
-    // Movie channels.
+    // Movie channels: every movie, then the biggest genres, each movie on
+    // one of them.
     if (library.movies.length >= options.minMoviesForMovieChannel) {
       add('auto:movies', 'Movie Channel', const ChannelIcon.builtin('movie'),
           const ChannelSource(includeEpisodes: false, includeMovies: true), PlaybackOrder.random);
-      final moviesByGenre = <String, int>{};
+      final moviesByGenre = <String, Set<String>>{};
       for (final m in library.movies) {
-        for (final g in m.genres.map(normalizeGenre).toSet()) {
-          moviesByGenre[g] = (moviesByGenre[g] ?? 0) + 1;
+        for (final g in m.genres.map(normalizeGenre)) {
+          moviesByGenre.putIfAbsent(g, () => {}).add(m.id);
         }
       }
-      final movieGenres = moviesByGenre.entries
-          .where((e) =>
-              e.value >= options.minMoviesPerMovieGenre && e.value < library.movies.length)
-          .toList()
-        ..sort((a, b) => b.value.compareTo(a.value));
-      for (final g in movieGenres.take(3)) {
-        add('auto:movies:${g.key}', '${g.key} Movies',
-            ChannelIcon.builtin(_genreStyle[g.key]?.$2 ?? 'local_movies'),
-            ChannelSource(genres: [g.key], includeEpisodes: false, includeMovies: true),
+      final movieGenres = [
+        for (final e in moviesByGenre.entries.toList()..sort((a, b) => b.value.length.compareTo(a.value.length)))
+          if (e.value.length >= options.minMoviesPerMovieGenre && e.value.length < library.movies.length) e.key,
+      ];
+      final shared = _pickAndShare(movieGenres, 3, moviesByGenre, (_) => 1,
+          (movies) => movies.length < options.minMoviesPerMovieGenre);
+      for (final MapEntry(key: g, value: mine) in shared.entries) {
+        add(
+            'auto:movies:$g',
+            '$g Movies',
+            ChannelIcon.builtin(_genreStyle[g]?.$2 ?? 'local_movies'),
+            ChannelSource(
+                genres: [g],
+                includeEpisodes: false,
+                includeMovies: true,
+                excluded: _sorted(moviesByGenre[g]!.difference(mine))),
             PlaybackOrder.random);
       }
     }
@@ -338,6 +356,109 @@ class ChannelGenerator {
 
   static double _jaccard(Set<String> a, Set<String> b) =>
       a.intersection(b).length / a.union(b).length;
+
+  static List<String> _sorted(Iterable<String> ids) => [...ids]..sort();
+
+  /// Spreads the library over [channels]' generated genre channels again,
+  /// as a refresh does: each show airs on one show genre channel (none,
+  /// when it has a marathon channel), each movie on one movie genre
+  /// channel. Sets their [ChannelSource.excluded]; hidden channels are
+  /// left as they are, and take no titles from the others.
+  ///
+  /// A channel left with nothing of its own plays its whole genre again;
+  /// returns their ids.
+  static Set<String> spreadTitles(LibraryIndex library, List<Channel> channels) {
+    List<Channel> generated(String prefix) => [
+          for (final c in channels)
+            if (c.auto && !c.hidden && !c.isLive && c.id.startsWith(prefix) && c.source.genres.isNotEmpty) c,
+        ]..sort((a, b) => a.number.compareTo(b.number));
+    final marathon = {
+      for (final c in channels)
+        if (c.auto && !c.hidden && c.id.startsWith('auto:show:')) ...c.source.seriesKeys,
+    };
+    final empty = <String>{};
+    void spread(List<Channel> genreChannels, Map<String, Set<String>> titlesOf, Set<String> skip, int Function(String) size) {
+      final shared = _share([for (final c in genreChannels) c.id],
+          {for (final c in genreChannels) c.id: titlesOf[c.id]!.difference(skip)}, size);
+      for (final c in genreChannels) {
+        final mine = shared[c.id]!;
+        if (mine.isEmpty) empty.add(c.id);
+        c.source = c.source.copyWith(excluded: mine.isEmpty ? const [] : _sorted(titlesOf[c.id]!.difference(mine)));
+      }
+    }
+
+    final showChannels = generated('auto:genre:');
+    spread(showChannels, {
+      for (final c in showChannels)
+        c.id: {
+          for (final s in library.series)
+            if (s.genres.map(normalizeGenre).any(c.source.genres.contains)) s.key,
+        },
+    }, marathon, (show) => library.episodesBySeries[show]?.length ?? 0);
+    final movieChannels = generated('auto:movies:');
+    spread(movieChannels, {
+      for (final c in movieChannels)
+        c.id: {
+          for (final m in library.movies)
+            if (m.genres.map(normalizeGenre).any(c.source.genres.contains)) m.id,
+        },
+    }, const {}, (_) => 1);
+    return empty;
+  }
+
+  /// Picks up to [max] of [candidates] (best first) and shares their
+  /// titles ([titlesOf]) between them (see [_share]). A pick left [thin]
+  /// gives way to the next candidate. Returns each pick's titles, in
+  /// [candidates]' order.
+  static Map<String, Set<String>> _pickAndShare(List<String> candidates, int max, Map<String, Set<String>> titlesOf,
+      int Function(String) size, bool Function(Set<String>) thin) {
+    final left = [...candidates];
+    while (true) {
+      final picked = left.take(max).toList();
+      final shared = _share(picked, titlesOf, size);
+      String? thinnest;
+      int weight(String g) => shared[g]!.fold(0, (n, t) => n + size(t));
+      for (final g in picked) {
+        if (thin(shared[g]!) && (thinnest == null || weight(g) < weight(thinnest))) thinnest = g;
+      }
+      if (thinnest == null) return shared;
+      left.remove(thinnest);
+    }
+  }
+
+  /// Gives each title one of [channels] it is in ([titlesOf]), so that no
+  /// two channels play the same title. Titles in the fewest channels go
+  /// first, the biggest ([size]) first among those, each to a channel with
+  /// nothing yet, else the one with the least so far; ties go to the
+  /// earlier channel. Returns each channel's titles, in [channels]' order.
+  static Map<String, Set<String>> _share(
+      List<String> channels, Map<String, Set<String>> titlesOf, int Function(String) size) {
+    final fits = <String, List<String>>{};
+    for (final c in channels) {
+      for (final t in titlesOf[c] ?? const <String>{}) {
+        fits.putIfAbsent(t, () => []).add(c);
+      }
+    }
+    final titles = fits.keys.toList()
+      ..sort((a, b) {
+        final byFits = fits[a]!.length.compareTo(fits[b]!.length);
+        if (byFits != 0) return byFits;
+        final bySize = size(b).compareTo(size(a));
+        return bySize != 0 ? bySize : a.compareTo(b);
+      });
+    final shared = {for (final c in channels) c: <String>{}};
+    final load = {for (final c in channels) c: 0};
+    for (final t in titles) {
+      var best = fits[t]!.first;
+      for (final c in fits[t]!.skip(1)) {
+        final (emptyC, emptyBest) = (shared[c]!.isEmpty, shared[best]!.isEmpty);
+        if (emptyC != emptyBest ? emptyC : load[c]! < load[best]!) best = c;
+      }
+      shared[best]!.add(t);
+      load[best] = load[best]! + size(t);
+    }
+    return shared;
+  }
 }
 
 /// A music channel's playlist holds at most this many items: a fixed
@@ -356,6 +477,7 @@ List<MediaEntry> musicSample(List<MediaEntry> items, int seed) {
 List<String> buildPlaylist(LibraryIndex library, ChannelSource source, PlaybackOrder order,
     {required int seed}) {
   final genres = source.genres.toSet();
+  final excluded = source.excluded.toSet();
   bool genreMatch(Iterable<String> itemGenres) =>
       genres.isEmpty || itemGenres.map(normalizeGenre).any(genres.contains);
 
@@ -394,13 +516,15 @@ List<String> buildPlaylist(LibraryIndex library, ChannelSource source, PlaybackO
     final whole = source.includeEpisodes &&
         (source.seriesKeys.isNotEmpty
             ? source.seriesKeys.contains(s.key)
-            : !(byRootOnly && genres.isEmpty) && genreMatch(s.genres));
+            : !(byRootOnly && genres.isEmpty) && !excluded.contains(s.key) && genreMatch(s.genres));
     final picked = whole ? eps : [for (final e in eps) if (rooted.contains(e.id)) e];
     if (picked.isNotEmpty) shows[s.key] = picked;
   }
   final movies = [
     for (final m in library.movies)
-      if (((source.includeMovies && genreMatch(m.genres)) || rooted.contains(m.id)) && rated(m.officialRating)) m,
+      if (((source.includeMovies && genreMatch(m.genres) && !excluded.contains(m.id)) || rooted.contains(m.id)) &&
+          rated(m.officialRating))
+        m,
   ];
 
   final rng = Random(seed);
@@ -484,4 +608,23 @@ List<MediaEntry> _spread(List<MediaEntry> list) {
     }
   }
   return list;
+}
+
+/// [loop] with [added] worked in from index [start] on, wrapping around: a
+/// new item, then a few old ones (three, fewer when there are many new
+/// ones), so new items air from [start] and keep turning up rather than
+/// waiting for the end of the loop. The result starts at [start]; a loop
+/// has no start of its own.
+List<String> spliceNew(List<String> loop, List<String> added, int start) {
+  if (loop.isEmpty) return [...added];
+  final gap = (loop.length ~/ (added.length + 1)).clamp(1, 3);
+  final from = start % loop.length;
+  final old = [...loop.sublist(from), ...loop.sublist(0, from)];
+  final out = <String>[];
+  var next = 0;
+  for (var i = 0; i < old.length; i++) {
+    if (i % gap == 0 && next < added.length) out.add(added[next++]);
+    out.add(old[i]);
+  }
+  return out..addAll(added.skip(next));
 }

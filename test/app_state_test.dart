@@ -155,7 +155,7 @@ void main() {
             .having((e) => e.message, 'message', 'Only channels you added can change what they play.')));
   });
 
-  test('a refresh appends a new collection item without moving what is on', () async {
+  test('a refresh puts a new collection item on next, without moving what is on', () async {
     app.client = server(['Cheers-e1', 'Cheers-e2', 'Cheers-e3']);
     final ch = await app.createCustomChannel('80s TV', const ChannelSource(roots: [box]), order: PlaybackOrder.cyclic);
     final playlist = [...ch.playlist];
@@ -163,8 +163,19 @@ void main() {
     final before = onAir(ch, now);
     app.client = server(['Cheers-e1', 'Cheers-e2', 'Cheers-e3', 'Taxi-e4']);
     await app.refreshLibrary(background: true);
-    expect(ch.playlist, [...playlist, 'Taxi-e4']);
+    expect(ch.playlist.toSet(), {...playlist, 'Taxi-e4'});
     expect(onAir(ch, now), before);
+    final at = ch.playlist.indexOf(before.$1!);
+    expect(ch.playlist[(at + 1) % ch.playlist.length], 'Taxi-e4', reason: 'the new episode airs next');
+  });
+
+  test('refreshes asked for during a scan wait for it', () async {
+    final first = app.refreshLibrary(background: true);
+    final second = app.refreshLibrary(background: true);
+    expect(app.refreshing, isTrue);
+    await second;
+    expect(app.refreshing, isFalse, reason: 'the second waited for the scan to finish');
+    await first;
   });
 
   test('a deleted collection leaves the channel in the lineup with nothing to play', () async {

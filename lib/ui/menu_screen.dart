@@ -194,12 +194,16 @@ class _MenuScreenState extends State<MenuScreen> {
       ),
       const SizedBox(height: 18),
       TvButton(
-        label: 'Refresh library',
+        label: app.refreshing ? 'Refreshing library…' : 'Refresh library',
         icon: locked ? Icons.lock : Icons.sync,
         expand: true,
         onPressed: guard(() async {
           await app.refreshLibrary(background: true);
-          if (context.mounted) await AppScope.tunerOf(context).retune();
+          if (!context.mounted) return;
+          await AppScope.tunerOf(context).retune();
+          if (!context.mounted) return;
+          final (title, message) = refreshReport(app.syncError, app.lastRefresh, app.session?.serverName);
+          await showMessage(context, title: title, message: message);
         }),
       ),
       const SizedBox(height: 18),
@@ -311,10 +315,12 @@ class _MenuScreenState extends State<MenuScreen> {
           style: g.body(24, color: s.state == ServerState.ok ? g.textDim : g.nowLine),
         ),
       Text(
-        app.syncError != null
-            ? 'Last refresh failed: ${app.syncError}'
-            : 'Updated ${formatDate(app.library.fetchedAt)} at ${formatTime(app.library.fetchedAt)}',
-        style: g.body(24, color: app.syncError != null ? g.nowLine : g.textDim),
+        app.refreshing
+            ? app.syncStatus
+            : app.syncError != null
+                ? 'Last refresh failed: ${app.syncError}'
+                : 'Updated ${formatDate(app.library.fetchedAt)} at ${formatTime(app.library.fetchedAt)}',
+        style: g.body(24, color: app.refreshing ? g.accent : app.syncError != null ? g.nowLine : g.textDim),
       ),
       const SizedBox(height: 48),
       Text('CHANNELS', style: g.display(30, weight: FontWeight.w800, color: g.accent)),
@@ -381,6 +387,32 @@ class _MenuScreenState extends State<MenuScreen> {
 }
 
 /// TV-friendly message with an OK button, for something that didn't work.
+/// The title and message after Refresh library: what the scan found, or
+/// why it failed.
+(String, String) refreshReport(
+    String? error, ({int shows, int episodes, int movies, int songs, int channels})? found, String? serverName) {
+  if (error != null) return ('Refresh failed', error);
+  if (found == null) return ('Library refreshed', 'Your channels are up to date.');
+  String count(int n, String what) => '$n new $what${n == 1 ? '' : 's'}';
+  final parts = [
+    if (found.shows > 0) count(found.shows, 'show'),
+    if (found.episodes > 0) count(found.episodes, 'episode'),
+    if (found.movies > 0) count(found.movies, 'movie'),
+    if (found.songs > 0) count(found.songs, 'song'),
+    if (found.channels > 0) count(found.channels, 'channel'),
+  ];
+  if (parts.isEmpty) {
+    return (
+      'Nothing new',
+      '${serverName ?? 'Your server'} has nothing new since the last refresh. '
+          'New files show up here once the server has scanned them: if you just added some, '
+          'scan the library on the server first, then refresh again.'
+    );
+  }
+  final list = parts.length == 1 ? parts.first : '${parts.take(parts.length - 1).join(', ')} and ${parts.last}';
+  return ('Library refreshed', 'Found $list. New programs start airing on their channels right after what\'s on now.');
+}
+
 Future<void> showMessage(BuildContext context, {required String title, required String message}) => showDialog<void>(
       context: context,
       barrierColor: Colors.black87,

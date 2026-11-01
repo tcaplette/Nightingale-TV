@@ -1974,9 +1974,21 @@ class AppState extends ChangeNotifier {
   /// A library scan is in progress ([syncStatus] says what it's doing).
   bool get refreshing => _refreshing;
 
-  /// Re-scans Jellyfin. New episodes join existing channels without
-  /// changing what's on air right now; new genre/show channels are added.
-  Future<void> refreshLibrary({bool background = false}) async {
+  /// What the last library scan found that the lineup didn't have.
+  ({int shows, int episodes, int movies, int songs, int channels})? lastRefresh;
+
+  /// The scan under way; a refresh asked for meanwhile waits for it.
+  Future<void>? _refreshRun;
+
+  /// Re-scans Jellyfin. New episodes and movies join existing channels
+  /// right after what's on air now, without changing it; new genre/show
+  /// channels are added. While a scan is running, waits for that one.
+  Future<void> refreshLibrary({bool background = false}) {
+    if (client == null) return Future.value();
+    return _refreshRun ??= _refreshLibrary(background: background).whenComplete(() => _refreshRun = null);
+  }
+
+  Future<void> _refreshLibrary({bool background = false}) async {
     final c = client;
     if (c == null || _refreshing) return;
     _refreshing = true;
@@ -2006,6 +2018,8 @@ class AppState extends ChangeNotifier {
       notifyListeners();
       final previous = library;
       final plansBefore = _plans();
+      final channelsBefore = {for (final ch in _channels) ch.id};
+      final showsBefore = {for (final s in previous.series) s.key};
       library = fresh;
       if (restored) {
         // The clips are known before the merge, as at a launch, so no
@@ -2022,6 +2036,13 @@ class AppState extends ChangeNotifier {
       }
       // New pool contents may bring clips (or take them away).
       _updateCatalog();
+      lastRefresh = (
+        shows: fresh.series.where((s) => !showsBefore.contains(s.key)).length,
+        episodes: fresh.episodes.where((e) => previous[e.id] == null).length,
+        movies: fresh.movies.where((m) => previous[m.id] == null).length,
+        songs: [...fresh.songs, ...fresh.musicVideos].where((m) => previous[m.id] == null).length,
+        channels: _channels.where((ch) => !channelsBefore.contains(ch.id)).length,
+      );
       await storage.writeJson(_libraryFile, library.toJson());
       await _saveChannels();
       await _saveBlocks();
@@ -2049,7 +2070,7 @@ class AppState extends ChangeNotifier {
     }
     if (_refreshAgain && client != null) {
       _refreshAgain = false;
-      await refreshLibrary(background: true);
+      await _refreshLibrary(background: true);
     }
   }
 
@@ -2222,6 +2243,16 @@ class AppState extends ChangeNotifier {
 
   void _mergeLibraryIntoChannels(LibraryIndex previous, Map<String, BreakPlan> plansBefore) {
     final now = DateTime.now();
+    // Channels the bigger library now qualifies for, after the generated
+    // ones (skipping numbers live channels hold).
+    final existingIds = {for (final c in _channels) c.id};
+    final added = [
+      for (final c in ChannelGenerator(library).generate())
+        if (!existingIds.contains(c.id)) c..number = 1 << 30,
+    ];
+    // Each show and movie airs on one genre channel; a new one left with
+    // nothing of its own isn't added.
+    final empty = ChannelGenerator.spreadTitles(library, [..._channels, ...added]);
     for (final ch in _channels) {
       if (ch.isLive) continue;
       if (ch.blockOnly) {
@@ -2229,9 +2260,16 @@ class AppState extends ChangeNotifier {
         continue;
       }
       final fresh = buildPlaylist(library, ch.source, ch.order, seed: ch.seed);
-      // A custom channel follows its source: what left it (a collection's
-      // removed episode) goes too.
-      var merged = _mergedPlaylist(ch.playlist, fresh, onlyFresh: ch.isCustom, previous: previous);
+      // What's new airs from the next program on.
+      final onAir = ChannelSchedule.build(
+              ch, previous, const [], _breakContext(plansBefore[ch.id] ?? planFor(ch), ch.effectiveSlotRule))
+          ?.programAt(now)
+          .item
+          ?.id;
+      // A channel follows its source: what left it (a collection's removed
+      // episode, a show moved to another genre channel) goes too.
+      var merged = _mergedPlaylist(ch.playlist, fresh,
+          onlyFresh: !ch.isMusic, previous: previous, after: onAir == null ? null : _currentId(onAir, previous));
       if (ch.isMusic && merged.length > maxMusicPlaylist) {
         // Keep the channel's fixed sample, in the order it airs.
         final sample = fresh.toSet();
@@ -2244,11 +2282,10 @@ class AppState extends ChangeNotifier {
           onlyFresh: !b.hasLineup && (b.source.roots.isNotEmpty || b.source.ratingFloor != null), previous: previous);
     }
     _schedules.clear();
-    // Add channels the bigger library now qualifies for.
-    final existingIds = {for (final c in _channels) c.id};
-    for (final c in ChannelGenerator(library).generate()) {
-      if (existingIds.contains(c.id)) continue;
-      // After the generated ones, skipping numbers live channels hold.
+    for (final c in added) {
+      if (empty.contains(c.id)) continue;
+      c.playlist = buildPlaylist(library, c.source, c.order, seed: c.seed);
+      if (c.playlist.isEmpty) continue;
       c.number = ChannelNumbers.nextGenerated(_channels);
       _channels.add(c);
     }
@@ -2256,10 +2293,11 @@ class AppState extends ChangeNotifier {
   }
 
   /// Keeps [playlist]'s order, dropping items gone from the library (with
-  /// [onlyFresh], also those no longer in [fresh]) and appending the new
-  /// ones from [fresh].
+  /// [onlyFresh], also those no longer in [fresh]) and adding the new ones
+  /// from [fresh]: spread out from just [after] (the program on air), so
+  /// they start airing now, or at the end without it.
   List<String> _mergedPlaylist(List<String> playlist, List<String> fresh,
-      {bool onlyFresh = false, LibraryIndex? previous}) {
+      {bool onlyFresh = false, LibraryIndex? previous, String? after}) {
     // An item whose copy is now another's alternate (multi-server: a mirror
     // removed, or a server added) keeps its place under the entry's id.
     final listed = playlist.toSet(), moved = <String>{};
@@ -2269,12 +2307,17 @@ class AppState extends ChangeNotifier {
     ];
     final known = current.toSet();
     final wanted = onlyFresh ? fresh.toSet() : null;
-    return [
+    final kept = [
       for (final id in current)
         if (library[id] != null && (wanted?.contains(id) ?? true)) id,
+    ];
+    final added = [
       for (final id in fresh)
         if (!known.contains(id)) id,
     ];
+    final at = after == null ? -1 : kept.indexOf(after);
+    if (added.isEmpty || at < 0) return [...kept, ...added];
+    return spliceNew(kept, added, at + 1);
   }
 
   /// The id the library holds [id]'s title under now (multi-server): its own,
