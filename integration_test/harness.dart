@@ -63,14 +63,16 @@ class UiHarness {
       {bool remote = false,
       bool export = false,
       FakeItems? server,
+      Map<String, Map<String, List<String>>> collections = const {},
       Map<String, List<Span>> reelCuts = const {},
       Map<String, Object?>? settings,
       void Function(List<Map<String, Object?>> channels)? editChannels}) async {
-    MediaKit.ensureInitialized();
+    // Android plays with ExoPlayer: there's no mpv to load.
+    if (!Platform.isAndroid) MediaKit.ensureInitialized();
     final dir = await Directory.systemTemp.createTemp('nightingale_tv_ui');
     late final FakeJellyfin? fake;
     final household = (await tester.runAsync(() async {
-      fake = server == null ? null : await FakeJellyfin.start(server);
+      fake = server == null ? null : await FakeJellyfin.start(server, collections: collections);
       final seeded = await signedInApp(dir, library,
           serverId: fake == null ? null : FakeJellyfin.serverId,
           serverUrl: fake?.url ?? 'http://127.0.0.1:9',
@@ -174,6 +176,10 @@ class UiHarness {
     context.visitAncestorElements((e) {
       final widget = e.widget;
       if (widget is TvButton) {
+        label = widget.label;
+        return false;
+      }
+      if (widget is TvToggle) {
         label = widget.label;
         return false;
       }

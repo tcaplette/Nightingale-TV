@@ -6,6 +6,7 @@ import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:nightingale_tv/channels/channel.dart';
 import 'package:nightingale_tv/channels/program_block.dart';
+import 'package:nightingale_tv/channels/retro.dart';
 import 'package:nightingale_tv/web_admin/api_client.dart';
 import 'package:nightingale_tv/web_admin/app.dart';
 import 'package:nightingale_tv/web_admin/widgets/common.dart';
@@ -121,6 +122,30 @@ void main() {
     });
   });
 
+  group('retro look', () {
+    testWidgets('a channel\'s CRT effect is saved and shown, and Main setting follows again', (tester) async {
+      api.signedIn = true;
+      await start(tester);
+      go(tester, '/profiles/p1/channels/c1');
+      await tester.pumpAndSettle();
+      final field = find.widgetWithText(DropdownButtonFormField<CrtStyle?>, 'CRT effect');
+      await tester.scrollUntilVisible(field, 300, scrollable: find.byType(Scrollable).first);
+      expect(find.textContaining("They don't apply to Live TV export"), findsOneWidget);
+      await tester.tap(field);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Arcade').last);
+      await tester.pumpAndSettle();
+      expect(api.lastBody['PUT profiles/p1/channels/c1'], {'retro': {'crt': 'arcade'}});
+      expect(find.text('Arcade'), findsOneWidget);
+      await tester.tap(find.widgetWithText(DropdownButtonFormField<CrtStyle?>, 'CRT effect'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Main setting (Off)').last);
+      await tester.pumpAndSettle();
+      expect(api.lastBody['PUT profiles/p1/channels/c1'], {'retro': <String, Object?>{}});
+      expect(find.text('Effects on this device'), findsNothing);
+    });
+  });
+
   group('block editor', () {
     testWidgets('a new block is sent as the model, and the server\'s rule shows beside it', (tester) async {
       api.signedIn = true;
@@ -150,6 +175,73 @@ void main() {
       expect(sent['lineupMode'], isFalse);
       expect(find.text('Programming blocks'), findsWidgets, reason: 'back on the list');
     });
+
+    Finder pageList() => find.descendant(of: find.byType(ProfileGate), matching: find.byType(Scrollable)).first;
+
+    Future<void> save(WidgetTester tester) async {
+      await tester.scrollUntilVisible(find.text('Save'), 300, scrollable: pageList());
+      await tester.tap(find.text('Save'));
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets("the late-night shortcut fills in the editor with the channel's source and order", (tester) async {
+      api
+        ..signedIn = true
+        ..channel['order'] = 'weighted';
+      await start(tester);
+      go(tester, '/profiles/p1/blocks');
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('New late-night block'));
+      await tester.pumpAndSettle();
+      expect(find.text('New late-night block'), findsOneWidget, reason: 'the editor is open');
+      await save(tester);
+      final block = ProgramBlock.fromJson(api.lastBody['POST profiles/p1/blocks']! as Map<String, Object?>);
+      expect((block.title, block.startMinute, block.endMinute, block.order), ('Late Night', 23 * 60, 4 * 60, PlaybackOrder.weighted));
+      expect(block.days, {1, 2, 3, 4, 5, 6, 7});
+      expect(block.source.seriesKeys, ['alpha']);
+      expect(block.source.ratingFloor, RatingFloor.mature);
+    });
+
+    testWidgets('the minimum rating stays when shows are picked again', (tester) async {
+      api.signedIn = true;
+      await start(tester);
+      go(tester, '/profiles/p1/blocks/new');
+      await tester.pumpAndSettle();
+      await tester.enterText(find.widgetWithText(TextField, 'Title'), 'Prime');
+      final floor = find.widgetWithText(DropdownButtonFormField<RatingFloor?>, 'Minimum rating');
+      await tester.scrollUntilVisible(floor, 300, scrollable: pageList());
+      await tester.tap(floor);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text(RatingFloor.teen.label).last);
+      await tester.pumpAndSettle();
+      await tester.scrollUntilVisible(find.text('Alpha (10)'), -300, scrollable: pageList());
+      await tester.tap(find.text('Alpha (10)'));
+      await tester.pumpAndSettle();
+      await save(tester);
+      final block = ProgramBlock.fromJson(api.lastBody['POST profiles/p1/blocks']! as Map<String, Object?>);
+      expect(block.source.seriesKeys, ['alpha']);
+      expect(block.source.ratingFloor, RatingFloor.teen);
+    });
+
+    testWidgets('kid profiles get no shortcut and no minimum rating', (tester) async {
+      api
+        ..signedIn = true
+        ..kidProfile = true;
+      await start(tester);
+      go(tester, '/profiles/p1/blocks');
+      await tester.pumpAndSettle();
+      expect(find.text('New late-night block'), findsNothing);
+      go(tester, '/profiles/p1/blocks/late-night');
+      await tester.pumpAndSettle();
+      expect(find.text('Minimum rating'), findsNothing);
+      await tester.enterText(find.widgetWithText(TextField, 'Title'), 'Late');
+      await tester.scrollUntilVisible(find.text('Alpha (10)'), 300, scrollable: pageList());
+      await tester.tap(find.text('Alpha (10)'));
+      await tester.pumpAndSettle();
+      await save(tester);
+      final block = ProgramBlock.fromJson(api.lastBody['POST profiles/p1/blocks']! as Map<String, Object?>);
+      expect(block.source.ratingFloor, isNull, reason: 'no shortcut defaults on a kid profile');
+    });
   });
 }
 
@@ -158,6 +250,7 @@ class FakeApi {
   bool hasUsers = true;
   bool signedIn = false;
   String role = 'admin';
+  bool kidProfile = false;
   int revision = 1;
   final calls = <String>[];
   final lastBody = <String, Object?>{};
@@ -224,6 +317,7 @@ class FakeApi {
       case 'GET profiles/p1/blocks':
         return json({
           'blocks': [],
+          'kidProfile': kidProfile,
           'newBlock': ProgramBlock(
             id: 'block:new',
             title: '',

@@ -64,6 +64,7 @@ void main() {
         const OffAirCard(),
         StandByCard.upNext(DateTime(2026, 1, 1, 19, 30)),
         const StandByCard.rightBack(),
+        OfflineCardSpec(ch, DateTime(2026, 1, 1, 20, 30)),
       ];
       for (final card in cards) {
         for (final height in [1080, 720]) {
@@ -74,6 +75,28 @@ void main() {
           if (card is! BlackCard) expectDrawn(png, image.width, image.height);
         }
       }
+    });
+  });
+
+  testWidgets("an offline card draws the channel's own image, contained, or its logo by default", (tester) async {
+    await tester.runAsync(() async {
+      final ch = app.channels.first;
+      final picture = img.Image(width: 800, height: 800)..clear(img.ColorRgb8(10, 200, 10));
+      final name = await app.icons.importOfflineBytes(img.encodePng(picture), 'technical difficulties.png');
+      expect(name, startsWith('offline-'));
+      expect(await app.icons.list(), isNot(contains(name)), reason: 'not offered as a logo');
+      final byDefault = OfflineCardSpec(ch, DateTime(2026, 1, 1, 20, 30));
+      final defaultKey = byDefault.key;
+      final plain = await (await art.cardPng(byDefault, app, 720)).readAsBytes();
+      expectDrawn(plain, 1280, 720);
+      ch.slotRule = SlotRule(length: const Duration(minutes: 30), tail: TailMode.offline, offlineImage: name);
+      final own = OfflineCardSpec(ch, DateTime(2026, 1, 1, 20, 30));
+      expect(own.key, isNot(defaultKey));
+      final image = img.decodePng(await (await art.cardPng(own, app, 720)).readAsBytes())!;
+      // Contained: green in the middle, black bars at the sides.
+      final middle = image.getPixel(640, 360), side = image.getPixel(20, 360);
+      expect((middle.r, middle.g, middle.b), (10, 200, 10));
+      expect((side.r, side.g, side.b), (0, 0, 0));
     });
   });
 
@@ -119,6 +142,15 @@ void main() {
       await app.icons.fileFor('photo.jpg').writeAsBytes(img.encodeJpg(jpg));
       await check(const ChannelIcon(kind: ChannelIconKind.custom, value: 'photo.jpg'));
     });
+  });
+
+  testWidgets('the default TV logo draws the TV with the bird, in its colour', (tester) async {
+    final png = (await tester.runAsync(() => art.pngFor(app, channelWith(const ChannelIcon.builtin('live_tv', color: 0xFFFF6B35)))))!;
+    final image = img.decodePng(png)!;
+    bool has(int r, int g, int b) => image.any((p) => (p.r - r).abs() < 8 && (p.g - g).abs() < 8 && (p.b - b).abs() < 8 && p.a > 250);
+    expect(has(0xFF, 0x6B, 0x35), isTrue, reason: 'the frame, in the chosen colour');
+    expect(has(0x1A, 0x3A, 0x8F), isTrue, reason: 'the screen');
+    expect(has(0x4C, 0xC9, 0xF0), isFalse, reason: 'no swoosh: just the TV and the bird');
   });
 
   testWidgets("a logo that can't be fetched falls back to a badge", (tester) async {

@@ -4,6 +4,8 @@
 // the screen, fails.
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:nightingale_tv/channels/channel.dart';
+import 'package:nightingale_tv/ui/source_picker_screen.dart';
 import 'package:nightingale_tv/app_scope.dart';
 import 'package:nightingale_tv/backup/backup_archive.dart';
 import 'package:nightingale_tv/platform/platform_info.dart';
@@ -19,6 +21,7 @@ import 'package:nightingale_tv/ui/login_screen.dart';
 import 'package:nightingale_tv/ui/menu_screen.dart';
 import 'package:nightingale_tv/ui/pin_dialog.dart';
 import 'package:nightingale_tv/ui/playback_screen.dart';
+import 'package:nightingale_tv/commercials/commercial_pool.dart';
 import 'package:nightingale_tv/ui/pool_editor_screen.dart';
 import 'package:nightingale_tv/ui/profiles_screen.dart';
 import 'package:nightingale_tv/ui/sync_screen.dart';
@@ -118,6 +121,7 @@ void main() {
     'programming blocks': screen((_) => const BlocksScreen()),
     'block editor': screen((h) => BlockEditorScreen(block: h.app.blocks.firstOrNull)),
     'new block': screen((_) => const BlockEditorScreen()),
+    'late-night block': screen((_) => const BlockEditorScreen(lateNight: true)),
     'lineup': thenTap(screen((_) => const BlockEditorScreen()), 'A lineup'),
     'show picker': thenTap(thenTap(screen((_) => const BlockEditorScreen()), 'A lineup'), 'Add a show'),
     'channel picker': (tester, h) async {
@@ -126,11 +130,21 @@ void main() {
       await settle(tester);
       expect(find.text('CHOOSE A CHANNEL'), findsOneWidget, reason: 'the picker is open');
     },
+    'new channel': screen((_) => const SourcePickerScreen(
+        title: 'New channel', initial: ChannelSource(includeEpisodes: false), name: 'My Channel', order: PlaybackOrder.random)),
     'content picker': thenTap(screen((_) => const BlockEditorScreen()), 'Choose shows & movies'),
     'premieres': screen((_) => const PremiereEditorScreen()),
     'commercials': screen((_) => const CommercialsScreen()),
     'pool editor': (tester, h) async {
       final pool = await tester.runAsync(() => h.app.createPool());
+      await screen((_) => PoolEditorScreen(pool: pool!))(tester, h);
+    },
+    'bumper pool editor': (tester, h) async {
+      final pool = await tester.runAsync(() async {
+        final pool = await h.app.createPool();
+        await h.app.setPoolKind(pool, PoolKind.bumpers);
+        return pool;
+      });
       await screen((_) => PoolEditorScreen(pool: pool!))(tester, h);
     },
     'break plan editor': screen((h) =>

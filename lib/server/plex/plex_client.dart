@@ -59,6 +59,11 @@ class PlexClient implements MediaServer {
   /// The loaded library, for part paths (see [streamUri]).
   LibraryIndex Function()? index;
 
+  /// The part path of one of this server's own ids, looked up in the loaded
+  /// library (multi-server: the library holds global ids, and a copy may be
+  /// another entry's alternate). Used before [index] when set.
+  String? Function(String sourceId)? partPath;
+
   /// Part paths from this client's own last scan, until [index] has them.
   final _scanned = <String, String>{};
 
@@ -221,9 +226,13 @@ class PlexClient implements MediaServer {
   @override
   Future<LibraryIndex> fetchLibraryIndex(
       {List<CommercialPool> pools = const [],
+      Set<String> channelRoots = const {},
+      bool providerIds = false,
       void Function(String status)? onStatus,
       void Function(List<ServerLibrary> libraries)? onLibraries}) async {
     final libraries = await this.libraries();
+    // Only a profile with several servers asks for them (multi-server D4).
+    final guids = providerIds ? const {'includeGuids': 1} : null;
     onLibraries?.call(libraries);
     final poolsByItem = <String, List<String>>{};
     final commercials = <String, Map<String, Object?>>{};
@@ -254,10 +263,10 @@ class PlexClient implements MediaServer {
         tracks.addAll(await _all(section, 10));
         musicVideos.addAll(await _musicVideos(section));
       } else if (lib.collectionType == 'tvshows') {
-        shows.addAll(await _all(section, 2));
-        episodes.addAll(await _withChapters(await _all(section, 4)));
+        shows.addAll(await _all(section, 2, query: guids));
+        episodes.addAll(await _withChapters(await _all(section, 4, query: guids)));
       } else if (lib.collectionType == 'movies') {
-        movies.addAll(await _withChapters(await _all(section, 1)));
+        movies.addAll(await _withChapters(await _all(section, 1, query: guids)));
       }
       // A library of plain video files has no programs, as on Jellyfin,
       // where its videos aren't movies: it's only a source of pools.
@@ -278,7 +287,32 @@ class PlexClient implements MediaServer {
         for (final e in [...index.episodes, ...index.movies, ...index.commercials, ...index.songs, ...index.musicVideos])
           e.id: ?e.streamPath,
       });
-    return index;
+    if (channelRoots.isEmpty) return index;
+    onStatus?.call('Scanning channel sources…');
+    final rootsStart = DateTime.now();
+    final roots = await fetchRoots(this, channelRoots);
+    PlaybackDiagnostics.note('SCAN', '${channelRoots.length} channel roots: '
+        '${DateTime.now().difference(rootsStart).inMilliseconds} ms');
+    return index.withRoots(roots.found, missing: roots.missing);
+  }
+
+  @override
+  Future<List<String>> idsUnder(String rootId) async {
+    if (rootId.startsWith(_libraryPrefix)) {
+      final section = _section(rootId);
+      final lib = (await libraries()).where((l) => l.id == rootId).firstOrNull;
+      return [for (final i in await _all(section, lib?.collectionType == 'tvshows' ? 4 : 1)) '${i['ratingKey']}'];
+    }
+    // A collection lists its shows and seasons, not their episodes.
+    final ids = <String>[];
+    for (final i in await itemsUnder(rootId)) {
+      if (i['type'] == 'show' || i['type'] == 'season') {
+        ids.addAll([for (final e in await _paged('/library/metadata/${i['ratingKey']}/allLeaves', const {})) '${e['ratingKey']}']);
+      } else {
+        ids.add('${i['ratingKey']}');
+      }
+    }
+    return ids;
   }
 
   /// How many items one batched metadata request asks for.
@@ -437,7 +471,7 @@ class PlexClient implements MediaServer {
   /// The original file, from its part path.
   @override
   Uri streamUri(String sourceId) {
-    final path = index?.call()[sourceId]?.streamPath ?? _scanned[sourceId];
+    final path = partPath?.call(sourceId) ?? index?.call()[sourceId]?.streamPath ?? _scanned[sourceId];
     if (path == null) throw ServerException('The server has no file for this item; refresh the library.');
     return uri(path);
   }

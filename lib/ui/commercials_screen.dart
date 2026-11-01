@@ -96,7 +96,8 @@ class CommercialsScreen extends StatelessWidget {
                   const SizedBox(height: 6),
                   Text(
                     'Pick the folders on your server that hold commercials and bumpers. Their videos leave your '
-                    'regular channels and fill the breaks instead.',
+                    'regular channels and fill the breaks instead. Set a pool\'s type to Bumpers to have its clips '
+                    'open and close breaks.',
                     style: g.body(24, color: g.textDim),
                   ),
                   const SizedBox(height: 16),
@@ -104,7 +105,7 @@ class CommercialsScreen extends StatelessWidget {
                     Padding(
                       padding: const EdgeInsets.only(bottom: 12),
                       child: TvButton(
-                        label: '${pool.name}  ·  ${_poolDetail(app, pool)}',
+                        label: '${pool.name}  ·  ${pool.kind.label}  ·  ${_poolDetail(app, pool)}',
                         icon: Icons.video_library,
                         expand: true,
                         onPressed: () => openPool(pool),
@@ -153,7 +154,7 @@ class CommercialsScreen extends StatelessWidget {
           : 'Breaks start once a pool has clips. Add folders with videos to a pool.';
     }
     final used = pools.where((p) => app.catalog.hasClips(p.id)).length;
-    return '${_clips(clips)} from $used pool${used == 1 ? '' : 's'}.';
+    return '${_clips(clips)} from $used commercial pool${used == 1 ? '' : 's'}.';
   }
 
   static String _poolDetail(AppState app, CommercialPool pool) {
@@ -221,7 +222,7 @@ class _HowItWorks extends StatelessWidget {
         ],
       BreakMode.automatic => const [
           'Every show fills a half-hour slot (an hour or more for long ones), so the guide stays on the clock.',
-          'A short bumper before the show, a break every 10 minutes inside it (12 for movies), at act breaks '
+          'A short break before the show, a break every 10 minutes inside it (12 for movies), at act breaks '
               'when they can be found, and the rest after it.',
           'Ads shrink to fit the slot, and no break runs over 5 minutes.',
         ],
@@ -244,7 +245,7 @@ class _HowItWorks extends StatelessWidget {
         children: [
           Text('HOW BREAKS WORK', style: g.display(26, weight: FontWeight.w800, color: g.accent)),
           const SizedBox(height: 16),
-          for (final line in [...lines, 'The same ads play for everyone, every time.', 'Commercials never show up in your server\'s watch history.'])
+          for (final line in [...lines, 'Bumper pools\' clips open and close breaks, and never play as ads.', 'The same ads play for everyone, every time.', 'Commercials never show up in your server\'s watch history.'])
             Padding(
               padding: const EdgeInsets.only(bottom: 14),
               child: Text('•  $line', style: g.body(24, color: g.textDim)),

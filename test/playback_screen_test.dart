@@ -181,10 +181,79 @@ void main() {
     expect(app.savedDecision('src1', null), isNull);
   });
 
+  testWidgets('on-screen clock: shown after break notices, off by default, with help text', (tester) async {
+    await show(tester, PlaybackSettings.off);
+    expect(find.text('CLOCK'), findsOneWidget);
+    final toggle = tester.widget<TvToggle>(find.widgetWithText(TvToggle, PlaybackScreen.clockLabel));
+    expect(toggle.on, isFalse);
+    expect(toggle.radio, isFalse);
+    expect(find.text(PlaybackScreen.clockHelp), findsOneWidget);
+    expect(tester.getTopLeft(find.text(PlaybackScreen.clockLabel)).dy,
+        greaterThan(tester.getTopLeft(find.text(PlaybackScreen.noticesLabel)).dy));
+    expect(tester.getTopLeft(find.text(PlaybackScreen.clockLabel)).dy,
+        lessThan(tester.getTopLeft(find.text(PlaybackScreen.rewindLabel)).dy));
+  });
+
+  for (final transcode in [false, true]) {
+    testWidgets('on-screen clock: the D-pad reaches it and OK saves it, with no re-tune or decisions cleared '
+        '(converting ${transcode ? 'on' : 'off'})', (tester) async {
+      await show(tester, PlaybackSettings.off.copyWith(transcodeIfNeeded: transcode));
+      app.saveDecision('src1', null, null, directStream: true);
+      for (var i = 0; i < 14 && focusedLabel() != PlaybackScreen.clockLabel; i++) {
+        await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+        await tester.pumpAndSettle();
+      }
+      expect(focusedLabel(), PlaybackScreen.clockLabel, reason: 'transcode $transcode');
+      await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+      await tester.pumpAndSettle();
+      expect(app.settings.playback, PlaybackSettings(transcodeIfNeeded: transcode, onScreenClock: true));
+      expect(tester.widget<TvToggle>(find.widgetWithText(TvToggle, PlaybackScreen.clockLabel)).on, isTrue);
+      expect(app.savedDecision('src1', null), isNotNull, reason: 'the clock changes no playback');
+      expect(player.opens, isEmpty, reason: 'no re-tune');
+      Object? saved;
+      for (var i = 0; i < 50 && saved == null; i++) {
+        await tester.pump();
+        final json = await tester.runAsync(() async {
+          await Future<void>.delayed(const Duration(milliseconds: 20));
+          return app.storage.readJson('settings.json');
+        });
+        if (((json as Map?)?['playback'] as Map?)?['onScreenClock'] == true) saved = json;
+      }
+      expect(saved, isNotNull, reason: 'saved to settings.json');
+    });
+  }
+
+  testWidgets('on-screen clock: a tap saves it', (tester) async {
+    await show(tester, PlaybackSettings.off);
+    await tester.tap(find.text(PlaybackScreen.clockLabel));
+    await tester.pumpAndSettle();
+    expect(app.settings.playback, const PlaybackSettings(onScreenClock: true));
+  });
+
   testWidgets('picking a cap saves it', (tester) async {
     await show(tester, const PlaybackSettings(transcodeIfNeeded: true));
     await tester.tap(find.text('8 Mbps · 1080p'));
     await tester.pumpAndSettle();
     expect(app.settings.playback, const PlaybackSettings(transcodeIfNeeded: true, maxKbps: 8000));
+  });
+
+  testWidgets('the Pause and rewind toggle is on by default, and turning it off while behind goes live', (tester) async {
+    await show(tester, PlaybackSettings.off);
+    await tester.runAsync(() async {
+      await tuner.tune(app.channels.first);
+      await pumpEventQueue();
+      await tuner.pause();
+    });
+    expect(tuner.shifted, isTrue);
+    expect(tester.widget<TvToggle>(find.widgetWithText(TvToggle, PlaybackScreen.rewindLabel)).on, isTrue);
+    await tester.tap(find.text(PlaybackScreen.rewindLabel));
+    await tester.pump();
+    await tester.runAsync(() => pumpEventQueue());
+    await tester.pump();
+    expect(app.settings.playback.pauseAndRewind, isFalse);
+    expect(tuner.shifted, isFalse);
+    await tester.runAsync(tuner.stop);
+    await tester.pumpWidget(const SizedBox());
+    await tester.pump(const Duration(minutes: 10));
   });
 }

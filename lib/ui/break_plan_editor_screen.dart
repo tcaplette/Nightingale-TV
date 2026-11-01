@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 
 import '../app_scope.dart';
 import '../commercials/break_plan.dart';
+import '../commercials/commercial_pool.dart';
 import '../theme/tv_theme.dart';
 import 'format.dart';
 import 'menu_screen.dart' show confirm;
@@ -29,7 +30,7 @@ class _BreakPlanEditorScreenState extends State<BreakPlanEditorScreen> {
   /// The rows, top to bottom. ▲▼ move between them, landing on each row's
   /// chosen option (Flutter's own ▲▼ go by position, and would skip rows
   /// from a button at the far end of one).
-  static const _rows = ['pre', 'every', 'length', 'post', 'tail', 'actions'];
+  static const _rows = ['pre', 'every', 'length', 'post', 'tail', 'bumpers', 'actions'];
   final _selected = <String, FocusNode>{};
   final _nodes = <String, FocusNode>{};
   FocusNode _node(String key) => _nodes.putIfAbsent(key, () => FocusNode(debugLabel: key));
@@ -75,10 +76,29 @@ class _BreakPlanEditorScreenState extends State<BreakPlanEditorScreen> {
   Future<void> _pickPool(BreakRole role) async {
     final picked = await Navigator.of(context).push<_PoolChoice>(
       MaterialPageRoute(
-        builder: (_) => _PoolChooserScreen(role: role, selected: _roles.poolFor(role)),
+        builder: (_) => _PoolChooserScreen(
+          title: '${role.label} clips',
+          allLabel: 'All pools',
+          kind: PoolKind.commercials,
+          selected: _roles.poolFor(role),
+        ),
       ),
     );
     if (picked != null) _set(_roles.withPool(role, picked.id));
+  }
+
+  Future<void> _pickBumperPool() async {
+    final picked = await Navigator.of(context).push<_PoolChoice>(
+      MaterialPageRoute(
+        builder: (_) => _PoolChooserScreen(
+          title: 'Bumpers',
+          allLabel: 'All bumper pools',
+          kind: PoolKind.bumpers,
+          selected: _roles.bumperPool,
+        ),
+      ),
+    );
+    if (picked != null) _set(_roles.withBumpers(picked.id));
   }
 
   static String _length(Duration d) {
@@ -143,6 +163,45 @@ class _BreakPlanEditorScreenState extends State<BreakPlanEditorScreen> {
                 onPressed: poolEnabled ? () => _pickPool(pool) : null,
               ),
             ],
+          ],
+        ),
+      );
+    }
+
+    /// None, all bumper pools, or one picked through the chooser.
+    Widget bumpers() {
+      final poolName = _roles.bumperPool == null ? null : app.poolById(_roles.bumperPool!)?.name;
+      final chosen = _roles.noBumpers ? 0 : (poolName == null ? 1 : 2);
+      _selected['bumpers'] = _node('bumpers:$chosen');
+      return Focus(
+        canRequestFocus: false,
+        skipTraversal: true,
+        onKeyEvent: (_, event) => _rowKey('bumpers', event),
+        child: Wrap(
+          spacing: 12,
+          runSpacing: 12,
+          children: [
+            TvToggle(
+              label: 'None',
+              radio: true,
+              focusNode: _node('bumpers:0'),
+              on: chosen == 0,
+              onPressed: () => _set(_roles.withBumpers(null, none: true)),
+            ),
+            TvToggle(
+              label: 'All bumper pools',
+              radio: true,
+              focusNode: _node('bumpers:1'),
+              on: chosen == 1,
+              onPressed: () => _set(_roles.withBumpers(null)),
+            ),
+            TvToggle(
+              label: poolName == null ? 'One pool…' : '$poolName…',
+              radio: true,
+              focusNode: _node('bumpers:2'),
+              on: chosen == 2,
+              onPressed: _pickBumperPool,
+            ),
           ],
         ),
       );
@@ -216,6 +275,8 @@ class _BreakPlanEditorScreenState extends State<BreakPlanEditorScreen> {
               pool: BreakRole.tail,
               poolEnabled: _roles.tailGrid != null,
             ),
+            _section(g, 'BUMPERS', 'Open and close breaks, from pools set to Bumpers'),
+            bumpers(),
             const SizedBox(height: 40),
             Focus(
               canRequestFocus: false,
@@ -304,26 +365,31 @@ class _Examples extends StatelessWidget {
 class _PoolChoice {
   const _PoolChoice(this.id);
 
-  /// Null: all pools.
+  /// Null: all the pools of that type.
   final String? id;
 }
 
 class _PoolChooserScreen extends StatelessWidget {
-  const _PoolChooserScreen({required this.role, required this.selected});
+  const _PoolChooserScreen({required this.title, required this.allLabel, required this.kind, required this.selected});
 
-  final BreakRole role;
+  final String title;
+  final String allLabel;
+
+  /// The type of pool listed.
+  final PoolKind kind;
   final String? selected;
 
   @override
   Widget build(BuildContext context) {
     final app = AppScope.of(context);
-    final pools = app.settings.commercialPools;
+    final pools = [for (final p in app.settings.commercialPools) if (p.kind == kind) p];
+    final all = kind == PoolKind.bumpers ? app.catalog.current.bumpers : app.catalog.clipsFor(null);
     final options = <(String?, String, int)>[
-      (null, 'All pools', app.catalog.clipsFor(null).length),
+      (null, allLabel, all.length),
       for (final p in pools) (p.id, p.name, app.catalog.clipsFor(p.id).length),
     ];
     return TvPage(
-      title: '${role.label} clips',
+      title: title,
       hints: '▲▼ Move    OK Choose    ESC Back',
       onBack: () => Navigator.of(context).pop(),
       child: FocusTraversalGroup(

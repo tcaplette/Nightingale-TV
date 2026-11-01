@@ -9,8 +9,8 @@ import 'package:nightingale_tv/server/media_server.dart';
 /// A Jellyfin that decides on bitrate the way the real one does, and logs
 /// every call the tuner makes as it's made.
 class FakeClient extends JellyfinClient {
-  FakeClient(this.log, {super.serverUrl = 'https://jf.example'})
-      : super(deviceId: 'dev', deviceName: 'pc', accessToken: 't');
+  FakeClient(this.log, {super.serverUrl = 'https://jf.example', super.httpClient, super.userId, String accessToken = 't'})
+      : super(deviceId: 'dev', deviceName: 'pc', accessToken: accessToken);
 
   /// Shared with the player, so the order of calls and opens shows.
   final List<String> log;
@@ -142,6 +142,7 @@ class FakePlayer implements TunerPlayer {
     queued = null;
     _moved = false;
     _isPlaying = false;
+    paused = false;
     position = Duration.zero;
     final landed = (start ?? Duration.zero) - (exact ? Duration.zero : keyframeEarly);
     switch (onOpen(url)) {
@@ -186,6 +187,33 @@ class FakePlayer implements TunerPlayer {
     queued = null;
     _moved = false;
     log.add('stop-player');
+  }
+
+  /// Paused now, and every [seek]'s position.
+  bool paused = false;
+  final seeks = <Duration>[];
+
+  /// What [resume] does: throws when set.
+  bool failResume = false;
+
+  @override
+  Future<void> pause() async {
+    paused = true;
+    log.add('pause');
+  }
+
+  @override
+  Future<void> resume() async {
+    log.add('resume');
+    if (failResume) throw Exception('could not resume');
+    paused = false;
+  }
+
+  @override
+  Future<void> seek(Duration to) async {
+    seeks.add(to);
+    position = to;
+    log.add('seek:${to.inSeconds}');
   }
 
   // ---- The playlist ------------------------------------------------------------
@@ -249,11 +277,26 @@ class FakePlayer implements TunerPlayer {
   @override
   Future<void> setVolumeLeveling(bool on) async => leveling.add(on);
 
+  /// Every [setVolume], in order.
+  final volumes = <double>[];
+
+  /// The volume last set.
+  double get volume => volumes.isEmpty ? 1 : volumes.last;
+
+  @override
+  Future<void> setVolume(double volume) async => volumes.add(volume);
+
   @override
   Future<void> dispose() async {}
 
   @override
-  Widget buildVideo() => const SizedBox.expand();
+  Widget buildVideo({BoxFit fit = BoxFit.contain}) {
+    lastFit = fit;
+    return const SizedBox.expand();
+  }
+
+  /// How the picture last asked for the video to fit.
+  BoxFit? lastFit;
 
   @override
   Future<double?> debugPosition() async => position.inMilliseconds / 1000;

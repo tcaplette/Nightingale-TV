@@ -174,6 +174,21 @@ void main() {
     });
   });
 
+  test('a tune after a sleep fade plays at full volume', () async {
+    await tuner.tune(app.channels.first);
+    await settle();
+    await player.setVolume(0.2);
+    expect(player.volume, 0.2);
+    await tuner.tune(app.channels[1]);
+    await settle();
+    expect(player.volume, 1);
+    await player.setVolume(0);
+    await tuner.stop();
+    await tuner.tune(app.channels.first);
+    await settle();
+    expect(player.volume, 1, reason: 'a tune after a stop too');
+  });
+
   test('the player is built the same whatever the setting (mpv config is fixed)', () async {
     // The only configuration the app ever gives mpv; TunerPlayer has no way
     // to change it, so the playback mode can't.
@@ -1304,6 +1319,61 @@ test('rapid surfing over five transcoding channels leaves at most one job runnin
       // Stays off for later decks until the setting changes again.
       await mpv.enqueue(Uri.file(video.path), headers: const {});
       expect(await prop(mpv.debugDecks.last, 'af'), '');
+    });
+  });
+
+  group('slot tails (slot-duration)', () {
+    setUp(() => tuner.preload = true);
+
+    test('an offline tail plays nothing, shows the card and preloads the next program', () async {
+      final ch = app.channels.first;
+      await app.setSlotRule(ch, const SlotRule(length: Duration(minutes: 30), tail: TailMode.offline));
+      final s = scheduleOf(ch);
+      var tail = s.playbackAt(now);
+      for (var i = 0; i < 400 && !tail.offline; i++) {
+        tail = s.playbackAt(tail.end);
+      }
+      expect(tail.offline, isTrue);
+      now = tail.end.subtract(const Duration(seconds: 20));
+      await tuner.tune(ch);
+      await settle();
+      expect(tuner.status, TunerStatus.offAir);
+      expect(tuner.segment!.offline, isTrue);
+      expect(player.opens, isEmpty, reason: 'nothing from the server');
+      final next = s.playbackAt(tail.end);
+      expect(player.enqueued.single.start, next.itemFrom);
+      expect(tuner.preloadedSegment?.start, tail.end);
+    });
+
+    test('a program Truncate cuts is not reported watched, and its banner knows', () async {
+      await app.setGlobalPlan(BreakPlan.off);
+      final ch = app.channels.first;
+      await app.setSlotRule(ch, const SlotRule(length: Duration(minutes: 15), tail: TailMode.truncate));
+      final s = scheduleOf(ch);
+      // The next slot: depending on the time, the one on air now carries
+      // over whole until a boundary.
+      final slot = s.programAt(s.programAt(now).end);
+      now = slot.start.add(const Duration(seconds: 1));
+      await tuner.tune(ch);
+      await settle();
+      expect(tuner.program!.endsEarly, isTrue);
+      final episode = tuner.segment!.item!;
+      while (client.reports.where((r) => r.$1 == 'stopped').isEmpty) {
+        await advance();
+      }
+      final stopped = client.reports.firstWhere((r) => r.$1 == 'stopped').$2;
+      expect(stopped.itemId, episode.id);
+      expect(stopped.position, Duration.zero);
+    });
+
+    test('a channel with nothing to play is off the air, saying so', () async {
+      final ch = await app.createCustomChannel('Empty', const ChannelSource(seriesKeys: ['alpha|2000']));
+      ch.playlist = const [];
+      await app.updateChannel(ch);
+      await tuner.tune(ch);
+      await settle();
+      expect(tuner.status, TunerStatus.offAir);
+      expect(tuner.error, 'Nothing to play on this channel');
     });
   });
 }

@@ -126,6 +126,58 @@ void main() {
     expect(index.series.map((s) => s.name), contains(first.seriesName));
   });
 
+  test('a collection of a show on Emby: its episodes, with play counts', () async {
+    final listed = <String>[];
+    final client = emby((r) async {
+      if (r.url.path.endsWith('/Views')) return json(fixture('views'));
+      final q = r.url.queryParameters;
+      final episodes = [
+        for (final (i, e) in ((fixture('episodes_page') as Map)['Items'] as List).cast<Map<String, Object?>>().indexed)
+          {...e, if (i == 0) 'UserData': {'PlayCount': 2}},
+      ];
+      if (q['ParentId'] == '3' && q['IncludeItemTypes'] == 'Series') return json(fixture('series'));
+      if (q['ParentId'] == '3' && q['IncludeItemTypes'] == 'Episode') {
+        expect(q['EnableUserData'], 'true');
+        return json({'Items': episodes, 'TotalRecordCount': episodes.length});
+      }
+      if (q['ParentId'] == 'col') {
+        listed.add('col:${q['IncludeItemTypes']}');
+        return json({
+          'Items': [
+            {'Id': '130', 'Type': 'Series', 'Name': 'Show'}
+          ],
+          'TotalRecordCount': 1,
+        });
+      }
+      if (q['ParentId'] == '130' && q['IncludeItemTypes'] == 'Episode') {
+        listed.add('130:Episode');
+        return json({'Items': episodes, 'TotalRecordCount': episodes.length});
+      }
+      return json({'Items': [], 'TotalRecordCount': 0});
+    });
+    final index = await client.fetchLibraryIndex(channelRoots: {'col'});
+    expect(listed, ['col:Movie,Episode,Series,BoxSet', '130:Episode']);
+    expect(index.itemsByRoot['col'], {'137', '135', '136'});
+    expect(index['137']!.playCount, 2);
+    expect(index['135']!.playCount, 0, reason: 'never played');
+  });
+
+  test('a deleted root is not found, though Emby would list everything under an unknown parent', () async {
+    final client = emby((r) async {
+      if (r.url.path.endsWith('/Views')) return json({'Items': []});
+      if (r.url.path.endsWith('/Items/999')) return json({}, 404);
+      return json({
+        'Items': [
+          {'Id': '1', 'Type': 'Movie'}
+        ],
+        'TotalRecordCount': 1,
+      });
+    });
+    final index = await client.fetchLibraryIndex(channelRoots: {'999'});
+    expect(index.missingRoots, {'999'});
+    expect(index.itemsByRoot, isEmpty);
+  });
+
   test('an item without an Etag gets one from its modified date', () async {
     final items = await emby((r) async => json({
           'Items': [

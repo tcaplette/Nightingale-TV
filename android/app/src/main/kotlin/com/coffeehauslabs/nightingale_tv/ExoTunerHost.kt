@@ -134,8 +134,12 @@ class ExoTunerHost(
                     return
                 }
                 "stop" -> player.stop()
+                "pause" -> player.pause()
+                "resume" -> player.resume()
+                "seek" -> player.seek(call.argument<Number>("ms")?.toLong() ?: 0L)
                 "captions" -> player.setCaptions(call.argument<Boolean>("on") ?: false)
                 "setLeveling" -> player.setLeveling(call.argument<Boolean>("on") ?: false)
+                "setVolume" -> player.setVolume(call.argument<Number>("volume")?.toFloat() ?: 1f)
                 "stats" -> {
                     result.success(player.stats())
                     return
@@ -210,6 +214,11 @@ class ExoTunerHost(
 
         private var captions = false
 
+        /** The sleep timer's fade (sleep-timer spec), 0–1. One ExoPlayer plays
+         *  the item on screen and the next one queued, so it covers both;
+         *  kept across a rebuild. */
+        private var volume = 1f
+
         /** This open's state, for events and the diagnostics. */
         private var completed = false
         private var hadPicture = false
@@ -269,6 +278,7 @@ class ExoTunerHost(
             player.addListener(this)
             player.addAnalyticsListener(this)
             player.setVideoFrameMetadataListener(frames)
+            player.volume = volume
             player.trackSelectionParameters = player.trackSelectionParameters.buildUpon()
                 .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, !captions)
                 .build()
@@ -477,6 +487,30 @@ class ExoTunerHost(
             player.stop()
             player.clearMediaItems()
             send(mapOf("e" to "cues", "text" to emptyList<String>(), "images" to emptyList<Any>()))
+        }
+
+        fun pause() {
+            player.playWhenReady = false
+        }
+
+        fun setVolume(v: Float) {
+            volume = v.coerceIn(0f, 1f)
+            player.volume = volume
+        }
+
+        fun resume() {
+            player.playWhenReady = true
+        }
+
+        /** Exactly to [ms] on the file's own timeline (a keyframe open left
+         *  its seek parameters on the keyframes), inside the clipped end.
+         *  Ticks stop while paused, so the new position is said here. */
+        fun seek(ms: Long) {
+            completed = false
+            player.setSeekParameters(SeekParameters.EXACT)
+            val duration = player.duration
+            player.seekTo(if (duration != C.TIME_UNSET) ms.coerceAtMost((duration - 1).coerceAtLeast(0L)) else ms)
+            send(mapOf("e" to "position", "ms" to player.currentPosition))
         }
 
         fun setCaptions(on: Boolean) {

@@ -252,6 +252,7 @@ class _Harness {
         BlackCard() => 'black',
         OffAirCard() => 'offair',
         StandByCard(:final text) => 'standby:$text',
+        OfflineCardSpec() => 'offline',
       };
 
   /// The labels in order, each with how many frames it ran.
@@ -335,6 +336,27 @@ void main() {
       unawaited(h.stream.stop());
       async.flushTimers();
     });
+  });
+
+  test('a retro look changes nothing in the stream', () async {
+    await make(settings: AppSettings.fresh().toJson());
+    final channel = app.channels.first;
+    List<String> lines() {
+      late List<String> out;
+      fakeAsync((async) {
+        final h = _Harness(async, app, channel, logo: LogoMode.always);
+        h.run(const Duration(minutes: 2));
+        out = [for (final e in h.encoders) e.p.arguments.join(' ')];
+        unawaited(h.stream.stop());
+        async.flushTimers();
+      });
+      return out;
+    }
+
+    final plain = lines();
+    channel.retro = const ChannelRetro(shape: PictureShape.fill43, crt: CrtStyle.arcade, overlay: OverlayThemeName.vcr);
+    expect(lines(), plain);
+    expect(plain, isNotEmpty);
   });
 
   for (final mode in LogoMode.values) {
@@ -523,6 +545,56 @@ void main() {
       expect(runs.every((r) => r.$1 == 'offair'), isTrue);
       expect(h.encoders, isEmpty);
       expect(h.cardsAsked.where((k) => k.startsWith('offair|Back on the air')), isNotEmpty);
+      h.expectContinuous();
+      unawaited(h.stream.stop());
+      async.flushTimers();
+    });
+  });
+
+  /// When the frame that starts the [n]th run of [runs] goes out.
+  DateTime runStart(_Harness h, int n) {
+    final frame = h.runs.take(n).fold(0, (sum, r) => sum + r.$2);
+    return h.start.add(Duration(microseconds: h.muxer.frames[frame].pts * 100 ~/ 9));
+  }
+
+  test('an offline tail streams the offline card, and the next program starts when the TV\'s does', () async {
+    await make();
+    final channel = app.channels.first;
+    await app.setSlotRule(channel, const SlotRule(length: Duration(minutes: 15), tail: TailMode.offline),
+        now: DateTime(2026, 10, 18, 20, 0, 7));
+    fakeAsync((async) {
+      final h = _Harness(async, app, channel);
+      h.run(const Duration(minutes: 20));
+      final runs = h.runs;
+      final offline = runs.indexWhere((r) => r.$1 == 'offline');
+      expect(offline, greaterThan(0), reason: '$runs');
+      expect(runs[offline + 1].$1, startsWith('src:'));
+      expect(h.cardsAsked.where((k) => k.startsWith('offline|')), isNotEmpty);
+      final tv = h.schedule.playbackAt(runStart(h, offline).add(const Duration(seconds: 1)));
+      expect(tv.offline, isTrue);
+      expect(runStart(h, offline + 1).difference(tv.end).abs(), lessThan(const Duration(seconds: 1)),
+          reason: 'the next program starts at the slot boundary');
+      h.expectContinuous();
+      unawaited(h.stream.stop());
+      async.flushTimers();
+    });
+  });
+
+  test('Truncate cuts the program at the slot end, at the TV\'s time', () async {
+    await make(episode: const Duration(minutes: 20));
+    final channel = app.channels.first;
+    await app.setSlotRule(channel, const SlotRule(length: Duration(minutes: 15), tail: TailMode.truncate),
+        now: DateTime(2026, 10, 18, 20, 0, 7));
+    fakeAsync((async) {
+      final h = _Harness(async, app, channel);
+      h.run(const Duration(minutes: 20));
+      final runs = h.runs;
+      final cutAt = h.schedule.programAt(h.start).end;
+      expect(h.schedule.programAt(h.start).endsEarly, isTrue);
+      final programs = [for (final (i, r) in runs.indexed) if (r.$1.startsWith('src:')) i];
+      expect(programs.length, greaterThanOrEqualTo(2), reason: '$runs');
+      expect(runStart(h, programs[1]).difference(cutAt).abs(), lessThan(const Duration(seconds: 1)));
+      expect(h.schedule.playbackAt(cutAt).item?.sourceId, runs[programs[1]].$1.substring(4));
       h.expectContinuous();
       unawaited(h.stream.stop());
       async.flushTimers();

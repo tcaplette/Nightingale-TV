@@ -1,13 +1,19 @@
 import 'package:flutter/material.dart';
 
 import '../app_scope.dart';
+import '../app_state.dart';
 import '../channels/schedule.dart';
 import '../live/live_tv_manager.dart';
 import '../channels/channel.dart';
 import '../commercials/break_plan.dart';
+import '../commercials/commercial_pool.dart';
+import '../icons/custom_icons.dart';
 import '../theme/tv_theme.dart';
 import 'break_plan_editor_screen.dart';
 import 'icon_picker_screen.dart';
+import 'menu_screen.dart' show confirm, showMessage;
+import 'retro_look_screen.dart';
+import 'source_picker_screen.dart';
 import 'widgets/channel_logo.dart';
 import 'widgets/adaptive.dart';
 import 'widgets/screen_layout.dart';
@@ -24,6 +30,7 @@ class ChannelEditorScreen extends StatefulWidget {
 class _ChannelEditorScreenState extends State<ChannelEditorScreen> {
   String? _selectedId;
   final _name = TextEditingController();
+  final _offlineNode = FocusNode(debugLabel: 'offline image');
 
   /// Each row's focus, so a tapped row holds it too: the list comes back to
   /// it, and the side-by-side layout keeps it selected after turning.
@@ -33,6 +40,7 @@ class _ChannelEditorScreenState extends State<ChannelEditorScreen> {
   @override
   void dispose() {
     _name.dispose();
+    _offlineNode.dispose();
     for (final node in _rows.values) {
       node.dispose();
     }
@@ -146,6 +154,13 @@ class _ChannelEditorScreenState extends State<ChannelEditorScreen> {
             Text(logoHelp, style: g.body(22, color: g.textDim)),
             const SizedBox(height: 28),
           ],
+          Align(
+            alignment: Alignment.centerLeft,
+            child: Padding(
+              padding: const EdgeInsets.only(bottom: 16),
+              child: TvButton(label: 'New channel', icon: Icons.add, onPressed: () => _newChannel(context)),
+            ),
+          ),
           ...rows,
         ],
       ),
@@ -295,6 +310,31 @@ class _ChannelEditorScreenState extends State<ChannelEditorScreen> {
             ),
           ],
         ),
+        // Always there on a channel that plays programs: a button leaving
+        // mustn't move what follows, which would lose its focus.
+        if (ch.playsPrograms) ...[
+          const SizedBox(height: 16),
+          Wrap(
+            spacing: 16,
+            runSpacing: 16,
+            children: [
+              if (ch.isCustom)
+                TvButton(label: 'Edit content', icon: Icons.video_library, onPressed: () => _editContent(context, ch)),
+              if (app.canReshuffle(ch))
+                TvButton(
+                  label: 'Reshuffle',
+                  icon: Icons.shuffle,
+                  onPressed: () async {
+                    final tuner = AppScope.tunerOf(context);
+                    await app.reshuffleChannel(ch);
+                    if (tuner.channel?.id == ch.id) await tuner.reschedule();
+                  },
+                ),
+              if (ch.isCustom)
+                TvButton(label: 'Remove channel', icon: Icons.delete, onPressed: () => _remove(context, ch)),
+            ],
+          ),
+        ],
         if (!ch.blockOnly && !ch.isLive) const SizedBox(height: 16),
         if (!ch.blockOnly && !ch.isLive)
           Wrap(
@@ -314,6 +354,7 @@ class _ChannelEditorScreenState extends State<ChannelEditorScreen> {
                 ),
             ],
           ),
+        if (ch.playsPrograms) ..._slotControls(context, ch),
         if (!ch.isLive) ...[
         const SizedBox(height: 28),
         Text('COMMERCIALS', style: g.display(24, weight: FontWeight.w800, color: g.accent)),
@@ -409,8 +450,185 @@ class _ChannelEditorScreenState extends State<ChannelEditorScreen> {
             ),
           ],
         ),
+        ChannelRetroSection(channel: ch),
       ],
     );
+  }
+
+  /// SLOT LENGTH and, with one set, TAIL, the filler pool and the offline
+  /// image (slot-duration).
+  List<Widget> _slotControls(BuildContext context, Channel ch) {
+    final app = AppScope.read(context);
+    final g = context.guide;
+    final rule = ch.slotRule;
+    final poolName = app.settings.commercialPools.where((p) => p.id == rule?.poolId).firstOrNull?.name ?? 'All pools';
+    return [
+      const SizedBox(height: 28),
+      Text('SLOT LENGTH', style: g.display(24, weight: FontWeight.w800, color: g.accent)),
+      const SizedBox(height: 10),
+      Wrap(
+        spacing: 16,
+        runSpacing: 16,
+        children: [
+          TvToggle(label: 'Off', radio: true, on: rule == null, onPressed: () => _setRule(context, ch, null)),
+          for (final length in SlotRule.lengths)
+            TvToggle(
+              label: '${length.inMinutes} min',
+              radio: true,
+              on: rule?.length == length,
+              onPressed: () => _setRule(
+                  context, ch, rule?.copyWith(length: length) ?? SlotRule(length: length)),
+            ),
+        ],
+      ),
+      if (rule != null) ...[
+        const SizedBox(height: 20),
+        Text('TAIL', style: g.display(24, weight: FontWeight.w800, color: g.accent)),
+        const SizedBox(height: 10),
+        Wrap(
+          spacing: 16,
+          runSpacing: 16,
+          children: [
+            for (final tail in TailMode.values)
+              TvToggle(
+                label: tail.label,
+                radio: true,
+                on: rule.tail == tail,
+                onPressed: () => _setRule(context, ch, rule.copyWith(tail: tail)),
+              ),
+          ],
+        ),
+        const SizedBox(height: 16),
+        Wrap(
+          spacing: 16,
+          runSpacing: 16,
+          children: [
+            if (rule.tail != TailMode.offline)
+              TvButton(
+                label: 'Filler pool: $poolName',
+                icon: Icons.playlist_play,
+                onPressed: () => _nextPool(context, ch, rule),
+              ),
+            TvButton(
+              label: rule.offlineImage == null ? 'Offline image…' : 'Change offline image…',
+              icon: Icons.image,
+              focusNode: _offlineNode,
+              onPressed: () => _pickOfflineImage(context, ch, rule),
+            ),
+            if (rule.offlineImage != null)
+              TvButton(
+                label: 'Default card',
+                onPressed: () async {
+                  await _setRule(context, ch, rule.copyWith(offlineImage: () => null));
+                  _focusAfterBuild(_offlineNode);
+                },
+              ),
+          ],
+        ),
+      ],
+    ];
+  }
+
+  /// Focuses [node] after this change's frame: what had focus is gone.
+  void _focusAfterBuild(FocusNode node) => WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) node.requestFocus();
+      });
+
+  /// A new slot rule keeps the program on air: what's playing plays on.
+  Future<void> _setRule(BuildContext context, Channel ch, SlotRule? rule) async {
+    final tuner = AppScope.tunerOf(context);
+    await AppScope.read(context).setSlotRule(ch, rule);
+    if (tuner.channel?.id == ch.id) await tuner.reschedule();
+  }
+
+  /// Each press moves to the next pool, then back to all of them.
+  Future<void> _nextPool(BuildContext context, Channel ch, SlotRule rule) {
+    final ids = <String?>[
+      null,
+      for (final p in AppScope.read(context).settings.commercialPools)
+        if (p.kind == PoolKind.commercials) p.id,
+    ];
+    final next = ids[(ids.indexOf(rule.poolId) + 1) % ids.length];
+    return _setRule(context, ch, rule.copyWith(poolId: () => next));
+  }
+
+  Future<void> _pickOfflineImage(BuildContext context, Channel ch, SlotRule rule) async {
+    try {
+      final name = await pickFullScreenImage(context);
+      if (name == null || !context.mounted) return;
+      await _setRule(context, ch, rule.copyWith(offlineImage: () => name));
+    } on CustomIconException catch (e) {
+      if (context.mounted) await showMessage(context, title: 'Offline image', message: e.message);
+    }
+  }
+
+  /// New channel: added only on Done with something to play.
+  Future<void> _newChannel(BuildContext context) async {
+    final created = await Navigator.of(context).push<Channel>(MaterialPageRoute(
+      builder: (route) => SourcePickerScreen(
+        title: 'New channel',
+        initial: const ChannelSource(includeEpisodes: false),
+        name: AppState.customChannelName,
+        order: PlaybackOrder.random,
+        onDone: (source, name, order) async {
+          final navigator = Navigator.of(route);
+          try {
+            final ch = await AppScope.read(context).createCustomChannel(name, source, order: order);
+            navigator.pop(ch);
+            return null;
+          } on StateError catch (e) {
+            return e.message;
+          }
+        },
+      ),
+    ));
+    if (created == null || !mounted) return;
+    setState(() {
+      _selectedId = created.id;
+      _name.text = created.name;
+    });
+    _focusAfterBuild(_row(created.id));
+  }
+
+  Future<void> _editContent(BuildContext context, Channel ch) async {
+    final app = AppScope.read(context);
+    final tuner = AppScope.tunerOf(context);
+    await Navigator.of(context).push<void>(MaterialPageRoute(
+      builder: (route) => SourcePickerScreen(
+        title: 'Content of ${ch.name}',
+        initial: ch.source,
+        onDone: (source, _, _) async {
+          final navigator = Navigator.of(route);
+          try {
+            await app.setChannelSource(ch, source);
+            if (tuner.channel?.id == ch.id) await tuner.reschedule();
+            navigator.pop();
+            return null;
+          } on StateError catch (e) {
+            return e.message;
+          }
+        },
+      ),
+    ));
+  }
+
+  Future<void> _remove(BuildContext context, Channel ch) async {
+    final ok = await confirm(context,
+        title: 'Remove "${ch.name}"?',
+        message: 'The channel goes away, with its programming blocks and its places in channel groups.',
+        action: 'Remove');
+    if (!ok || !context.mounted) return;
+    final app = AppScope.read(context);
+    final tuner = AppScope.tunerOf(context);
+    final navigator = Navigator.of(context);
+    final portrait = ScreenLayout.of(context).isPortrait;
+    // Whoever's watching it moves on first.
+    if (tuner.channel?.id == ch.id) await tuner.channelUp();
+    await app.deleteUserChannel(ch);
+    if (!mounted) return;
+    setState(() => _selectedId = null);
+    if (portrait) navigator.pop();
+    if (app.allChannels.firstOrNull case final first?) _focusAfterBuild(_row(first.id));
   }
 
   Future<void> _saveName(Channel ch) async {

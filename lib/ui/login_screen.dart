@@ -18,7 +18,24 @@ export '../server/sign_in_flow.dart' show IdentifiedServer;
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen(
-      {super.key, this.message, this.identify, this.plexAccount, this.pickPlexConnection, this.completeSignIn});
+      {super.key,
+      this.message,
+      this.identify,
+      this.plexAccount,
+      this.pickPlexConnection,
+      this.completeSignIn,
+      this.adding = false,
+      this.againKey});
+
+  /// Adds a server to the signed-in profile (Servers → Add a server); the
+  /// screen closes once it's added.
+  final bool adding;
+
+  /// Signs the profile's server with this key in again (Servers → Sign in
+  /// again); the screen closes once it's signed in.
+  final String? againKey;
+
+  bool get _forServers => adding || againKey != null;
 
   /// Shown above the form, e.g. "Your session expired".
   final String? message;
@@ -66,10 +83,13 @@ class _LoginScreenState extends State<LoginScreen> {
       plexAccount: widget.plexAccount,
       pickPlexConnection: widget.pickPlexConnection,
       completeSignIn: widget.completeSignIn,
+      adding: widget.adding,
+      againKey: widget.againKey,
     )..state.addListener(_onStep);
-    // A new profile most likely uses the same server as the others.
+    // A new profile most likely uses the same server as the others (an
+    // added server, another one).
     final known = HouseholdScope.read(context).lastServerUrl;
-    if (known != null) _server.text = known;
+    if (known != null && !widget.adding) _server.text = known;
     // A restored profile: its server and user name from the backup, so
     // only the password is asked (backup-restore D6), or a Plex link code.
     if (_flow.hint case final hint?) {
@@ -85,6 +105,11 @@ class _LoginScreenState extends State<LoginScreen> {
 
   void _onStep() {
     if (!mounted) return;
+    // Added or signed in again: back to Servers.
+    if (widget._forServers && _flow.finished) {
+      Navigator.of(context).maybePop();
+      return;
+    }
     setState(() {
       // A PIN pad opens empty.
       if (_s.stage == SignInStage.plexPin && _shown != SignInStage.plexPin) _pinDigits = '';
@@ -131,11 +156,22 @@ class _LoginScreenState extends State<LoginScreen> {
     final household = HouseholdScope.of(context);
     final profile = household.current;
     final shared = household.profiles.length > 1;
+    final again = widget.againKey == null ? null : AppScope.read(context).servers.byKey(widget.againKey!);
     return TvPage(
-      title: shared && profile != null ? 'Sign in for ${profile.name}' : 'Welcome to Nightingale TV',
+      title: widget.adding
+          ? 'Add a server'
+          : again != null
+              ? 'Sign in to ${again.name} again'
+              : shared && profile != null
+                  ? 'Sign in for ${profile.name}'
+                  : 'Welcome to Nightingale TV',
       hints: '▲▼ Move    OK Select    ESC Back',
-      // On the first step, Back returns to "Who's watching?".
-      onBack: _s.stage != SignInStage.server ? _flow.back : (shared ? household.leave : null),
+      // On the first step, Back returns to "Who's watching?" (or Servers).
+      onBack: _s.stage != SignInStage.server
+          ? _flow.back
+          : widget._forServers
+              ? () => Navigator.of(context).maybePop()
+              : (shared ? household.leave : null),
       child: ScreenLayout.of(context).isPortrait ? _portrait(g) : Row(
         children: [
           Expanded(
@@ -183,7 +219,7 @@ class _LoginScreenState extends State<LoginScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          NightingaleTv(height: compact ? 96 : 140),
+          NightingaleTv(height: compact ? 96 : 140, swoosh: true),
           SizedBox(height: compact ? 20 : 32),
           Text('Your library.\nOn the air, 24/7.', style: g.display(compact ? 56 : 84, weight: FontWeight.w800)),
           SizedBox(height: compact ? 16 : 24),
@@ -432,8 +468,15 @@ class _LoginScreenState extends State<LoginScreen> {
         return [
           Text('Choose a server', style: g.display(44)),
           const SizedBox(height: 28),
-          for (final (i, s) in servers.indexed) ...[
-            _ServerRow(server: s, autofocus: i == 0, onPressed: _s.busy ? null : () => _flow.pickServer(s)),
+          for (final s in servers) ...[
+            // Servers already in the profile show as added (multi-server).
+            _ServerRow(
+                server: s,
+                added: _s.added.contains(s.clientIdentifier) && widget.againKey == null,
+                autofocus: identical(s, servers.where((o) => !_s.added.contains(o.clientIdentifier)).firstOrNull),
+                onPressed: _s.busy || (_s.added.contains(s.clientIdentifier) && widget.againKey == null)
+                    ? null
+                    : () => _flow.pickServer(s)),
             const SizedBox(height: 16),
           ],
           const SizedBox(height: 12),
@@ -489,9 +532,12 @@ class _UserTile extends StatelessWidget {
 }
 
 class _ServerRow extends StatelessWidget {
-  const _ServerRow({required this.server, this.onPressed, this.autofocus = false});
+  const _ServerRow({required this.server, this.onPressed, this.autofocus = false, this.added = false});
 
   final PlexResource server;
+
+  /// Already in the profile: shown, not pickable.
+  final bool added;
   final VoidCallback? onPressed;
   final bool autofocus;
 
@@ -517,7 +563,7 @@ class _ServerRow extends StatelessWidget {
               const SizedBox(width: 20),
               Expanded(child: Text(server.label, style: g.body(28, color: fg))),
               const SizedBox(width: 16),
-              Text(server.online ? 'Online' : 'Offline',
+              Text(added ? 'Added' : server.online ? 'Online' : 'Offline',
                   style: g.body(22, color: focused ? g.onFocus : (server.online ? g.accent : g.textDim))),
             ],
           ),

@@ -7,6 +7,7 @@ import '../app_exit.dart';
 import '../app_scope.dart';
 import '../backup/backup_archive.dart';
 import '../platform/platform_info.dart';
+import '../server/server_set.dart';
 import '../theme/tv_theme.dart';
 import 'backup_screen.dart';
 import 'blocks_screen.dart';
@@ -18,7 +19,10 @@ import 'phone_remote_screen.dart';
 import 'live_sources_screen.dart';
 import 'live_tv_export_screen.dart';
 import 'playback_screen.dart';
+import 'retro_look_screen.dart';
+import 'servers_screen.dart';
 import 'profiles_screen.dart';
+import 'sleep_picker.dart';
 import 'widgets/adaptive.dart';
 import 'widgets/screen_layout.dart';
 import 'widgets/tv_focus.dart';
@@ -59,6 +63,18 @@ class _MenuScreenState extends State<MenuScreen> {
 
     final buttons = <Widget>[
       TvButton(label: 'Back to TV', icon: Icons.tv, expand: true, autofocus: focusFirst, onPressed: back),
+      if (AppScope.sleepOf(context) case final sleep?) ...[
+        const SizedBox(height: 18),
+        TvButton(
+          label: 'Sleep timer',
+          icon: Icons.bedtime,
+          expand: true,
+          // A choice goes back to the TV.
+          onPressed: () async {
+            if (await showSleepPicker(context, sleep) && context.mounted) back();
+          },
+        ),
+      ],
       if (household.profiles.length > 1) ...[
         const SizedBox(height: 18),
         TvButton(
@@ -124,6 +140,14 @@ class _MenuScreenState extends State<MenuScreen> {
       ),
       const SizedBox(height: 18),
       TvButton(
+        label: 'Retro look',
+        icon: locked ? Icons.lock : Icons.filter_vintage,
+        expand: true,
+        onPressed: guard(() => Navigator.of(context)
+            .push(MaterialPageRoute<void>(builder: (_) => const RetroLookScreen()))),
+      ),
+      const SizedBox(height: 18),
+      TvButton(
         label: 'Profiles',
         icon: locked ? Icons.lock : Icons.people,
         expand: true,
@@ -162,6 +186,14 @@ class _MenuScreenState extends State<MenuScreen> {
       ],
       const SizedBox(height: 18),
       TvButton(
+        label: 'Servers',
+        icon: locked ? Icons.lock : Icons.dns,
+        expand: true,
+        onPressed: guard(() => Navigator.of(context)
+            .push(MaterialPageRoute<void>(builder: (_) => const ServersScreen()))),
+      ),
+      const SizedBox(height: 18),
+      TvButton(
         label: 'Refresh library',
         icon: locked ? Icons.lock : Icons.sync,
         expand: true,
@@ -179,7 +211,7 @@ class _MenuScreenState extends State<MenuScreen> {
           final ok = await confirm(context,
               title: 'Reset channel lineup?',
               message: 'Rebuilds the default channels from your library. '
-                  'Names, icons and numbers you changed are reset. A backup is saved first, '
+                  'Names, icons and numbers you changed are reset. Channels you added are kept. A backup is saved first, '
                   'so you can bring them back in Backup & restore.',
               action: 'Reset');
           if (!ok || !context.mounted) return;
@@ -233,6 +265,7 @@ class _MenuScreenState extends State<MenuScreen> {
         }),
       ),
     ];
+    final counts = app.servers.multiple ? app.serverCounts() : const <String, ({int episodes, int movies, int songs})>{};
     final summary = <Widget>[
       if (profile != null) ...[
         Text('WATCHING', style: g.display(30, weight: FontWeight.w800, color: g.accent)),
@@ -269,6 +302,14 @@ class _MenuScreenState extends State<MenuScreen> {
         '${app.library.musicVideos.isEmpty ? '' : ' · ${app.library.musicVideos.length} music videos'}',
         style: g.body(28),
       ),
+      // A line per server (multi-server).
+      for (final s in app.servers.multiple ? app.servers.ordered : const <ProfileServer>[])
+        Text(
+          '${s.name}: ${counts[s.key]?.episodes ?? 0} episodes · ${counts[s.key]?.movies ?? 0} movies'
+          '${(counts[s.key]?.songs ?? 0) == 0 ? '' : ' · ${counts[s.key]!.songs} songs'}'
+          '${s.state == ServerState.ok ? '' : ' · ${s.state.label}'}',
+          style: g.body(24, color: s.state == ServerState.ok ? g.textDim : g.nowLine),
+        ),
       Text(
         app.syncError != null
             ? 'Last refresh failed: ${app.syncError}'

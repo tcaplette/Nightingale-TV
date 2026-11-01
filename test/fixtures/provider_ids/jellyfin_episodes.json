@@ -1,0 +1,31 @@
+{
+ "Items": [
+  {
+   "Id": "72aa76d67ee59e9af0d71ce2369c614a",
+   "Name": "Live Show (West Coast)",
+   "Type": "Episode",
+   "SeriesName": "30 Rock",
+   "SeriesId": "5ac7b8ca6ffe91521bf427dff2f6da39",
+   "ProductionYear": 2010,
+   "ParentIndexNumber": 0,
+   "IndexNumber": 2,
+   "ProviderIds": {
+    "Tvdb": "2974271"
+   }
+  },
+  {
+   "Id": "8707e3ec63feec6da961a362fe652f94",
+   "Name": "Live Show (West Coast)",
+   "Type": "Episode",
+   "SeriesName": "30 Rock",
+   "SeriesId": "feeb596f77486e6da7aa2043b8784600",
+   "ProductionYear": 2010,
+   "ParentIndexNumber": 0,
+   "IndexNumber": 2,
+   "ProviderIds": {
+    "Tvdb": "2974271"
+   }
+  }
+ ],
+ "TotalRecordCount": 2
+}

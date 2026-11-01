@@ -59,7 +59,8 @@ class Budget {
 /// never competes with drawing the UI. Given [httpClient] (tests), it runs
 /// in this isolate instead.
 class LoopbackStreamProxy {
-  LoopbackStreamProxy({required this.upstream, required this.headers, http.Client Function()? httpClient})
+  LoopbackStreamProxy(
+      {required this.upstream, required this.headers, this.headersFor, http.Client Function()? httpClient})
       : _testClient = httpClient;
 
   /// The Jellyfin stream URL for an item.
@@ -67,6 +68,10 @@ class LoopbackStreamProxy {
 
   /// The auth headers to send upstream.
   final Map<String, String> Function() headers;
+
+  /// The auth headers for [itemId]'s server, when items come from several
+  /// (multi-server); [headers] otherwise.
+  final Map<String, String> Function(String itemId)? headersFor;
   final http.Client Function()? _testClient;
 
   _ProxyCore? _local;
@@ -114,7 +119,7 @@ class LoopbackStreamProxy {
 
   /// Serves [itemId] (once this completes) until [disallow]ed.
   Future<void> allow(String itemId) =>
-      _send(['allow', itemId, upstream(itemId).toString(), Map<String, String>.of(headers())]);
+      _send(['allow', itemId, upstream(itemId).toString(), Map<String, String>.of(headersFor?.call(itemId) ?? headers())]);
 
   Future<void> disallow(String itemId) => _send(['disallow', itemId]);
 

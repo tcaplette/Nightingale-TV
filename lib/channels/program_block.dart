@@ -187,7 +187,7 @@ class ProgramBlock {
         seasonStart: j['seasonStart'] == null ? null : MonthDay.parse(j['seasonStart'] as String),
         seasonEnd: j['seasonEnd'] == null ? null : MonthDay.parse(j['seasonEnd'] as String),
         source: ChannelSource.fromJson(j['source'] as Map<String, Object?>),
-        order: PlaybackOrder.values.byName(j['order'] as String),
+        order: PlaybackOrder.parse(j['order']),
         lineup: [
           for (final s in (j['lineup'] as List?)?.cast<Map<String, Object?>>() ?? const <Map<String, Object?>>[])
             LineupSlot.fromJson(s),
@@ -221,3 +221,27 @@ bool blocksOverlap(ProgramBlock a, ProgramBlock b) {
   }
   return false;
 }
+
+/// The late-night shortcut's title, days, times and minimum rating
+/// (late-night-drift D4), applied to [block] in place.
+ProgramBlock lateNightDefaults(ProgramBlock block) => block
+  ..title = 'Late Night'
+  ..days = {1, 2, 3, 4, 5, 6, 7}
+  ..startMinute = 23 * 60
+  ..endMinute = 4 * 60
+  ..source = block.source.copyWith(ratingFloor: () => RatingFloor.mature);
+
+/// Whether the shortcut copies [channel]'s source and order: a music, live
+/// or block-only channel has nothing suitable.
+bool lateNightCopies(Channel channel) => !channel.isMusic && !channel.isLive && !channel.blockOnly;
+
+/// What a late-night block on [channel] plays: the channel's own source,
+/// TV-MA and up, or nothing picked when it has no usable source.
+ChannelSource lateNightSource(Channel channel) => lateNightCopies(channel)
+    ? channel.source.copyWith(ratingFloor: () => RatingFloor.mature)
+    : const ChannelSource(includeEpisodes: false, ratingFloor: RatingFloor.mature);
+
+/// The order of a late-night block on [channel]: the channel's own, or
+/// [fallback] when it has no usable source.
+PlaybackOrder lateNightOrder(Channel channel, PlaybackOrder fallback) =>
+    lateNightCopies(channel) ? channel.order : fallback;

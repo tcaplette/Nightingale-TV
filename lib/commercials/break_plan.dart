@@ -48,6 +48,8 @@ class CustomRoles {
     this.midPool,
     this.postPool,
     this.tailPool,
+    this.bumperPool,
+    this.noBumpers = false,
   });
 
   final Duration preRoll;
@@ -65,6 +67,12 @@ class CustomRoles {
   final String? midPool;
   final String? postPool;
   final String? tailPool;
+
+  /// The bumper pool framing breaks; null means all bumper pools.
+  final String? bumperPool;
+
+  /// This plan's breaks have no bumpers.
+  final bool noBumpers;
 
   static const preRollChoices = [
     Duration.zero,
@@ -135,6 +143,8 @@ class CustomRoles {
         midPool: midPool,
         postPool: postPool,
         tailPool: tailPool,
+        bumperPool: bumperPool,
+        noBumpers: noBumpers,
       );
 
   /// A copy drawing [role]'s clips from [poolId] (null: all pools).
@@ -148,15 +158,34 @@ class CustomRoles {
         midPool: role == BreakRole.mid ? poolId : midPool,
         postPool: role == BreakRole.post ? poolId : postPool,
         tailPool: role == BreakRole.tail ? poolId : tailPool,
+        bumperPool: bumperPool,
+        noBumpers: noBumpers,
       );
 
-  /// A copy where every role that drew from [poolId] uses all pools.
+  /// A copy framing breaks with [poolId]'s bumpers (null: all bumper pools),
+  /// or with [none], with no bumpers.
+  CustomRoles withBumpers(String? poolId, {bool none = false}) => CustomRoles(
+        preRoll: preRoll,
+        midInterval: midInterval,
+        midLength: midLength,
+        postRoll: postRoll,
+        tailGrid: tailGrid,
+        prePool: prePool,
+        midPool: midPool,
+        postPool: postPool,
+        tailPool: tailPool,
+        bumperPool: none ? null : poolId,
+        noBumpers: none,
+      );
+
+  /// A copy where every role that drew from [poolId] uses all pools, and
+  /// bumpers from it use all bumper pools.
   CustomRoles withoutPool(String poolId) {
     var roles = this;
     for (final role in BreakRole.values) {
       if (poolFor(role) == poolId) roles = roles.withPool(role, null);
     }
-    return roles;
+    return bumperPool == poolId ? roles.withBumpers(null) : roles;
   }
 
   Map<String, Object?> toJson() => {
@@ -168,7 +197,9 @@ class CustomRoles {
         'pools': {
           for (final role in BreakRole.values)
             if (poolFor(role) != null) role.name: poolFor(role),
+          if (bumperPool != null) 'bumpers': bumperPool,
         },
+        if (noBumpers) 'noBumpers': true,
       };
 
   /// Plans saved with a fallback (`fallback`, `pools.fallback`) load with it
@@ -187,6 +218,8 @@ class CustomRoles {
       midPool: pool(BreakRole.mid),
       postPool: pool(BreakRole.post),
       tailPool: pool(BreakRole.tail),
+      bumperPool: pools['bumpers'] as String?,
+      noBumpers: j['noBumpers'] == true,
     );
   }
 
@@ -201,11 +234,13 @@ class CustomRoles {
       other.prePool == prePool &&
       other.midPool == midPool &&
       other.postPool == postPool &&
-      other.tailPool == tailPool;
+      other.tailPool == tailPool &&
+      other.bumperPool == bumperPool &&
+      other.noBumpers == noBumpers;
 
   @override
-  int get hashCode =>
-      Object.hash(preRoll, midInterval, midLength, postRoll, tailGrid, prePool, midPool, postPool, tailPool);
+  int get hashCode => Object.hash(
+      preRoll, midInterval, midLength, postRoll, tailGrid, prePool, midPool, postPool, tailPool, bumperPool, noBumpers);
 }
 
 /// A break plan: the mode, plus the Custom settings (kept while another mode
@@ -243,7 +278,8 @@ class BreakPlan {
         BreakMode.custom => roles.tailGrid,
       };
 
-  /// The pools whose clips this plan can play (null in the set: all pools).
+  /// The commercial pools whose clips this plan can play (null in the set:
+  /// all pools). Bumpers alone never make a break, so they don't count.
   Set<String?> get poolsUsed {
     if (mode == BreakMode.off) return const {};
     if (mode == BreakMode.automatic) return const {null};
@@ -316,6 +352,9 @@ class SlotPlan {
     required this.postRoll,
     required this.tail,
     required this.roles,
+    this.offlineTail = false,
+    this.cutAt,
+    this.ruled = false,
   });
 
   /// No breaks: the slot is the program.
@@ -325,7 +364,10 @@ class SlotPlan {
         midLength = Duration.zero,
         postRoll = Duration.zero,
         tail = Duration.zero,
-        roles = const CustomRoles();
+        roles = const CustomRoles(),
+        offlineTail = false,
+        cutAt = null,
+        ruled = false;
 
   final Duration runtime;
   final Duration preRoll;
@@ -339,6 +381,46 @@ class SlotPlan {
   /// Which pools the roles draw from.
   final CustomRoles roles;
 
+  /// The [tail] shows the channel's offline card instead of clips.
+  final bool offlineTail;
+
+  /// Truncate: the slot ends here, cutting the program and its breaks.
+  final Duration? cutAt;
+
+  /// Made by [withRule]: a tail with no clips shows the offline card.
+  final bool ruled;
+
+  /// The cut comes before the program's end ("Ends early"), not just in
+  /// its post-roll.
+  bool get endsEarly => cutAt != null && cutAt! < runtime + preRoll + midLength * midCount;
+
+  /// This slot under a channel's slot length (custom-channels D7): Filler
+  /// and Offline image round the slot, without the plan's own tail, up to
+  /// the next multiple of [length], the rest a tail of clips from
+  /// [poolId] (all pools when null) or the offline card; Truncate makes
+  /// it exactly [length], padding as Filler does or cutting at its end.
+  SlotPlan withRule({required Duration length, required bool offline, required bool truncate, String? poolId}) {
+    final filled = slotLength - tail;
+    final cut = truncate && filled > length;
+    final rest = cut
+        ? Duration.zero
+        : truncate
+            ? length - filled
+            : _roundUp(filled, length) - filled;
+    return SlotPlan(
+      runtime: runtime,
+      preRoll: preRoll,
+      midCount: midCount,
+      midLength: midLength,
+      postRoll: postRoll,
+      tail: rest,
+      roles: roles.withPool(BreakRole.tail, poolId),
+      offlineTail: offline,
+      cutAt: cut ? length : null,
+      ruled: true,
+    );
+  }
+
   /// The same slot with no break inside the program: the mid-roll time
   /// goes to the post-roll (songs and music videos break only between them).
   SlotPlan withoutMidRolls() => midCount == 0
@@ -351,10 +433,13 @@ class SlotPlan {
           postRoll: postRoll + midLength * midCount,
           tail: tail,
           roles: roles,
+          offlineTail: offlineTail,
+          cutAt: cutAt,
+          ruled: ruled,
         );
 
   Duration get adTime => preRoll + midLength * midCount + postRoll + tail;
-  Duration get slotLength => runtime + adTime;
+  Duration get slotLength => cutAt ?? runtime + adTime;
   bool get hasBreaks => adTime > Duration.zero;
 }
 

@@ -3,7 +3,6 @@ import '../commercials/break_plan.dart';
 import '../commercials/break_sources.dart';
 import '../library/library_index.dart';
 import 'channel.dart';
-import 'channel_generator.dart';
 import 'premieres.dart';
 import 'program_block.dart';
 import 'slot_layout.dart';
@@ -29,6 +28,8 @@ class ScheduledProgram {
     this.label,
     this.songs,
     this.isLive = false,
+    this.offline = false,
+    this.endsEarly = false,
   })  : layoutStart = layoutStart ?? start,
         itemFrom = itemFrom ?? start.difference(layoutStart ?? start);
 
@@ -70,7 +71,14 @@ class ScheduledProgram {
   /// "No guide information" hour where it has none).
   final bool isLive;
 
-  bool get isOffAir => item == null;
+  /// A slot tail showing the channel's offline card (slot-duration): no
+  /// [item], but not Off Air.
+  final bool offline;
+
+  /// Truncate cuts this program at its slot's end.
+  final bool endsEarly;
+
+  bool get isOffAir => item == null && !offline;
 
   /// A music channel's hour in the guide, rather than one program.
   bool get isMusicHour => songs != null;
@@ -394,19 +402,29 @@ abstract interface class ProgramSchedule {
   /// Whether [segment] is the last of [slot]'s program to air.
   bool isLastPart(ScheduledProgram slot, ScheduledProgram segment);
 
+  /// When the program on at [t] ends (sleep-timer spec): the end of its last
+  /// show part, before any post-roll. Null when nothing with a known end is
+  /// on (off air, a live channel with no guide data).
+  DateTime? programEndAt(DateTime t);
+
   bool get hasBreaks;
 }
 
 /// A channel's commercial breaks: its plan (already Off when its pools have
 /// no clips), where clips come from, and where programs can break.
 class BreakContext {
-  const BreakContext({required this.plan, this.clips = const NoClips(), this.points = const ChapterPoints()});
+  const BreakContext(
+      {required this.plan, this.clips = const NoClips(), this.points = const ChapterPoints(), this.slotRule});
 
   static const none = BreakContext(plan: BreakPlan.off);
 
   final BreakPlan plan;
   final ClipSource clips;
   final BreakPointSource points;
+
+  /// The channel's slot length and tail mode, for its regular loop only
+  /// (blocks and premieres keep their own layout).
+  final SlotRule? slotRule;
 }
 
 /// Everything on a channel: programming blocks during their windows, the
@@ -414,7 +432,11 @@ class BreakContext {
 /// channels outside their blocks.
 class ChannelSchedule implements ProgramSchedule {
   ChannelSchedule._(this.loop, this.blocks, this.breaks, this._seed, this._slotPlans,
-      {this.premieres, this.musicName});
+      {this.premieres, this.musicName, this.carry, this.carryItem});
+
+  /// The program finishing its slot since the slot length changed.
+  final SlotCarry? carry;
+  final MediaEntry? carryItem;
 
   /// The regular programming; null for block-only channels.
   final LoopSchedule? loop;
@@ -428,8 +450,8 @@ class ChannelSchedule implements ProgramSchedule {
   final String? musicName;
   final BreakContext breaks;
   final int _seed;
-  final Map<(Duration, bool), SlotPlan> _slotPlans;
-  final _layouts = <(String, DateTime), SlotLayout>{};
+  final Map<(Duration, bool, bool), SlotPlan> _slotPlans;
+  final _layouts = <(String, DateTime, bool), SlotLayout>{};
 
   @override
   bool get hasBreaks => !breaks.plan.isOff;
@@ -439,14 +461,16 @@ class ChannelSchedule implements ProgramSchedule {
   /// Premiere slots come from [premieres], the profile's plan.
   static ChannelSchedule? build(Channel channel, LibraryIndex library,
       [List<ProgramBlock> allBlocks = const [], BreakContext breaks = BreakContext.none, PremierePlan? premieres]) {
-    final plans = <(Duration, bool), SlotPlan>{};
-    Duration slotOf(MediaEntry item) => _planOf(plans, breaks.plan, item).slotLength;
-    final loop = LoopSchedule.build(channel, library, slotOf: slotOf);
+    final plans = <(Duration, bool, bool), SlotPlan>{};
+    Duration slotOf(MediaEntry item) => _planOf(plans, breaks, item, ruled: false).slotLength;
+    Duration loopSlotOf(MediaEntry item) => _planOf(plans, breaks, item, ruled: true).slotLength;
+    final loop = LoopSchedule.build(channel, library, slotOf: loopSlotOf);
     final blocks = [
       for (final b in allBlocks)
         if (b.channelId == channel.id) ?BlockSchedule.build(b, library, slotOf: slotOf),
     ];
     if (loop == null && blocks.isEmpty) return null;
+    final carryItem = breaks.slotRule == null || loop == null ? null : library[channel.slotCarry?.itemId ?? ''];
     return ChannelSchedule._(
       loop,
       blocks,
@@ -459,19 +483,51 @@ class ChannelSchedule implements ProgramSchedule {
               slotOf: slotOf,
               blocked: (start, end) => blocks.any((b) => b.airingsBetween(start, end).isNotEmpty)),
       musicName: channel.isMusic ? channel.name : null,
+      carry: carryItem == null ? null : channel.slotCarry,
+      carryItem: carryItem,
     );
   }
 
-  /// [item]'s slot under this channel's plan.
-  SlotPlan slotPlanFor(MediaEntry item) => _planOf(_slotPlans, breaks.plan, item);
+  /// [item]'s slot under this channel's plan; [ruled]: in the channel's
+  /// regular loop, where its slot rule applies.
+  SlotPlan slotPlanFor(MediaEntry item, {bool ruled = false}) => _planOf(_slotPlans, breaks, item, ruled: ruled);
 
-  /// [item]'s slot under [plan], kept in [plans]: by runtime, and never a
-  /// break inside a song or music video, only before or after it.
-  static SlotPlan _planOf(Map<(Duration, bool), SlotPlan> plans, BreakPlan plan, MediaEntry item) =>
-      plans.putIfAbsent((item.runtime, item.isMusic), () {
-        final slot = resolve(plan, item.runtime);
-        return item.isMusic ? slot.withoutMidRolls() : slot;
-      });
+  /// [item]'s slot under [breaks]' plan (and, when [ruled], its slot rule),
+  /// kept in [plans]: by runtime, and never a break inside a song or music
+  /// video, only before or after it.
+  static SlotPlan _planOf(Map<(Duration, bool, bool), SlotPlan> plans, BreakContext breaks, MediaEntry item,
+      {required bool ruled}) {
+    final rule = ruled ? breaks.slotRule : null;
+    return plans.putIfAbsent((item.runtime, item.isMusic, rule != null), () {
+      final slot = resolve(breaks.plan, item.runtime);
+      final plain = item.isMusic ? slot.withoutMidRolls() : slot;
+      return rule == null
+          ? plain
+          : plain.withRule(
+              length: rule.length,
+              offline: rule.tail == TailMode.offline,
+              truncate: rule.tail == TailMode.truncate,
+              poolId: rule.poolId);
+    });
+  }
+
+  /// [slot]'s plan: under the slot rule in the regular loop, and exactly to
+  /// its end for a program finishing its slot ([carry]).
+  SlotPlan _planOfSlot(MediaEntry item, DateTime layoutStart, {required bool ruled}) {
+    final c = carry, rule = breaks.slotRule;
+    if (ruled && c != null && rule != null && c.itemId == item.id && c.start == layoutStart) {
+      return slotPlanFor(item).withRule(
+          length: c.end.difference(c.start),
+          offline: rule.tail == TailMode.offline,
+          truncate: true,
+          poolId: rule.poolId);
+    }
+    return slotPlanFor(item, ruled: ruled);
+  }
+
+  /// Whether [slot] (from [programAt]) is in the regular loop, under the
+  /// slot rule.
+  bool _ruled(ScheduledProgram slot) => breaks.slotRule != null && slot.blockTitle == null && !slot.isPremiere;
 
   /// The program airing at [t].
   @override
@@ -496,6 +552,19 @@ class ChannelSchedule implements ProgramSchedule {
     for (final a in premieres?.airingsBetween(from, to) ?? const <PremiereAiring>[]) {
       edges((start: a.start, end: a.end));
     }
+    final c = carry;
+    if (c != null) {
+      if (!t.isBefore(c.start) && t.isBefore(c.end)) {
+        return ScheduledProgram(
+          item: carryItem,
+          start: c.start.isAfter(after) ? c.start : after,
+          end: c.end.isBefore(before) ? c.end : before,
+          layoutStart: c.start,
+          endsEarly: _planOfSlot(carryItem!, c.start, ruled: true).endsEarly,
+        );
+      }
+      edges((start: c.start, end: c.end));
+    }
     final loop = this.loop;
     if (loop == null) {
       // Off the air, shown in the guide as hour-long cells.
@@ -514,6 +583,7 @@ class ChannelSchedule implements ProgramSchedule {
       end: p.end.isBefore(before) ? p.end : before,
       // A program resuming after a block carries on in the same slot.
       layoutStart: p.start,
+      endsEarly: breaks.slotRule != null && slotPlanFor(p.item!, ruled: true).endsEarly,
     );
   }
 
@@ -533,13 +603,13 @@ class ChannelSchedule implements ProgramSchedule {
   /// [item]'s layout in the slot starting at [layoutStart], using what was
   /// known about its break points and clips by then, so new analysis or
   /// clips never change a slot already under way.
-  SlotLayout layoutFor(MediaEntry item, DateTime layoutStart) {
+  SlotLayout layoutFor(MediaEntry item, DateTime layoutStart, {bool ruled = false}) {
     if (_layouts.length > 64) _layouts.clear();
     return _layouts.putIfAbsent(
-      (item.id, layoutStart),
+      (item.id, layoutStart, ruled),
       () => SlotLayout.build(
         item: item,
-        plan: slotPlanFor(item),
+        plan: _planOfSlot(item, layoutStart, ruled: ruled),
         layoutStart: layoutStart,
         info: breaks.points.pointsFor(item, layoutStart),
         clips: breaks.clips,
@@ -556,7 +626,8 @@ class ChannelSchedule implements ProgramSchedule {
     final slot = programAt(t);
     final item = slot.item;
     if (item == null) return slot;
-    if (!slotPlanFor(item).hasBreaks) {
+    final ruled = _ruled(slot);
+    if (!_planOfSlot(item, slot.layoutStart, ruled: ruled).hasBreaks) {
       return ScheduledProgram(
         item: item,
         start: slot.start,
@@ -564,9 +635,10 @@ class ChannelSchedule implements ProgramSchedule {
         layoutStart: slot.layoutStart,
         blockTitle: slot.blockTitle,
         isPremiere: slot.isPremiere,
+        endsEarly: slot.endsEarly,
       );
     }
-    final layout = layoutFor(item, slot.layoutStart);
+    final layout = layoutFor(item, slot.layoutStart, ruled: ruled);
     final segment = layout.at(t.difference(slot.layoutStart));
     final segmentStart = slot.layoutStart.add(segment.from);
     final segmentEnd = slot.layoutStart.add(segment.to);
@@ -582,6 +654,8 @@ class ChannelSchedule implements ProgramSchedule {
       program: segment.isShow ? null : item,
       blockTitle: slot.blockTitle,
       isPremiere: slot.isPremiere,
+      offline: segment.offline,
+      endsEarly: slot.endsEarly,
     );
   }
 
@@ -592,17 +666,52 @@ class ChannelSchedule implements ProgramSchedule {
   bool isLastPart(ScheduledProgram slot, ScheduledProgram segment) {
     final item = slot.item;
     if (item == null || segment.isBreak) return false;
-    if (!slotPlanFor(item).hasBreaks) return true;
+    final ruled = _ruled(slot);
+    if (!_planOfSlot(item, slot.layoutStart, ruled: ruled).hasBreaks) return true;
     final after = segment.end.difference(slot.layoutStart);
     final until = slot.end.difference(slot.layoutStart);
-    return !layoutFor(item, slot.layoutStart).segments.any((s) => s.isShow && s.from >= after && s.from < until);
+    return !layoutFor(item, slot.layoutStart, ruled: ruled)
+        .segments
+        .any((s) => s.isShow && s.from >= after && s.from < until);
   }
 
-  /// Where [item]'s slot starting at [layoutStart] reaches [position] in the
-  /// program (with no breaks, the position itself).
+  /// On a music channel the program is the guide's cell, not the song.
+  @override
+  DateTime? programEndAt(DateTime t) {
+    if (musicName != null) {
+      final cell = guideProgramAt(t);
+      return cell.item == null ? null : cell.end;
+    }
+    final slot = programAt(t);
+    final item = slot.item;
+    if (item == null) return null;
+    final ruled = _ruled(slot);
+    if (!_planOfSlot(item, slot.layoutStart, ruled: ruled).hasBreaks) return slot.end;
+    final until = slot.end.difference(slot.layoutStart);
+    Duration? end;
+    for (final s in layoutFor(item, slot.layoutStart, ruled: ruled).segments) {
+      if (s.isShow && !s.offline && s.item != null && s.from < until) end = s.to < until ? s.to : until;
+    }
+    return end == null ? null : slot.layoutStart.add(end);
+  }
+
+  /// Where [slot]'s show first has a picture: past any pre-roll, or the
+  /// slot's start when a programming block cut its front off.
+  DateTime firstPictureOf(ScheduledProgram slot) {
+    final item = slot.item;
+    if (item == null || slot.start.isAfter(slot.layoutStart)) return slot.start;
+    final ruled = _ruled(slot);
+    if (!_planOfSlot(item, slot.layoutStart, ruled: ruled).hasBreaks) return slot.start;
+    return slot.layoutStart.add(layoutFor(item, slot.layoutStart, ruled: ruled).offsetOf(Duration.zero));
+  }
+
+  /// Where [item]'s slot in the regular loop starting at [layoutStart]
+  /// reaches [position] in the program (with no breaks, the position
+  /// itself).
   Duration slotOffsetOf(MediaEntry item, Duration position, DateTime layoutStart) {
-    if (!slotPlanFor(item).hasBreaks) return position;
-    return layoutFor(item, layoutStart).offsetOf(position);
+    final ruled = breaks.slotRule != null;
+    if (!slotPlanFor(item, ruled: ruled).hasBreaks) return position;
+    return layoutFor(item, layoutStart, ruled: ruled).offsetOf(position);
   }
 
   /// Where [item] can break, as known at [asOf].

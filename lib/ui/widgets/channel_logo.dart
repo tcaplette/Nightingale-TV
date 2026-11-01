@@ -6,9 +6,9 @@ import 'package:flutter_svg/flutter_svg.dart';
 import '../../app_scope.dart';
 import '../../app_state.dart';
 import '../../channels/channel.dart';
-import '../../icons/icon_catalog.dart';
 import '../../theme/tv_theme.dart';
 import '../../server/media_server.dart';
+import 'nightingale_mark.dart';
 
 /// Renders any [ChannelIcon] kind, centered in a [width]×[size] box.
 class ChannelLogo extends StatelessWidget {
@@ -37,15 +37,15 @@ class ChannelLogo extends StatelessWidget {
     // Built-in icons and badges need no app (or scope).
     AppState app() => this.app ?? AppScope.of(context);
     final Widget child = switch (icon.kind) {
-      ChannelIconKind.builtin =>
-        Icon(iconForKey(icon.value), size: size * 0.82, color: Color(icon.color)),
+      ChannelIconKind.builtin => BuiltinIcon(iconKey: icon.value, size: size * 0.82, color: Color(icon.color)),
       ChannelIconKind.badge => StationBadge(
           text: icon.value, shape: icon.shape, color: Color(icon.color), size: size),
-      ChannelIconKind.jellyfin => app().client == null
+      // A server's show logo, from the server the id is on (multi-server).
+      ChannelIconKind.jellyfin => app().clientOf(icon.value) == null
           ? _fallback(context)
           : Image.network(
-              app().client!.imageUri(icon.value, ImageKind.logo, maxHeight: 160).toString(),
-              headers: app().client!.authHeaders,
+              app().clientOf(icon.value)!.imageUri(icon.value, ImageKind.logo, maxHeight: 160).toString(),
+              headers: app().clientOf(icon.value)!.authHeaders,
               fit: BoxFit.contain,
               filterQuality: FilterQuality.medium,
               errorBuilder: (_, _, _) => _fallback(context),
@@ -53,7 +53,7 @@ class ChannelLogo extends StatelessWidget {
       ChannelIconKind.custom => _customImage(context, app().icons.fileFor(icon.value)),
       ChannelIconKind.remote => Image.network(
           icon.value,
-          headers: _headersFor(icon.value, app().client),
+          headers: _headersFor(icon.value, [for (final s in app().servers.all) ?s.client]),
           fit: BoxFit.contain,
           filterQuality: FilterQuality.medium,
           errorBuilder: (_, _, _) => _fallback(context),
@@ -62,9 +62,9 @@ class ChannelLogo extends StatelessWidget {
     return SizedBox(width: width ?? size, height: size, child: Align(alignment: alignment, child: child));
   }
 
-  /// The sign-in goes only to the profile's own server.
-  static Map<String, String>? _headersFor(String url, MediaServer? client) =>
-      client != null && url.startsWith(client.serverUrl) ? client.authHeaders : null;
+  /// A sign-in goes only to its own server (any of the profile's).
+  static Map<String, String>? _headersFor(String url, List<MediaServer> clients) =>
+      clients.where((c) => url.startsWith(c.serverUrl)).firstOrNull?.authHeaders;
 
   Widget _customImage(BuildContext context, File file) {
     if (file.path.endsWith('.svg')) {

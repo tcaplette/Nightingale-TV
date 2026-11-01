@@ -8,8 +8,9 @@ import 'widgets/screen_layout.dart';
 import 'widgets/tv_focus.dart';
 
 /// "Transcode only if needed", the maximum streaming bitrate, volume
-/// leveling and break notices. Off by default: everything direct-plays,
-/// audio untouched; break notices are on.
+/// leveling, break notices, the on-screen clock and pause and rewind. Off by
+/// default: everything direct-plays, audio untouched, no clock; break notices
+/// and pause and rewind are on.
 class PlaybackScreen extends StatelessWidget {
   const PlaybackScreen({super.key});
 
@@ -37,6 +38,15 @@ class PlaybackScreen extends StatelessWidget {
   static const noticesLabel = 'Break notices';
 
   static const noticesHelp = 'Show a countdown before commercials start and before the program comes back.';
+
+  static const clockLabel = 'On-screen clock';
+
+  static const clockHelp = 'Shows the time in the corner of the picture.';
+
+  static const rewindLabel = 'Pause and rewind';
+
+  static const rewindHelp = 'Pause, skip and restart what\'s on. Off: every channel stays on the clock, '
+      'like always-on TV.';
 
   static String levelingHelpText() =>
       PlatformInfo.isAndroid ? '$levelingHelp $levelingAndroidHelp' : levelingHelp;
@@ -120,6 +130,32 @@ class PlaybackScreen extends StatelessWidget {
             ),
             const SizedBox(height: 12),
             ConstrainedBox(constraints: const BoxConstraints(maxWidth: 1100), child: Text(noticesHelp, style: g.body(24, color: g.textDim))),
+            const SizedBox(height: 40),
+            Text('CLOCK', style: g.display(26, weight: FontWeight.w800, color: g.accent)),
+            const SizedBox(height: 14),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: TvToggle(
+                label: clockLabel,
+                on: playback.onScreenClock,
+                onPressed: () => app.setPlayback(playback.copyWith(onScreenClock: !playback.onScreenClock)),
+              ),
+            ),
+            const SizedBox(height: 12),
+            ConstrainedBox(constraints: const BoxConstraints(maxWidth: 1100), child: Text(clockHelp, style: g.body(24, color: g.textDim))),
+            const SizedBox(height: 40),
+            Text('WATCHING', style: g.display(26, weight: FontWeight.w800, color: g.accent)),
+            const SizedBox(height: 14),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: TvToggle(
+                label: rewindLabel,
+                on: playback.pauseAndRewind,
+                onPressed: () => app.setPlayback(playback.copyWith(pauseAndRewind: !playback.pauseAndRewind)),
+              ),
+            ),
+            const SizedBox(height: 12),
+            ConstrainedBox(constraints: const BoxConstraints(maxWidth: 1100), child: Text(rewindHelp, style: g.body(24, color: g.textDim))),
           ],
         ),
       ),

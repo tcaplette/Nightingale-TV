@@ -12,7 +12,8 @@ class CustomIconException implements Exception {
   String toString() => message;
 }
 
-/// User-uploaded channel logos, stored in the app's logos folder.
+/// User-uploaded channel logos, stored in the app's logos folder, and
+/// channel offline images (`offline-<hash>.png`, slot-duration) beside them.
 class CustomIconStore {
   CustomIconStore(this.dir);
 
@@ -20,6 +21,12 @@ class CustomIconStore {
 
   static const maxSourceBytes = 20 * 1024 * 1024;
   static const _maxPixels = 512;
+
+  /// Offline images fill the screen: up to 1920×1080.
+  static const _maxOfflineWidth = 1920, _maxOfflineHeight = 1080;
+  static const offlinePrefix = 'offline-';
+
+  static bool isOfflineImage(String name) => name.startsWith(offlinePrefix);
   static const _extensions = ['png', 'jpg', 'jpeg', 'webp', 'gif', 'bmp', 'svg'];
 
   File fileFor(String name) => File('${dir.path}/$name');
@@ -30,7 +37,7 @@ class CustomIconStore {
     await for (final f in dir.list()) {
       if (f is! File) continue;
       final name = f.uri.pathSegments.last;
-      if (name.endsWith('.png') || name.endsWith('.svg')) {
+      if ((name.endsWith('.png') || name.endsWith('.svg')) && !isOfflineImage(name)) {
         names.add((await f.lastModified(), name));
       }
     }
@@ -83,6 +90,48 @@ class CustomIconStore {
     final name = '$hash.png';
     await fileFor(name).writeAsBytes(img.encodePng(scaled), flush: true);
     return name;
+  }
+
+  /// Stores [bytes] (from [fileName]) as an offline image: raster images
+  /// fit 1920×1080 as PNG, SVGs as they are. Returns its file name.
+  Future<String> importOfflineBytes(Uint8List bytes, String fileName) async {
+    if (bytes.length > maxSourceBytes) {
+      throw CustomIconException('That image is over 20 MB. Please pick a smaller one.');
+    }
+    final hash = sha1.convert(bytes).toString().substring(0, 16);
+    if (fileName.split('.').last.toLowerCase() == 'svg') {
+      if (!String.fromCharCodes(bytes.take(2048)).contains('<svg')) {
+        throw CustomIconException('That file is not a valid SVG.');
+      }
+      final name = '$offlinePrefix$hash.svg';
+      await fileFor(name).writeAsBytes(bytes, flush: true);
+      return name;
+    }
+    final decoded = img.decodeImage(bytes);
+    if (decoded == null) {
+      throw CustomIconException('Could not read that image. Try PNG, JPG, WebP or SVG.');
+    }
+    final frame = decoded.frames.first;
+    final scale = [1.0, _maxOfflineWidth / frame.width, _maxOfflineHeight / frame.height].reduce((a, b) => a < b ? a : b);
+    final scaled = scale < 1
+        ? img.copyResize(frame,
+            width: (frame.width * scale).round(),
+            height: (frame.height * scale).round(),
+            interpolation: img.Interpolation.average)
+        : frame;
+    final name = '$offlinePrefix$hash.png';
+    await fileFor(name).writeAsBytes(img.encodePng(scaled), flush: true);
+    return name;
+  }
+
+  /// Opens the system file dialog for an offline image ([importOfflineBytes]).
+  /// Null if the user cancelled.
+  Future<String?> pickAndImportOffline() async {
+    final file = await openFile(acceptedTypeGroups: [
+      const XTypeGroup(label: 'Images', extensions: _extensions),
+    ]);
+    if (file == null) return null;
+    return importOfflineBytes(await File(file.path).readAsBytes(), file.path);
   }
 
   Future<void> delete(String name) async {

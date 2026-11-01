@@ -1,0 +1,27 @@
+{
+ "MediaContainer": {
+  "size": 2,
+  "Metadata": [
+   {
+    "ratingKey": "3",
+    "type": "episode",
+    "title": "Maple Street S01E01",
+    "grandparentTitle": "Maple Street",
+    "parentIndex": 1,
+    "index": 1,
+    "year": 2026,
+    "guid": "tv.plex.agents.none://3"
+   },
+   {
+    "ratingKey": "4",
+    "type": "episode",
+    "title": "Maple Street S01E02",
+    "grandparentTitle": "Maple Street",
+    "parentIndex": 1,
+    "index": 2,
+    "year": 2026,
+    "guid": "tv.plex.agents.none://4"
+   }
+  ]
+ }
+}

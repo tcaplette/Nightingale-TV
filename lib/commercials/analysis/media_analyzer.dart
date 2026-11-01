@@ -115,7 +115,7 @@ class MediaAnalyzer {
     DateTime Function()? clock,
   }) : _clock = clock ?? DateTime.now;
 
-  final AnalysisCache cache;
+  final AnalysisStore cache;
   final SceneScanner scanner;
   final LoopbackStreamProxy proxy;
   final SegmentReader segments;

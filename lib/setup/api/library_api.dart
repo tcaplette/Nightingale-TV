@@ -35,6 +35,8 @@ extension _LibraryApi on SetupServer {
       'songs': library.songs.length,
       'musicVideos': library.musicVideos.length,
       'commercials': library.commercials.length,
+      // A line per server (multi-server).
+      if (app.servers.multiple) 'servers': _serversJson(app)['servers'],
     };
   }
 
@@ -81,15 +83,18 @@ extension _LibraryApi on SetupServer {
   /// folders as a tree (folders, shows, seasons and collections).
   Future<Object?> _browse(ApiRequest r) async {
     final app = await _app(r['id'], library: true);
-    final client = app.client ?? (throw ApiError(HttpStatus.serviceUnavailable, SetupServer.signedOutText));
+    if (app.client == null) throw ApiError(HttpStatus.serviceUnavailable, SetupServer.signedOutText);
     try {
       final library = r.query['library'];
       if (library == null || library.isEmpty) {
+        // Every server's (multi-server), named after their server when
+        // there are several.
         return [
-          for (final l in await client.libraries())
-            if (l.isVideo) {'id': l.id, 'name': l.name, 'type': l.collectionType},
+          for (final l in await app.allLibraries())
+            if (l.isVideo || l.isCollections) {'id': l.id, 'name': l.name, 'type': l.collectionType},
         ];
       }
+      final client = app.clientOf(library) ?? (throw ApiError(HttpStatus.serviceUnavailable, SetupServer.signedOutText));
       Map<String, Object?> node(FolderNode n) =>
           {'id': n.id, 'name': n.name, 'type': n.type, 'children': [for (final c in n.children) node(c)]};
       return [for (final n in await client.folderTree(library)) node(n)];
@@ -102,7 +107,9 @@ extension _LibraryApi on SetupServer {
   /// fetched with the profile's sign-in.
   Future<Object?> _art(ApiRequest r) async {
     final app = await _app(r['id'], library: true);
-    final client = app.client ?? (throw ApiError(HttpStatus.serviceUnavailable, SetupServer.signedOutText));
+    // From the server the item is on (multi-server).
+    final client =
+        app.clientOf(r['itemId']) ?? (throw ApiError(HttpStatus.serviceUnavailable, SetupServer.signedOutText));
     final kind = r.query['kind'] == 'primary' ? ImageKind.primary : ImageKind.logo;
     final height = (int.tryParse(r.query['h'] ?? '') ?? 160).clamp(16, 1080);
     await _sendPicture(r, client.imageUri(r['itemId'], kind, maxHeight: height), client.authHeaders);

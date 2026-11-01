@@ -73,7 +73,16 @@ void main() {
     // Tuning saves the last channel in the background.
     await app.storage.flush();
     await dir.delete(recursive: true);
-    await cacheDir.delete(recursive: true);
+    // The proxy closes in the background, and a fill may still be writing.
+    for (var attempt = 0;; attempt++) {
+      try {
+        await cacheDir.delete(recursive: true);
+        break;
+      } on FileSystemException {
+        if (attempt == 20) rethrow;
+        await Future<void>.delayed(const Duration(milliseconds: 50));
+      }
+    }
   });
 
   Tuner make(PlaybackProxy? proxy) => tuner = Tuner(app, player: player, clock: () => now, proxy: proxy)

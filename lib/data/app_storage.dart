@@ -107,6 +107,8 @@ class AppStorage {
 
   Future<void> _write(String name, String text, bool private) async {
     final file = _file(name);
+    // Files in a folder of their own (multi-server's library parts).
+    if (name.contains('/')) await file.parent.create(recursive: true);
     final tmp = File('${file.path}.${pid}_${_tmpCounter++}.tmp');
     try {
       await tmp.writeAsString(text, flush: true);

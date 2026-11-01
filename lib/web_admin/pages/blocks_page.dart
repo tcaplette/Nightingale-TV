@@ -8,6 +8,7 @@ import '../../ui/format.dart';
 import '../api_client.dart';
 import '../app.dart';
 import '../widgets/common.dart';
+import '../widgets/source_editor.dart';
 
 /// A profile's programming blocks.
 class BlocksPage extends StatelessWidget {
@@ -27,6 +28,13 @@ class BlocksPage extends StatelessWidget {
                 label: const Text('New block'),
                 onPressed: () => context.go('/profiles/$profileId/blocks/new'),
               ),
+              // Kid profiles get no late-night shortcut (late-night-drift D6).
+              if (data['kidProfile'] != true)
+                OutlinedButton.icon(
+                  icon: const Icon(Icons.nightlight_round),
+                  label: const Text('New late-night block'),
+                  onPressed: () => context.go('/profiles/$profileId/blocks/late-night'),
+                ),
             ],
             children: [
               if (blocks.isEmpty)
@@ -52,7 +60,8 @@ class BlocksPage extends StatelessWidget {
 }
 
 /// One block, with the same fields and rules as the TV's blocks screen.
-/// `new` makes one.
+/// `new` makes one; `late-night` makes one filled in by the late-night
+/// shortcut (late-night-drift D4).
 class BlockEditorPage extends StatefulWidget {
   const BlockEditorPage({super.key, required this.profileId, required this.blockId});
 
@@ -67,6 +76,11 @@ class _BlockEditorPageState extends State<BlockEditorPage> {
   ProgramBlock? _block;
   bool _lineupMode = false;
   bool _newChannel = false;
+  bool _kidProfile = false;
+
+  /// The late-night shortcut's source and order follow the chosen channel
+  /// until the user changes either.
+  bool _followChannel = false;
   List<Map<String, Object?>> _channels = const [];
   Map<String, Object?>? _catalog;
   Map<String, Object?>? _preview;
@@ -75,7 +89,8 @@ class _BlockEditorPageState extends State<BlockEditorPage> {
   Timer? _previewSoon;
   final _title = TextEditingController();
 
-  bool get _isNew => widget.blockId == 'new';
+  bool get _lateNight => widget.blockId == 'late-night';
+  bool get _isNew => widget.blockId == 'new' || _lateNight;
   String get _base => 'profiles/${widget.profileId}';
 
   @override
@@ -103,14 +118,21 @@ class _BlockEditorPageState extends State<BlockEditorPage> {
               .firstWhere((b) => b['id'] == widget.blockId, orElse: () => throw ApiException(404, 'No such block.'));
       if (!mounted) return;
       final block = ProgramBlock.fromJson({...json, 'playlist': const <String>[]});
+      final shown = [
+        for (final c in (channels['channels'] as List).cast<Map<String, Object?>>())
+          if ((c['view'] as Map)['live'] == null) c,
+      ];
+      final kid = blocks['kidProfile'] == true;
+      final follow = _lateNight && !kid;
+      if (follow) lateNightDefaults(block);
       setState(() {
         _block = block;
+        _channels = shown;
+        _kidProfile = kid;
+        _followChannel = follow;
+        if (follow) _copyChannel(block, block.channelId);
         _title.text = block.title;
         _lineupMode = block.hasLineup;
-        _channels = [
-          for (final c in (channels['channels'] as List).cast<Map<String, Object?>>())
-            if ((c['view'] as Map)['live'] == null) c,
-        ];
         _catalog = catalog;
         _error = null;
       });
@@ -118,6 +140,17 @@ class _BlockEditorPageState extends State<BlockEditorPage> {
     } on Object catch (e) {
       if (mounted) setState(() => _error = '$e');
     }
+  }
+
+  /// The late-night shortcut: channel [id]'s source and order, keeping the
+  /// chosen minimum rating.
+  void _copyChannel(ProgramBlock b, String id) {
+    final json = _channels.where((c) => c['id'] == id).firstOrNull;
+    if (json == null) return;
+    final channel = Channel.fromJson(json);
+    final floor = b.source.ratingFloor;
+    b.source = lateNightSource(channel).copyWith(ratingFloor: () => floor);
+    b.order = lateNightOrder(channel, PlaybackOrder.cyclic);
   }
 
   void _update(void Function(ProgramBlock b) change) {
@@ -186,11 +219,10 @@ class _BlockEditorPageState extends State<BlockEditorPage> {
     final catalog = _catalog!;
     final shows = (catalog['shows'] as List).cast<Map<String, Object?>>();
     final showName = {for (final s in shows) s['key']: s['name'] as String};
-    final genres = (catalog['genres'] as List).cast<String>();
     final preview = _preview;
     final next = preview?['next'] as Map?;
     return PageBody(
-      title: _isNew ? 'New block' : (b.title.isEmpty ? 'Untitled block' : b.title),
+      title: _lateNight ? 'New late-night block' : _isNew ? 'New block' : (b.title.isEmpty ? 'Untitled block' : b.title),
       actions: [
         TextButton.icon(
           icon: const Icon(Icons.arrow_back),
@@ -218,7 +250,10 @@ class _BlockEditorPageState extends State<BlockEditorPage> {
             ],
             onChanged: (id) => _update((b) {
               _newChannel = id == '';
-              if (id != null && id.isNotEmpty) b.channelId = id;
+              if (id != null && id.isNotEmpty) {
+                b.channelId = id;
+                if (_followChannel) _copyChannel(b, id);
+              }
             }),
           ),
           SwitchListTile(
@@ -265,49 +300,46 @@ class _BlockEditorPageState extends State<BlockEditorPage> {
           ),
           const SizedBox(height: 12),
           if (!_lineupMode) ...[
-            Text(
-              b.source.seriesKeys.isNotEmpty
-                  ? 'Plays the shows you picked${b.source.includeMovies ? ', plus movies' : ''}.'
-                  : b.source.genres.isNotEmpty
-                      ? 'Plays every show${b.source.includeMovies ? ' and movie' : ''} in these genres.'
-                      : b.source.includeMovies
-                          ? 'Plays movies.'
-                          : 'Pick shows, genres or movies.',
-            ),
-            const SizedBox(height: 8),
-            Text('Shows', style: Theme.of(context).textTheme.labelLarge),
-            Wrap(spacing: 6, runSpacing: 6, children: [
-              for (final s in shows)
-                FilterChip(
-                  label: Text('${s['name']} (${s['episodes']})'),
-                  selected: b.source.seriesKeys.contains(s['key']),
-                  onSelected: (on) => _update((b) => b.source = _withShows(b.source, s['key'] as String, on)),
-                ),
-            ]),
-            const SizedBox(height: 12),
-            Text('Genres', style: Theme.of(context).textTheme.labelLarge),
-            Wrap(spacing: 6, runSpacing: 6, children: [
-              for (final g in genres)
-                FilterChip(
-                  label: Text(g),
-                  selected: b.source.genres.contains(g),
-                  onSelected: (on) => _update((b) => b.source = _withGenre(b.source, g, on)),
-                ),
-            ]),
-            CheckboxListTile(
-              contentPadding: EdgeInsets.zero,
-              title: Text('Movies (${catalog['movies']})'),
-              value: b.source.includeMovies,
-              onChanged: (v) => _update((b) => b.source = _copySource(b.source, movies: v ?? false)),
+            SourceEditor(
+              profileId: widget.profileId,
+              source: b.source,
+              catalog: catalog,
+              // The source editor doesn't know the minimum rating; it stays.
+              onChanged: (source) => _update((b) {
+                b.source = source.copyWith(ratingFloor: () => b.source.ratingFloor);
+                _followChannel = false;
+              }),
             ),
             RadioGroup<PlaybackOrder>(
               groupValue: b.order,
-              onChanged: (v) => _update((b) => b.order = v!),
+              onChanged: (v) => _update((b) {
+                b.order = v!;
+                _followChannel = false;
+              }),
               child: Column(children: [
                 for (final o in PlaybackOrder.values)
                   RadioListTile<PlaybackOrder>(contentPadding: EdgeInsets.zero, value: o, title: Text(o.label)),
               ]),
             ),
+            if (!_kidProfile) ...[
+              const SizedBox(height: 12),
+              DropdownButtonFormField<RatingFloor?>(
+                key: ValueKey(b.source.ratingFloor),
+                initialValue: b.source.ratingFloor,
+                isExpanded: true,
+                decoration: InputDecoration(
+                  labelText: 'Minimum rating',
+                  helperText: b.source.ratingFloor == null
+                      ? null
+                      : 'Only shows and movies rated this or higher. Unrated ones are left out.',
+                ),
+                items: [
+                  const DropdownMenuItem<RatingFloor?>(value: null, child: Text('Any rating')),
+                  for (final f in RatingFloor.values) DropdownMenuItem<RatingFloor?>(value: f, child: Text(f.label)),
+                ],
+                onChanged: (f) => _update((b) => b.source = b.source.copyWith(ratingFloor: () => f)),
+              ),
+            ],
           ] else ...[
             const Text("Each airing plays every spot's next episodes in order, then starts over if time is left."),
             const SizedBox(height: 8),
@@ -394,22 +426,6 @@ class _BlockEditorPageState extends State<BlockEditorPage> {
       ],
     );
   }
-
-  static ChannelSource _copySource(ChannelSource s, {List<String>? shows, List<String>? genres, bool? movies}) {
-    final keys = shows ?? s.seriesKeys, g = genres ?? s.genres;
-    return ChannelSource(
-      seriesKeys: keys,
-      genres: g,
-      includeEpisodes: keys.isNotEmpty || g.isNotEmpty,
-      includeMovies: movies ?? s.includeMovies,
-    );
-  }
-
-  static ChannelSource _withShows(ChannelSource s, String key, bool on) =>
-      _copySource(s, shows: ({...s.seriesKeys}..removeWhere((k) => !on && k == key)..addAll([if (on) key])).toList()..sort());
-
-  static ChannelSource _withGenre(ChannelSource s, String genre, bool on) =>
-      _copySource(s, genres: ({...s.genres}..removeWhere((g) => !on && g == genre)..addAll([if (on) genre])).toList()..sort());
 }
 
 class _MonthDayField extends StatelessWidget {

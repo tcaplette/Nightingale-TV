@@ -77,4 +77,42 @@ void main() {
     // Older than every snapshot kept: the oldest one is the best there is.
     expect(catalog.clipsAt('ads', DateTime(2000)).map((c) => c.id), ['spot', 'reel@0']);
   });
+
+  group('bumper pools', () {
+    final ad = _item('ad', _s(30), ['ads']);
+    final ident = _item('ident', _s(5), ['idents']);
+    final other = _item('other', _s(5), ['others']);
+    final at = DateTime(2026, 10, 17, 19);
+
+    test('all pools means commercial pools, and bumpers have their own union', () {
+      final catalog = CommercialCatalog(clock: () => now)
+        ..update([ad, ident, other], null, ['ads', 'idents', 'others'], bumperPools: ['idents', 'others']);
+      expect(catalog.clipsAt(null, at).map((c) => c.id), ['ad']);
+      expect(catalog.bumpersAt(null, at).map((c) => c.id), ['ident', 'other']);
+      expect(catalog.clipsFor('idents').map((c) => c.id), ['ident'], reason: 'counts still see its clips');
+      expect(catalog.clipsAt('idents', at), isEmpty, reason: 'never as ads, even if a plan names it');
+      expect(catalog.hasClips('idents'), isFalse);
+      expect(catalog.hasClips('ads'), isTrue);
+    });
+
+    test('a picked pool with no bumpers falls back to all of them', () {
+      final catalog = CommercialCatalog(clock: () => now)
+        ..update([ident, other], null, ['ads', 'idents', 'others', 'empty'], bumperPools: ['idents', 'others', 'empty']);
+      expect(catalog.bumpersAt('others', at).map((c) => c.id), ['other']);
+      expect(catalog.bumpersAt('empty', at).map((c) => c.id), ['ident', 'other']);
+      expect(catalog.bumpersAt('ads', at).map((c) => c.id), ['ident', 'other'], reason: 'not a bumper pool');
+    });
+
+    test('a type change starts a new snapshot; breaks before it keep theirs', () {
+      final catalog = CommercialCatalog(clock: () => now)..update([ad, ident], null, ['ads', 'idents']);
+      expect(catalog.clipsAt(null, at).map((c) => c.id), ['ad', 'ident']);
+      final changedAt = now = now.add(const Duration(minutes: 5));
+      catalog.update([ad, ident], null, ['ads', 'idents'], bumperPools: ['idents']);
+      expect(catalog.version, 2);
+      expect(catalog.clipsAt(null, changedAt.subtract(const Duration(seconds: 1))).map((c) => c.id), ['ad', 'ident']);
+      expect(catalog.bumpersAt(null, changedAt.subtract(const Duration(seconds: 1))), isEmpty);
+      expect(catalog.clipsAt(null, changedAt).map((c) => c.id), ['ad']);
+      expect(catalog.bumpersAt(null, changedAt).map((c) => c.id), ['ident']);
+    });
+  });
 }

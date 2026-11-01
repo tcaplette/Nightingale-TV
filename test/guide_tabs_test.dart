@@ -170,4 +170,14 @@ void main() {
     expect(app.guideTabs().map((t) => t.id), isNot(contains(GuideTabs.kids)));
     expect(find.text('KIDS'), findsNothing);
   });
+
+  testWidgets('every channel cell is as tall as its row', (tester) async {
+    await show(tester);
+    for (final channel in app.channels.take(3)) {
+      final cell = find.ancestor(of: find.text('${channel.number}'), matching: find.byType(Container)).first;
+      final row = find.ancestor(of: cell, matching: find.byType(Row)).first;
+      expect(tester.getRect(cell).top, tester.getRect(row).top, reason: channel.name);
+      expect(tester.getRect(cell).bottom, tester.getRect(row).bottom, reason: channel.name);
+    }
+  });
 }

@@ -68,7 +68,7 @@ void main() {
     final c = client();
     await c.fetchLibraryIndex(pools: [
       CommercialPool(id: 'p', name: 'Ads', roots: [const PoolRoot(itemId: 'ads', libraryId: 'ads', label: 'Ads')]),
-    ]);
+    ], channelRoots: {'box80s'});
     expect(sent.map(line), [
       'GET https://jf.example:8920/UserViews?userId=u1',
       'GET https://jf.example:8920/Items?ParentId=ads&Recursive=true&IncludeItemTypes=Movie%2CEpisode%2CVideo%2CMusicVideo%2CTrailer'
@@ -76,15 +76,18 @@ void main() {
       'GET https://jf.example:8920/Items?ParentId=tv&Recursive=true&ImageTypeLimit=1&IncludeItemTypes=Series'
           '&Fields=Genres%2COfficialRating&userId=u1&StartIndex=0&Limit=500',
       'GET https://jf.example:8920/Items?ParentId=tv&Recursive=true&ImageTypeLimit=1&IncludeItemTypes=Episode&IsMissing=false'
-          '&Fields=Overview%2CChapters%2CEtag%2CDateCreated&EnableImages=false&EnableUserData=false&userId=u1&StartIndex=0&Limit=500',
+          '&Fields=Overview%2CChapters%2CEtag%2CDateCreated&EnableImages=false&EnableUserData=true&userId=u1&StartIndex=0&Limit=500',
       'GET https://jf.example:8920/Items?ParentId=tv&Recursive=true&ImageTypeLimit=1&IncludeItemTypes=Movie'
-          '&Fields=Overview%2CGenres%2COfficialRating%2CChapters%2CEtag&EnableImages=false&EnableUserData=false&userId=u1&StartIndex=0&Limit=500',
+          '&Fields=Overview%2CGenres%2COfficialRating%2CChapters%2CEtag&EnableImages=false&EnableUserData=true&userId=u1&StartIndex=0&Limit=500',
       'GET https://jf.example:8920/Items?ParentId=tv&Recursive=true&ImageTypeLimit=1&IncludeItemTypes=MusicVideo&IsMissing=false'
           '&Fields=Genres%2CProductionYear%2CArtists%2CAlbumArtist%2CAlbum%2CAlbumId%2COfficialRating%2CEtag%2CMediaSources'
           '&EnableImages=false&EnableUserData=false&userId=u1&StartIndex=0&Limit=500',
       'GET https://jf.example:8920/Items?ParentId=mu&Recursive=true&ImageTypeLimit=1&IncludeItemTypes=Audio&IsMissing=false'
           '&Fields=Genres%2CProductionYear%2CArtists%2CAlbumArtist%2CAlbum%2CAlbumId%2COfficialRating%2CEtag%2CMediaSources'
           '&EnableImages=false&EnableUserData=false&userId=u1&StartIndex=0&Limit=500',
+      // A channel's root: ids only, once.
+      'GET https://jf.example:8920/Items?ParentId=box80s&Recursive=true&IncludeItemTypes=Movie%2CEpisode%2CSeries%2CBoxSet'
+          '&IsMissing=false&EnableImages=false&EnableUserData=false&userId=u1&StartIndex=0&Limit=500',
     ]);
   });
 

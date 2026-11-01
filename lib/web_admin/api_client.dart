@@ -59,6 +59,8 @@ class ApiClient {
 
   Future<Object?> delete(String path) => _send('DELETE', path);
 
+  Future<Object?> patch(String path, Object? body) => _send('PATCH', path, body: body);
+
   /// Sends [bytes] as the body (uploads).
   Future<Object?> upload(String path, Uint8List bytes, {Map<String, String>? query}) =>
       _send('POST', path, bytes: bytes, query: query);
@@ -68,7 +70,7 @@ class ApiClient {
     final request = http.Request(method, url(path, query));
     if (method != 'GET') request.headers['X-Nightingale-TV'] = '1';
     final scope = scopeOf(path);
-    if ((method == 'PUT' || method == 'DELETE') && scope != null) {
+    if ((method == 'PUT' || method == 'PATCH' || method == 'DELETE') && scope != null) {
       request.headers['If-Match'] = _revisions[scope] ?? await _readRevision(scope);
     }
     if (bytes != null) {

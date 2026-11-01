@@ -10,7 +10,7 @@ import 'widgets/adaptive.dart';
 import 'widgets/screen_layout.dart';
 import 'widgets/tv_focus.dart';
 
-/// Rename a commercial pool, choose its folders, or delete it.
+/// Rename a commercial pool, set its type, choose its folders, or delete it.
 class PoolEditorScreen extends StatefulWidget {
   const PoolEditorScreen({super.key, required this.pool});
 
@@ -34,6 +34,13 @@ class _PoolEditorScreenState extends State<PoolEditorScreen> {
   Future<void> _rename() async {
     await AppScope.read(context).renamePool(_pool, _name.text);
     if (mounted) setState(() => _name.text = _pool.name);
+  }
+
+  Future<void> _setKind(PoolKind kind) async {
+    final tuner = AppScope.tunerOf(context);
+    await AppScope.read(context).setPoolKind(_pool, kind);
+    // What's playing plays on; the new breaks start after it.
+    await tuner.reschedule();
   }
 
   Future<void> _addFolders() async {
@@ -69,6 +76,7 @@ class _PoolEditorScreenState extends State<PoolEditorScreen> {
     final reels = items.where((c) => c.runtime > LibraryIndex.maxClip).toList();
     final unsplit = reels.where((r) => !app.catalog.clipsFor(_pool.id).any((c) => c.sourceId == r.id)).length;
     final portrait = ScreenLayout.of(context).isPortrait;
+    final bumpers = _pool.kind == PoolKind.bumpers;
 
     return TvPage(
       title: 'Commercial pool',
@@ -86,11 +94,27 @@ class _PoolEditorScreenState extends State<PoolEditorScreen> {
                     ],
                   ),
                   const SizedBox(height: 36),
+                  Text('TYPE', style: g.display(26, weight: FontWeight.w800, color: g.accent)),
+                  const SizedBox(height: 14),
+                  Wrap(
+                    spacing: 12,
+                    runSpacing: 12,
+                    children: [
+                      for (final kind in PoolKind.values)
+                        TvToggle(
+                          label: kind.label,
+                          radio: true,
+                          on: kind == _pool.kind,
+                          onPressed: () => _setKind(kind),
+                        ),
+                    ],
+                  ),
+                  const SizedBox(height: 36),
                   Text('FOLDERS', style: g.display(26, weight: FontWeight.w800, color: g.accent)),
                   const SizedBox(height: 6),
                   Text(
-                    'Every video in these folders (and the folders inside them) fills breaks, '
-                    'and never airs as a program.',
+                    'Every video in these folders (and the folders inside them) '
+                    '${bumpers ? 'opens and closes breaks' : 'fills breaks'}, and never airs as a program.',
                     style: g.body(24, color: g.textDim),
                   ),
                   const SizedBox(height: 16),
@@ -107,7 +131,7 @@ class _PoolEditorScreenState extends State<PoolEditorScreen> {
                           Icon(root.isWholeLibrary ? Icons.video_library : Icons.folder, size: 36, color: g.accent),
                           const SizedBox(width: 16),
                           Expanded(
-                            child: Text(root.label.isEmpty ? 'Library' : root.label,
+                            child: Text(root.label.isEmpty ? 'Library' : app.rootLabel(root),
                                 maxLines: 1, overflow: TextOverflow.ellipsis, style: g.display(30, weight: FontWeight.w600)),
                           ),
                           TvButton(label: 'Remove', icon: Icons.close, onPressed: () => _remove(root)),
@@ -161,7 +185,13 @@ class _PoolEditorScreenState extends State<PoolEditorScreen> {
                     style: g.body(24, color: g.textDim),
                   ),
                   const SizedBox(height: 24),
-                  for (final line in const [
+                  for (final line in [
+                    if (bumpers) ...const [
+                      'A mid-roll opens and closes with a bumper, a post-roll opens with one, and a pre-roll closes '
+                          'with one. Commercials fill the rest.',
+                      'Bumpers take at most half of a break, except in a pre-roll. One too long for that is skipped.',
+                    ] else
+                      'Commercials fill breaks. Set the type to Bumpers for station idents and "we\'ll be right back" clips.',
                     'Videos of 5 seconds to 3 minutes are one clip each.',
                     'Longer videos (ad compilations) are split into their ads, at chapters or where the '
                         'picture goes black and silent.',

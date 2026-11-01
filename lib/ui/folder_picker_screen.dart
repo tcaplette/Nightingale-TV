@@ -18,10 +18,13 @@ import '../server/media_server.dart';
 /// Only what any signed-in user can see is listed: libraries, and the
 /// folders, shows, seasons and collections in them. No server paths.
 class FolderPickerScreen extends StatefulWidget {
-  const FolderPickerScreen({super.key, required this.initial, this.poolName});
+  const FolderPickerScreen({super.key, required this.initial, this.poolName, this.forChannel = false});
 
   final List<PoolRoot> initial;
   final String? poolName;
+
+  /// Picking what plays on a channel or block, not a pool's folders.
+  final bool forChannel;
 
   @override
   State<FolderPickerScreen> createState() => _FolderPickerScreenState();
@@ -56,9 +59,9 @@ class _FolderPickerScreenState extends State<FolderPickerScreen> {
   }
 
   Future<List<ServerLibrary>> _loadLibraries() async {
-    final client = AppScope.read(context).client;
-    if (client == null) throw ServerException('Not signed in.');
-    final libraries = (await client.libraries()).where((l) => l.isVideo).toList();
+    // Every server's (multi-server).
+    final libraries =
+        (await AppScope.read(context).allLibraries()).where((l) => l.isVideo || l.isCollections).toList();
     if (libraries.isNotEmpty) _focusWhenBuilt(_nodeFor('lib:${libraries.first.id}'), onlyIfIdle: true);
     return libraries;
   }
@@ -81,7 +84,7 @@ class _FolderPickerScreenState extends State<FolderPickerScreen> {
   }
 
   Future<List<FolderNode>> _treeOf(ServerLibrary lib) => _trees.putIfAbsent(lib.id, () async {
-        final client = AppScope.read(context).client;
+        final client = AppScope.read(context).clientOf(lib.id);
         if (client == null) throw ServerException('Not signed in.');
         return client.folderTree(lib.id);
       });
@@ -151,7 +154,11 @@ class _FolderPickerScreenState extends State<FolderPickerScreen> {
   Widget build(BuildContext context) {
     final g = context.guide;
     return TvPage(
-      title: widget.poolName == null ? 'Choose folders' : 'Folders for ${widget.poolName}',
+      title: widget.forChannel
+          ? 'Choose what plays on this channel'
+          : widget.poolName == null
+              ? 'Choose folders'
+              : 'Folders for ${widget.poolName}',
       hints: '▲▼ Move    OK Tick    ▶ Open    ◀ Back up    ESC Cancel',
       onBack: _back,
       child: FutureBuilder<List<ServerLibrary>>(
@@ -283,7 +290,9 @@ class _FolderPickerScreenState extends State<FolderPickerScreen> {
                       () => PoolRoot(
                             itemId: node.id,
                             libraryId: lib.id,
-                            label: _label(lib, [..._path, node]),
+                            label: widget.forChannel && node.type == 'BoxSet'
+                                ? '${node.name} (collection)'
+                                : _label(lib, [..._path, node]),
                           )),
                   onOpen: () => _openFolder(node),
                   onBack: _back,
@@ -320,7 +329,7 @@ class _FolderPickerScreenState extends State<FolderPickerScreen> {
             const SizedBox(height: 10),
             SizedBox(
               width: 1000,
-              child: Text('$error  The pool hasn\'t changed.',
+              child: Text(widget.forChannel ? '$error  Nothing has changed.' : '$error  The pool hasn\'t changed.',
                   textAlign: TextAlign.center, style: g.body(26, color: g.textDim)),
             ),
             const SizedBox(height: 28),

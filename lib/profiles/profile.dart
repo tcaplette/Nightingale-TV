@@ -44,6 +44,8 @@ int? ratingRank(String? rating) {
     '15': 5,
     'NC-17': 6,
     '18': 6,
+    'X': 6,
+    'XXX': 6,
   }[r];
 }
 

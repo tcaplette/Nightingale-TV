@@ -19,8 +19,11 @@ import 'data/app_storage.dart';
 import 'export/broadcast_art.dart';
 import 'export/export_service.dart';
 import 'platform/android_back_bridge.dart';
+import 'platform/linux_wakelock.dart';
 import 'platform/platform_info.dart';
+import 'playback/device_effects.dart';
 import 'playback/playback_diagnostics.dart';
+import 'playback/sleep_timer.dart';
 import 'playback/tuner.dart';
 import 'profiles/household.dart';
 import 'remote/remote_control.dart';
@@ -33,6 +36,7 @@ import 'theme/tv_theme.dart';
 import 'ui/backup_screen.dart';
 import 'ui/login_screen.dart';
 import 'ui/profiles_screen.dart';
+import 'ui/sleep_overlay.dart';
 import 'ui/sync_screen.dart';
 import 'ui/tv_screen.dart';
 import 'ui/widgets/nightingale_mark.dart';
@@ -47,6 +51,8 @@ Future<void> main(List<String> args) async {
   // mpv plays everywhere but Android, which has ExoPlayer and no libmpv
   // (by the real OS, as TunerPlayer.create chooses).
   if (!Platform.isAndroid) MediaKit.ensureInitialized();
+  // One screensaver hold for media_kit's players, released when they stop.
+  SingleLinuxWakelock.install();
   await PlatformInfo.init();
   if (PlatformInfo.isDesktop) {
     await _setUpWindow();
@@ -68,6 +74,7 @@ Future<void> main(List<String> args) async {
   PlaybackDiagnostics.mark('platform ready');
   final household = Household(await AppStorage.open());
   household.backups = BackupScheduler(household, BackupStore(Directory('${household.root.root.path}/backups')));
+  await DeviceEffects.instance.load(household.root);
   PlaybackDiagnostics.mark('storage open');
   // The phone remote is for a TV or a PC across the room; on a phone or
   // tablet the app is already in hand, so there's none (portrait-layout).
@@ -261,10 +268,13 @@ class NightingaleTvApp extends StatelessWidget {
             child: AutoHidePointer(
                 child: HouseholdNotice(
                     household: household,
-                    child: switch (androidBack) {
+                    // The sleep timer's warning and sleep screen, over every
+                    // screen (none before a profile is watching).
+                    child: SleepOverlay(
+                        child: switch (androidBack) {
                       final back? => BackKeyWatcher(bridge: back, child: child!),
                       null => child!,
-                    }))),
+                    })))),
         home: home,
       );
 }
@@ -305,12 +315,16 @@ class ProfileSession extends StatefulWidget {
 
 class _ProfileSessionState extends State<ProfileSession> {
   late final Tuner _tuner = Tuner(widget.app);
+  late final SleepTimer _sleep = SleepTimer(_tuner);
   late final RemoteControl? _remote = HouseholdScope.read(context).remote;
 
   /// Android: stops playback in the background and tunes back in on return.
   AppLifecycleListener? _lifecycle;
   Future<void>? _hiding;
   Channel? _hiddenChannel;
+
+  /// Where a viewer behind the schedule or paused was (timeshift D12).
+  ViewingPlace? _hiddenPlace;
 
   @override
   void initState() {
@@ -328,19 +342,26 @@ class _ProfileSessionState extends State<ProfileSession> {
   /// Out of sight (Home, another app, screen off): nothing plays, transcodes
   /// or reports, since Android may end the process at any time from here.
   void _onHide() {
-    _hiddenChannel ??= _tuner.channel;
+    if (_tuner.channel != null) _hiddenPlace = _tuner.place;
+    // Asleep, the channel slept on comes back.
+    _hiddenChannel ??= _tuner.channel ?? (_sleep.phase == SleepPhase.asleep ? _sleep.sleptOn : null);
+    // The sleep timer isn't kept (sleep-timer spec).
+    _sleep.cancel(by: 'hidden');
     _hiding = () async {
       await _tuner.stopTranscodeForExit();
       await _tuner.stop();
     }();
   }
 
-  /// Back in front: the same channel, at what's airing now.
+  /// Back in front: the same channel, at what's airing now, or at the same
+  /// place if the viewer was behind or paused.
   Future<void> _onShow() async {
     await _hiding;
     final channel = _hiddenChannel;
+    final place = _hiddenPlace;
     _hiddenChannel = null;
-    if (channel != null && mounted && _tuner.channel == null) await _tuner.tune(channel);
+    _hiddenPlace = null;
+    if (channel != null && mounted && _tuner.channel == null) await _tuner.tune(channel, at: place);
   }
 
   @override
@@ -350,13 +371,15 @@ class _ProfileSessionState extends State<ProfileSession> {
     exitHooks.remove(_tuner.closeLiveForExit);
     exitHooks.remove(_tuner.flushReports);
     if (_remote?.tuner == _tuner) _remote?.tuner = null;
+    _sleep.dispose();
     final tuner = _tuner;
     tuner.stop().whenComplete(tuner.dispose);
     super.dispose();
   }
 
   @override
-  Widget build(BuildContext context) => AppScope(app: widget.app, tuner: _tuner, child: widget.child);
+  Widget build(BuildContext context) =>
+      AppScope(app: widget.app, tuner: _tuner, sleep: _sleep, child: widget.child);
 }
 
 /// Picks the screen for the app's current phase.

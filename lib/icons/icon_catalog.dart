@@ -103,6 +103,11 @@ final Map<String, IconData> _allIcons = {
 
 IconData iconForKey(String key) => _allIcons[key] ?? Icons.live_tv;
 
+/// Whether [key] draws the app's own TV with the bird, not a symbol: the
+/// default channel icon, and keys from a newer version. Draw these with
+/// `BuiltinIcon`.
+bool drawsNightingaleTv(String key) => key == 'live_tv' || !_allIcons.containsKey(key);
+
 /// Colors offered for icon tints and badge backgrounds (ARGB).
 const iconColors = <int>[
   0xFFFFD23F, // guide yellow

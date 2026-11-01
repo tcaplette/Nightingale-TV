@@ -6,24 +6,43 @@ import 'break_sources.dart';
 
 /// The clips available at one point in time, by pool.
 class ClipSnapshot {
-  ClipSnapshot(this.effectiveFrom, this.byPool) : all = _union(byPool);
+  ClipSnapshot(this.effectiveFrom, this.byPool, {this.bumperPools = const {}})
+      : all = _union(byPool, (p) => !bumperPools.contains(p)),
+        bumpers = _union(byPool, bumperPools.contains);
 
   /// Breaks starting at or after this use these clips.
   final DateTime effectiveFrom;
   final Map<String, List<MediaEntry>> byPool;
 
-  /// Every clip in any pool, each once.
+  /// The pools in [byPool] that hold bumpers.
+  final Set<String> bumperPools;
+
+  /// Every clip in any commercial pool, each once.
   final List<MediaEntry> all;
 
-  /// [poolId]'s clips; null for all pools.
+  /// Every clip in any bumper pool, each once.
+  final List<MediaEntry> bumpers;
+
+  /// [poolId]'s clips, of either type; null for all commercial pools.
   List<MediaEntry> clipsFor(String? poolId) => poolId == null ? all : byPool[poolId] ?? const [];
 
-  static List<MediaEntry> _union(Map<String, List<MediaEntry>> byPool) {
+  /// The clips a break can air as commercials from [poolId]: none from a
+  /// bumper pool.
+  List<MediaEntry> adsFor(String? poolId) => bumperPools.contains(poolId) ? const [] : clipsFor(poolId);
+
+  /// [poolId]'s bumpers, or all bumper pools' when it has none.
+  List<MediaEntry> bumpersFor(String? poolId) {
+    final own = bumperPools.contains(poolId) ? byPool[poolId] ?? const <MediaEntry>[] : const <MediaEntry>[];
+    return own.isEmpty ? bumpers : own;
+  }
+
+  static List<MediaEntry> _union(Map<String, List<MediaEntry>> byPool, bool Function(String) include) {
     final seen = <String>{};
     return [
-      for (final clips in byPool.values)
-        for (final c in clips)
-          if (seen.add(c.id)) c,
+      for (final MapEntry(key: pool, value: clips) in byPool.entries)
+        if (include(pool))
+          for (final c in clips)
+            if (seen.add(c.id)) c,
     ];
   }
 }
@@ -59,22 +78,34 @@ class CommercialCatalog extends ChangeNotifier implements ClipSource {
 
   List<MediaEntry> clipsFor(String? poolId) => current.clipsFor(poolId);
 
-  bool hasClips(String? poolId) => clipsFor(poolId).isNotEmpty;
+  /// Whether [poolId] has clips that can air as commercials.
+  bool hasClips(String? poolId) => current.adsFor(poolId).isNotEmpty;
+
+  /// The snapshot a break starting at [breakStart] uses.
+  ClipSnapshot? _snapshotAt(DateTime breakStart) {
+    for (final s in _snapshots.reversed) {
+      if (!s.effectiveFrom.isAfter(breakStart)) return s;
+    }
+    return _snapshots.firstOrNull;
+  }
 
   /// The clips a break starting at [breakStart] draws from.
   @override
-  List<MediaEntry> clipsAt(String? poolId, DateTime breakStart) {
-    for (final s in _snapshots.reversed) {
-      if (!s.effectiveFrom.isAfter(breakStart)) return s.clipsFor(poolId);
-    }
-    return _snapshots.isEmpty ? const [] : _snapshots.first.clipsFor(poolId);
-  }
+  List<MediaEntry> clipsAt(String? poolId, DateTime breakStart) =>
+      _snapshotAt(breakStart)?.adsFor(poolId) ?? const [];
+
+  /// The bumpers a break starting at [breakStart] draws from.
+  @override
+  List<MediaEntry> bumpersAt(String? poolId, DateTime breakStart) =>
+      _snapshotAt(breakStart)?.bumpersFor(poolId) ?? const [];
 
   /// Rebuilds from the library's pool [items], keeping only the pools in
-  /// [poolIds]. A change starts a new snapshot (from the epoch for the first
-  /// one, e.g. at launch).
-  void update(List<MediaEntry> items, AnalysisCache? cache, Iterable<String> poolIds) {
+  /// [poolIds], of which [bumperPools] hold bumpers. A change starts a new
+  /// snapshot (from the epoch for the first one, e.g. at launch).
+  void update(List<MediaEntry> items, AnalysisStore? cache, Iterable<String> poolIds,
+      {Iterable<String> bumperPools = const []}) {
     final pools = poolIds.toSet();
+    final bumpers = bumperPools.toSet();
     final byPool = <String, List<MediaEntry>>{for (final p in pools) p: []};
     for (final item in items) {
       final inPools = [for (final p in item.poolIds) if (pools.contains(p)) p];
@@ -88,10 +119,11 @@ class CommercialCatalog extends ChangeNotifier implements ClipSource {
     final signature = [
       for (final e in byPool.entries.toList()..sort((a, b) => a.key.compareTo(b.key)))
         '${e.key}:${[for (final c in e.value) '${c.id}/${c.runtime.inMilliseconds}'].join(',')}',
+      'bumpers:${(bumpers.toList()..sort()).join(',')}',
     ].join(';');
     if (signature == _signature && _snapshots.isNotEmpty) return;
     _signature = signature;
-    _snapshots.add(ClipSnapshot(_snapshots.isEmpty ? _epoch : _clock(), byPool));
+    _snapshots.add(ClipSnapshot(_snapshots.isEmpty ? _epoch : _clock(), byPool, bumperPools: bumpers));
     while (_snapshots.length > keep) {
       _snapshots.removeAt(0);
     }

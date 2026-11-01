@@ -6,6 +6,8 @@ import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' show Client;
 
 import 'channels/channel.dart';
+import 'channels/retro.dart';
+export 'channels/retro.dart';
 import 'channels/channel_generator.dart';
 import 'channels/channel_groups.dart';
 import 'channels/channel_groups.dart' as channel_groups show m3uGroupFor;
@@ -17,6 +19,7 @@ import 'commercials/analysis/analysis_cache.dart';
 import 'commercials/analysis/detections.dart';
 import 'commercials/analysis/ffmpeg_runner.dart';
 import 'commercials/analysis/media_analyzer.dart';
+import 'commercials/analysis/server_analysis.dart';
 import 'commercials/analysis/stream_proxy.dart';
 import 'commercials/break_plan.dart';
 import 'commercials/break_sources.dart';
@@ -25,6 +28,7 @@ import 'commercials/commercial_pool.dart';
 import 'data/app_storage.dart';
 import 'icons/custom_icons.dart';
 import 'library/library_index.dart';
+import 'library/library_merge.dart';
 import 'live/live_data.dart';
 import 'live/live_download.dart';
 import 'live/live_refresher.dart';
@@ -41,6 +45,7 @@ import 'server/plex/plex_account.dart';
 import 'server/plex/plex_client.dart';
 import 'server/plex/plex_connections.dart';
 import 'server/server_clients.dart';
+import 'server/server_set.dart';
 import 'ui/format.dart';
 
 /// A choice for the maximum streaming bitrate: Original (no [kbps]) or a
@@ -60,7 +65,12 @@ typedef _Asked = ({Decision? decision, Object? error, StackTrace? stack});
 class PlaybackSettings {
   /// A fixed [maxKbps] cap, or Original when it's null.
   const PlaybackSettings(
-      {this.transcodeIfNeeded = false, this.maxKbps, this.volumeLeveling = false, this.breakNotices = true});
+      {this.transcodeIfNeeded = false,
+      this.maxKbps,
+      this.volumeLeveling = false,
+      this.breakNotices = true,
+      this.pauseAndRewind = true,
+      this.onScreenClock = false});
 
   /// A setting never saved: transcoding and leveling off, with Original
   /// chosen; break notices on.
@@ -78,6 +88,12 @@ class PlaybackSettings {
 
   /// Count down before commercials start and before the program comes back.
   final bool breakNotices;
+
+  /// Pause, skip and restart on generated channels (timeshift).
+  final bool pauseAndRewind;
+
+  /// Show the time of day in the corner of the picture.
+  final bool onScreenClock;
 
   /// In this order, Original first.
   static const presets = <BitratePreset>[
@@ -102,16 +118,29 @@ class PlaybackSettings {
   int? capKbps() => transcodeIfNeeded ? maxKbps : null;
 
   /// Whether playback decisions made under [other] still hold: everything
-  /// but [breakNotices], which changes no playback, is the same.
-  bool decidesLike(PlaybackSettings other) => copyWith(breakNotices: other.breakNotices) == other;
+  /// but [breakNotices], [pauseAndRewind] and [onScreenClock], which change no
+  /// decision, is the same.
+  bool decidesLike(PlaybackSettings other) =>
+      copyWith(
+          breakNotices: other.breakNotices,
+          pauseAndRewind: other.pauseAndRewind,
+          onScreenClock: other.onScreenClock) ==
+      other;
 
   PlaybackSettings copyWith(
-          {bool? transcodeIfNeeded, BitratePreset? bitrate, bool? volumeLeveling, bool? breakNotices}) =>
+          {bool? transcodeIfNeeded,
+          BitratePreset? bitrate,
+          bool? volumeLeveling,
+          bool? breakNotices,
+          bool? pauseAndRewind,
+          bool? onScreenClock}) =>
       PlaybackSettings(
         transcodeIfNeeded: transcodeIfNeeded ?? this.transcodeIfNeeded,
         maxKbps: bitrate == null ? maxKbps : bitrate.kbps,
         volumeLeveling: volumeLeveling ?? this.volumeLeveling,
         breakNotices: breakNotices ?? this.breakNotices,
+        pauseAndRewind: pauseAndRewind ?? this.pauseAndRewind,
+        onScreenClock: onScreenClock ?? this.onScreenClock,
       );
 
   Map<String, Object?> toJson() => {
@@ -119,23 +148,33 @@ class PlaybackSettings {
         'bitrate': maxKbps ?? 'original',
         'volumeLeveling': volumeLeveling,
         'breakNotices': breakNotices,
+        'pauseAndRewind': pauseAndRewind,
+        'onScreenClock': onScreenClock,
       };
 
   /// A missing or unreadable setting is off with Original chosen. A saved
   /// "auto" (removed) is Original, with the toggle as it was; a saved cap
   /// snaps to the preset at or below it (4 Mbps for anything lower). Saved
   /// before Auto (as `maxBitrateMbps`), the same rules apply. Volume
-  /// leveling is off unless saved as on; break notices are on unless saved
-  /// as off.
+  /// leveling is off unless saved as on; break notices and pause and rewind
+  /// are on unless saved as off; the on-screen clock is off unless saved as
+  /// on.
   factory PlaybackSettings.fromJson(Object? json) {
     if (json is! Map<String, Object?>) return off;
     final on = json['transcodeIfNeeded'] == true;
     final leveling = json['volumeLeveling'] == true;
     final notices = json['breakNotices'] != false;
+    final rewind = json['pauseAndRewind'] != false;
+    final clock = json['onScreenClock'] == true;
     final bitrate = json['bitrate'];
     if (bitrate is num) {
       return PlaybackSettings(
-          transcodeIfNeeded: on, maxKbps: capAtOrBelow(bitrate), volumeLeveling: leveling, breakNotices: notices);
+          transcodeIfNeeded: on,
+          maxKbps: capAtOrBelow(bitrate),
+          volumeLeveling: leveling,
+          breakNotices: notices,
+          pauseAndRewind: rewind,
+          onScreenClock: clock);
     }
     if (!json.containsKey('bitrate')) {
       if (json['maxBitrateMbps'] case final num mbps) {
@@ -143,10 +182,17 @@ class PlaybackSettings {
             transcodeIfNeeded: on,
             maxKbps: capAtOrBelow(mbps * 1000),
             volumeLeveling: leveling,
-            breakNotices: notices);
+            breakNotices: notices,
+            pauseAndRewind: rewind,
+            onScreenClock: clock);
       }
     }
-    return PlaybackSettings(transcodeIfNeeded: on, volumeLeveling: leveling, breakNotices: notices);
+    return PlaybackSettings(
+        transcodeIfNeeded: on,
+        volumeLeveling: leveling,
+        breakNotices: notices,
+        pauseAndRewind: rewind,
+        onScreenClock: clock);
   }
 
   @override
@@ -155,14 +201,18 @@ class PlaybackSettings {
       other.transcodeIfNeeded == transcodeIfNeeded &&
       other.maxKbps == maxKbps &&
       other.volumeLeveling == volumeLeveling &&
-      other.breakNotices == breakNotices;
+      other.breakNotices == breakNotices &&
+      other.pauseAndRewind == pauseAndRewind &&
+      other.onScreenClock == onScreenClock;
 
   @override
-  int get hashCode => Object.hash(transcodeIfNeeded, maxKbps, volumeLeveling, breakNotices);
+  int get hashCode =>
+      Object.hash(transcodeIfNeeded, maxKbps, volumeLeveling, breakNotices, pauseAndRewind, onScreenClock);
 
   @override
   String toString() => 'PlaybackSettings(${transcodeIfNeeded ? 'on' : 'off'}, ${preset.label}, '
-      'leveling ${volumeLeveling ? 'on' : 'off'}, notices ${breakNotices ? 'on' : 'off'})';
+      'leveling ${volumeLeveling ? 'on' : 'off'}, notices ${breakNotices ? 'on' : 'off'}, rewind ${pauseAndRewind ? 'on' : 'off'}, '
+      'clock ${onScreenClock ? 'on' : 'off'})';
 }
 
 /// What the TV is doing, as far as bandwidth goes.
@@ -204,6 +254,7 @@ class AppSettings {
     this.playback = PlaybackSettings.off,
     this.migrated = false,
     this.logoMode = LogoMode.nowAndThen,
+    this.retro = const RetroSettings(),
     List<ChannelGroup>? groups,
     List<String>? guideTabs,
     Set<String>? hiddenTabs,
@@ -234,6 +285,10 @@ class AppSettings {
   /// The main channel logo setting; channels can have their own.
   LogoMode logoMode;
 
+  /// The main retro look and the Custom CRT style; channels can have their
+  /// own look.
+  RetroSettings retro;
+
   /// The profile's own channel groups, and the guide's tabs: their order
   /// (built-in ids and group ids), the hidden ones, and the one picked last.
   List<ChannelGroup> groups;
@@ -263,6 +318,7 @@ class AppSettings {
         if (lastChannelId != null) 'lastChannelId': lastChannelId,
         'playback': playback.toJson(),
         'logoMode': logoMode.name,
+        'retro': retro.toJson(),
         if (groups.isNotEmpty) 'groups': [for (final g in groups) g.toJson()],
         'guideTabs': guideTabs,
         if (hiddenTabs.isNotEmpty) 'hiddenTabs': hiddenTabs.toList(),
@@ -290,6 +346,7 @@ class AppSettings {
     ];
     AppSettings withExtras(AppSettings s) => s
       ..logoMode = LogoMode.parse(j['logoMode']) ?? LogoMode.nowAndThen
+      ..retro = RetroSettings.fromJson(j['retro'])
       ..groups = groups
       ..guideTabs = GuideTabs.normalize((j['guideTabs'] as List?)?.whereType<String>().toList() ?? GuideTabs.defaultOrder, groups)
       ..hiddenTabs = {...?(j['hiddenTabs'] as List?)?.whereType<String>()}
@@ -460,7 +517,7 @@ class AppState extends ChangeNotifier {
       AppPhase.signedOut => AnalyzerState.idle,
       AppPhase.starting || AppPhase.syncing => AnalyzerState.starting,
       AppPhase.ready => analyzer?.state.value ??
-          (_analysis == null || client == null ? AnalyzerState.idle : AnalyzerState.starting),
+          (_store == null || client == null ? AnalyzerState.idle : AnalyzerState.starting),
     };
   }
 
@@ -508,8 +565,18 @@ class AppState extends ChangeNotifier {
   String syncStatus = '';
   String? syncError;
   late AppSettings settings;
-  ServerSession? session;
-  MediaServer? client;
+
+  /// The profile's servers (multi-server): the main one, whose sign-in is
+  /// [session] and [client], and any added ones.
+  final servers = ServerSet();
+
+  /// The main server's sign-in (`session.json`).
+  ServerSession? get session => servers.main.session;
+  set session(ServerSession? s) => servers.main.session = s;
+
+  /// The main server's client.
+  MediaServer? get client => servers.main.client;
+  set client(MediaServer? c) => servers.main.client = c;
 
   /// Where a restored profile signed in, for pre-filling sign-in: server URL,
   /// name and id, user id and name. Null otherwise.
@@ -533,8 +600,28 @@ class AppState extends ChangeNotifier {
   ProgramSchedule? scheduleFor(Channel c) {
     if (c.isLive) return live.scheduleFor(c);
     final premieres = premierePlan;
-    return _schedules.putIfAbsent(
-        c.id, () => ChannelSchedule.build(c, library, _blocks, _breakContext(planFor(c)), premieres));
+    return _schedules.putIfAbsent(c.id, () {
+      // Built before: what follows may differ from what aired (timeshift D6).
+      if (!_scheduleBuilt.add(c.id)) _scheduleChanged[c.id] = DateTime.now();
+      return ChannelSchedule.build(c, library, _blocks, _breakContext(planFor(c), c.effectiveSlotRule), premieres);
+    });
+  }
+
+  final _scheduleBuilt = <String>{};
+  final _scheduleChanged = <String, DateTime>{};
+
+  /// When [channelId]'s schedule was last rebuilt this session: rewinding
+  /// stays within the slot on air then.
+  DateTime? scheduleChangedAt(String channelId) => _scheduleChanged[channelId];
+
+  /// Records a rebuild at [at] (tests, whose clocks aren't the real time).
+  @visibleForTesting
+  void debugScheduleChanged(String channelId, DateTime? at) {
+    if (at == null) {
+      _scheduleChanged.remove(channelId);
+    } else {
+      _scheduleChanged[channelId] = at;
+    }
   }
 
   // ---- New episode premieres (episode-premieres) ------------------------------
@@ -675,10 +762,19 @@ class AppState extends ChangeNotifier {
   // ---- Live TV sources (live-tv-sources) ---------------------------------------
 
   /// The profile's Live TV sources and their channels.
-  late final live = LiveTvManager(storage, signedIn: () {
-    final c = client, s = session;
-    return c == null || s == null ? null : (client: c, session: s);
+  late final live = LiveTvManager(storage, signedIn: (source) {
+    final server = _liveServer(source.serverId);
+    final c = server?.client, s = server?.session;
+    return c == null || s == null || server!.state == ServerState.needsSignIn ? null : (client: c, session: s);
   });
+
+  /// The server a server Live TV source with [serverId] belongs to: the one
+  /// with that id, or the main server for a source (or sign-in) that never
+  /// recorded one.
+  ProfileServer? _liveServer(String? serverId) {
+    if (serverId == null) return servers.main;
+    return servers.byServerId(serverId) ?? (servers.main.serverId == null ? servers.main : null);
+  }
 
   /// Kid profiles keep their sources saved but get no live channels.
   bool get liveEnabled => maxRatingRank == null;
@@ -766,10 +862,11 @@ class AppState extends ChangeNotifier {
     if (keys.isNotEmpty) unawaited(refreshLiveSource(source, channels: false));
   }
 
-  /// Whether the profile's server has Live TV this user may watch, and if
-  /// not why; null when there's no server (or it can't be asked).
-  Future<LiveTvAvailability?> liveTvAvailability() async {
-    final tv = client?.liveTv;
+  /// Whether the profile's server ([key]: which one, multi-server) has Live
+  /// TV this user may watch, and if not why; null when there's no server (or
+  /// it can't be asked).
+  Future<LiveTvAvailability?> liveTvAvailability({String key = ServerSet.mainKey}) async {
+    final tv = servers.byKey(key)?.client?.liveTv;
     if (tv == null) return null;
     try {
       return await tv.availability();
@@ -779,11 +876,15 @@ class AppState extends ChangeNotifier {
     }
   }
 
-  /// Adds the profile's server's Live TV as a source, with every channel
-  /// chosen if it has 150 or fewer. Throws [LiveSourceException].
-  Future<LiveSource> addServerLiveSource() async {
-    final s = session;
+  /// Adds the profile's server's ([key]: which one, multi-server) Live TV as
+  /// a source, with every channel chosen if it has 150 or fewer. Throws
+  /// [LiveSourceException].
+  Future<LiveSource> addServerLiveSource({String key = ServerSet.mainKey}) async {
+    final s = servers.byKey(key)?.session;
     if (s == null) throw const LiveSourceException('Not signed in');
+    if (servers.multiple && live.serverSourceFor(s.serverId) != null) {
+      throw LiveSourceException('${s.serverName} Live TV is already a source');
+    }
     final source = LiveSource(
       id: LiveSource.newId(),
       kind: LiveSourceKind.server,
@@ -897,6 +998,48 @@ class AppState extends ChangeNotifier {
   /// Analysis results for this server, once its id is known.
   AnalysisCache? get analysisCache => _analysis;
 
+  /// With several servers (multi-server D6): each one's results, in its own
+  /// cache, by server key (the main one's is [_analysis]).
+  final _addedCaches = <String, AnalysisCache>{};
+  ServerAnalysis? _serverAnalysis;
+
+  /// Where analysis reads and records: the main server's cache, or every
+  /// server's with several.
+  AnalysisStore? get _store => servers.multiple ? _serverAnalysis : _analysis;
+
+  /// Opens the added servers' caches and routes analysis through them all,
+  /// after a server joined or left (or at start). Analysis restarts on the
+  /// new set.
+  Future<void> _openServerAnalysis() async {
+    final keep = {
+      for (final s in servers.added)
+        if (s.serverId != null) s.key,
+    };
+    for (final key in [..._addedCaches.keys]) {
+      if (!keep.contains(key)) await AnalysisCache.release(_addedCaches.remove(key)!);
+    }
+    for (final server in servers.added) {
+      final id = server.serverId;
+      if (id == null || _addedCaches.containsKey(server.key)) continue;
+      final cache = await AnalysisCache.acquire(storage.analysisDir, id);
+      if (_closed) {
+        await AnalysisCache.release(cache);
+        return;
+      }
+      _addedCaches[server.key] = cache;
+    }
+    final before = _serverAnalysis;
+    before?.detach();
+    before?.removeListener(_onAnalysis);
+    _serverAnalysis = servers.multiple
+        ? (ServerAnalysis({ServerSet.mainKey: ?_analysis, ..._addedCaches})..addListener(_onAnalysis))
+        : null;
+    if (_closed) return;
+    await _stopAnalysis();
+    _updateCatalog();
+    _startAnalysis();
+  }
+
   /// True while the TV is opening a stream; analysis holds off meanwhile.
   final playbackBusy = ValueNotifier(false);
 
@@ -957,8 +1100,21 @@ class AppState extends ChangeNotifier {
   final playingBitrate = ValueNotifier<int?>(null);
 
   /// The analyzer's download budget right now.
-  Budget get analyzerBudgetNow =>
-      analyzerBudget(playbackActivity.value, settings.playback, fileBitsPerSecond: playingBitrate.value);
+  Budget get analyzerBudgetNow => _asleep
+      ? const Budget.paused()
+      : analyzerBudget(playbackActivity.value, settings.playback, fileBitsPerSecond: playingBitrate.value);
+
+  bool _asleep = false;
+
+  /// The sleep timer has the app asleep (sleep-timer spec): background reads
+  /// from the server (analysis, index fills) wait too, so nothing keeps the
+  /// server busy all night.
+  bool get asleep => _asleep;
+  set asleep(bool value) {
+    if (value == _asleep) return;
+    _asleep = value;
+    _pushBudget();
+  }
 
   // ---- Playback decisions ----------------------------------------------------
 
@@ -995,7 +1151,9 @@ class AppState extends ChangeNotifier {
     if (saved != null) return Future.value(saved);
     final key = (source, capKbps);
     if (_deciding[key] case final inFlight?) return _answer(inFlight);
-    final c = client;
+    // The server the source is on (multi-server); the main one's client
+    // as it is.
+    final c = servers.clientFor(source);
     if (c == null) return Future.error(StateError('Not signed in.'));
     final playback = settings.playback;
     final request = () async {
@@ -1040,19 +1198,21 @@ class AppState extends ChangeNotifier {
     final cap = capInEffect;
     final android = decidesEverySegment;
     final visible = channels;
-    if ((cap == null && !android) || visible.isEmpty) return;
+    final limits = servers.all.any((s) => s.qualityLimit != null);
+    if ((cap == null && !android && !limits) || visible.isEmpty) return;
     // As the TV screen picks it.
     final ch = visible.where((c) => c.id == settings.lastChannelId).firstOrNull ?? visible.first;
     // A live channel opens its stream from its source, with no decision.
     if (ch.isLive) return;
     final now = DateTime.now();
     final on = scheduleFor(ch)?.playbackAt(now);
-    final item = on?.item;
+    // The copy that will play (multi-server).
+    final item = on?.item == null ? null : copyToPlay(on!.item!)?.item;
     if (on == null || item == null) return;
     final program = !on.isBreak && !on.isCommercial;
     if (!program && !android) return;
-    // The cap is only ever for program parts.
-    final segmentCap = program ? cap : null;
+    // The cap is only ever for program parts, lowered by the server's limit.
+    final segmentCap = program ? capFor(ServerSet.keyOf(item.sourceId), cap) : null;
     if (savedDecision(item.sourceId, segmentCap) != null) return;
     PlaybackDiagnostics.mark('launch decision asked');
     unawaited(decide(item.sourceId, segmentCap, startAt: on.positionAt(now))
@@ -1111,6 +1271,9 @@ class AppState extends ChangeNotifier {
   /// The logo setting [c] follows: its own, or the main one.
   LogoMode logoModeFor(Channel c) => c.logoMode ?? settings.logoMode;
 
+  /// The look [c] has: its own settings over the main ones.
+  ResolvedRetro retroFor(Channel c) => ResolvedRetro.of(c.retro, settings.retro);
+
   /// The plan [c] airs with: [configuredPlanFor], or Off while none of the
   /// pools it uses has clips.
   BreakPlan planFor(Channel c) {
@@ -1126,8 +1289,8 @@ class AppState extends ChangeNotifier {
   /// Whether [c] gets commercial breaks.
   bool breaksFor(Channel c) => !planFor(c).isOff;
 
-  BreakContext _breakContext(BreakPlan plan) =>
-      BreakContext(plan: plan, clips: catalog, points: _analysis ?? const ChapterPoints());
+  BreakContext _breakContext(BreakPlan plan, [SlotRule? slotRule]) =>
+      BreakContext(plan: plan, clips: catalog, points: _store ?? const ChapterPoints(), slotRule: slotRule);
 
   /// Every channel's [planFor], to see what a change changes.
   Map<String, BreakPlan> _plans() => {for (final ch in _channels) ch.id: planFor(ch)};
@@ -1169,6 +1332,9 @@ class AppState extends ChangeNotifier {
     }
     session = ServerSession.fromJson(sessionJson);
     client = _sessionClient?.call(session!) ?? clientForSession(session!);
+    // Added servers (multi-server); none for most profiles.
+    servers.load(await storage.readJson(ServerSet.file),
+        (s, key) => _sessionClient?.call(s) ?? clientForSession(s, key: key));
     // A Plex server may have another address now (a phone away from home).
     if (session!.kind == ServerKind.plex) unawaited(reachServerAgain(checkFirst: true));
     // One-time sign-in upgrades; they wait for the launch's picture.
@@ -1194,6 +1360,7 @@ class AppState extends ChangeNotifier {
       // Clips (and so which channels have breaks) must be known before the
       // lineup is, or every launch would shift the guide.
       if (session!.serverId case final id?) await _openAnalysis(id);
+      if (servers.multiple) await _openServerAnalysis();
       PlaybackDiagnostics.mark('analysis cache open');
       _updateCatalog(rebase: false);
       _setChannels([for (final c in channelsJson.cast<Map<String, Object?>>()) Channel.fromJson(c)]);
@@ -1202,6 +1369,9 @@ class AppState extends ChangeNotifier {
       PlaybackDiagnostics.mark('ready (channels set)');
       _startAnalysis();
       _startLiveRefresh();
+      // Sources with roots this library hasn't resolved (saved before
+      // roots, or before a root was added): fetched on their own.
+      if (_unresolvedRoots().isNotEmpty) _afterLaunchTune(() => unawaited(resolveRoots()));
       final age = DateTime.now().difference(library.fetchedAt);
       if (age > libraryMaxAge) {
         // It downloads the whole library: after the launch's picture.
@@ -1295,6 +1465,7 @@ class AppState extends ChangeNotifier {
   void _onServerId(String id) => unawaited(() async {
         await _openAnalysis(id);
         if (_closed) return;
+        if (servers.multiple) return _openServerAnalysis();
         _updateCatalog();
         _startAnalysis();
       }());
@@ -1305,19 +1476,19 @@ class AppState extends ChangeNotifier {
   MediaServer clientFor(ServerKind kind, String serverUrl) =>
       serverClient(kind, serverUrl, deviceId: settings.installId, deviceName: deviceName);
 
-  /// A client for a saved sign-in.
-  MediaServer clientForSession(ServerSession session) {
+  /// A client for a saved sign-in, of the server [key] (multi-server).
+  MediaServer clientForSession(ServerSession session, {String key = ServerSet.mainKey}) {
     final client = sessionClient(session, deviceName: deviceName);
     // Plex's part paths come from the loaded library.
-    if (client is PlexClient) client.index = () => library;
+    _attach(client, key);
     return client;
   }
 
   /// Connected through Plex's relay, which limits quality.
   bool get plexRelay => session?.relay == true;
 
-  Future<bool>? _reaching;
-  DateTime? _reachedAt;
+  final _reaching = <String, Future<bool>>{};
+  final _reachedAt = <String, DateTime>{};
 
   /// When the server doesn't answer: a Plex profile looks its server up
   /// again with its Plex account, picks an address by the connection rules
@@ -1325,19 +1496,22 @@ class AppState extends ChangeNotifier {
   /// address changed. At most once every 30 seconds; other servers have
   /// only the one address. With [checkFirst], the saved address is tried
   /// first, and kept if it answers.
-  Future<bool> reachServerAgain({bool checkFirst = false}) {
-    final s = session;
-    if (s == null || s.kind != ServerKind.plex || s.accountToken == null || s.serverId == null) {
+  ///
+  /// [key] names the server (multi-server); the main one by default.
+  Future<bool> reachServerAgain({bool checkFirst = false, String key = ServerSet.mainKey}) {
+    final server = servers.byKey(key);
+    final s = server?.session;
+    if (server == null || s == null || s.kind != ServerKind.plex || s.accountToken == null || s.serverId == null) {
       return Future.value(false);
     }
-    if (_reaching case final inFlight?) return inFlight;
-    final last = _reachedAt;
+    if (_reaching[key] case final inFlight?) return inFlight;
+    final last = _reachedAt[key];
     if (last != null && DateTime.now().difference(last) < const Duration(seconds: 30)) return Future.value(false);
-    _reachedAt = DateTime.now();
-    return _reaching = _rediscoverPlex(s, checkFirst: checkFirst).whenComplete(() => _reaching = null);
+    _reachedAt[key] = DateTime.now();
+    return _reaching[key] = _rediscoverPlex(server, s, checkFirst: checkFirst).whenComplete(() => _reaching.remove(key));
   }
 
-  Future<bool> _rediscoverPlex(ServerSession s, {required bool checkFirst}) async {
+  Future<bool> _rediscoverPlex(ProfileServer server, ServerSession s, {required bool checkFirst}) async {
     if (checkFirst) {
       final http = Client();
       try {
@@ -1351,24 +1525,29 @@ class AppState extends ChangeNotifier {
       final found = await rediscover(account, accountToken: s.accountToken!, machineId: s.serverId!);
       if (found.resource == null) {
         // The share was removed: as an expired sign-in.
-        await _expireSession();
+        await _expireServer(server);
         return false;
       }
       final c = found.connection;
-      if (c == null || session != s) return false;
+      if (c == null || server.session != s) return false;
       if (c.uri == s.serverUrl && c.relay == s.relay && found.resource!.accessToken == s.accessToken) return false;
-      PlaybackDiagnostics.note('PLEX', 'address ${s.serverUrl} → ${c.uri}${c.relay ? ' (relay)' : ''}');
+      PlaybackDiagnostics.note('PLEX', '${server.isMain ? '' : '${server.key} '}address ${s.serverUrl} → ${c.uri}${c.relay ? ' (relay)' : ''}');
       final moved = s.withServerUrl(c.uri, relay: c.relay, accessToken: found.resource!.accessToken);
-      final previous = client;
-      session = moved;
-      client = clientForSession(moved);
+      final previous = server.client;
+      server
+        ..session = moved
+        ..client = clientForSession(moved, key: server.key);
       _decisions.clear();
-      await storage.writeJson(_sessionFile, moved.toJson(), private: true);
+      if (server.isMain) {
+        await storage.writeJson(_sessionFile, moved.toJson(), private: true);
+      } else {
+        await _saveServers();
+      }
       previous?.close();
       notifyListeners();
       return true;
     } on ServerException catch (e) {
-      if (e.statusCode == 401) await _expireSession();
+      if (e.statusCode == 401) await _expireServer(server);
       debugPrint('Could not look the Plex server up again: ${e.message}');
       return false;
     } finally {
@@ -1382,9 +1561,319 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// [server]'s sign-in expired: with one server the profile signs out as
+  /// before; with several, that server needs signing in again and the
+  /// others carry on (multi-server D3).
+  Future<void> _expireServer(ProfileServer server) async {
+    if (server.isMain && !servers.multiple) return _expireSession();
+    if (server.state == ServerState.needsSignIn) return;
+    server.state = ServerState.needsSignIn;
+    PlaybackDiagnostics.note('SERVER', '${server.key} needs sign-in');
+    notifyListeners();
+  }
+
+  /// How often servers marked Can't be reached are tried again.
+  @visibleForTesting
+  static Duration serverPingInterval = const Duration(minutes: 1);
+
+  /// Runs only while a server is marked Can't be reached.
+  Timer? _serverPings;
+
+  void _syncServerPings() {
+    final any = !_closed && servers.all.any((s) => s.state == ServerState.unreachable);
+    if (!any) {
+      _serverPings?.cancel();
+      _serverPings = null;
+    } else {
+      _serverPings ??= Timer.periodic(serverPingInterval, (_) => unawaited(pingUnreachable()));
+    }
+  }
+
+  /// The tuner (or a scan) couldn't reach [server]: its copies are skipped
+  /// until it answers a ping again (multi-server D5).
+  void _markUnreachable(ProfileServer server) {
+    if (server.state != ServerState.ok) return;
+    server.state = ServerState.unreachable;
+    PlaybackDiagnostics.note('SERVER', '${server.key} unreachable');
+    _syncServerPings();
+    notifyListeners();
+  }
+
+  /// Marks the server with [key] Can't be reached.
+  void markUnreachable(String key) {
+    if (servers.byKey(key) case final server?) _markUnreachable(server);
+  }
+
+  /// Asks every server marked Can't be reached whether it answers again.
+  @visibleForTesting
+  Future<void> pingUnreachable() async {
+    for (final server in servers.all) {
+      final c = server.client;
+      if (server.state != ServerState.unreachable || c == null) continue;
+      var answers = true;
+      try {
+        // Needs no sign-in, and goes through the client's own connections.
+        await c.publicInfo().timeout(const Duration(seconds: 10));
+      } on ServerException catch (e) {
+        answers = !e.unreachable;
+      } on TimeoutException {
+        answers = false;
+      }
+      if (!answers) {
+        // Still down; a Plex server may have moved.
+        if (server.kind == ServerKind.plex) unawaited(reachServerAgain(key: server.key));
+      } else if (server.state == ServerState.unreachable && !_closed) {
+        server.state = ServerState.ok;
+        PlaybackDiagnostics.note('SERVER', '${server.key} ok');
+        notifyListeners();
+      }
+    }
+    _syncServerPings();
+  }
+
+  // ---- The profile's servers (multi-server) ---------------------------------
+
+  /// The server already in the profile that [session] signs in to, if any.
+  ProfileServer? serverLike(ServerSession session) =>
+      servers.byServerId(session.serverId) ??
+      servers.all.where((s) => s.serverUrl == session.serverUrl && s.kind == session.kind).firstOrNull;
+
+  /// Adds a signed-in server at the end of Play from, and refreshes the
+  /// library in the background (D7). Throws [ServerException] when the
+  /// profile already has it.
+  Future<ProfileServer> addServer(ServerSession newSession, MediaServer newClient, {bool refresh = true}) async {
+    if (serverLike(newSession) case final existing?) {
+      newClient.close();
+      throw ServerException('${existing.name} is already in this profile');
+    }
+    // The library so far is the main server's: its part until it's scanned
+    // again, so a failing first scan keeps it.
+    if (!servers.multiple && !library.isEmpty) await storage.writeJson(_partFile(ServerSet.mainKey), library.toJson());
+    final server = servers.add(newSession, newClient);
+    _attach(newClient, server.key);
+    await _saveServers();
+    PlaybackDiagnostics.note('SERVER', 'added ${server.key} (${newSession.kind.label})');
+    await _openServerAnalysis();
+    notifyListeners();
+    if (refresh) unawaited(refreshLibrary(background: true));
+    return server;
+  }
+
+  /// Sign in again to [key] (D7): keeps its key, so its items come back
+  /// to the same channels. The main server's sign-in is saved as today's.
+  Future<void> signInAgainTo(String key, ServerSession newSession, MediaServer newClient, {bool refresh = true}) async {
+    final server = servers.byKey(key);
+    if (server == null) throw ServerException('That server is no longer in this profile');
+    final other = serverLike(newSession);
+    if (other != null && other.key != key) {
+      newClient.close();
+      throw ServerException('${other.name} is already in this profile');
+    }
+    final previous = server.client;
+    server
+      ..session = newSession
+      ..client = newClient
+      ..hint = null
+      ..state = ServerState.ok;
+    _attach(newClient, key);
+    _decisions.clear();
+    if (server.isMain) {
+      await storage.writeJson(_sessionFile, newSession.toJson(), private: true);
+    } else {
+      await _saveServers();
+    }
+    if (!identical(previous, newClient)) previous?.close();
+    _syncServerPings();
+    if (!server.isMain) await _openServerAnalysis();
+    notifyListeners();
+    if (refresh) unawaited(refreshLibrary(background: true));
+  }
+
+  /// Takes the added server [key] out of the profile (D7): signs out of it,
+  /// forgets its part and its Live TV source, and refreshes, so its items
+  /// leave the channels as items gone from a server do.
+  Future<void> removeServer(String key) async {
+    final server = servers.byKey(key);
+    if (server == null || server.isMain) return;
+    final serverId = server.serverId;
+    await _signOutOf(server);
+    servers.remove(key);
+    await storage.delete(_partFile(key));
+    if (!servers.multiple) await storage.delete(_partFile(ServerSet.mainKey));
+    await _saveServers();
+    if (serverId != null) {
+      if (live.serverSourceFor(serverId) case final source?) await removeLiveSource(source);
+    }
+    _syncServerPings();
+    await _openServerAnalysis();
+    PlaybackDiagnostics.note('SERVER', 'removed $key');
+    notifyListeners();
+    await refreshLibrary(background: true);
+  }
+
+  /// Moves [key] [delta] places in Play from.
+  Future<void> moveServer(String key, int delta) async {
+    servers.move(key, delta);
+    _decisions.clear();
+    await _saveServers();
+    notifyListeners();
+  }
+
+  /// [key]'s quality limit in kbps (null: same as the profile).
+  Future<void> setServerQualityLimit(String key, int? kbps) async {
+    final server = servers.byKey(key);
+    if (server == null) return;
+    server.qualityLimit = kbps == null ? null : kbps * 1000;
+    _decisions.clear();
+    await _saveServers();
+    notifyListeners();
+  }
+
+  /// The cap a program part from server [key] plays under, in kbps: the
+  /// lower of [cap] (the profile's) and the server's quality limit.
+  int? capFor(String key, int? cap) {
+    final limit = servers.byKey(key)?.qualityLimitKbps;
+    if (limit == null) return cap;
+    return cap == null || limit < cap ? limit : cap;
+  }
+
+  /// Item counts per server, from the merged library: each copy counts for
+  /// its own server.
+  Map<String, ({int episodes, int movies, int songs})> serverCounts() {
+    final counts = <String, ({int episodes, int movies, int songs})>{};
+    void add(String id, MediaKind kind) {
+      final key = ServerSet.keyOf(id);
+      final c = counts[key] ?? (episodes: 0, movies: 0, songs: 0);
+      counts[key] = switch (kind) {
+        MediaKind.episode => (episodes: c.episodes + 1, movies: c.movies, songs: c.songs),
+        MediaKind.movie => (episodes: c.episodes, movies: c.movies + 1, songs: c.songs),
+        _ => (episodes: c.episodes, movies: c.movies, songs: c.songs + 1),
+      };
+    }
+
+    for (final e in [...library.episodes, ...library.movies, ...library.songs, ...library.musicVideos]) {
+      for (final c in e.copies) {
+        add(c.id, e.kind);
+      }
+    }
+    return counts;
+  }
+
+  /// The client to ask about [id], any id the library holds (see
+  /// [ServerSet.clientFor]); null when its server isn't signed in.
+  MediaServer? clientOf(String id) => servers.clientFor(id);
+
+  /// Which copy of [entry] plays now (D5): the first in Play from whose
+  /// server can be used, else the first copy (which then fails to open as an
+  /// unreachable server does). [entry] as that copy, and its client.
+  ({MediaEntry item, MediaServer client, String key})? copyToPlay(MediaEntry entry) {
+    final copies = servers.copiesOf(entry);
+    final copy = copies.firstOrNull ?? entry.copy;
+    final client = servers.clientFor(copy.id);
+    if (client == null) return null;
+    return (item: entry.asCopy(copy), client: client, key: ServerSet.keyOf(copy.id));
+  }
+
+  /// Where to read the file of [sourceId] (an entry's source) from: the copy
+  /// that plays (multi-server), with its server's headers.
+  ({Uri url, Map<String, String> headers}) streamOf(String sourceId) {
+    final entry = library[sourceId];
+    final pick = entry == null || entry.sourceId != sourceId ? null : copyToPlay(entry);
+    final server = pick?.client ?? clientOf(sourceId) ?? client!;
+    return (url: server.streamUri(pick?.item.sourceId ?? sourceId), headers: server.authHeaders);
+  }
+
+  /// Every server's libraries (multi-server), in Play from order, with
+  /// library ids; named "{server} › {library}" when the profile has more
+  /// than one server (D8). A server that can't list them is left out;
+  /// throws only when none can.
+  Future<List<ServerLibrary>> allLibraries() async {
+    if (!servers.multiple) {
+      final c = client;
+      if (c == null) throw ServerException('Not signed in.');
+      return c.libraries();
+    }
+    final out = <ServerLibrary>[];
+    ServerException? failure;
+    for (final server in servers.ordered) {
+      if (server.client == null || server.state == ServerState.needsSignIn) continue;
+      final c = servers.clientFor(ServerSet.globalId(server.key, ''))!;
+      try {
+        for (final l in await c.libraries()) {
+          out.add(ServerLibrary(id: l.id, name: '${server.name} › ${l.name}', collectionType: l.collectionType));
+        }
+      } on ServerException catch (e) {
+        failure ??= e;
+        debugPrint('Libraries of ${server.name}: ${e.message}');
+      }
+    }
+    if (out.isEmpty && failure != null) throw failure;
+    return out;
+  }
+
+  /// [root]'s label as the source editors show it: with one server as
+  /// saved; with several, starting with its server's name unless it already
+  /// does (D8).
+  String rootLabel(PoolRoot root) {
+    if (!servers.multiple) return root.label;
+    final name = servers.byKey(ServerSet.keyOf(root.itemId))?.name;
+    if (name == null || root.label.startsWith('$name › ')) return root.label;
+    return '$name › ${root.label}';
+  }
+
+  /// Whether [entry] has a usable copy on a server other than [key].
+  bool hasOtherCopy(MediaEntry entry, String key) =>
+      servers.copiesOf(entry).any((c) => ServerSet.keyOf(c.id) != key);
+
+  /// Whether the server [key] answers now (a request that needs no sign-in).
+  Future<bool> serverAnswers(String key) async {
+    final c = servers.byKey(key)?.client;
+    if (c == null) return false;
+    try {
+      await c.publicInfo().timeout(const Duration(seconds: 5));
+      return true;
+    } on ServerException catch (e) {
+      return !e.unreachable;
+    } on TimeoutException {
+      return false;
+    }
+  }
+
+  /// Plex clients look their part paths up in the library under [key].
+  void _attach(MediaServer c, String key) {
+    if (c is PlexClient) {
+      c.index = () => library;
+      c.partPath = (id) => library.copyById(ServerSet.globalId(key, id))?.streamPath;
+    }
+  }
+
+  /// Ends the sign-in on an added [server], as signing out does; a failed
+  /// request still forgets it here.
+  Future<void> _signOutOf(ProfileServer server) async {
+    try {
+      await server.client?.logout();
+    } on ServerException catch (e) {
+      debugPrint('Sign-out of ${server.name}: ${e.message}');
+    }
+    server.client?.close();
+    server.client = null;
+    server.session = null;
+  }
+
+  Future<void> _saveServers() async {
+    final json = servers.toJson();
+    if (json == null) {
+      await storage.delete(ServerSet.file);
+    } else {
+      await storage.writeJson(ServerSet.file, json, private: true);
+    }
+  }
+
   Future<void> completeSignIn(ServerSession newSession, MediaServer newClient) async {
     session = newSession;
     client = newClient;
+    servers.main.state = ServerState.ok;
+    _attach(newClient, ServerSet.mainKey);
     _decisions.clear();
     await storage.writeJson(_sessionFile, newSession.toJson(), private: true);
     // A Plex sign-in knows its server's id from the start; Jellyfin and Emby
@@ -1412,10 +1901,16 @@ class AppState extends ChangeNotifier {
       await _loadBlocks();
       _setChannels([for (final c in channelsJson.cast<Map<String, Object?>>()) Channel.fromJson(c)]);
       _restoredLineup = true;
+      // The backup's added servers come back needing sign-in (multi-server
+      // D10), keeping their keys so their programs return to the channels.
+      servers.load(await storage.readJson(ServerSet.file), (s, key) => clientForSession(s, key: key));
+      if (servers.multiple) await _openServerAnalysis();
     } else {
       _blocks = [];
       await storage.delete(_channelsFile);
       await storage.delete(_blocksFile);
+      // Their ids belong to the lineup that's gone.
+      await storage.delete(ServerSet.file);
     }
     await storage.delete(signInHintFile);
   }
@@ -1427,6 +1922,23 @@ class AppState extends ChangeNotifier {
     _analysis = null;
     cache?.removeListener(_onAnalysis);
     if (cache != null) await AnalysisCache.release(cache);
+    _serverAnalysis
+      ?..detach()
+      ..removeListener(_onAnalysis);
+    _serverAnalysis = null;
+    for (final c in _addedCaches.values) {
+      await AnalysisCache.release(c);
+    }
+    _addedCaches.clear();
+    // Every server's sign-in ends (multi-server).
+    for (final server in servers.added) {
+      await _signOutOf(server);
+      await storage.delete(_partFile(server.key));
+    }
+    if (servers.multiple) await storage.delete(_partFile(ServerSet.mainKey));
+    servers.load(null, (s, key) => clientForSession(s, key: key));
+    await storage.delete(ServerSet.file);
+    _syncServerPings();
     try {
       await client?.logout();
     } on ServerException {
@@ -1435,6 +1947,7 @@ class AppState extends ChangeNotifier {
     client?.close();
     client = null;
     session = null;
+    servers.main.state = ServerState.ok;
     _decisions.clear();
     library = LibraryIndex.empty;
     _updateCatalog(rebase: false);
@@ -1471,12 +1984,18 @@ class AppState extends ChangeNotifier {
     notifyListeners();
     if (!background || phase != AppPhase.ready) _setPhase(AppPhase.syncing);
     try {
-      syncStatus = 'Connecting to ${session?.serverName ?? 'your server'}…';
-      notifyListeners();
-      var fresh = await fetchLibraryIndex(c, pools: settings.commercialPools, onStatus: (s) {
-        syncStatus = s;
+      LibraryIndex fresh;
+      if (servers.multiple) {
+        fresh = await _scanServers();
+      } else {
+        syncStatus = 'Connecting to ${session?.serverName ?? 'your server'}…';
         notifyListeners();
-      }, onLibraries: _labelLibraryRoots);
+        fresh = await fetchLibraryIndex(c, pools: settings.commercialPools, channelRoots: _channelRoots(),
+            onStatus: (s) {
+          syncStatus = s;
+          notifyListeners();
+        }, onLibraries: _labelLibraryRoots);
+      }
       final limit = maxRatingRank;
       if (limit != null) fresh = fresh.restrictedTo(limit);
       // When this profile could first know each episode (episode-premieres):
@@ -1512,7 +2031,7 @@ class AppState extends ChangeNotifier {
       _analyzer?.poke();
     } on ServerException catch (e) {
       syncError = e.message;
-      if (e.statusCode == 401) {
+      if (e.statusCode == 401 && !servers.multiple) {
         // The token was revoked (e.g. device removed in the dashboard).
         await _expireSession();
       } else if (e.unreachable && await reachServerAgain()) {
@@ -1534,10 +2053,95 @@ class AppState extends ChangeNotifier {
     }
   }
 
+  /// A server's last scanned index (multi-server), as merged.
+  static String _partFile(String key) => 'library_parts/$key.json';
+
+  /// Scans every server in Play from order and merges them (multi-server
+  /// D3). A server that fails keeps its last part; throws only when no
+  /// server has anything.
+  Future<LibraryIndex> _scanServers() async {
+    final list = servers.ordered;
+    final parts = <LibraryIndex>[];
+    ServerException? failure;
+    for (final (i, server) in list.indexed) {
+      final where = '${server.name} (${i + 1} of ${list.length})';
+      syncStatus = 'Scanning $where…';
+      notifyListeners();
+      void status(String s) {
+        syncStatus = '$where: $s';
+        notifyListeners();
+      }
+
+      LibraryIndex? part;
+      if (server.client != null && server.state != ServerState.needsSignIn) {
+        for (var attempt = 0; part == null && attempt < 2; attempt++) {
+          try {
+            part = await _scanServer(server, status);
+          } on ServerException catch (e) {
+            failure ??= e;
+            debugPrint('Could not scan ${server.name}: ${e.message}');
+            if (e.statusCode == 401) {
+              await _expireServer(server);
+              break;
+            }
+            // A Plex server at another address: scan there.
+            if (e.unreachable && attempt == 0 && await reachServerAgain(key: server.key)) continue;
+            if (e.unreachable) _markUnreachable(server);
+            break;
+          }
+        }
+      }
+      part ??= await _savedPart(server.key);
+      if (part != null) parts.add(part);
+      if (_closed) break;
+    }
+    if (parts.isEmpty) throw failure ?? ServerException('None of your servers could be reached.');
+    return mergeLibraries(parts, previous: _hasGenerated ? library : null);
+  }
+
+  /// [server]'s index under its global ids, saved as its part.
+  Future<LibraryIndex> _scanServer(ProfileServer server, void Function(String) onStatus) async {
+    final key = server.key;
+    bool mine(String id) => ServerSet.keyOf(id) == key;
+    final pools = [
+      for (final p in settings.commercialPools)
+        CommercialPool(id: p.id, name: p.name, kind: p.kind, roots: [
+          for (final r in p.roots)
+            if (mine(r.itemId))
+              PoolRoot(itemId: ServerSet.rawId(r.itemId), libraryId: ServerSet.rawId(r.libraryId), label: r.label)
+        ])
+    ];
+    var part = await fetchLibraryIndex(server.client!,
+        pools: pools,
+        channelRoots: {for (final r in _channelRoots()) if (mine(r)) ServerSet.rawId(r)},
+        providerIds: true,
+        onStatus: onStatus,
+        onLibraries: (libraries) => _labelLibraryRoots(libraries, key: key));
+    if (!server.isMain) part = part.withServerKey((id) => ServerSet.globalId(key, id));
+    if (server.state != ServerState.ok) {
+      server.state = ServerState.ok;
+      PlaybackDiagnostics.note('SERVER', '${server.key} ok');
+      _syncServerPings();
+    }
+    await storage.writeJson(_partFile(key), part.toJson());
+    return part;
+  }
+
+  Future<LibraryIndex?> _savedPart(String key) async {
+    final json = await storage.readJson(_partFile(key));
+    try {
+      return json is Map<String, Object?> ? LibraryIndex.fromJson(json) : null;
+    } on Object catch (e) {
+      debugPrint('Unreadable library part $key: $e');
+      return null;
+    }
+  }
+
   /// Names whole-library pool folders after their library (upgrades from
   /// before pools don't know the names, and libraries can be renamed).
-  void _labelLibraryRoots(List<ServerLibrary> libraries) {
-    final names = {for (final l in libraries) l.id: l.name};
+  /// [key]: the server the libraries are on (multi-server).
+  void _labelLibraryRoots(List<ServerLibrary> libraries, {String key = ServerSet.mainKey}) {
+    final names = {for (final l in libraries) ServerSet.globalId(key, l.id): l.name};
     var changed = false;
     for (final pool in settings.commercialPools) {
       final roots = [...pool.roots];
@@ -1553,6 +2157,69 @@ class AppState extends ChangeNotifier {
     if (changed) unawaited(_saveSettings());
   }
 
+  /// The roots of every channel's and block's source.
+  Set<String> _channelRoots() => {
+        for (final c in _channels)
+          if (!c.isLive) for (final r in c.source.roots) r.itemId,
+        for (final b in _blocks)
+          for (final r in b.source.roots) r.itemId,
+      };
+
+  Set<String> _unresolvedRoots([Iterable<PoolRoot>? roots]) => {
+        for (final r in roots?.map((r) => r.itemId) ?? _channelRoots())
+          // A root that was missing may be back, or filled since.
+          if (!library.roots.contains(r) || library.missingRoots.contains(r)) r,
+      };
+
+  /// Whether [root] was looked for on the server and isn't there (or holds
+  /// nothing to play): the source editors mark it "Not found on the server".
+  bool rootMissing(PoolRoot root) => library.missingRoots.contains(root.itemId);
+
+  /// Fetches [roots] (every source root the library hasn't resolved, when
+  /// null) on their own, without a full scan, and merges what's under them
+  /// into the library and the channels using them (custom-channels D3).
+  Future<void> resolveRoots([Iterable<PoolRoot>? roots]) async {
+    final wanted = _unresolvedRoots(roots);
+    if (client == null || wanted.isEmpty) return;
+    // Each server's roots through its own client (multi-server D3).
+    final byKey = <String, Set<String>>{};
+    for (final r in wanted) {
+      byKey.putIfAbsent(ServerSet.keyOf(r), () => {}).add(ServerSet.rawId(r));
+    }
+    final found = <String, Set<String>>{};
+    final missing = <String>{};
+    for (final MapEntry(:key, value: raw) in byKey.entries) {
+      final server = servers.byKey(key);
+      final c = server?.client;
+      String global(String id) => ServerSet.globalId(key, id);
+      if (server == null) {
+        // The server was removed: its roots hold nothing now.
+        for (final r in raw) {
+          found[global(r)] = {};
+          missing.add(global(r));
+        }
+        continue;
+      }
+      if (c == null || !server.usable) continue;
+      try {
+        final result = await fetchRoots(c, raw);
+        result.found.forEach((root, ids) => found[global(root)] = {for (final id in ids) global(id)});
+        missing.addAll(result.missing.map(global));
+      } on ServerException catch (e) {
+        debugPrint('Could not fetch channel sources from ${server.name}: ${e.message}');
+      }
+    }
+    if (_closed || found.isEmpty) return;
+    final result = (found: found, missing: missing);
+    final previous = library;
+    final plansBefore = _plans();
+    library = library.withRoots(result.found, missing: result.missing);
+    _mergeLibraryIntoChannels(previous, plansBefore);
+    await storage.writeJson(_libraryFile, library.toJson());
+    await _saveChannels();
+    await _saveBlocks();
+  }
+
   void _mergeLibraryIntoChannels(LibraryIndex previous, Map<String, BreakPlan> plansBefore) {
     final now = DateTime.now();
     for (final ch in _channels) {
@@ -1561,8 +2228,10 @@ class AppState extends ChangeNotifier {
         _schedules.remove(ch.id);
         continue;
       }
-      final fresh = buildPlaylist(library, ch.source, ch.order, seed: stableHash(ch.id));
-      var merged = _mergedPlaylist(ch.playlist, fresh);
+      final fresh = buildPlaylist(library, ch.source, ch.order, seed: ch.seed);
+      // A custom channel follows its source: what left it (a collection's
+      // removed episode) goes too.
+      var merged = _mergedPlaylist(ch.playlist, fresh, onlyFresh: ch.isCustom, previous: previous);
       if (ch.isMusic && merged.length > maxMusicPlaylist) {
         // Keep the channel's fixed sample, in the order it airs.
         final sample = fresh.toSet();
@@ -1571,7 +2240,8 @@ class AppState extends ChangeNotifier {
       _rebase(ch, merged, now, previous: previous, planBefore: plansBefore[ch.id]);
     }
     for (final b in _blocks) {
-      b.playlist = _mergedPlaylist(b.playlist, blockPlaylist(b));
+      b.playlist = _mergedPlaylist(b.playlist, blockPlaylist(b),
+          onlyFresh: !b.hasLineup && (b.source.roots.isNotEmpty || b.source.ratingFloor != null), previous: previous);
     }
     _schedules.clear();
     // Add channels the bigger library now qualifies for.
@@ -1585,47 +2255,77 @@ class AppState extends ChangeNotifier {
     _setChannels(_channels);
   }
 
-  /// Keeps [playlist]'s order, dropping items gone from the library and
-  /// appending the new ones from [fresh].
-  List<String> _mergedPlaylist(List<String> playlist, List<String> fresh) {
-    final known = playlist.toSet();
-    return [
+  /// Keeps [playlist]'s order, dropping items gone from the library (with
+  /// [onlyFresh], also those no longer in [fresh]) and appending the new
+  /// ones from [fresh].
+  List<String> _mergedPlaylist(List<String> playlist, List<String> fresh,
+      {bool onlyFresh = false, LibraryIndex? previous}) {
+    // An item whose copy is now another's alternate (multi-server: a mirror
+    // removed, or a server added) keeps its place under the entry's id.
+    final listed = playlist.toSet(), moved = <String>{};
+    final current = [
       for (final id in playlist)
-        if (library[id] != null) id,
+        if (_currentId(id, previous) case final p when p == id || (!listed.contains(p) && moved.add(p))) p,
+    ];
+    final known = current.toSet();
+    final wanted = onlyFresh ? fresh.toSet() : null;
+    return [
+      for (final id in current)
+        if (library[id] != null && (wanted?.contains(id) ?? true)) id,
       for (final id in fresh)
         if (!known.contains(id)) id,
     ];
+  }
+
+  /// The id the library holds [id]'s title under now (multi-server): its own,
+  /// or the entry holding one of its copies (from [previous], the index it
+  /// was in) when a server joined or left.
+  String _currentId(String id, LibraryIndex? previous) {
+    if (library[id] != null) return id;
+    final primary = library.primaryIdOf(id);
+    if (library[primary] != null) return primary;
+    for (final c in previous?[id]?.copies ?? const <MediaCopy>[]) {
+      final other = library.primaryIdOf(c.id);
+      if (library[other] != null) return other;
+    }
+    return id;
   }
 
   /// Replaces [ch]'s playlist while keeping the current program on air at
   /// the same position, so editing a channel never makes it "jump".
   ///
   /// [previous] is the library [ch]'s current schedule was built against,
-  /// when the library itself is being replaced; [planBefore] is the plan it
-  /// aired with, when that is what's changing.
+  /// when the library itself is being replaced; [planBefore] and
+  /// [ruleBefore] are the plan and slot rule it aired with, when that is
+  /// what's changing.
   ///
   /// The program on air keeps its position in the show (or, during a
-  /// break, its slot keeps its start). Then the anchor moves to the plan's
-  /// clock boundary, if it has one, so later slots line up on the clock;
-  /// that moves the slot by at most half a boundary.
-  void _rebase(Channel ch, List<String> playlist, DateTime now, {LibraryIndex? previous, BreakPlan? planBefore}) {
-    final oldSchedule = ChannelSchedule.build(ch, previous ?? library, const [], _breakContext(planBefore ?? planFor(ch)));
+  /// break, its slot keeps its start). Then the anchor moves to the slot
+  /// length's or the plan's clock boundary, if there is one, so later slots
+  /// line up on the clock; that moves the slot by at most half a boundary.
+  ///
+  /// Returns whether the program on air is still on the air.
+  bool _rebase(Channel ch, List<String> playlist, DateTime now,
+      {LibraryIndex? previous, BreakPlan? planBefore, ({SlotRule? rule})? ruleBefore}) {
+    final oldSchedule = ChannelSchedule.build(ch, previous ?? library, const [],
+        _breakContext(planBefore ?? planFor(ch), ruleBefore == null ? ch.effectiveSlotRule : ruleBefore.rule));
     ch.playlist = playlist;
     _schedules.remove(ch.id);
-    if (oldSchedule == null) return;
+    if (oldSchedule == null) return false;
     final slot = oldSchedule.programAt(now);
     final item = slot.item;
-    if (item == null) return;
+    if (item == null) return false;
     final playing = oldSchedule.playbackAt(now);
     // In a show part: keep the position in the show. In a break: keep the
     // slot's start.
     final position = playing.isBreak ? null : playing.positionAt(now);
 
     final plan = planFor(ch);
-    final fresh = ChannelSchedule.build(ch, library, const [], _breakContext(plan));
+    final rule = ch.effectiveSlotRule;
+    final fresh = ChannelSchedule.build(ch, library, const [], _breakContext(plan, rule));
     final loop = fresh?.loop;
-    final index = loop?.indexOf(item.id);
-    if (fresh == null || loop == null || index == null) return;
+    final index = loop?.indexOf(item.id) ?? loop?.indexOf(_currentId(item.id, previous));
+    if (fresh == null || loop == null || index == null) return false;
     var layoutStart = slot.layoutStart;
     if (position != null) {
       // The layout's break points depend on its start, which is what's
@@ -1639,11 +2339,22 @@ class AppState extends ChangeNotifier {
     }
     final offset = loop.offsetOf(index);
     var anchor = layoutStart.subtract(offset);
-    final grid = plan.alignment;
+    ch.slotCarry = null;
+    final carried = rule == null ? null : _carryOver(fresh, ch, item, index, layoutStart, now, rule);
+    if (carried != null) {
+      ch.slotCarry = carried;
+      // The loop goes on from the next program, on the clock.
+      final after = (index + 1) % ch.playlist.where((id) => library[id] != null).length;
+      ch.anchor = carried.end.subtract(loop.offsetOf(after));
+      if (after == 0) ch.anchor = carried.end;
+      _schedules.remove(ch.id);
+      return true;
+    }
+    final grid = rule?.length ?? plan.alignment;
     if (grid != null) {
       // The nearest boundary, unless that would take the program off the
       // air; then the other one.
-      final slot = fresh.slotPlanFor(item).slotLength;
+      final slot = fresh.slotPlanFor(item, ruled: true).slotLength;
       bool keepsOnAir(DateTime a) {
         final into = now.difference(a.add(offset));
         return !into.isNegative && into < slot;
@@ -1653,13 +2364,41 @@ class AppState extends ChangeNotifier {
       anchor = keepsOnAir(nearest) || !keepsOnAir(other) ? nearest : other;
     }
     ch.anchor = anchor;
+    return true;
   }
 
-  /// The multiples of [grid] (15, 30 or 60 minutes past the hour, local
-  /// time) on either side of [t], nearest first.
+  /// When [item]'s slot from [layoutStart] isn't on [rule]'s clock: its own
+  /// slot, so it keeps its position, up to a boundary. That's the first one
+  /// its program and breaks fit before; Truncate cuts at the first after
+  /// [now].
+  static SlotCarry? _carryOver(ChannelSchedule schedule, Channel ch, MediaEntry item, int index, DateTime layoutStart,
+      DateTime now, SlotRule rule) {
+    final (a, b) = _boundaries(layoutStart, rule.length);
+    if (layoutStart == a || layoutStart == b) return null;
+    DateTime nextAfter(DateTime t) {
+      final (x, y) = _boundaries(t, rule.length);
+      final later = x.isAfter(y) ? x : y;
+      return x.isAfter(t) && x.isBefore(later) ? x : later;
+    }
+
+    final plain = schedule.slotPlanFor(item);
+    final filled = layoutStart.add(plain.slotLength - plain.tail);
+    var end = filled;
+    final (x, y) = _boundaries(filled, rule.length);
+    if (filled != x && filled != y) end = nextAfter(filled);
+    if (rule.tail == TailMode.truncate) {
+      final cut = nextAfter(now);
+      if (cut.isBefore(end)) end = cut;
+    }
+    return SlotCarry(itemId: item.id, start: layoutStart, end: end);
+  }
+
+  /// The multiples of [grid] (15, 30, 60, 90 or 120 minutes from local
+  /// midnight) on either side of [t], nearest first.
   static (DateTime, DateTime) _boundaries(DateTime t, Duration grid) {
     final minutes = grid.inMinutes;
-    final floor = DateTime(t.year, t.month, t.day, t.hour, t.minute ~/ minutes * minutes);
+    final minute = (t.hour * 60 + t.minute) ~/ minutes * minutes;
+    final floor = DateTime(t.year, t.month, t.day, minute ~/ 60, minute % 60);
     final ceil = floor.add(grid);
     return t.difference(floor) <= ceil.difference(t) ? (floor, ceil) : (ceil, floor);
   }
@@ -1680,11 +2419,90 @@ class AppState extends ChangeNotifier {
     if (number != null) _renumber(ch, number);
     if (order != null && order != ch.order && !ch.blockOnly) {
       ch.order = order;
-      _rebase(ch, buildPlaylist(library, ch.source, order, seed: stableHash(ch.id)),
-          DateTime.now());
+      _rebase(ch, buildPlaylist(library, ch.source, order, seed: ch.seed), DateTime.now());
     }
     _setChannels(_channels);
     await _saveChannels();
+  }
+
+  // ---- Custom channels (custom-channels) -------------------------------------
+
+  /// The name a new custom channel gets when none is given.
+  static const customChannelName = 'My Channel';
+
+  /// A channel of [source] (collections, folders, shows, seasons, genres
+  /// and movies) in [order], with the next free number, on the air at once.
+  /// Throws [StateError] when nothing is picked or nothing matches.
+  Future<Channel> createCustomChannel(String name, ChannelSource source,
+      {PlaybackOrder order = PlaybackOrder.random}) async {
+    if (source.isMusic || !source.hasPicks) throw StateError('Choose something for the channel to play.');
+    await resolveRoots(source.roots);
+    final now = DateTime.now();
+    final id = 'user:${now.microsecondsSinceEpoch.toRadixString(36)}';
+    final playlist = buildPlaylist(library, source, order, seed: stableHash(id));
+    if (playlist.isEmpty) throw StateError('Nothing in the library matches that.');
+    final ch = Channel(
+      id: id,
+      number: ChannelNumbers.nextGenerated(_channels),
+      name: name.trim().isEmpty ? customChannelName : name.trim(),
+      icon: const ChannelIcon.builtin('live_tv'),
+      source: source,
+      order: order,
+      playlist: playlist,
+      // Like a generated lineup, it "started" at midnight: tuning in joins
+      // a program under way.
+      anchor: DateTime(now.year, now.month, now.day),
+      auto: false,
+    );
+    _setChannels([..._channels, ch]);
+    await _saveChannels();
+    return ch;
+  }
+
+  /// Changes what custom channel [ch] plays. The program on the air stays
+  /// on at the same point when it's still in [source]; otherwise the new
+  /// playlist starts now.
+  Future<void> setChannelSource(Channel ch, ChannelSource source, {DateTime? now}) async {
+    if (!ch.isCustom) throw StateError('Only channels you added can change what they play.');
+    if (source.isMusic || !source.hasPicks) throw StateError('Choose something for the channel to play.');
+    await resolveRoots(source.roots);
+    final playlist = buildPlaylist(library, source, ch.order, seed: ch.seed);
+    if (playlist.isEmpty) throw StateError('Nothing in the library matches that.');
+    final at = now ?? DateTime.now();
+    ch.source = source;
+    if (!_rebase(ch, playlist, at)) ch.anchor = at;
+    _setChannels(_channels);
+    await _saveChannels();
+  }
+
+  /// Whether [ch] can be reshuffled: a shuffled or least watched first
+  /// channel that plays programs.
+  bool canReshuffle(Channel ch) =>
+      ch.playsPrograms && (ch.order == PlaybackOrder.random || ch.order == PlaybackOrder.weighted);
+
+  /// Rebuilds [ch]'s order with a new seed (and, for Least watched first,
+  /// today's play counts), keeping the program on the air.
+  Future<void> reshuffleChannel(Channel ch, {DateTime? now}) async {
+    if (!canReshuffle(ch)) throw StateError('Only shuffled channels can be reshuffled.');
+    ch.generation++;
+    _rebase(ch, buildPlaylist(library, ch.source, ch.order, seed: ch.seed), now ?? DateTime.now());
+    _setChannels(_channels);
+    await _saveChannels();
+  }
+
+  /// Sets [ch]'s slot length and tail mode (null: off), keeping the program
+  /// on the air in place as a break plan change does.
+  Future<void> setSlotRule(Channel ch, SlotRule? rule, {DateTime? now}) async {
+    if (!ch.playsPrograms) throw StateError("This channel doesn't have slots.");
+    if (rule == ch.slotRule) return;
+    final before = ch.slotRule;
+    ch.slotRule = rule;
+    _rebase(ch, ch.playlist, now ?? DateTime.now(), ruleBefore: (rule: before));
+    _setChannels(_channels);
+    await _saveChannels();
+    // An offline image no channel uses any more goes.
+    final old = before?.offlineImage;
+    if (old != null && !_channels.any((c) => c.slotRule?.offlineImage == old)) await icons.delete(old);
   }
 
   /// Moves [ch] to [number]; a channel already there swaps into [ch]'s slot.
@@ -1697,8 +2515,8 @@ class AppState extends ChangeNotifier {
   }
 
   /// Discards all channel edits and regenerates the default lineup.
-  /// Channels made for programming blocks are kept, moved after the
-  /// generated ones.
+  /// Channels the user added (custom, block and music channels) are kept
+  /// with their settings, moved after the generated ones.
   ///
   /// A safety backup is saved first; if it can't be, nothing is reset and
   /// the error is thrown.
@@ -1706,7 +2524,7 @@ class AppState extends ChangeNotifier {
     await safetyBackup?.call('before-reset');
     _schedules.clear();
     final fresh = _generated();
-    for (final c in _channels.where((c) => c.blockOnly)) {
+    for (final c in _channels.where((c) => !c.auto && !c.isLive)) {
       c.number = ChannelNumbers.nextGenerated([...fresh, ..._channels.where((c) => c.isLive)]);
       fresh.add(c);
     }
@@ -1729,6 +2547,24 @@ class AppState extends ChangeNotifier {
   Future<void> setChannelLogoMode(Channel ch, LogoMode? mode) async {
     if (mode == ch.logoMode) return;
     ch.logoMode = mode;
+    notifyListeners();
+    await _saveChannels();
+  }
+
+  // ---- Retro look (retro-presentation) -----------------------------------------
+
+  /// Sets the main retro look and Custom style. Every channel on them shows
+  /// it at once.
+  Future<void> setMainRetro(RetroSettings retro) async {
+    settings.retro = retro;
+    notifyListeners();
+    await _saveSettings();
+  }
+
+  /// Gives [ch] its own retro look; what's null follows the main setting.
+  Future<void> setChannelRetro(Channel ch, ChannelRetro retro) async {
+    if (retro == ch.retro) return;
+    ch.retro = retro;
     notifyListeners();
     await _saveChannels();
   }
@@ -1800,7 +2636,7 @@ class AppState extends ChangeNotifier {
   void _updateCatalog({bool rebase = true}) {
     final before = _plans();
     final version = catalog.version;
-    catalog.update(library.commercials, _analysis, settings.commercialPools.map((p) => p.id));
+    _rebuildCatalog();
     if (catalog.version == version) return;
     if (rebase) {
       _rebaseForPlans(before, DateTime.now());
@@ -1835,20 +2671,24 @@ class AppState extends ChangeNotifier {
   }
 
   void _startAnalysis() {
-    final cache = _analysis;
+    final cache = _store;
     final c = client;
     if (!runAnalysis || !_analysisAllowedNow || _closed || _analyzer != null || cache == null || c == null || phase != AppPhase.ready) {
       return;
     }
-    // The analyzer only ever reads the static stream (direct-play spec).
-    final proxy = _proxy = LoopbackStreamProxy(upstream: (id) => client!.streamUri(id), headers: () => client!.authHeaders)
+    // The analyzer only ever reads the static stream (direct-play spec),
+    // each item from its own server (multi-server).
+    final proxy = _proxy = LoopbackStreamProxy(
+        upstream: (id) => (clientOf(id) ?? client!).streamUri(id),
+        headers: () => client!.authHeaders,
+        headersFor: (id) => (clientOf(id) ?? client!).authHeaders)
       ..budget = analyzerBudgetNow;
     _analyzer = MediaAnalyzer(
       cache: cache,
       scanner: ffmpeg,
       proxy: proxy,
       segments: (id) async =>
-          [for (final s in await client!.commercialSegments(id)) Span(s.start, s.end)],
+          [for (final s in await (clientOf(id) ?? client!).commercialSegments(id)) Span(s.start, s.end)],
       work: _analysisWork,
       busy: _analysisBusy,
     )..start();
@@ -1934,6 +2774,7 @@ class AppState extends ChangeNotifier {
     analysisAllowed?.removeListener(_onAnalysisAllowed);
     _staleCheck?.cancel();
     _launchTimer?.cancel();
+    _serverPings?.cancel();
     playbackActivity.removeListener(_onLaunchActivity);
     playbackBusy.removeListener(_updateAnalysisBusy);
     exportBusy?.removeListener(_updateAnalysisBusy);
@@ -1941,10 +2782,17 @@ class AppState extends ChangeNotifier {
     _syncAnalysisIdle();
     _analysis?.removeListener(_onAnalysis);
     if (_analysis case final cache?) await AnalysisCache.release(cache);
+    _serverAnalysis?.detach();
+    for (final cache in _addedCaches.values) {
+      await AnalysisCache.release(cache);
+    }
+    _addedCaches.clear();
     _liveRefresher.stop();
     live.removeListener(_onLiveChanged);
     live.dispose();
-    client?.close();
+    for (final server in servers.all) {
+      server.client?.close();
+    }
   }
 
   // ---- Commercial pools ----------------------------------------------------
@@ -1976,21 +2824,49 @@ class AppState extends ChangeNotifier {
   Future<void> deletePool(CommercialPool pool) async {
     final before = _plans();
     settings.commercialPools = [for (final p in settings.commercialPools) if (p.id != pool.id) p];
-    BreakPlan without(BreakPlan plan) => plan.withRoles(plan.roles.withoutPool(pool.id));
-    settings.commercialPlan = without(settings.commercialPlan);
-    for (final ch in _channels) {
-      if (ch.commercialPlan case final plan?) ch.commercialPlan = without(plan);
-    }
+    _dropPoolFromPlans(pool);
     // Its clips are gone right away; the re-scan returns its videos to
     // the channels.
     final version = catalog.version;
-    catalog.update(library.commercials, _analysis, settings.commercialPools.map((p) => p.id));
+    _rebuildCatalog();
     if (catalog.version != version) _schedules.clear();
     _rebaseForPlans(before, DateTime.now());
     await _saveSettings();
     await _saveChannels();
     _refreshForPools();
   }
+
+  /// Marks [pool] as commercials or bumpers. Plans that picked it for what
+  /// it no longer holds use all pools (or all bumper pools) instead, as do
+  /// channels' filler. Its folders are the same, so there's no re-scan.
+  Future<void> setPoolKind(CommercialPool pool, PoolKind kind) async {
+    if (pool.kind == kind) return;
+    final before = _plans();
+    pool.kind = kind;
+    _dropPoolFromPlans(pool);
+    for (final ch in _channels) {
+      if (ch.slotRule case final rule? when rule.poolId == pool.id) {
+        ch.slotRule = rule.copyWith(poolId: () => null);
+      }
+    }
+    _rebuildCatalog();
+    _schedules.clear();
+    _rebaseForPlans(before, DateTime.now());
+    _analyzer?.poke();
+    await _saveSettings();
+    await _saveChannels();
+  }
+
+  void _dropPoolFromPlans(CommercialPool pool) {
+    BreakPlan without(BreakPlan plan) => plan.withRoles(plan.roles.withoutPool(pool.id));
+    settings.commercialPlan = without(settings.commercialPlan);
+    for (final ch in _channels) {
+      if (ch.commercialPlan case final plan?) ch.commercialPlan = without(plan);
+    }
+  }
+
+  void _rebuildCatalog() => catalog.update(library.commercials, _store, settings.commercialPools.map((p) => p.id),
+      bumperPools: [for (final p in settings.commercialPools) if (p.kind == PoolKind.bumpers) p.id]);
 
   /// Sets the folders [pool] draws from, then re-scans so their videos
   /// leave the regular channels and fill breaks instead.
@@ -2022,6 +2898,12 @@ class AppState extends ChangeNotifier {
         ch.icon = const ChannelIcon.builtin('live_tv');
         changed = true;
       }
+    }
+    // An offline image in use stays.
+    if (_channels.any((c) => c.slotRule?.offlineImage == name)) {
+      if (changed) await _saveChannels();
+      notifyListeners();
+      return;
     }
     await icons.delete(name);
     if (changed) await _saveChannels();
@@ -2063,9 +2945,14 @@ class AppState extends ChangeNotifier {
     if (!newChannel && channelById(draft.channelId) == null) return 'Choose a channel.';
     if (lineupMode && !draft.hasLineup) return 'Add a show to the lineup.';
     if (blockPlaylist(draft).isEmpty) {
-      return lineupMode
-          ? "The lineup's shows have no episodes. Pick other shows."
-          : 'Choose some shows or movies for the block to play.';
+      if (lineupMode) return "The lineup's shows have no episodes. Pick other shows.";
+      final floor = draft.source.ratingFloor;
+      // Something matches, just nothing rated high enough (late-night-drift D7).
+      if (floor != null &&
+          buildPlaylist(library, draft.source.copyWith(ratingFloor: () => null), draft.order, seed: 0).isNotEmpty) {
+        return 'Nothing in this mix is rated ${floor.shortLabel} or higher. Choose a lower rating or other shows.';
+      }
+      return 'Choose some shows or movies for the block to play.';
     }
     if (!newChannel) {
       final clash = blockConflict(draft);
@@ -2127,6 +3014,8 @@ class AppState extends ChangeNotifier {
   /// Adds or replaces [block]. When its content changed, the lineup starts
   /// over from its first program today.
   Future<void> saveBlock(ProgramBlock block) async {
+    // New roots are fetched first, so the block fills now.
+    await resolveRoots(block.source.roots);
     final existing = _blocks.indexWhere((b) => b.id == block.id);
     if (blockRestarts(block)) {
       final today = DateTime.now();
@@ -2197,7 +3086,7 @@ class AppState extends ChangeNotifier {
     return ch;
   }
 
-  /// Removes a channel the user added (a block or music channel), with its
+  /// Removes a channel the user added (a custom, block or music channel), with its
   /// blocks and group places. Generated and live channels can only be
   /// hidden.
   Future<void> deleteUserChannel(Channel ch) async {

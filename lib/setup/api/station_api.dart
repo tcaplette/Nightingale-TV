@@ -22,7 +22,7 @@ extension _StationApi on SetupServer {
         ApiRoute('PUT', 'profiles/{id}/commercials/plan', Access.profileSettings, _setGlobalPlan),
         ApiRoute('PUT', 'profiles/{id}/channels/{cid}/plan', Access.profileSettings, _setChannelPlan),
         ApiRoute('POST', 'profiles/{id}/pools', Access.profileSettings, _addPool),
-        ApiRoute('PUT', 'profiles/{id}/pools/{pid}', Access.profileSettings, _renamePool),
+        ApiRoute('PUT', 'profiles/{id}/pools/{pid}', Access.profileSettings, _updatePool),
         ApiRoute('DELETE', 'profiles/{id}/pools/{pid}', Access.profileSettings, _deletePool),
         ApiRoute('PUT', 'profiles/{id}/pools/{pid}/roots', Access.profileSettings, _setPoolRoots),
       ];
@@ -138,6 +138,8 @@ extension _StationApi on SetupServer {
     return {
       'blocks': [for (final b in app.blocks) _blockJson(app, b)],
       'newBlock': app.newBlock().toJson(),
+      // Kid profiles get no minimum rating or late-night shortcut.
+      'kidProfile': app.maxRatingRank != null,
     };
   }
 
@@ -167,6 +169,8 @@ extension _StationApi on SetupServer {
   /// block channel named after it; `lineupMode`: it plays a lineup.
   Future<ProgramBlock> _saveChecked(AppState app, ProgramBlock block, Map<String, Object?> body) async {
     final newChannel = body.boolean('newChannel') ?? false;
+    // New roots are fetched first, as the TV's editor does when they're added.
+    await app.resolveRoots(block.source.roots);
     final problem = app.blockProblem(block, newChannel: newChannel, lineupMode: body.boolean('lineupMode') ?? block.hasLineup);
     if (problem != null) throw ApiError(HttpStatus.badRequest, problem);
     if (newChannel) block.channelId = (await app.createBlockChannel(block.title)).id;
@@ -214,6 +218,7 @@ extension _StationApi on SetupServer {
         ..playlist = existing.playlist
         ..anchor = existing.anchor;
     }
+    await app.resolveRoots(block.source.roots);
     final preview = app.previewBlock(block, (body.boolean('newChannel') ?? false) ? null : block.channelId);
     String iso(DateTime t) => t.toUtc().toIso8601String();
     return {
@@ -297,11 +302,19 @@ extension _StationApi on SetupServer {
     return {...await _commercials(r) as Map<String, Object?>, 'created': pool.id};
   }
 
-  Future<Object?> _renamePool(ApiRequest r) async {
+  /// A pool's new `name`, `kind` (`commercials` or `bumpers`), or both.
+  Future<Object?> _updatePool(ApiRequest r) async {
     final app = await _app(r['id']);
-    final name = (await r.body()).string('name') ?? '';
-    if (name.trim().isEmpty) throw ApiError(HttpStatus.badRequest, 'Give the pool a name.');
-    await app.renamePool(_poolOf(app, r['pid']), name);
+    final body = await r.body();
+    final name = body['name'] == null && body['kind'] != null ? null : body.string('name') ?? '';
+    if (name != null && name.trim().isEmpty) throw ApiError(HttpStatus.badRequest, 'Give the pool a name.');
+    final PoolKind? kind = switch (body['kind']) {
+      null => null,
+      final k => PoolKind.values.asNameMap()[k] ?? (throw ApiError(HttpStatus.badRequest, "That isn't a pool type.")),
+    };
+    final pool = _poolOf(app, r['pid']);
+    if (name != null) await app.renamePool(pool, name);
+    if (kind != null) await app.setPoolKind(pool, kind);
     return _commercials(r);
   }
 

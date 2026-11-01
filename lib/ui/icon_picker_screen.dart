@@ -11,18 +11,21 @@ import 'device_image_picker_screen.dart';
 import '../theme/tv_theme.dart';
 import 'menu_screen.dart';
 import 'widgets/channel_logo.dart';
+import 'widgets/nightingale_mark.dart';
 import 'widgets/screen_layout.dart';
 import 'widgets/tv_focus.dart';
 
 enum _Tab {
   builtin('Built-in', Icons.apps),
   badges('Badges', Icons.badge),
-  shows('Show logos', Icons.live_tv),
+  shows('Show logos', null),
   mine('My icons', Icons.upload_file);
 
   const _Tab(this.label, this.icon);
   final String label;
-  final IconData icon;
+
+  /// Null: the app's TV with the bird.
+  final IconData? icon;
 }
 
 /// Pick a channel icon. Pops with the chosen [ChannelIcon].
@@ -164,7 +167,7 @@ class _IconPickerScreenState extends State<IconPickerScreen> {
                 for (final entry in group.value.entries)
                   _IconTile(
                     onPressed: () => _choose(ChannelIcon.builtin(entry.key, color: _color)),
-                    child: Icon(entry.value, size: 76, color: Color(_color)),
+                    child: BuiltinIcon(iconKey: entry.key, size: 76, color: Color(_color)),
                   ),
               ]),
             ],
@@ -349,7 +352,7 @@ class _TabButton extends StatelessWidget {
             borderRadius: BorderRadius.circular(g.radius * 2),
           ),
           child: Row(mainAxisSize: MainAxisSize.min, children: [
-            Icon(tab.icon, size: 30, color: fg),
+            if (tab.icon case final icon?) Icon(icon, size: 30, color: fg) else NightingaleTv(height: 30, color: fg),
             const SizedBox(width: 12),
             Text(tab.label, style: g.display(30, weight: FontWeight.w700, color: fg)),
           ]),

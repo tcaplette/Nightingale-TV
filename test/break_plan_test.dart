@@ -245,4 +245,34 @@ void main() {
     expect(BreakPlan.legacy.alignment, _min(15));
     expect(BreakPlan.off.alignment, isNull);
   });
+
+  group('bumper settings', () {
+    final roles = const CustomRoles(midInterval: Duration(minutes: 10)).withBumpers('idents');
+
+    test('are carried by every copy, and round-trip through JSON', () {
+      expect(roles.copyWith(postRoll: const Duration(minutes: 1)).bumperPool, 'idents');
+      expect(roles.withPool(BreakRole.mid, 'ads').bumperPool, 'idents');
+      final none = roles.withBumpers(null, none: true);
+      expect((none.bumperPool, none.noBumpers), (null, true));
+      expect(none.copyWith(postRoll: const Duration(minutes: 1)).noBumpers, isTrue);
+      expect(none.withPool(BreakRole.mid, 'ads').noBumpers, isTrue);
+      expect(CustomRoles.fromJson(roles.toJson()), roles);
+      expect(CustomRoles.fromJson(none.toJson()), none);
+      expect(roles == none, isFalse);
+      expect(roles.hashCode == const CustomRoles(midInterval: Duration(minutes: 10)).hashCode, isFalse);
+    });
+
+    test('old saves load with all bumper pools', () {
+      final old = CustomRoles.fromJson({'preMs': 0, 'pools': <String, Object?>{}});
+      expect((old.bumperPool, old.noBumpers), (null, false));
+      expect(const CustomRoles().toJson().containsKey('noBumpers'), isFalse);
+      expect((const CustomRoles().toJson()['pools'] as Map), isEmpty);
+    });
+
+    test('withoutPool clears a matching bumper pool, and poolsUsed ignores it', () {
+      expect(roles.withoutPool('idents').bumperPool, isNull);
+      expect(roles.withoutPool('other').bumperPool, 'idents');
+      expect(BreakPlan(mode: BreakMode.custom, roles: roles).poolsUsed, {null});
+    });
+  });
 }

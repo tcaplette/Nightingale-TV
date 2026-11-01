@@ -3,6 +3,7 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:nightingale_tv/commercials/commercial_pool.dart';
 import 'package:image/image.dart' as img;
 import 'package:nightingale_tv/app_state.dart';
 import 'package:nightingale_tv/backup/backup_archive.dart';
@@ -56,7 +57,8 @@ void main() {
     await setup.start();
     await household.start();
     admin = Client(setup.boundPort!);
-    jellyfin = await FakeJellyfin.start(fakeItems(shows: const {'Alpha': 10, 'Beta': 4, 'Gamma': 6}, movies: 3));
+    jellyfin = await FakeJellyfin.start(
+        fakeItems(shows: const {'Alpha': 10, 'Beta': 4, 'Gamma': 6}, ratings: const {'Alpha': 'TV-MA', 'Beta': 'TV-G'}, movies: 3));
     final r = await admin.post('/api/v1/password', {'token': accounts.setupToken, 'name': 'sam', 'password': 'correct horse'});
     expect(r.status, 200);
     id = household.profiles.single.id;
@@ -222,6 +224,63 @@ void main() {
       expect((ch.logoMode, ch.commercialPlan), (null, null));
     });
 
+    test('retro: one setting edited, the rest follow main; the whole model without it follows main', () async {
+      final app = await signIn();
+      final ch = app.allChannels.first;
+      final path = '/api/v1/profiles/$id/channels/${ch.id}';
+      await app.setMainRetro(const RetroSettings(shape: PictureShape.fit43));
+      final r = await edit('PUT', path, {'retro': {'crt': 'arcade'}});
+      expect(r.status, 200, reason: '${r.json}');
+      expect(ch.retro, const ChannelRetro(crt: CrtStyle.arcade));
+      final view = (((await get(path))! as Map)['view'] as Map)['retro'] as Map;
+      expect(view['crt'], 'arcade');
+      expect(view['shape'], 'fit43', reason: 'the values in effect');
+      final model = ((await get(path))! as Map).cast<String, Object?>()..remove('retro');
+      expect((await edit('PUT', path, model)).status, 200);
+      expect(ch.retro.followsMain, isTrue);
+    });
+
+    test('retro: an unknown value or a path is a 400 and changes nothing', () async {
+      final app = await signIn();
+      final ch = app.allChannels.first;
+      final path = '/api/v1/profiles/$id/channels/${ch.id}';
+      await app.setChannelRetro(ch, const ChannelRetro(crt: CrtStyle.softTube));
+      for (final bad in [
+        {'crt': 'plasma'},
+        {'shape': 'wide'},
+        {'surround': 'blue'},
+        {'overlay': 'neon'},
+        {'surround': 'image', 'surroundImage': '../../settings.json'},
+        'arcade',
+      ]) {
+        expect((await edit('PUT', path, {'retro': bad})).status, 400, reason: '$bad');
+        expect(ch.retro, const ChannelRetro(crt: CrtStyle.softTube));
+      }
+    });
+
+    test('retro: the main settings and Custom style read and edit; the device switch is not there', () async {
+      final app = await signIn();
+      final path = '/api/v1/profiles/$id/retro';
+      final r = await edit('PUT', path, {
+        'crt': 'custom',
+        'custom': {'scanlines': 'high', 'lines': 240},
+        'accents': {'vcr': 'channel'},
+      });
+      expect(r.status, 200, reason: '${r.json}');
+      final retro = app.settings.retro;
+      expect(retro.crt, CrtStyle.custom);
+      expect(retro.custom.scanlines, CrtLevel.high);
+      expect(retro.custom.lines, 240);
+      expect(retro.custom.glow, CrtLevel.low, reason: 'left out, stays');
+      expect(retro.accentOf(OverlayThemeName.vcr), OverlayAccent.channel);
+      expect((await edit('PUT', path, {'custom': {'lines': 300}})).status, 400);
+      expect((await edit('PUT', path, {'crt': 'plasma'})).status, 400);
+      expect(app.settings.retro.custom.lines, 240);
+      final read = (await get(path))! as Map;
+      expect((read['retro'] as Map)['crt'], 'custom');
+      expect(read.toString(), isNot(contains('effects')));
+    });
+
     test('a block channel is added and removed; a generated one can only be hidden', () async {
       final app = await signIn();
       final made = await admin.post('/api/v1/profiles/$id/channels', {'kind': 'block', 'name': 'Saturday'});
@@ -236,6 +295,87 @@ void main() {
       expect(app.channelById(generated), isNotNull);
       final music = await admin.post('/api/v1/profiles/$id/channels', {'kind': 'music', 'source': {'songs': true}});
       expect(music.status, 400, reason: 'no songs in this library');
+    });
+
+    test('a custom channel: added from a collection, edited, reshuffled, slotted, removed', () async {
+      final app = await signIn();
+      jellyfin.collections['box80s'] = ['Alpha-e1', 'Alpha-e2', 'Beta-e1', 'movie-1'];
+      final base = '/api/v1/profiles/$id/channels';
+      const root = {'itemId': 'box80s', 'libraryId': 'tv', 'label': '80s Sitcoms (collection)'};
+      final empty = await admin.post(base, {'kind': 'custom', 'name': 'Nothing', 'source': <String, Object?>{}});
+      expect(empty.status, 400);
+      final made = await admin.post(base, {
+        'kind': 'custom',
+        'name': '80s TV',
+        'order': 'weighted',
+        'source': {
+          'roots': [root]
+        },
+      });
+      expect(made.status, 200, reason: '${made.json}');
+      final cid = (made.json! as Map)['id'] as String;
+      final ch = app.channelById(cid)!;
+      expect(ch.playlist.toSet(), {'Alpha-e1', 'Alpha-e2', 'Beta-e1', 'movie-1'});
+      expect(ch.order, PlaybackOrder.weighted);
+      final guide = (await get('/api/v1/profiles/$id/guide'))! as Map;
+      final row = (guide['channels'] as List).cast<Map>().firstWhere((c) => c['id'] == cid);
+      expect(row['airings'], isNotEmpty);
+
+      final path = '$base/$cid';
+      final patched = await edit('PATCH', path, {
+        'source': {
+          'seriesKeys': ['gamma|2000'],
+          'roots': [root]
+        }
+      }, path);
+      expect(patched.status, 200, reason: '${patched.json}');
+      expect(ch.playlist.where((i) => i.startsWith('Gamma')), hasLength(6));
+
+      final slotted = await edit('PUT', path, {
+        'slot': {'minutes': 30, 'tail': 'offline'}
+      });
+      expect(slotted.status, 200, reason: '${slotted.json}');
+      expect(ch.slotRule?.tail, TailMode.offline);
+      expect((await edit('PUT', path, {'slot': {'minutes': 45}})).status, 400);
+      expect((await edit('PUT', path, {'order': 'someday'})).status, 400);
+      expect((await edit('PUT', path, {'slot': null})).status, 200);
+      expect(ch.slotRule, isNull);
+
+      final shuffled = await admin.post('$path/reshuffle');
+      expect(shuffled.status, 200);
+      expect(ch.generation, 1);
+
+      expect((await edit('DELETE', path, null, base)).status, 200);
+      expect(app.channelById(cid), isNull);
+    });
+
+    test("a generated channel's source is refused with the TV's message; its slot length isn't", () async {
+      final app = await signIn();
+      final ch = app.allChannels.firstWhere((c) => c.auto);
+      final path = '/api/v1/profiles/$id/channels/${ch.id}';
+      final r = await edit('PATCH', path, {
+        'source': {
+          'seriesKeys': ['gamma|2000']
+        }
+      });
+      expect(r.status, 400);
+      expect(r.json, {'error': 'Only channels you added can change what they play.'});
+      final model = ((await get(path))! as Map).cast<String, Object?>();
+      expect((await edit('PUT', path, model)).status, 200, reason: 'the whole model, source unchanged, is fine');
+      expect((await edit('PUT', path, {'slot': {'minutes': 60, 'tail': 'truncate'}})).status, 200);
+      expect(ch.slotRule?.length, const Duration(minutes: 60));
+      expect((await admin.post('$path/reshuffle')).status, ch.order == PlaybackOrder.cyclic ? 400 : 200);
+    });
+
+    test('an offline image uploads beside the icons, but is not listed as one', () async {
+      await signIn();
+      final png = Uint8List.fromList(img.encodePng(img.Image(width: 8, height: 8)));
+      final r = await admin.call('POST', '/api/v1/profiles/$id/icons?name=card.png&kind=offline', bytes: png);
+      expect(r.status, 200, reason: '${r.json}');
+      final name = (r.json! as Map)['name'] as String;
+      expect(name, startsWith('offline-'));
+      expect((await admin.get('/api/v1/profiles/$id/icons/$name')).status, 200);
+      expect(((await get('/api/v1/profiles/$id/icons'))! as Map)['icons'], isEmpty);
     });
 
     test('reset fails safely: when the safety backup can\'t be saved nothing is reset', () async {
@@ -384,6 +524,39 @@ void main() {
     });
   });
 
+  group('late-night blocks (late-night-drift 2.4)', () {
+    test('a rated block reads and writes back identical; nothing qualifying is refused', () async {
+      final app = await signIn();
+      final blocks = '/api/v1/profiles/$id/blocks';
+      final listed = (await get(blocks))! as Map;
+      expect(listed['kidProfile'], isFalse);
+      final draft = listed['newBlock'] as Map<String, Object?>;
+      final none = await admin.post(blocks, {
+        ...draft,
+        'title': 'Late Night',
+        'source': {'episodes': true, 'movies': false, 'seriesKeys': ['beta|2000'], 'ratingFloor': 'mature'},
+      });
+      expect(none.status, 400);
+      expect((none.json! as Map)['error'],
+          'Nothing in this mix is rated TV-MA or higher. Choose a lower rating or other shows.');
+      final made = await admin.post(blocks, {
+        ...draft,
+        'title': 'Late Night',
+        'source': {'episodes': true, 'movies': false, 'seriesKeys': ['alpha|2000', 'beta|2000'], 'ratingFloor': 'mature'},
+      });
+      expect(made.status, 200, reason: '${made.json}');
+      expect(app.blocks.single.source.ratingFloor, RatingFloor.mature);
+      expect(app.blocks.single.playlist, hasLength(10), reason: "only Alpha's episodes");
+      final bid = (made.json! as Map)['id'] as String;
+      final before = jsonEncode(app.blocks.single.toJson());
+      final read = (await get('$blocks/$bid'))! as Map;
+      expect((read['view'] as Map)['describe'], endsWith('TV-MA / R and up'));
+      final again = await edit('PUT', '$blocks/$bid', read);
+      expect(again.status, 200, reason: '${again.json}');
+      expect(jsonEncode(app.blocks.single.toJson()), before);
+    });
+  });
+
   group('commercials (4.11)', () {
     test('pools with clip counts, folders, the main plan and a channel plan', () async {
       final app = await signIn();
@@ -401,6 +574,19 @@ void main() {
       expect(app.poolById(pid)!.roots.single.itemId, FakeJellyfin.reelFolder);
       expect((await edit('PUT', '/api/v1/profiles/$id/pools/$pid', {'name': 'Ads'}, base)).status, 200);
       expect(app.poolById(pid)!.name, 'Ads');
+      final marked = await edit('PUT', '/api/v1/profiles/$id/pools/$pid', {'kind': 'bumpers'}, base);
+      expect(marked.status, 200);
+      expect(app.poolById(pid)!.kind, PoolKind.bumpers);
+      expect(app.poolById(pid)!.name, 'Ads', reason: 'a type alone keeps the name');
+      final listed = ((marked.json! as Map)['pools'] as List).cast<Map>().singleWhere((p) => p['id'] == pid);
+      expect(listed['kind'], 'bumpers');
+      expect((await edit('PUT', '/api/v1/profiles/$id/pools/$pid', {'kind': 'idents'}, base)).status, 400);
+      expect(app.poolById(pid)!.kind, PoolKind.bumpers, reason: 'refused: unchanged');
+      expect(
+          (await edit('PUT', '/api/v1/profiles/$id/pools/$pid', {'name': 'Back to ads', 'kind': 'commercials'}, base)).status,
+          200);
+      expect((app.poolById(pid)!.name, app.poolById(pid)!.kind), ('Back to ads', PoolKind.commercials));
+      expect((await edit('PUT', '/api/v1/profiles/$id/pools/$pid', {'name': 'Ads'}, base)).status, 200);
       final plan = {'mode': 'automatic', 'roles': <String, Object?>{}};
       expect((await edit('PUT', '$base/plan', {'plan': plan}, base)).status, 200);
       expect(app.settings.commercialPlan.mode.name, 'automatic');

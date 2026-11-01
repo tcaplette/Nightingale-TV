@@ -52,16 +52,30 @@ extension _LiveApi on SetupServer {
 
   Future<Object?> _liveSources(ApiRequest r) async {
     final app = await _app(r['id']);
-    final availability = app.live.serverSource == null ? await app.liveTvAvailability() : null;
-    final server = app.session?.serverName ?? 'Your server';
+    // One server Live TV source per server (multi-server).
+    final servers = <Map<String, Object?>>[];
+    for (final s in app.servers.ordered) {
+      if (s.client == null) continue;
+      final has = app.servers.multiple ? app.live.serverSourceFor(s.serverId) != null : app.live.serverSource != null;
+      final availability = has ? null : await app.liveTvAvailability(key: s.key);
+      servers.add({
+        'key': s.key,
+        'name': s.name,
+        'canAdd': availability == LiveTvAvailability.available,
+        'reason': has ? '${s.name} Live TV is already added' : availability?.reason(s.name),
+      });
+    }
+    final main = servers.where((s) => s['key'] == ServerSet.mainKey).firstOrNull;
     return {
       'enabled': app.liveEnabled,
       if (!app.liveEnabled) 'message': 'Kid profiles get no live channels.',
       'sources': [for (final s in app.live.sources) _sourceJson(app, s)],
+      // The main server's, as before; every server's in `servers`.
       'server': {
-        'canAdd': availability == LiveTvAvailability.available,
-        'reason': availability?.reason(server),
+        'canAdd': main?['canAdd'] ?? false,
+        'reason': main?['reason'],
       },
+      'servers': servers,
     };
   }
 
@@ -73,7 +87,7 @@ extension _LiveApi on SetupServer {
   Future<Object?> _addServerSource(ApiRequest r) async {
     final app = await _app(r['id'], library: true);
     try {
-      return _sourceJson(app, await app.addServerLiveSource());
+      return _sourceJson(app, await app.addServerLiveSource(key: r.query['server'] ?? ServerSet.mainKey));
     } on LiveSourceException catch (e) {
       throw ApiError(HttpStatus.badRequest, e.message);
     }

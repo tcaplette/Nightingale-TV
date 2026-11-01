@@ -227,6 +227,10 @@ void main() {
     test('the launch channel\'s decision is asked during start-up, and the first tune awaits it', () async {
       final ch = app.channels[1];
       await app.setLastChannel(ch);
+      // On the real clock: not so near a program's end that the tune below
+      // joins the next one.
+      final left = app.scheduleFor(ch)!.playbackAt(DateTime.now()).end.difference(DateTime.now());
+      if (left < const Duration(seconds: 8)) await Future<void>.delayed(left + const Duration(seconds: 1));
       tuner.dispose();
       await app.close();
       client.decisions.clear();

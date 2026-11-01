@@ -21,5 +21,16 @@ void main() {
     expect(copy.roots, pool.roots);
     expect(copy.roots.first.isWholeLibrary, isTrue);
     expect(copy.roots.last.isWholeLibrary, isFalse);
+    expect(copy.kind, PoolKind.commercials);
+  });
+
+  test('a pool\'s type: saved only for bumpers, and anything else loads as commercials', () {
+    final plain = CommercialPool(id: 'p', name: 'Ads');
+    expect(plain.toJson().containsKey('kind'), isFalse);
+    final marked = CommercialPool(id: 'p', name: 'Idents', kind: PoolKind.bumpers);
+    expect(marked.toJson()['kind'], 'bumpers');
+    expect(CommercialPool.fromJson(marked.toJson()).kind, PoolKind.bumpers);
+    expect(CommercialPool.fromJson({'id': 'p', 'name': 'Old'}).kind, PoolKind.commercials);
+    expect(CommercialPool.fromJson({'id': 'p', 'kind': 'idents'}).kind, PoolKind.commercials);
   });
 }

@@ -65,7 +65,8 @@ LibraryIndex libraryIndexFromPlex({
         seriesName: seriesByKey[key]!.name,
         season: season,
         episode: number,
-        added: _epoch(e['addedAt'])));
+        added: _epoch(e['addedAt']),
+        playCount: _int(e['viewCount']) ?? 0));
   }
 
   final movieEntries = <MediaEntry>[];
@@ -76,7 +77,10 @@ LibraryIndex libraryIndexFromPlex({
     final name = m['title'] as String? ?? 'Movie';
     if (!seenMovies.add('${name.toLowerCase()}|${m['year']}')) continue;
     movieEntries.add(_entry(m, MediaKind.movie, runtime,
-        title: name, genres: _tags(m['Genre']), officialRating: m['contentRating'] as String?));
+        title: name,
+        genres: _tags(m['Genre']),
+        officialRating: m['contentRating'] as String?,
+        playCount: _int(m['viewCount']) ?? 0));
   }
 
   final commercialEntries = <MediaEntry>[];
@@ -146,6 +150,7 @@ MediaEntry _entry(Map<String, Object?> item, MediaKind kind, Duration runtime,
     String? albumId,
     List<String> poolIds = const [],
     DateTime? added,
+    int playCount = 0,
     bool chapters = true}) {
   final media = _first(item['Media']);
   final part = _first(media?['Part']);
@@ -175,8 +180,19 @@ MediaEntry _entry(Map<String, Object?> item, MediaKind kind, Duration runtime,
     albumId: albumId,
     added: added,
     streamPath: part?['key'] as String?,
+    playCount: playCount,
+    providerIds: plexProviderIds(item['Guid']),
   );
 }
+
+/// The `Guid` array Plex lists with `includeGuids=1` (`imdb://tt…`,
+/// `tmdb://…`, `tvdb://…`) as `imdb:tt…` (see [LibraryIndex.providerIdsOf]).
+List<String> plexProviderIds(Object? guids) => [
+      for (final g in (guids as List? ?? const []).whereType<Map<String, Object?>>())
+        if (RegExp(r'^(\w+)://(.+)$').firstMatch('${g['id']}') case final m?
+            when LibraryIndex.providers.contains(m[1]!.toLowerCase()))
+          '${m[1]!.toLowerCase()}:${m[2]}',
+    ];
 
 /// Chapter starts, in order, from an item's `Chapter` array.
 List<Duration> plexChapters(Map<String, Object?> item) => [

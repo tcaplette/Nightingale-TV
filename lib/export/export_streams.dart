@@ -205,7 +205,12 @@ class ExportStreams implements ChannelStreamer {
     if (existing != null && identical(existing.app, app)) return existing;
     if (existing != null) await existing.proxy.close();
     final proxy = proxyFor?.call(app) ??
-        LoopbackStreamProxy(upstream: (id) => app.client!.streamUri(id), headers: () => app.client!.authHeaders);
+        LoopbackStreamProxy(
+            // From the copy that plays (multi-server); the one server's
+            // client otherwise.
+            upstream: (id) => app.streamOf(id).url,
+            headers: () => app.client!.authHeaders,
+            headersFor: (id) => app.streamOf(id).headers);
     await proxy.start();
     return _proxies[profileId] = _Proxy(app, proxy);
   }

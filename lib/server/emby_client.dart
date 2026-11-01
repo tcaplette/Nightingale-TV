@@ -61,6 +61,14 @@ class EmbyClient extends JellyfinClient {
     return ServerInfo(url: info.url, name: info.name, version: info.version, id: info.id, kind: ServerKind.emby);
   }
 
+  /// Emby ignores a parent it doesn't know and lists every item, so a
+  /// deleted root is found by asking for it first (404: gone).
+  @override
+  Future<List<String>> idsUnder(String rootId) async {
+    await getMap('$userPath/Items/$rootId');
+    return super.idsUnder(rootId);
+  }
+
   @override
   Future<List<MediaSegment>> commercialSegments(String itemId) async => const [];
 

@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 
 import '../../channels/channel.dart';
 import '../../theme/tv_theme.dart';
+import '../format.dart';
+import 'overlay_style.dart';
 
 /// The full-screen cards a channel shows instead of a picture: on the TV,
 /// and drawn into Live TV export streams.
@@ -14,12 +16,10 @@ class ChannelNumberOsd extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final g = context.guide;
+    final g = OverlayStyle.of(context);
     return Text(
-      text,
-      style: g.display(110, weight: FontWeight.w800, color: g.accent).copyWith(
-        shadows: const [Shadow(color: Colors.black, blurRadius: 12, offset: Offset(3, 3))],
-      ),
+      g.number(text),
+      style: g.display(110, weight: FontWeight.w800, color: g.accent).copyWith(shadows: g.osdShadows),
     );
   }
 }
@@ -34,7 +34,7 @@ class StatusCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final g = context.guide;
+    final g = OverlayStyle.of(context);
     return DecoratedBox(
       decoration: g.backdrop,
       child: Center(
@@ -87,6 +87,47 @@ class TuningCard extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// A channel's offline card, during a slot's tail (slot-duration): its
+/// chosen [image] filling the screen without stretching, or by default its
+/// [logo] on the guide's background with its name and when the next slot
+/// starts ([backAt]).
+class OfflineCard extends StatelessWidget {
+  const OfflineCard({super.key, required this.channel, this.image, this.logo, this.backAt});
+
+  final Channel channel;
+
+  /// The chosen image, already fitted (contain).
+  final Widget? image;
+
+  /// The channel's logo, for the default card.
+  final Widget? logo;
+  final DateTime? backAt;
+
+  @override
+  Widget build(BuildContext context) {
+    final image = this.image;
+    if (image != null) return ColoredBox(color: Colors.black, child: SizedBox.expand(child: image));
+    final g = context.guide;
+    return DecoratedBox(
+      decoration: g.backdrop,
+      child: Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (logo != null) SizedBox(width: 520, height: 300, child: Center(child: logo)),
+            const SizedBox(height: 32),
+            Text(channel.name, textAlign: TextAlign.center, style: g.display(72, weight: FontWeight.w800)),
+            if (backAt != null) ...[
+              const SizedBox(height: 16),
+              Text('Back at ${formatTime(backAt!)}', style: g.body(32, color: g.textDim)),
+            ],
+          ],
+        ),
       ),
     );
   }

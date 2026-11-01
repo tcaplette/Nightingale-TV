@@ -72,9 +72,14 @@ class Recording implements MediaServer {
   @override
   Future<LibraryIndex> fetchLibraryIndex(
           {List<CommercialPool> pools = const [],
+          Set<String> channelRoots = const {},
+          bool providerIds = false,
           void Function(String status)? onStatus,
           void Function(List<ServerLibrary> libraries)? onLibraries}) =>
-      inner.fetchLibraryIndex(pools: pools, onStatus: onStatus, onLibraries: onLibraries);
+      inner.fetchLibraryIndex(
+          pools: pools, channelRoots: channelRoots, providerIds: providerIds, onStatus: onStatus, onLibraries: onLibraries);
+  @override
+  Future<List<String>> idsUnder(String rootId) => inner.idsUnder(rootId);
   @override
   Future<List<FolderNode>> folderTree(String libraryId) => inner.folderTree(libraryId);
   @override

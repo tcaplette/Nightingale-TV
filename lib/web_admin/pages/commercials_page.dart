@@ -26,11 +26,13 @@ class CommercialsPage extends StatelessWidget {
           if (r != null) await reload();
         }
 
+        PoolKind kindOf(Map<String, Object?> pool) => PoolKind.values.asNameMap()[pool['kind']] ?? PoolKind.commercials;
+
         Future<void> setPlan(BreakPlan p) => run(() => context.api.put('$base/commercials/plan', {'plan': p.toJson()}));
 
         return PageBody(title: 'Commercials', children: [
           Section(title: 'Breaks', children: [
-            Text('${data['clips']} clips in all pools.'),
+            Text('${data['clips']} clips in all commercial pools.'),
             RadioGroup<BreakMode>(
               groupValue: plan.mode,
               onChanged: (mode) async {
@@ -64,12 +66,14 @@ class CommercialsPage extends StatelessWidget {
               onPressed: () => run(() => context.api.post('$base/pools')),
             ),
             children: [
-              if (pools.isEmpty) const Text('A pool is a set of library folders whose videos fill breaks instead of airing.'),
+              if (pools.isEmpty) const Text('A pool is a set of library folders whose videos fill breaks instead of airing. '
+                    "A pool's type says whether its clips play as commercials or as bumpers, which open and close breaks."),
               for (final p in pools) ...[
                 ListTile(
                   contentPadding: EdgeInsets.zero,
                   title: Text(p['name'] as String),
                   subtitle: Text([
+                    kindOf(p).label,
                     '${(p['view'] as Map)['clips']} clips',
                     for (final r in (p['roots'] as List).cast<Map>()) r['label'] as String,
                   ].join(' · ')),
@@ -86,6 +90,9 @@ class CommercialsPage extends StatelessWidget {
                         case 'rename':
                           final name = await askText(context, title: 'Rename pool', label: 'Name', initial: p['name'] as String);
                           if (name != null && context.mounted) await run(() => context.api.put(path, {'name': name}));
+                        case 'kind':
+                          final kind = kindOf(p) == PoolKind.bumpers ? PoolKind.commercials : PoolKind.bumpers;
+                          await run(() => context.api.put(path, {'kind': kind.name}));
                         case 'delete':
                           final ok = await confirm(context,
                               title: 'Delete ${p['name']}?',
@@ -94,10 +101,14 @@ class CommercialsPage extends StatelessWidget {
                           if (ok && context.mounted) await run(() => context.api.delete(path));
                       }
                     },
-                    itemBuilder: (_) => const [
-                      PopupMenuItem(value: 'folders', child: Text('Choose folders…')),
-                      PopupMenuItem(value: 'rename', child: Text('Rename')),
-                      PopupMenuItem(value: 'delete', child: Text('Delete')),
+                    itemBuilder: (_) => [
+                      const PopupMenuItem(value: 'folders', child: Text('Choose folders…')),
+                      const PopupMenuItem(value: 'rename', child: Text('Rename')),
+                      PopupMenuItem(
+                        value: 'kind',
+                        child: Text(kindOf(p) == PoolKind.bumpers ? 'Set type: Commercials' : 'Set type: Bumpers'),
+                      ),
+                      const PopupMenuItem(value: 'delete', child: Text('Delete')),
                     ],
                   ),
                 ),

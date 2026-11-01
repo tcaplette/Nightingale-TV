@@ -11,11 +11,13 @@ import 'package:http/http.dart' as http;
 import '../app_state.dart';
 import '../channels/channel.dart';
 import '../channels/schedule.dart';
+import '../icons/icon_catalog.dart';
 import '../library/library_index.dart';
 import '../theme/tv_theme.dart';
 import '../ui/format.dart';
 import '../ui/widgets/broadcast_cards.dart';
 import '../ui/widgets/channel_logo.dart';
+import '../ui/widgets/nightingale_mark.dart';
 import '../ui/widgets/now_playing.dart';
 import '../ui/widgets/tv_canvas.dart';
 import 'lineup_server.dart';
@@ -67,6 +69,21 @@ class OffAirCard extends BroadcastCard {
   String get key => 'offair|$message';
 }
 
+/// A channel's offline card, during a slot's tail (slot-duration): as the
+/// TV draws it.
+class OfflineCardSpec extends BroadcastCard {
+  const OfflineCardSpec(this.channel, this.backAt);
+
+  final Channel channel;
+
+  /// When the next slot starts.
+  final DateTime backAt;
+
+  @override
+  String get key => 'offline|${channel.id}|${channel.name}|${jsonEncode(channel.icon.toJson())}|'
+      '${channel.slotRule?.offlineImage}|${formatTime(backAt)}';
+}
+
 /// PLEASE STAND BY: "Up next at …" when a file ends early, "We'll be right
 /// back" when a segment can't play.
 class StandByCard extends BroadcastCard {
@@ -98,9 +115,17 @@ class BroadcastArt implements LogoSource {
     final file = File('${cacheDir.path}/card-$name.png');
     if (await file.exists()) return file;
     await cacheDir.create(recursive: true);
-    final widget = _cardWidget(card);
-    final png = await OffscreenRenderer.renderPng(widget,
-        logicalSize: TvCanvas.size, pixelRatio: height / TvCanvas.size.height);
+    final images = <ui.Image>[];
+    final Uint8List png;
+    try {
+      final widget = card is OfflineCardSpec ? await _offlineWidget(app, card, images) : _cardWidget(card);
+      png = await OffscreenRenderer.renderPng(widget,
+          logicalSize: TvCanvas.size, pixelRatio: height / TvCanvas.size.height);
+    } finally {
+      for (final i in images) {
+        i.dispose();
+      }
+    }
     final tmp = File('${file.path}.$pid.tmp');
     await tmp.writeAsBytes(png, flush: true);
     await tmp.rename(file.path);
@@ -147,9 +172,10 @@ class BroadcastArt implements LogoSource {
 
   /// [song]'s album image, else its own, decoded; null when neither loads.
   Future<ui.Image?> _albumArt(AppState app, MediaEntry song) async {
-    final client = app.client;
-    if (client == null) return null;
     for (final id in [?song.albumId, song.id]) {
+      // The server the id is on (multi-server).
+      final client = app.clientOf(id);
+      if (client == null) continue;
       try {
         final uri = client.imageUri(id, ImageKind.primary, maxHeight: 640);
         final r = await _http
@@ -163,11 +189,38 @@ class BroadcastArt implements LogoSource {
     return null;
   }
 
+  /// [card] with its image or logo decoded first (the renderer draws in one
+  /// frame); the decoded images go in [images], to dispose of afterwards.
+  Future<Widget> _offlineWidget(AppState app, OfflineCardSpec card, List<ui.Image> images) async {
+    final channel = card.channel;
+    Widget? image;
+    if (channel.slotRule?.offlineImage case final name?) {
+      final file = app.icons.fileFor(name);
+      if (await file.exists()) {
+        final decoded = await OffscreenRenderer.decode(name.endsWith('.svg') ? await _svg(SvgFileLoader(file), size: 1920) : await file.readAsBytes());
+        images.add(decoded);
+        image = RawImage(image: decoded, fit: BoxFit.contain);
+      }
+    }
+    Widget? logo;
+    if (image == null) {
+      final png = await pngFor(app, channel);
+      if (png != null) {
+        final decoded = await OffscreenRenderer.decode(png);
+        images.add(decoded);
+        logo = RawImage(image: decoded, fit: BoxFit.contain);
+      }
+    }
+    return OfflineCard(channel: channel, image: image, logo: logo, backAt: card.backAt);
+  }
+
   Widget _cardWidget(BroadcastCard card) => switch (card) {
         TuningCardSpec(:final channel) => TuningCard(channel: channel),
         BlackCard() => const ColoredBox(color: Colors.black),
         OffAirCard() => StatusCard(icon: Icons.tv_off, title: 'OFF THE AIR', message: card.message),
         StandByCard() => StatusCard(icon: Icons.schedule, title: 'PLEASE STAND BY', message: card.text),
+        // Drawn by [_offlineWidget].
+        OfflineCardSpec() => const ColoredBox(color: Colors.black),
       };
 
   @override
@@ -203,6 +256,9 @@ class BroadcastArt implements LogoSource {
   Future<Uint8List?> _drawLogo(AppState app, Channel channel) async {
     final icon = channel.icon;
     switch (icon.kind) {
+      case ChannelIconKind.builtin when drawsNightingaleTv(icon.value):
+        // An SVG, which can't paint on an offscreen widget's first frame.
+        return _svg(SvgStringLoader(nightingaleTvSvg(Color(icon.color))));
       case ChannelIconKind.builtin || ChannelIconKind.badge:
         return OffscreenRenderer.renderPng(
           ChannelLogo(icon: icon, size: logoSize, fallbackText: channel.name, app: app),
@@ -211,10 +267,10 @@ class BroadcastArt implements LogoSource {
       case ChannelIconKind.custom:
         final file = app.icons.fileFor(icon.value);
         if (!await file.exists()) return null;
-        if (file.path.toLowerCase().endsWith('.svg')) return _svg(file);
+        if (file.path.toLowerCase().endsWith('.svg')) return _svg(SvgFileLoader(file));
         return _asPng(await file.readAsBytes());
       case ChannelIconKind.jellyfin:
-        final client = app.client;
+        final client = app.clientOf(icon.value);
         if (client == null) return null;
         final uri = client.imageUri(icon.value, ImageKind.logo, maxHeight: 400);
         final r = await _http
@@ -232,11 +288,11 @@ class BroadcastArt implements LogoSource {
         logicalSize: const Size.square(logoSize),
       );
 
-  /// An SVG upload, drawn to fit a [logoSize] square.
-  static Future<Uint8List> _svg(File file) async {
-    final info = await vg.loadPicture(SvgFileLoader(file), null);
+  /// An SVG, drawn to fit a [size] square.
+  static Future<Uint8List> _svg(BytesLoader svg, {double size = logoSize}) async {
+    final info = await vg.loadPicture(svg, null);
     try {
-      final scale = logoSize / (info.size.longestSide == 0 ? logoSize : info.size.longestSide);
+      final scale = size / (info.size.longestSide == 0 ? size : info.size.longestSide);
       final w = (info.size.width * scale).ceil().clamp(1, 4096), h = (info.size.height * scale).ceil().clamp(1, 4096);
       final recorder = ui.PictureRecorder();
       ui.Canvas(recorder)

@@ -10,12 +10,16 @@ extension _ChannelsApi on SetupServer {
         ApiRoute('POST', 'profiles/{id}/channels/reset', Access.profileSettings, _resetChannels),
         ApiRoute('GET', 'profiles/{id}/channels/{cid}', Access.profile, _channel),
         ApiRoute('PUT', 'profiles/{id}/channels/{cid}', Access.profileSettings, _editChannel),
+        ApiRoute('PATCH', 'profiles/{id}/channels/{cid}', Access.profileSettings, _editChannel),
+        ApiRoute('POST', 'profiles/{id}/channels/{cid}/reshuffle', Access.profileSettings, _reshuffleChannel),
         ApiRoute('DELETE', 'profiles/{id}/channels/{cid}', Access.profileSettings, _deleteChannel),
         ApiRoute('GET', 'profiles/{id}/channels/{cid}/logo', Access.profile, _channelLogo, revision: Revision.none),
         ApiRoute('GET', 'profiles/{id}/logo', Access.profile, _channelSettings),
         ApiRoute('PUT', 'profiles/{id}/logo', Access.profileSettings, _setLogo),
         ApiRoute('GET', 'profiles/{id}/premieres', Access.profile, _channelSettings),
         ApiRoute('PUT', 'profiles/{id}/premieres', Access.profileSettings, _setPremieres),
+        ApiRoute('GET', 'profiles/{id}/retro', Access.profile, _channelSettings),
+        ApiRoute('PUT', 'profiles/{id}/retro', Access.profileSettings, _setRetro),
         ApiRoute('GET', 'profiles/{id}/guide', Access.profile, _guide),
         ApiRoute('GET', 'profiles/{id}/icons', Access.profile, _icons),
         ApiRoute('POST', 'profiles/{id}/icons', Access.profileSettings, _uploadIcon),
@@ -52,7 +56,13 @@ extension _ChannelsApi on SetupServer {
         'playlistLength': c.playlist.length,
         'auto': c.auto,
         'music': c.isMusic,
+        'custom': c.isCustom,
+        'playsPrograms': c.playsPrograms,
+        'canReshuffle': app.canReshuffle(c),
+        if (c.source.roots.isNotEmpty) 'missingRoots': [for (final r in c.source.roots) if (app.rootMissing(r)) r.itemId],
         'logoMode': app.logoModeFor(c).name,
+        'retro': app.retroFor(c).toJson(),
+        'mainRetro': app.settings.retro.toJson(),
         if (!c.isLive) 'plan': app.planFor(c).toJson(),
         'breaksPossible': !c.isLive && app.hasClipsFor(app.configuredPlanFor(c)),
         'hasLogo': switch (c.icon.kind) {
@@ -83,6 +93,7 @@ extension _ChannelsApi on SetupServer {
     final now = clock();
     return {
       'logoMode': app.settings.logoMode.name,
+      'retro': app.settings.retro.toJson(),
       'plan': app.settings.commercialPlan.toJson(),
       'premieres': app.settings.premieres.toJson(),
       'channels': [for (final c in app.allChannels) _channelJson(app, c, now)],
@@ -106,6 +117,7 @@ extension _ChannelsApi on SetupServer {
     // fields alone change only those.
     final whole = body.containsKey('icon') && body.containsKey('source');
     bool has(String key) => whole || body.containsKey(key);
+    _checkRetro(ChannelRetro.problemIn(body['retro']), body['retro']);
     final server = {'id': ch.id, 'playlist': ch.playlist, 'anchor': ch.anchor.toUtc().toIso8601String()};
     final Channel want;
     try {
@@ -113,11 +125,25 @@ extension _ChannelsApi on SetupServer {
     } on Object {
       throw ApiError(HttpStatus.badRequest, "That isn't a channel.");
     }
+    if (body['slot'] != null && want.slotRule == null) {
+      throw ApiError(HttpStatus.badRequest, 'Slot lengths are 15, 30, 60, 90 or 120 minutes.');
+    }
+    if (body['order'] != null && !PlaybackOrder.values.any((o) => o.name == body['order'])) {
+      throw ApiError(HttpStatus.badRequest, "That isn't a play order.");
+    }
     if (has('number') && want.number < 1) throw ApiError(HttpStatus.badRequest, 'Channel numbers start at 1.');
     if (has('order') && want.order != ch.order && ch.isMusic && want.order != PlaybackOrder.random) {
       throw ApiError(HttpStatus.badRequest, 'Music channels only shuffle.');
     }
     String json(Object? o) => jsonEncode(o);
+    // A source is checked first: a refused change changes nothing else.
+    if (has('source') && json(want.source.toJson()) != json(ch.source.toJson())) {
+      try {
+        await app.setChannelSource(ch, _customSource(body.object('source') ?? const {}));
+      } on StateError catch (e) {
+        throw ApiError(HttpStatus.badRequest, e.message);
+      }
+    }
     await app.updateChannel(ch,
         name: has('name') && want.name != ch.name ? want.name : null,
         number: has('number') && want.number != ch.number ? want.number : null,
@@ -126,6 +152,7 @@ extension _ChannelsApi on SetupServer {
         order: has('order') && want.order != ch.order && !ch.isLive ? want.order : null,
         icon: has('icon') && json(want.icon.toJson()) != json(ch.icon.toJson()) ? want.icon : null);
     if (has('logoMode') && want.logoMode != ch.logoMode) await app.setChannelLogoMode(ch, want.logoMode);
+    if (has('retro') && want.retro != ch.retro) await app.setChannelRetro(ch, want.retro);
     if ((has('commercialPlan') || body.containsKey('commercials')) &&
         !ch.isLive &&
         json(want.commercialPlan?.toJson()) != json(ch.commercialPlan?.toJson())) {
@@ -134,12 +161,36 @@ extension _ChannelsApi on SetupServer {
     if (has('premieres') && want.premieres != ch.premieres && !ch.isLive) {
       await app.setChannelPremieres(ch, want.premieres);
     }
+    if (has('slot') && want.slotRule != ch.slotRule && ch.playsPrograms) {
+      await app.setSlotRule(ch, want.slotRule);
+    } else if (body['slot'] != null && !ch.playsPrograms) {
+      throw ApiError(HttpStatus.badRequest, "This channel doesn't have slots.");
+    }
     return _channelJson(app, ch, clock());
   }
 
-  /// A block channel (`{"kind": "block", "name"}`) or a music channel
+  /// A source as the TV's editor makes it: episodes only when shows or
+  /// genres are picked, so roots or movies alone don't mean every show.
+  static ChannelSource _customSource(Map<String, Object?> json) => ChannelSource.fromJson({
+        'episodes': (json['seriesKeys'] as List?)?.isNotEmpty == true || (json['genres'] as List?)?.isNotEmpty == true,
+        ...json,
+      });
+
+  Future<Object?> _reshuffleChannel(ApiRequest r) async {
+    final app = await _app(r['id']);
+    final ch = _channelOf(app, r['cid']);
+    try {
+      await app.reshuffleChannel(ch);
+    } on StateError catch (e) {
+      throw ApiError(HttpStatus.badRequest, e.message);
+    }
+    return _channelJson(app, ch, clock());
+  }
+
+  /// A block channel (`{"kind": "block", "name"}`), a music channel
   /// (`{"kind": "music", "name", "source": {songs, musicVideos, genres,
-  /// decades}}`).
+  /// decades}}`) or a custom channel (`{"kind": "custom", "name", "source":
+  /// {roots, seriesKeys, genres, movies}, "order"}`).
   Future<Object?> _addChannel(ApiRequest r) async {
     final app = await _app(r['id']);
     final body = await r.body();
@@ -155,8 +206,19 @@ extension _ChannelsApi on SetupServer {
         } on StateError catch (e) {
           throw ApiError(HttpStatus.badRequest, e.message);
         }
+      case 'custom':
+        final order = body['order'];
+        if (order != null && !PlaybackOrder.values.any((o) => o.name == order)) {
+          throw ApiError(HttpStatus.badRequest, "That isn't a play order.");
+        }
+        try {
+          ch = await app.createCustomChannel(name, _customSource(body.object('source') ?? const {}),
+              order: order == null ? PlaybackOrder.random : PlaybackOrder.parse(order));
+        } on StateError catch (e) {
+          throw ApiError(HttpStatus.badRequest, e.message);
+        }
       default:
-        throw ApiError(HttpStatus.badRequest, 'The kind is "block" or "music".');
+        throw ApiError(HttpStatus.badRequest, 'The kind is "block", "music" or "custom".');
     }
     return _channelJson(app, ch, clock());
   }
@@ -188,7 +250,38 @@ extension _ChannelsApi on SetupServer {
   /// The main logo mode and premiere settings.
   Future<Object?> _channelSettings(ApiRequest r) async {
     final app = await _app(r['id']);
-    return {'logoMode': app.settings.logoMode.name, 'premieres': app.settings.premieres.toJson()};
+    return {
+      'logoMode': app.settings.logoMode.name,
+      'premieres': app.settings.premieres.toJson(),
+      'retro': app.settings.retro.toJson(),
+    };
+  }
+
+  /// Refuses retro settings with an unknown value, or a surround image that
+  /// isn't a name in the custom logos folder.
+  static void _checkRetro(String? problem, Object? json) {
+    if (problem != null) throw ApiError(HttpStatus.badRequest, problem);
+    final image = json is Map ? json['surroundImage'] : null;
+    if (image is String && !_iconName.hasMatch(image)) {
+      throw ApiError(HttpStatus.badRequest, "That isn't a picture in the custom logos folder.");
+    }
+  }
+
+  /// The main retro look and the Custom style: what's in the body changes,
+  /// the rest stays.
+  Future<Object?> _setRetro(ApiRequest r) async {
+    final app = await _app(r['id']);
+    final body = await r.body();
+    final edit = body.object('retro') ?? body;
+    _checkRetro(RetroSettings.problemIn(edit), edit);
+    final now = app.settings.retro.toJson();
+    await app.setMainRetro(RetroSettings.fromJson({
+      ...now,
+      ...edit,
+      if (edit['custom'] is Map) 'custom': {...now['custom'] as Map, ...edit['custom'] as Map},
+      if (edit['accents'] is Map) 'accents': {...now['accents'] as Map, ...edit['accents'] as Map},
+    }));
+    return _channelSettings(r);
   }
 
   Future<Object?> _setLogo(ApiRequest r) async {
@@ -225,7 +318,7 @@ extension _ChannelsApi on SetupServer {
     }
     switch (icon.kind) {
       case ChannelIconKind.jellyfin:
-        final client = app.client ?? (throw ApiError(HttpStatus.notFound));
+        final client = app.clientOf(icon.value) ?? (throw ApiError(HttpStatus.notFound));
         await _sendPicture(r, client.imageUri(icon.value, ImageKind.logo, maxHeight: 160), client.authHeaders);
       case ChannelIconKind.custom:
         await _sendFile(r, app.icons.fileFor(icon.value));
@@ -234,9 +327,12 @@ extension _ChannelsApi on SetupServer {
         if (uri == null || !uri.hasScheme || !uri.isScheme('http') && !uri.isScheme('https')) {
           throw ApiError(HttpStatus.notFound);
         }
-        // The sign-in goes only to the profile's own server.
-        final client = app.client;
-        await _sendPicture(r, uri, client != null && icon.value.startsWith(client.serverUrl) ? client.authHeaders : null);
+        // A sign-in goes only to its own server (any of the profile's).
+        final client = app.servers.all
+            .map((s) => s.client)
+            .where((c) => c != null && icon.value.startsWith(c.serverUrl))
+            .firstOrNull;
+        await _sendPicture(r, uri, client?.authHeaders);
       case ChannelIconKind.builtin || ChannelIconKind.badge:
         throw ApiError(HttpStatus.notFound);
     }
@@ -278,6 +374,7 @@ extension _ChannelsApi on SetupServer {
                     if (p.isPremiere) 'premiere': true,
                     if (p.isLive) 'live': true,
                     if (p.isMusicHour) 'songs': p.songs!.length,
+                    if (p.endsEarly) 'endsEarly': true,
                     'breaks': ?_breaksOf(schedule, p),
                   },
             ],
@@ -290,7 +387,7 @@ extension _ChannelsApi on SetupServer {
   static Map<String, Object?>? _breaksOf(ProgramSchedule schedule, ScheduledProgram p) {
     final item = p.item;
     if (schedule is! ChannelSchedule || item == null || p.isMusicHour || p.isLive) return null;
-    final plan = schedule.slotPlanFor(item);
+    final plan = schedule.slotPlanFor(item, ruled: p.blockTitle == null && !p.isPremiere);
     final total = plan.preRoll + plan.midLength * plan.midCount + plan.postRoll + plan.tail;
     if (total == Duration.zero) return null;
     return {
@@ -304,7 +401,7 @@ extension _ChannelsApi on SetupServer {
 
   // ---- Custom icons -----------------------------------------------------------------
 
-  static final _iconName = RegExp(r'^[0-9a-f]{16}\.(png|svg)$');
+  static final _iconName = RegExp(r'^(offline-)?[0-9a-f]{16}\.(png|svg)$');
 
   Future<Object?> _icons(ApiRequest r) async {
     final app = await _app(r['id']);
@@ -312,12 +409,16 @@ extension _ChannelsApi on SetupServer {
   }
 
   /// An uploaded picture (`?name=` its file name, for its type), checked
-  /// and stored as the TV's icon import does. More than 5 MB is refused
-  /// before it's all read.
+  /// and stored as the TV's icon import does; with `?kind=offline`, as a
+  /// channel's offline image. More than 5 MB is refused before it's all
+  /// read.
   Future<Object?> _uploadIcon(ApiRequest r) async {
     final app = await _app(r['id']);
     final bytes = await r.bytes(maxIcon, iconTooBig);
     try {
+      if (r.query['kind'] == 'offline') {
+        return {'name': await app.icons.importOfflineBytes(bytes, r.query['name'] ?? 'upload.png')};
+      }
       final name = await app.icons.importBytes(bytes, r.query['name'] ?? 'upload.png');
       return {'name': name, 'icon': ChannelIcon(kind: ChannelIconKind.custom, value: name).toJson()};
     } on CustomIconException catch (e) {

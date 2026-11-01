@@ -1,6 +1,7 @@
 import 'dart:math';
 
 import '../channels/channel.dart';
+import '../channels/retro.dart';
 import '../server/media_server.dart';
 
 enum LiveSourceKind {
@@ -24,6 +25,7 @@ class LiveChannelSettings {
     this.name,
     this.icon,
     this.logoMode = LogoMode.off,
+    this.retro = ChannelRetro.live,
     this.hidden = false,
     this.favorite = false,
   });
@@ -39,6 +41,10 @@ class LiveChannelSettings {
   /// Its logo setting; null follows the main one. Live channels start Off
   /// (broadcasts carry their own logo).
   LogoMode? logoMode;
+
+  /// Its retro look. Live channels start at Original and CRT Off (design
+  /// D10), and those from before this setting read the same.
+  ChannelRetro retro;
   bool hidden;
   bool favorite;
 
@@ -47,6 +53,7 @@ class LiveChannelSettings {
         'name': ?name,
         if (icon != null) 'icon': icon!.toJson(),
         'logoMode': logoMode?.name ?? 'main',
+        'retro': retro.toJson(),
         if (hidden) 'hidden': true,
         if (favorite) 'favorite': true,
       };
@@ -56,6 +63,7 @@ class LiveChannelSettings {
         name: j['name'] as String?,
         icon: j['icon'] is Map<String, Object?> ? ChannelIcon.fromJson(j['icon'] as Map<String, Object?>) : null,
         logoMode: j['logoMode'] == 'main' ? null : LogoMode.parse(j['logoMode']) ?? LogoMode.off,
+        retro: j.containsKey('retro') ? ChannelRetro.fromJson(j['retro']) : ChannelRetro.live,
         hidden: j['hidden'] == true,
         favorite: j['favorite'] == true,
       );

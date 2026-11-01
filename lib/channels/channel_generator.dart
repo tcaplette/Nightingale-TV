@@ -3,6 +3,7 @@ import 'dart:math';
 import '../commercials/break_plan.dart';
 import '../library/library_index.dart';
 import '../playback/playback_diagnostics.dart';
+import '../profiles/profile.dart';
 import 'channel.dart';
 
 /// Merges the many spellings metadata providers use for the same genre.
@@ -339,16 +340,6 @@ class ChannelGenerator {
       a.intersection(b).length / a.union(b).length;
 }
 
-/// FNV-1a; unlike String.hashCode it is stable across runs and SDK versions,
-/// so regenerating a channel gives the same lineup.
-int stableHash(String s) {
-  var h = 0x811c9dc5;
-  for (final c in s.codeUnits) {
-    h = ((h ^ c) * 0x01000193) & 0xffffffff;
-  }
-  return h;
-}
-
 /// A music channel's playlist holds at most this many items: a fixed
 /// sample, about 150 hours of songs.
 const maxMusicPlaylist = 3000;
@@ -381,19 +372,36 @@ List<String> buildPlaylist(LibraryIndex library, ChannelSource source, PlaybackO
     return [for (final e in _spreadShuffle(items, Random(seed))) e.id];
   }
 
-  final shows = <String, List<MediaEntry>>{};
-  if (source.includeEpisodes) {
-    for (final s in library.series) {
-      final wanted = source.seriesKeys.isNotEmpty
-          ? source.seriesKeys.contains(s.key)
-          : genreMatch(s.genres);
-      final eps = library.episodesBySeries[s.key];
-      if (wanted && eps != null && eps.isNotEmpty) shows[s.key] = eps;
-    }
+  // With roots, the other choices add to them (custom-channels D2): roots
+  // alone play only the roots, and an empty genre list no longer means
+  // every show.
+  final rooted = <String>{for (final r in source.roots) ...?library.itemsByRoot[r.itemId]};
+  final byRootOnly = source.roots.isNotEmpty;
+  // A minimum rating narrows everything, roots and picked shows included;
+  // episodes go by their show's rating (late-night-drift D2).
+  final floor = source.ratingFloor;
+  bool rated(String? rating) {
+    if (floor == null) return true;
+    final rank = ratingRank(rating);
+    return rank != null && rank >= floor.rank;
   }
-  final movies = source.includeMovies
-      ? library.movies.where((m) => genreMatch(m.genres)).toList()
-      : const <MediaEntry>[];
+
+  final shows = <String, List<MediaEntry>>{};
+  for (final s in library.series) {
+    if (!rated(s.officialRating)) continue;
+    final eps = library.episodesBySeries[s.key];
+    if (eps == null || eps.isEmpty) continue;
+    final whole = source.includeEpisodes &&
+        (source.seriesKeys.isNotEmpty
+            ? source.seriesKeys.contains(s.key)
+            : !(byRootOnly && genres.isEmpty) && genreMatch(s.genres));
+    final picked = whole ? eps : [for (final e in eps) if (rooted.contains(e.id)) e];
+    if (picked.isNotEmpty) shows[s.key] = picked;
+  }
+  final movies = [
+    for (final m in library.movies)
+      if (((source.includeMovies && genreMatch(m.genres)) || rooted.contains(m.id)) && rated(m.officialRating)) m,
+  ];
 
   final rng = Random(seed);
   final List<MediaEntry> ordered;
@@ -407,6 +415,8 @@ List<String> buildPlaylist(LibraryIndex library, ChannelSource source, PlaybackO
       }
     case PlaybackOrder.random:
       ordered = _spreadShuffle([for (final eps in shows.values) ...eps, ...movies], rng);
+    case PlaybackOrder.weighted:
+      ordered = _spread(_weightedShuffle([for (final eps in shows.values) ...eps, ...movies], rng));
   }
   return [for (final e in ordered) e.id];
 }
@@ -430,10 +440,24 @@ List<MediaEntry> _interleave(Map<String, List<MediaEntry>> shows, Random rng) {
   return [for (final k in keyed) k.$3];
 }
 
+/// A weighted random order (Efraimidis–Spirakis): each item's key is
+/// `u^(1/w)` with `w = 1 / (1 + plays)` and `u` from [rng] in [items]'
+/// order, highest key first. Every item is in it once; less played ones
+/// tend to come earlier.
+List<MediaEntry> _weightedShuffle(List<MediaEntry> items, Random rng) {
+  final keyed = [
+    for (final e in items) (pow(rng.nextDouble(), 1 + e.playCount).toDouble(), e),
+  ]..sort((a, b) => b.$1.compareTo(a.$1));
+  return [for (final k in keyed) k.$2];
+}
+
 /// Shuffle, then nudge items so the same show (or, for music, artist)
 /// rarely airs back-to-back.
-List<MediaEntry> _spreadShuffle(List<MediaEntry> items, Random rng) {
-  final list = [...items]..shuffle(rng);
+List<MediaEntry> _spreadShuffle(List<MediaEntry> items, Random rng) => _spread([...items]..shuffle(rng));
+
+/// Nudges items of [list] (in place) so the same show (or, for music,
+/// artist) rarely airs back-to-back.
+List<MediaEntry> _spread(List<MediaEntry> list) {
   String groupOf(MediaEntry e) => e.seriesKey ?? (e.isMusic && e.artist != null ? 'artist:${e.artist}' : e.id);
   for (var i = 1; i < list.length; i++) {
     if (groupOf(list[i]) != groupOf(list[i - 1])) continue;

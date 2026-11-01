@@ -1,6 +1,8 @@
 // portrait-layout: the layout rule and canvas, full screen, and the portrait
 // watch screen, run on Linux as an Android phone (or TV) through
 // PlatformInfo's override.
+import 'dart:ui' show PointerDeviceKind;
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -11,10 +13,12 @@ import 'package:nightingale_tv/main.dart' show hasPhoneRemote;
 import 'package:nightingale_tv/platform/android_back_bridge.dart';
 import 'package:nightingale_tv/platform/orientation.dart';
 import 'package:nightingale_tv/platform/platform_info.dart';
+import 'package:nightingale_tv/playback/sleep_timer.dart';
 import 'package:nightingale_tv/playback/tuner.dart';
 import 'package:nightingale_tv/ui/guide_view.dart';
 import 'package:nightingale_tv/ui/menu_screen.dart';
 import 'package:nightingale_tv/ui/portrait_watch_screen.dart';
+import 'package:nightingale_tv/ui/sleep_overlay.dart';
 import 'package:nightingale_tv/ui/tv_screen.dart';
 import 'package:nightingale_tv/ui/widgets/screen_layout.dart';
 import 'package:nightingale_tv/ui/widgets/tv_canvas.dart';
@@ -260,7 +264,7 @@ void main() {
 
     tvTest('an Android TV: guide on tap, menu on long-press, no full-screen button', const Size(1920, 1080), television: true, (tester, h) async {
       expect(find.text('Exit full screen'), findsNothing);
-      await tester.tap(find.byType(TvScreen));
+      await tester.tap(find.byType(TvScreen), kind: PointerDeviceKind.mouse);
       await tester.pump(const Duration(milliseconds: 300));
       expect(find.byType(GuideView), findsOneWidget);
       await tester.sendKeyEvent(LogicalKeyboardKey.escape);
@@ -441,5 +445,62 @@ void main() {
     final ch = h.app.channels.first;
     await h.show(tester, Builder(builder: (context) => PortraitNowPanel(channel: ch, now: DateTime.now(), inBreak: true, gutter: 32)));
     expect(find.text(commercialBreakLabel), findsOneWidget);
+  });
+
+  group('the sleep timer in portrait', () {
+    late DateTime now;
+
+    Future<PortraitHarness> start(WidgetTester tester) async {
+      runAs(TargetPlatform.android);
+      setWindow(tester, pixel8);
+      tester.binding.defaultBinaryMessenger
+          .setMockMethodCallHandler(const MethodChannel('nightingale_tv/orientation'), (call) async => null);
+      now = DateTime.now();
+      final h = await PortraitHarness.start(tester, clock: () => now, sleep: true);
+      await h.show(tester, const TvScreen());
+      for (var i = 0; i < 20 && h.tuner.status != TunerStatus.playing; i++) {
+        await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 10)));
+        await tester.pump();
+      }
+      expect(find.byType(PortraitWatchScreen), findsOneWidget);
+      return h;
+    }
+
+    testWidgets('a tap on the player shows Sleep before Menu; tapping a time sets it', (tester) async {
+      final h = await start(tester);
+      await tester.tapAt(tester.getCenter(find.byType(TvPicture)), kind: PointerDeviceKind.touch);
+      await tester.pump(const Duration(milliseconds: 300));
+      final sleepButton = find.bySemanticsLabel('Sleep');
+      expect(sleepButton, findsOneWidget);
+      expect(tester.getCenter(sleepButton).dx, lessThan(tester.getCenter(find.bySemanticsLabel('Menu')).dx));
+      await tester.tap(sleepButton, kind: PointerDeviceKind.touch);
+      await tester.pump(const Duration(milliseconds: 400));
+      expect(find.byType(Dialog), findsOneWidget);
+      final setAt = now;
+      await tester.tap(find.text('30 min'), kind: PointerDeviceKind.touch);
+      await tester.pump(const Duration(milliseconds: 400));
+      expect(h.sleep!.deadline, setAt.add(const Duration(minutes: 30)));
+      expect(find.widgetWithText(SleepToast, 'Sleep in 30 min'), findsOneWidget);
+      await h.end(tester);
+    });
+
+    testWidgets('the last-minute warning shows over the portrait screen, and a tap turns it off', (tester) async {
+      final h = await start(tester);
+      h.sleep!.choose(const SleepChoice.after(15));
+      await tester.pump(const Duration(seconds: 4));
+      now = now.add(const Duration(minutes: 14));
+      await tester.pump(const Duration(seconds: 1));
+      expect(find.byType(SleepWarning), findsOneWidget);
+      final card = tester.getRect(find.byType(SleepWarning));
+      expect(card.center.dx, closeTo(pixel8.width / 2, 1), reason: 'top centre');
+      final tuned = h.tuner.channel;
+      // A tap on a channel row does nothing but turn the timer off.
+      await tester.tapAt(Offset(pixel8.width / 2, pixel8.height - 60), kind: PointerDeviceKind.touch);
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(h.sleep!.phase, SleepPhase.idle);
+      expect(find.byType(SleepWarning), findsNothing);
+      expect(h.tuner.channel?.id, tuned?.id);
+      await h.end(tester);
+    });
   });
 }

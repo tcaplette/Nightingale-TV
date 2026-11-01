@@ -27,6 +27,18 @@ String formatMinutes(Duration d) {
   return m == 0 ? '$h hr' : '$h hr $m min';
 }
 
+/// "12:34", or "1:02:34" from an hour up.
+String formatClockSpan(Duration d) {
+  final seconds = d.isNegative ? 0 : d.inSeconds;
+  final h = seconds ~/ 3600;
+  final m = (seconds ~/ 60 % 60).toString().padLeft(h > 0 ? 2 : 1, '0');
+  final s = (seconds % 60).toString().padLeft(2, '0');
+  return h > 0 ? '$h:$m:$s' : '$m:$s';
+}
+
+/// How far behind the schedule a viewer is: "12:34 behind".
+String formatBehind(Duration d) => '${formatClockSpan(d)} behind';
+
 /// Start of the half hour containing [t].
 DateTime floorToHalfHour(DateTime t) =>
     DateTime(t.year, t.month, t.day, t.hour, t.minute < 30 ? 0 : 30);
@@ -55,4 +67,8 @@ String describeBlock(ProgramBlock b) => [
       describeDays(b.days),
       '${formatClockMinute(b.startMinute)} – ${formatClockMinute(b.endMinute)}',
       if (b.hasSeason) '${b.seasonStart} – ${b.seasonEnd}',
+      if (!b.hasLineup && b.source.ratingFloor != null) b.source.ratingFloor!.label,
     ].join('  ·  ');
+
+/// What the banner and info say of a program Truncate cuts (slot-duration).
+const endsEarlyLabel = 'Ends early';

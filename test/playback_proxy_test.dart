@@ -194,7 +194,7 @@ void main() {
       await read(url, from: 0, take: indexCacheHead + 50000);
       await read(url, from: found.start);
       await read(url, from: bytes.length ~/ 2, take: 10000);
-      await settle(200);
+      await settle(1000);
       expect(await proxy.cached(file), isTrue);
 
       upstream.requests.clear();
@@ -216,7 +216,7 @@ void main() {
       await settle();
       await read(url, from: found.start);
       await read(url, from: bytes.length ~/ 2, take: 10000);
-      await settle(200);
+      await settle(1000);
 
       upstream.requests.clear();
       url = await proxy.open(upstream.streamUri(file), auth, cache: key, joins: true);

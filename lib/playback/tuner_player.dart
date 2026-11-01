@@ -60,12 +60,22 @@ abstract class TunerPlayer implements PlayerReadings {
   Future<void> open(Uri url,
       {required Map<String, String> headers, Duration? start, Duration? end, bool exact = true, bool live = false});
   Future<void> stop();
+
+  /// Holds the picture and silences the sound (timeshift); [resume] goes on
+  /// from the same frame.
+  Future<void> pause();
+  Future<void> resume();
+
+  /// Moves within the item playing, exactly, to [position] on its media's
+  /// own timeline, staying paused if it is. The item's end still stops it.
+  Future<void> seek(Duration position);
+
   Future<void> showCaptions(bool on);
   Future<void> dispose();
 
-  /// The video, fitted inside the space with black around it, with the
-  /// captions over it.
-  Widget buildVideo();
+  /// The video, fitted in the space by [fit] with black around it, with the
+  /// captions over it and never cropped.
+  Widget buildVideo({BoxFit fit = BoxFit.contain});
 
   /// Seconds of media read ahead of the playback position (null when it
   /// can't be read): for prefetch and index-fill timing.
@@ -95,6 +105,11 @@ abstract class TunerPlayer implements PlayerReadings {
   /// and everything opened after. mpv applies it at once; ExoPlayer is
   /// rebuilt, and the tuner then re-tunes.
   Future<void> setVolumeLeveling(bool on);
+
+  /// The output volume, 0–1 (the sleep timer's fade), for what's playing,
+  /// what's queued and everything opened after. The tuner sets it back to 1
+  /// at every tune.
+  Future<void> setVolume(double volume);
 
   /// The player moved on to the queued item, by itself at the end of the
   /// item playing or by [advance].
@@ -160,6 +175,9 @@ class MediaKitTunerPlayer implements TunerPlayer {
   /// the setting changes again.
   bool _levelingRefused = false;
 
+  /// [setVolume]'s volume, 0–1: on every deck, including decks made later.
+  double _volume = 1;
+
   /// The `af` set while leveling is on (tests replace it).
   @visibleForTesting
   String levelingAf = volumeLevelingAf;
@@ -194,6 +212,7 @@ class MediaKitTunerPlayer implements TunerPlayer {
     // audio, and starting PulseAudio took up to 350 ms.
     unawaited(deck.setOption('audio-stream-silence', 'yes'));
     if (_leveling) unawaited(_applyLeveling(deck));
+    if (_volume != 1) unawaited(deck.player.setVolume(_volume * 100));
     final s = deck.player.stream;
     bool onAir() => identical(deck, _onAir);
     deck.subscriptions.addAll([
@@ -315,6 +334,19 @@ class MediaKitTunerPlayer implements TunerPlayer {
     await _onAir.player.stop();
   }
 
+  @override
+  Future<void> pause() => _onAir.player.pause();
+
+  @override
+  Future<void> resume() => _onAir.player.play();
+
+  @override
+  Future<void> seek(Duration position) async {
+    // A keyframe join left seeks imprecise.
+    await _onAir.setOption('hr-seek', 'yes');
+    await _onAir.player.seek(position);
+  }
+
   /// Stops the spare deck, whatever it holds.
   Future<void> _dropQueue() async {
     _stopOffAir?.cancel();
@@ -358,6 +390,16 @@ class MediaKitTunerPlayer implements TunerPlayer {
     PlaybackDiagnostics.note('LEVEL', '${on ? 'on' : 'off'} mpv af=$_af');
     for (final deck in [_onAir, ?_spare]) {
       await _applyLeveling(deck);
+    }
+  }
+
+  /// mpv's software volume, after the leveling filters, so leveling is
+  /// unaffected.
+  @override
+  Future<void> setVolume(double volume) async {
+    _volume = volume.clamp(0.0, 1.0);
+    for (final deck in [_onAir, ?_spare]) {
+      await deck.player.setVolume(_volume * 100);
     }
   }
 
@@ -432,13 +474,13 @@ class MediaKitTunerPlayer implements TunerPlayer {
   }
 
   @override
-  Widget buildVideo() => ValueListenableBuilder<List<_Deck>>(
+  Widget buildVideo({BoxFit fit = BoxFit.contain}) => ValueListenableBuilder<List<_Deck>>(
         valueListenable: _decks,
         builder: (context, decks, _) => Stack(
           fit: StackFit.expand,
           children: [
             for (final deck in decks)
-              Video(key: ValueKey(deck), controller: deck.video, controls: NoVideoControls, fill: Colors.black),
+              Video(key: ValueKey(deck), controller: deck.video, controls: NoVideoControls, fill: Colors.black, fit: fit),
           ],
         ),
       );

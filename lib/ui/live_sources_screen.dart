@@ -176,8 +176,19 @@ class AddLiveSourceScreen extends StatefulWidget {
 }
 
 class _AddLiveSourceScreenState extends State<AddLiveSourceScreen> {
-  late final Future<LiveTvAvailability?> _availability = AppScope.read(context).liveTvAvailability();
-  bool _adding = false;
+  /// Each server's Live TV (multi-server: one option per server), by key.
+  late final Map<String, Future<LiveTvAvailability?>> _availability = {
+    for (final server in AppScope.read(context).servers.ordered)
+      if (server.client != null) server.key: AppScope.read(context).liveTvAvailability(key: server.key),
+  };
+
+  /// The server whose channels are being read.
+  String? _adding;
+
+  /// Servers whose availability is known, and the first on offer (it takes
+  /// focus; with none on offer, M3U does).
+  final _answered = <String>{};
+  String? _firstOffered;
   String? _error;
   final _m3u = FocusNode();
   bool _m3uFocused = false;
@@ -188,21 +199,21 @@ class _AddLiveSourceScreenState extends State<AddLiveSourceScreen> {
     super.dispose();
   }
 
-  Future<void> _addServer() async {
+  Future<void> _addServer(String key) async {
     setState(() {
-      _adding = true;
+      _adding = key;
       _error = null;
     });
     final app = AppScope.read(context);
     try {
-      final source = await app.addServerLiveSource();
+      final source = await app.addServerLiveSource(key: key);
       if (!mounted) return;
       await Navigator.of(context)
           .pushReplacement(MaterialPageRoute<void>(builder: (_) => LiveChannelPickerScreen(source: source)));
     } on LiveSourceException catch (e) {
       if (mounted) setState(() => _error = e.message);
     } finally {
-      if (mounted) setState(() => _adding = false);
+      if (mounted) setState(() => _adding = null);
     }
   }
 
@@ -210,8 +221,7 @@ class _AddLiveSourceScreenState extends State<AddLiveSourceScreen> {
   Widget build(BuildContext context) {
     final app = AppScope.of(context);
     final g = context.guide;
-    final server = app.session?.serverName ?? 'Your server';
-    final already = app.live.serverSource != null;
+    final servers = [for (final s in app.servers.ordered) if (_availability.containsKey(s.key)) s];
     return TvPage(
       title: 'Add a Live TV source',
       hints: '▲▼ Move    OK Select    ESC Back',
@@ -220,12 +230,19 @@ class _AddLiveSourceScreenState extends State<AddLiveSourceScreen> {
         child: ListView(
           padding: ScreenLayout.of(context).pagePadding(const EdgeInsets.fromLTRB(100, 32, 100, 40)),
           children: [
+            for (final s in servers) ...[
             FutureBuilder<LiveTvAvailability?>(
-              future: _availability,
+              future: _availability[s.key],
               builder: (context, snap) {
-                // With the server's Live TV not on offer, focus goes to M3U.
+                final server = s.name;
+                final already = app.live.serverSourceFor(s.serverId) != null ||
+                    (!app.servers.multiple && app.live.serverSource != null);
                 final offered = !already && snap.data == LiveTvAvailability.available;
-                if (snap.connectionState == ConnectionState.done && !offered && !_m3uFocused) {
+                if (offered) _firstOffered ??= s.key;
+                final autofocus = offered && _firstOffered == s.key;
+                // With no server's Live TV on offer, focus goes to M3U.
+                if (snap.connectionState == ConnectionState.done) _answered.add(s.key);
+                if (_answered.length == servers.length && _firstOffered == null && !_m3uFocused) {
                   _m3uFocused = true;
                   WidgetsBinding.instance.addPostFrameCallback((_) {
                     if (mounted) _m3u.requestFocus();
@@ -241,7 +258,7 @@ class _AddLiveSourceScreenState extends State<AddLiveSourceScreen> {
                 } else if (snap.connectionState != ConnectionState.done) {
                   why = 'Checking $server Live TV…';
                 } else if (a == LiveTvAvailability.available) {
-                  action = _adding ? null : _addServer;
+                  action = _adding != null ? null : () => _addServer(s.key);
                 } else {
                   why = (a ?? LiveTvAvailability.noChannels).reason(server);
                 }
@@ -249,10 +266,10 @@ class _AddLiveSourceScreenState extends State<AddLiveSourceScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     TvButton(
-                      label: _adding ? 'Reading $server\'s channels…' : LiveTvAvailability.available.reason(server),
+                      label: _adding == s.key ? 'Reading $server\'s channels…' : LiveTvAvailability.available.reason(server),
                       icon: Icons.settings_input_antenna,
                       expand: true,
-                      autofocus: action != null,
+                      autofocus: autofocus,
                       onPressed: action,
                     ),
                     if (why != null) ...[
@@ -267,6 +284,7 @@ class _AddLiveSourceScreenState extends State<AddLiveSourceScreen> {
               },
             ),
             const SizedBox(height: 28),
+            ],
             TvButton(
               label: 'M3U playlist',
               icon: Icons.playlist_add,

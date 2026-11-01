@@ -38,6 +38,9 @@ dependencies:
   media_kit_video: ^2.0.1
   # libmpv for Linux only; Android plays with ExoPlayer (android/app).
   media_kit_libs_linux: ^1.2.1
+  # media_kit's screensaver hold on Linux, made single (platform/linux_wakelock.dart).
+  wakelock_plus: ^1.8.1
+  wakelock_plus_platform_interface: ^1.4.0
   http: ^1.6.0
   path_provider: ^2.1.6
   file_selector: ^1.1.0
@@ -77,7 +80,13 @@ dependency_overrides:
 flutter:
   uses-material-design: true
 
+  shaders:
+    - shaders/crt.frag
+
   fonts:
+    - family: VT323
+      fonts:
+        - asset: assets/fonts/VT323-Regular.ttf
     - family: Barlow
       fonts:
         - asset: assets/fonts/Barlow-Regular.ttf

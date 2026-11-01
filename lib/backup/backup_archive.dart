@@ -17,6 +17,7 @@ import '../live/live_source_files.dart';
 import '../profiles/household.dart';
 import '../profiles/profile.dart';
 import '../server/media_server.dart';
+import '../server/server_set.dart';
 
 /// Why a backup couldn't be made, read or restored, as one plain sentence.
 class BackupException implements Exception {
@@ -71,7 +72,8 @@ class BackupSummary {
 /// One profile's part of a backup: its saved state, as saved, and where it
 /// signs in. Never its sign-in token or its Jellyfin device id.
 class ProfileBackup {
-  const ProfileBackup({this.settings, this.channels, this.blocks, this.signIn, this.liveSources, this.liveFiles = const {}});
+  const ProfileBackup(
+      {this.settings, this.channels, this.blocks, this.signIn, this.servers, this.liveSources, this.liveFiles = const {}});
 
   /// `settings.json` without `installId`.
   final Map<String, Object?>? settings;
@@ -80,6 +82,11 @@ class ProfileBackup {
 
   /// Server URL, name and id, user id and name.
   final Map<String, Object?>? signIn;
+
+  /// The added servers (multi-server): `servers`, a sign-in hint for each
+  /// with its key and quality limit; `order`, the Play from order;
+  /// `nextKey` and `mainQualityLimit`. Never a token. Null with one server.
+  final Map<String, Object?>? servers;
 
   /// `live_sources.json` as saved (live-tv-sources), and the playlist and
   /// guide files picked on the device, by name, each gzip-compressed and
@@ -95,6 +102,7 @@ class ProfileBackup {
         'channels': ?channels,
         'blocks': ?blocks,
         'signIn': ?signIn,
+        'servers': ?servers,
         'liveSources': ?liveSources,
         if (liveFiles.isNotEmpty) 'liveFiles': liveFiles,
       };
@@ -106,6 +114,7 @@ class ProfileBackup {
       channels: json['channels'] as List<Object?>?,
       blocks: json['blocks'] as List<Object?>?,
       signIn: json['signIn'] as Map<String, Object?>?,
+      servers: json['servers'] as Map<String, Object?>?,
       liveSources: json['liveSources'] as Map<String, Object?>?,
       liveFiles: (json['liveFiles'] as Map?)?.cast<String, String>() ?? const {},
     );
@@ -114,6 +123,25 @@ class ProfileBackup {
   /// Names a picked playlist or guide is copied in with
   /// ([LiveSourceStore.savePicked]), so no other name is ever written.
   static final liveFileName = RegExp(r'^[A-Za-z0-9_-]{1,80}-(playlist|guide)(\.[A-Za-z0-9]{1,5}){0,2}$');
+
+  /// `servers.json` (multi-server) as a backup keeps it: each added
+  /// server's sign-in as a hint, with no token.
+  static Map<String, Object?>? serversFrom(Object? json) {
+    if (json is! Map<String, Object?>) return null;
+    final servers = [
+      for (final s in (json['servers'] as List? ?? const []).whereType<Map<String, Object?>>())
+        if (s['key'] is String)
+          if (hintFrom(s['session']) ?? hintFrom(s['hint']) case final hint?)
+            <String, Object?>{'key': s['key'], ...hint, if (s['qualityLimit'] != null) 'qualityLimit': s['qualityLimit']},
+    ];
+    if (servers.isEmpty) return null;
+    return {
+      'servers': servers,
+      'order': json['order'],
+      if (json['nextKey'] != null) 'nextKey': json['nextKey'],
+      if (json['mainQualityLimit'] != null) 'mainQualityLimit': json['mainQualityLimit'],
+    };
+  }
 
   /// The sign-in hint fields of a saved session (or hint).
   static Map<String, Object?>? hintFrom(Object? session) {
@@ -163,7 +191,8 @@ class BackupArchive {
   static const tooBig = 'This file is too big to be a Nightingale TV backup.';
 
   /// Logo names the logo store makes, so no other name is ever written.
-  static final logoName = RegExp(r'^[0-9a-f]{16}\.(png|svg)$');
+  /// Channel offline images share the folder as `offline-<hash>.png`.
+  static final logoName = RegExp(r'^(offline-)?[0-9a-f]{16}\.(png|svg)$');
 
   /// Profile ids are folder names under `profiles/`.
   static final profileId = RegExp(r'^[A-Za-z0-9_-]{1,64}$');
@@ -455,6 +484,7 @@ class BackupArchive {
         blocks: blocks is List ? blocks.cast<Object?>() : null,
         signIn: ProfileBackup.hintFrom(await storage.readRaw('session.json')) ??
             ProfileBackup.hintFrom(await storage.readRaw(signInHintFile)),
+        servers: ProfileBackup.serversFrom(await storage.readRaw(ServerSet.file)),
         liveSources: live is Map<String, Object?> ? live : null,
         liveFiles: liveFiles,
       );

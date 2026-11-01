@@ -14,6 +14,7 @@ import '../profiles/household.dart';
 import '../ui/format.dart';
 import 'backup_archive.dart';
 import '../server/media_server.dart';
+import '../server/server_set.dart';
 import '../server/server_clients.dart';
 
 /// What a restore will do, for its confirmation.
@@ -162,13 +163,16 @@ class BackupRestorer {
       await for (final dir in profilesHere.list()) {
         final id = dir.uri.pathSegments.where((s) => s.isNotEmpty).last;
         if (dir is! Directory || kept.contains(id)) continue;
-        final session = await AppStorage.existing(dir).readRaw('session.json');
+        final storage = AppStorage.existing(dir);
+        final session = await storage.readRaw('session.json');
         if (session is! Map<String, Object?>) continue;
         try {
           _dropped.add(ServerSession.fromJson(session));
         } on Object {
           // Unreadable: nothing to sign out.
         }
+        // Its added servers' sign-ins go with it (multi-server).
+        _dropped.addAll(_addedSessions(await storage.readRaw(ServerSet.file)).values);
       }
     }
     await Directory('${staging.path}/profiles').create();
@@ -210,6 +214,7 @@ class BackupRestorer {
       } else if (part.signIn case final hint?) {
         await out.writeJson(AppState.signInHintFile, hint);
       }
+      await _restoreServers(part, current, out, here, dir, keptMain: kept.contains(id));
       await out.flush();
     }
 
@@ -224,6 +229,73 @@ class BackupRestorer {
     final journal = AppStorage.existing(root);
     await journal.writeJson(_journal, {'phase': 'swap', 'files': present});
     await journal.flush();
+  }
+
+  /// The added servers' sign-ins saved in [json] (`servers.json`), by key.
+  static Map<String, ServerSession> _addedSessions(Object? json) {
+    final out = <String, ServerSession>{};
+    if (json is! Map<String, Object?>) return out;
+    for (final s in (json['servers'] as List? ?? const []).whereType<Map<String, Object?>>()) {
+      if (s['key'] case final String key when s['session'] is Map<String, Object?>) {
+        try {
+          out[key] = ServerSession.fromJson(s['session'] as Map<String, Object?>);
+        } on Object {
+          // Unreadable: nothing to sign out or keep.
+        }
+      }
+    }
+    return out;
+  }
+
+  /// The backup's added servers (multi-server D10). With the main server
+  /// kept, an added server signed in here to the same server under the same
+  /// key stays signed in (with its library part); every other one comes back
+  /// needing sign-in, with its key, order and quality limit. Sign-ins here
+  /// that aren't kept are signed out.
+  Future<void> _restoreServers(ProfileBackup part, AppStorage current, AppStorage out, Directory here, Directory dir,
+      {required bool keptMain}) async {
+    final sessionsHere = keptMain ? _addedSessions(await current.readRaw(ServerSet.file)) : const <String, ServerSession>{};
+    final backup = part.servers;
+    final kept = <String>{};
+    final servers = <Map<String, Object?>>[];
+    for (final s in (backup?['servers'] as List? ?? const []).whereType<Map<String, Object?>>()) {
+      final key = s['key'];
+      if (key is! String) continue;
+      final session = sessionsHere[key];
+      final limit = s['qualityLimit'];
+      if (session != null && session.serverId != null && session.serverId == s['serverId']) {
+        kept.add(key);
+        servers.add({'key': key, 'session': session.toJson(), 'qualityLimit': ?limit});
+      } else {
+        servers.add({
+          'key': key,
+          'hint': {for (final e in s.entries) if (e.key != 'key' && e.key != 'qualityLimit') e.key: e.value},
+          'qualityLimit': ?limit,
+        });
+      }
+    }
+    // Signed in here, but not to what the backup has under that key.
+    for (final MapEntry(:key, value: session) in sessionsHere.entries) {
+      if (!kept.contains(key)) _dropped.add(session);
+    }
+    if (servers.isEmpty) return;
+    await out.writeJson(
+        ServerSet.file,
+        {
+          'servers': servers,
+          'order': backup?['order'],
+          'nextKey': ?backup?['nextKey'],
+          'mainQualityLimit': backup?['mainQualityLimit'],
+        },
+        private: true);
+    if (!keptMain) return;
+    // The kept servers' last scans, so their programs stay on the air.
+    for (final key in [ServerSet.mainKey, ...kept]) {
+      final file = File('${here.path}/library_parts/$key.json');
+      if (!await file.exists()) continue;
+      await Directory('${dir.path}/library_parts').create(recursive: true);
+      await file.copy('${dir.path}/library_parts/$key.json');
+    }
   }
 
   /// A backed-up live file ([ProfileBackup.liveFiles]) written to [to],

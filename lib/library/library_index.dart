@@ -16,6 +16,35 @@ enum MediaKind {
   musicVideo,
 }
 
+/// Another server's copy of a [MediaEntry] (multi-server): what playing it
+/// needs. Its [id] is a global id (see `ServerSet`).
+class MediaCopy {
+  const MediaCopy({required this.id, String? sourceId, this.streamPath, this.etag, this.size})
+      : sourceId = sourceId ?? id;
+
+  final String id;
+  final String sourceId;
+  final String? streamPath;
+  final String? etag;
+  final int? size;
+
+  Map<String, Object?> toJson() => {
+        'id': id,
+        if (sourceId != id) 'sourceId': sourceId,
+        if (streamPath != null) 'streamPath': streamPath,
+        if (etag != null) 'etag': etag,
+        if (size != null) 'size': size,
+      };
+
+  factory MediaCopy.fromJson(Map<String, Object?> j) => MediaCopy(
+        id: j['id'] as String,
+        sourceId: j['sourceId'] as String?,
+        streamPath: j['streamPath'] as String?,
+        etag: j['etag'] as String?,
+        size: j['size'] as int?,
+      );
+}
+
 /// One playable video, flattened from Jellyfin's item JSON.
 class MediaEntry {
   const MediaEntry({
@@ -45,6 +74,9 @@ class MediaEntry {
     this.added,
     this.availableAt,
     this.streamPath,
+    this.playCount = 0,
+    this.providerIds = const [],
+    this.alternates = const [],
   }) : sourceId = sourceId ?? id;
 
   final String id;
@@ -104,6 +136,25 @@ class MediaEntry {
   /// build from the id. Null on Jellyfin and Emby.
   final String? streamPath;
 
+  /// Episodes and movies: how many times the profile's user played it on
+  /// the server, as of the last scan (Least watched first).
+  final int playCount;
+
+  /// The title's ids at metadata providers (`tvdb:123`, `tmdb:45`,
+  /// `imdb:tt0088763`), only scanned when the profile has several servers:
+  /// they decide which copies are the same title (multi-server D4).
+  final List<String> providerIds;
+
+  /// The same title's copies on other servers (multi-server), in Play from
+  /// order as of the merge; empty with one server.
+  final List<MediaCopy> alternates;
+
+  /// This entry's own copy.
+  MediaCopy get copy => MediaCopy(id: id, sourceId: sourceId, streamPath: streamPath, etag: etag, size: size);
+
+  /// Every copy: this entry's own first, then [alternates].
+  List<MediaCopy> get copies => [copy, ...alternates];
+
   /// A song or a music video.
   bool get isMusic => kind == MediaKind.song || kind == MediaKind.musicVideo;
 
@@ -119,13 +170,58 @@ class MediaEntry {
   /// A copy with a different [availableAt].
   MediaEntry withAvailableAt(DateTime? at) => _copy(availableAt: at, clearAvailableAt: at == null);
 
-  MediaEntry _copy({List<String>? poolIds, DateTime? availableAt, bool clearAvailableAt = false}) => MediaEntry(
-        id: id,
+  /// This entry as merged from several servers' copies: [primary] is the
+  /// copy whose id it keeps.
+  MediaEntry merged({
+    required MediaCopy primary,
+    required List<MediaCopy> alternates,
+    required int playCount,
+    DateTime? added,
+    List<String>? providerIds,
+  }) =>
+      _copy(primary: primary, alternates: alternates, playCount: playCount, added: added, providerIds: providerIds);
+
+  /// A copy under another show key (multi-server, see [SeriesEntry.withKey]).
+  MediaEntry withSeriesKey(String key) => MediaEntry(
+        id: id, kind: kind, title: title, runtime: runtime, seriesKey: key, seriesId: seriesId, seriesName: seriesName,
+        season: season, episode: episode, year: year, overview: overview, genres: genres, officialRating: officialRating,
+        sourceId: sourceId, clipStart: clipStart, etag: etag, container: container, size: size, chapters: chapters,
+        poolIds: poolIds, artist: artist, album: album, albumId: albumId, added: added, availableAt: availableAt,
+        streamPath: streamPath, playCount: playCount, providerIds: providerIds, alternates: alternates);
+
+  /// This entry as its copy [c] (multi-server): what playing that copy
+  /// needs, with the rest of the entry's details.
+  MediaEntry asCopy(MediaCopy c) => c.id == id ? this : _copy(primary: c, alternates: const []);
+
+  /// A copy with every id rewritten by [id] (an added server's key prefix).
+  MediaEntry withIds(String Function(String id) id) => _copy(
+        primary: MediaCopy(id: id(this.id), sourceId: id(sourceId), streamPath: streamPath, etag: etag, size: size),
+        seriesId: seriesId == null ? null : id(seriesId!),
+        albumId: albumId == null ? null : id(albumId!),
+        alternates: [
+          for (final a in alternates)
+            MediaCopy(id: id(a.id), sourceId: id(a.sourceId), streamPath: a.streamPath, etag: a.etag, size: a.size)
+        ],
+      );
+
+  MediaEntry _copy(
+          {List<String>? poolIds,
+          DateTime? availableAt,
+          bool clearAvailableAt = false,
+          MediaCopy? primary,
+          List<MediaCopy>? alternates,
+          int? playCount,
+          DateTime? added,
+          List<String>? providerIds,
+          String? seriesId,
+          String? albumId}) =>
+      MediaEntry(
+        id: primary?.id ?? id,
         kind: kind,
         title: title,
         runtime: runtime,
         seriesKey: seriesKey,
-        seriesId: seriesId,
+        seriesId: seriesId ?? this.seriesId,
         seriesName: seriesName,
         season: season,
         episode: episode,
@@ -133,19 +229,22 @@ class MediaEntry {
         overview: overview,
         genres: genres,
         officialRating: officialRating,
-        sourceId: sourceId,
+        sourceId: primary?.sourceId ?? sourceId,
         clipStart: clipStart,
-        etag: etag,
+        etag: primary == null ? etag : primary.etag,
         container: container,
-        size: size,
+        size: primary == null ? size : primary.size,
         chapters: chapters,
         poolIds: poolIds ?? this.poolIds,
         artist: artist,
         album: album,
-        albumId: albumId,
-        added: added,
+        albumId: albumId ?? this.albumId,
+        added: added ?? this.added,
         availableAt: clearAvailableAt ? null : availableAt ?? this.availableAt,
-        streamPath: streamPath,
+        streamPath: primary == null ? streamPath : primary.streamPath,
+        playCount: playCount ?? this.playCount,
+        providerIds: providerIds ?? this.providerIds,
+        alternates: alternates ?? this.alternates,
       );
 
   /// Title shown in the guide: the show name for episodes, "Artist – Song"
@@ -199,6 +298,9 @@ class MediaEntry {
         if (added != null) 'added': added!.toUtc().toIso8601String(),
         if (availableAt != null) 'availableAt': availableAt!.toUtc().toIso8601String(),
         if (streamPath != null) 'streamPath': streamPath,
+        if (playCount != 0) 'plays': playCount,
+        if (providerIds.isNotEmpty) 'providerIds': providerIds,
+        if (alternates.isNotEmpty) 'alternates': [for (final a in alternates) a.toJson()],
       };
 
   /// Files written before clips, chapters, pools, music and premieres
@@ -233,6 +335,11 @@ class MediaEntry {
         added: _time(j['added']),
         availableAt: _time(j['availableAt']),
         streamPath: j['streamPath'] as String?,
+        playCount: j['plays'] as int? ?? 0,
+        providerIds: (j['providerIds'] as List?)?.cast<String>() ?? const [],
+        alternates: [
+          for (final a in (j['alternates'] as List? ?? const []).cast<Map<String, Object?>>()) MediaCopy.fromJson(a)
+        ],
       );
 
   static DateTime? _time(Object? s) => s is String ? DateTime.tryParse(s)?.toLocal() : null;
@@ -262,6 +369,22 @@ class SeriesEntry {
   final bool hasLogo;
 
   static String keyFor(String name, int? year) => '${name.trim().toLowerCase()}|${year ?? ''}';
+
+  /// A copy under another [key] (multi-server: the same show, its year known
+  /// on another server).
+  SeriesEntry withKey(String key) => SeriesEntry(
+      key: key, id: id, name: name, year: year, genres: genres, officialRating: officialRating, hasLogo: hasLogo);
+
+  /// A copy with another artwork [id] (multi-server).
+  SeriesEntry withId(String id, {bool? hasLogo, List<String>? genres}) => SeriesEntry(
+        key: key,
+        id: id,
+        name: name,
+        year: year,
+        genres: genres ?? this.genres,
+        officialRating: officialRating,
+        hasLogo: hasLogo ?? this.hasLogo,
+      );
 
   Map<String, Object?> toJson() => {
         'key': key,
@@ -294,6 +417,9 @@ class LibraryIndex {
     this.commercials = const [],
     this.songs = const [],
     this.musicVideos = const [],
+    this.rootsByItem = const {},
+    this.roots = const {},
+    this.missingRoots = const {},
   }) : _byId = {for (final e in [...episodes, ...movies, ...commercials, ...songs, ...musicVideos]) e.id: e};
 
   final List<SeriesEntry> series;
@@ -308,8 +434,55 @@ class LibraryIndex {
   /// Songs from music libraries, and music videos from video libraries.
   final List<MediaEntry> songs;
   final List<MediaEntry> musicVideos;
+
+  /// The channel and block source roots (see [ChannelSource.roots]) each
+  /// episode or movie is under, by item id (custom-channels D3).
+  final Map<String, List<String>> rootsByItem;
+
+  /// The roots resolved into [rootsByItem]; a root not in it hasn't been
+  /// asked about yet (added since, or saved before roots existed).
+  final Set<String> roots;
+
+  /// Resolved roots the server had nothing under, or no longer has.
+  final Set<String> missingRoots;
   final DateTime fetchedAt;
   final Map<String, MediaEntry> _byId;
+
+  /// The episodes and movies under each root, in no order.
+  late final Map<String, Set<String>> itemsByRoot = () {
+    final map = <String, Set<String>>{};
+    rootsByItem.forEach((id, roots) {
+      for (final r in roots) {
+        map.putIfAbsent(r, () => {}).add(id);
+      }
+    });
+    return map;
+  }();
+
+  /// This index with [found] (the programs under each of [resolved]'s
+  /// roots) merged in: those roots' old membership is replaced.
+  LibraryIndex withRoots(Map<String, Set<String>> found, {Set<String> missing = const {}}) {
+    final resolved = found.keys.toSet();
+    final byItem = <String, List<String>>{
+      for (final e in rootsByItem.entries)
+        if (e.value.where((r) => !resolved.contains(r)).toList() case final keep when keep.isNotEmpty) e.key: keep,
+    };
+    found.forEach((root, ids) {
+      for (final copy in ids) {
+        // Another server's copy counts for the entry holding it.
+        final id = primaryIdOf(copy);
+        final kind = this[id]?.kind;
+        if (kind != MediaKind.episode && kind != MediaKind.movie) continue;
+        final list = byItem.putIfAbsent(id, () => []);
+        if (!list.contains(root)) list.add(root);
+      }
+    });
+    return _with(
+      rootsByItem: byItem,
+      roots: {...roots, ...resolved},
+      missingRoots: {...missingRoots.difference(resolved), ...missing},
+    );
+  }
 
   static final empty =
       LibraryIndex(series: const [], episodes: const [], movies: const [], fetchedAt: DateTime(0));
@@ -325,16 +498,43 @@ class LibraryIndex {
     }
 
     final shows = {for (final s in series) if (allowed(s.officialRating)) s.key};
+    final kept = [
+      ...episodes.where((e) => shows.contains(e.seriesKey)),
+      ...movies.where((m) => allowed(m.officialRating)),
+    ];
+    final keptIds = {for (final e in kept) e.id};
     return LibraryIndex(
       series: series.where((s) => shows.contains(s.key)).toList(),
-      episodes: episodes.where((e) => shows.contains(e.seriesKey)).toList(),
-      movies: movies.where((m) => allowed(m.officialRating)).toList(),
+      episodes: [for (final e in kept) if (e.kind == MediaKind.episode) e],
+      movies: [for (final m in kept) if (m.kind == MediaKind.movie) m],
       commercials: commercials,
       songs: songs.where((m) => allowed(m.officialRating)).toList(),
       musicVideos: musicVideos.where((m) => allowed(m.officialRating)).toList(),
       fetchedAt: fetchedAt,
+      // Whatever a root holds, nothing over the limit plays (D15).
+      rootsByItem: {
+        for (final e in rootsByItem.entries)
+          if (keptIds.contains(e.key)) e.key: e.value,
+      },
+      roots: roots,
+      missingRoots: missingRoots,
     );
   }
+
+  /// A copy with other root membership.
+  LibraryIndex _with({Map<String, List<String>>? rootsByItem, Set<String>? roots, Set<String>? missingRoots}) =>
+      LibraryIndex(
+        series: series,
+        episodes: episodes,
+        movies: movies,
+        commercials: commercials,
+        songs: songs,
+        musicVideos: musicVideos,
+        fetchedAt: fetchedAt,
+        rootsByItem: rootsByItem ?? this.rootsByItem,
+        roots: roots ?? this.roots,
+        missingRoots: missingRoots ?? this.missingRoots,
+      );
 
   /// This index with each episode's [MediaEntry.availableAt] set from
   /// [previous] (the index this profile had before this scan, null on its
@@ -362,10 +562,48 @@ class LibraryIndex {
       songs: songs,
       musicVideos: musicVideos,
       fetchedAt: fetchedAt,
+      rootsByItem: rootsByItem,
+      roots: roots,
+      missingRoots: missingRoots,
     );
   }
 
   MediaEntry? operator [](String id) => _byId[id];
+
+  /// Every copy by its id, alternates included (multi-server): what a
+  /// server's client looks its own items up by.
+  late final Map<String, MediaCopy> _copies = {
+    for (final e in _byId.values)
+      for (final c in e.copies) c.id: c,
+  };
+
+  /// The copy with [id], whichever entry holds it.
+  MediaCopy? copyById(String id) => _copies[id];
+
+  late final Map<String, String> _primaryOf = {
+    for (final e in _byId.values)
+      for (final a in e.alternates) a.id: e.id,
+  };
+
+  /// The id of the entry holding copy [id] ([id] itself for an entry's own).
+  String primaryIdOf(String id) => _primaryOf[id] ?? id;
+
+  /// This index with every id rewritten as an added server's (multi-server
+  /// D2): [prefix] gives the global id for one of the server's own ids.
+  LibraryIndex withServerKey(String Function(String id) prefix) => LibraryIndex(
+        series: [for (final s in series) s.withId(prefix(s.id))],
+        episodes: [for (final e in episodes) e.withIds(prefix)],
+        movies: [for (final e in movies) e.withIds(prefix)],
+        commercials: [for (final e in commercials) e.withIds(prefix)],
+        songs: [for (final e in songs) e.withIds(prefix)],
+        musicVideos: [for (final e in musicVideos) e.withIds(prefix)],
+        fetchedAt: fetchedAt,
+        rootsByItem: {
+          for (final e in rootsByItem.entries) prefix(e.key): [for (final r in e.value) prefix(r)],
+        },
+        roots: {for (final r in roots) prefix(r)},
+        missingRoots: {for (final r in missingRoots) prefix(r)},
+      );
 
   late final Map<String, SeriesEntry> seriesByKey = {for (final s in series) s.key: s};
 
@@ -397,6 +635,9 @@ class LibraryIndex {
         'commercials': [for (final c in commercials) c.toJson()],
         'songs': [for (final m in songs) m.toJson()],
         'musicVideos': [for (final m in musicVideos) m.toJson()],
+        if (roots.isNotEmpty) 'roots': roots.toList(),
+        if (missingRoots.isNotEmpty) 'missingRoots': missingRoots.toList(),
+        if (rootsByItem.isNotEmpty) 'rootsByItem': rootsByItem,
       };
 
   factory LibraryIndex.fromJson(Map<String, Object?> j) => LibraryIndex(
@@ -421,6 +662,12 @@ class LibraryIndex {
           for (final m in ((j['musicVideos'] as List?) ?? const []).cast<Map<String, Object?>>())
             MediaEntry.fromJson(m)
         ],
+        rootsByItem: {
+          for (final e in ((j['rootsByItem'] as Map?) ?? const {}).cast<String, Object?>().entries)
+            e.key: (e.value as List).cast<String>(),
+        },
+        roots: {...((j['roots'] as List?) ?? const []).cast<String>()},
+        missingRoots: {...((j['missingRoots'] as List?) ?? const []).cast<String>()},
       );
 
   /// Builds an index from raw Jellyfin item JSON. Pure, so it is unit-testable.
@@ -504,6 +751,8 @@ class LibraryIndex {
         size: _size(e),
         chapters: _chapters(e),
         added: _date(e['DateCreated']),
+        playCount: _playCount(e),
+        providerIds: providerIdsOf(e['ProviderIds']),
       ));
     }
 
@@ -527,6 +776,8 @@ class LibraryIndex {
         container: _container(m),
         size: _size(m),
         chapters: _chapters(m),
+        playCount: _playCount(m),
+        providerIds: providerIdsOf(m['ProviderIds']),
       ));
     }
 
@@ -600,6 +851,26 @@ class LibraryIndex {
   }
 
   static DateTime? _date(Object? s) => s is String ? DateTime.tryParse(s)?.toLocal() : null;
+
+  /// The providers whose ids name a title, as `tvdb:…`.
+  static const providers = {'tvdb', 'tmdb', 'imdb'};
+
+  /// Jellyfin's and Emby's `ProviderIds` (`{"Tvdb": "123"}`) as `tvdb:123`,
+  /// only [providers]' ids.
+  static List<String> providerIdsOf(Object? json) => [
+        if (json is Map)
+          for (final e in json.entries)
+            if (providers.contains('${e.key}'.toLowerCase()) && '${e.value}'.trim().isNotEmpty)
+              '${'${e.key}'.toLowerCase()}:${'${e.value}'.trim()}',
+      ];
+
+  /// The user's play count, from `UserData` (absent: never played). Marked
+  /// played by hand, an item has no count on Emby, but it has been watched.
+  static int _playCount(Map<String, Object?> item) {
+    final data = item['UserData'] as Map<String, Object?>?;
+    final count = (data?['PlayCount'] as num?)?.toInt() ?? 0;
+    return count == 0 && data?['Played'] == true ? 1 : count;
+  }
 
   /// "Len - Steal My Sunshine (Official Video) [E1fzJ_AYajA]" → (artist:
   /// "Len", title: "Steal My Sunshine"): the artist and a clean title from an
@@ -680,6 +951,35 @@ class LibraryIndex {
 /// on [client]'s server (see [MediaServer.fetchLibraryIndex]).
 Future<LibraryIndex> fetchLibraryIndex(MediaServer client,
         {List<CommercialPool> pools = const [],
+        Set<String> channelRoots = const {},
+        bool providerIds = false,
         void Function(String status)? onStatus,
         void Function(List<ServerLibrary> libraries)? onLibraries}) =>
-    client.fetchLibraryIndex(pools: pools, onStatus: onStatus, onLibraries: onLibraries);
+    client.fetchLibraryIndex(
+        pools: pools,
+        channelRoots: channelRoots,
+        providerIds: providerIds,
+        onStatus: onStatus,
+        onLibraries: onLibraries);
+
+/// The programs under each of [roots] on [client]'s server, for
+/// [LibraryIndex.withRoots]: each root once, its ids only. A root the
+/// server doesn't have, or has nothing under, is in `missing`.
+Future<({Map<String, Set<String>> found, Set<String> missing})> fetchRoots(MediaServer client, Iterable<String> roots,
+    {void Function(String status)? onStatus}) async {
+  final found = <String, Set<String>>{};
+  final missing = <String>{};
+  for (final root in {...roots}) {
+    List<String> ids;
+    try {
+      ids = await client.idsUnder(root);
+    } on ServerException catch (e) {
+      // Gone from the server (deleted, or another user's).
+      if (e.statusCode != 400 && e.statusCode != 404) rethrow;
+      ids = const [];
+    }
+    found[root] = ids.toSet();
+    if (ids.isEmpty) missing.add(root);
+  }
+  return (found: found, missing: missing);
+}

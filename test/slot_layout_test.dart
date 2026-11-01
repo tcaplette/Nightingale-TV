@@ -299,6 +299,177 @@ void main() {
       }
     });
 
+    group('bumpers', () {
+      final idents = [for (var i = 0; i < 4; i++) _clip('ident$i', _s(10), pools: ['idents'])];
+      FixedClips framed(List<MediaEntry> bumpers, {Map<String, List<MediaEntry>> byPool = const {}}) =>
+          FixedClips(varied, byPool: {'ads': varied}, bumpers: bumpers, bumpersByPool: byPool);
+      bool isBumper(LayoutSegment s) => s.item?.id.startsWith('ident') ?? false;
+      BreakPlan custom(CustomRoles roles) => BreakPlan(mode: BreakMode.custom, roles: roles);
+      const midAndPost = CustomRoles(
+          preRoll: Duration(seconds: 30), midInterval: Duration(minutes: 10), postRoll: Duration(minutes: 1));
+
+      test('no bumper pool: the layout is what it always was', () {
+        for (final plan in [BreakPlan.automatic, BreakPlan.legacy, custom(midAndPost)]) {
+          final plain = layout(plan), none = layout(plan, source: framed(const []));
+          expect([for (final s in none.segments) (s.from, s.to, s.item?.id)],
+              [for (final s in plain.segments) (s.from, s.to, s.item?.id)]);
+        }
+      });
+
+      test('mid-rolls open and close, post-rolls open, pre-rolls close', () {
+        final l = layout(custom(midAndPost), source: framed(idents));
+        final breaks = breaksOf(l);
+        for (final b in breaks) {
+          final role = b.first.role!;
+          expect(isBumper(b.first), role != BreakRole.pre, reason: '$role opening');
+          expect(isBumper(b.last), role != BreakRole.post, reason: '$role closing');
+          expect(b.where(isBumper), hasLength(role == BreakRole.mid ? 2 : 1), reason: '$role');
+          expect(b.where((s) => !isBumper(s)), isNotEmpty, reason: 'commercials between');
+        }
+        for (final b in breaks.where((b) => b.first.role == BreakRole.mid)) {
+          expect(b.first.item!.id, isNot(b.last.item!.id), reason: 'a close differs from its open');
+        }
+      });
+
+      test('a tail holds only commercials', () {
+        final l = layout(custom(const CustomRoles(tailGrid: Duration(minutes: 30))), source: framed(idents));
+        expect(l.segments.where((s) => s.role == BreakRole.tail), isNotEmpty);
+        expect(l.segments.where(isBumper), isEmpty);
+      });
+
+      test('room for one in a mid-roll: it closes, and commercials fill the rest', () {
+        final l = layout(custom(const CustomRoles(midInterval: Duration(minutes: 10), midLength: Duration(seconds: 30))),
+            source: framed(idents));
+        for (final b in breaksOf(l)) {
+          expect(isBumper(b.last), isTrue);
+          expect(b.where(isBumper), hasLength(1));
+        }
+      });
+
+      test('bumpers over half a mid-roll are skipped; a pre-roll\'s may fill it', () {
+        final long = [_clip('ident-long', _s(20), pools: ['idents'])];
+        final l = layout(custom(const CustomRoles(midInterval: Duration(minutes: 10), midLength: Duration(seconds: 30))),
+            source: framed(long));
+        expect(l.segments.where(isBumper), isEmpty);
+        final pre = layout(custom(const CustomRoles(preRoll: Duration(seconds: 15))),
+            source: framed([_clip('ident-15', _s(15), pools: ['idents'])]));
+        expect(breaksOf(pre).single.map((s) => s.item!.id), ['ident-15']);
+      });
+
+      test('a bumper too long for the pre-roll: commercials only, and the program starts on time', () {
+        const plan = CustomRoles(preRoll: Duration(seconds: 15));
+        final l = layout(custom(plan), source: framed([_clip('ident-long', _s(30), pools: ['idents'])]));
+        expect(l.segments.where(isBumper), isEmpty);
+        expect(l.length, layout(custom(plan)).length);
+      });
+
+      test('one station ident opens and closes every mid-roll', () {
+        final one = [_clip('ident', _s(5), pools: ['idents'])];
+        final l = layout(custom(const CustomRoles(midInterval: Duration(minutes: 10))), source: framed(one));
+        final breaks = breaksOf(l);
+        expect(breaks, isNotEmpty);
+        for (final b in breaks) {
+          expect((b.first.item!.id, b.last.item!.id), ('ident', 'ident'));
+        }
+      });
+
+      test('no commercials, no bumpers', () {
+        final l = layout(custom(midAndPost), source: FixedClips(const [], bumpers: idents));
+        expect(l.segments.where(isBumper), isEmpty);
+      });
+
+      test('commercials too long to fit: no bumpers around nothing', () {
+        final longAds = [_clip('long', _m(2))];
+        final l = layout(custom(const CustomRoles(midInterval: Duration(minutes: 10), midLength: Duration(seconds: 30),
+                postRoll: Duration(minutes: 5))),
+            source: FixedClips(longAds, bumpers: idents));
+        final mids = l.segments.where((s) => s.role == BreakRole.mid);
+        expect(mids.where(isBumper), isEmpty);
+      });
+
+      test('None gives no bumpers; a picked pool gives only its own, or all when it has none', () {
+        final mine = [_clip('ident-mine', _s(5), pools: ['mine'])];
+        final source = framed(idents, byPool: {'mine': mine, 'empty': const []});
+        expect(layout(custom(midAndPost.withBumpers(null, none: true)), source: source).segments.where(isBumper), isEmpty);
+        final picked = layout(custom(midAndPost.withBumpers('mine')), source: source).segments.where(isBumper);
+        expect(picked.map((s) => s.item!.id).toSet(), {'ident-mine'});
+        expect(layout(custom(midAndPost.withBumpers('empty')), source: source).segments.where(isBumper), isNotEmpty);
+      });
+
+      test('slots keep their length, tile exactly, and rebuild the same', () {
+        for (final plan in [BreakPlan.automatic, BreakPlan.legacy, custom(midAndPost)]) {
+          final plain = layout(plan), l = layout(plan, source: framed(idents));
+          expect(l.length, plain.length);
+          for (var i = 1; i < l.segments.length; i++) {
+            expect(l.segments[i].from, l.segments[i - 1].to);
+          }
+          final again = layout(plan, source: framed(idents));
+          expect([for (final s in again.segments) (s.from, s.to, s.item?.id)],
+              [for (final s in l.segments) (s.from, s.to, s.item?.id)]);
+          expect(total(l.segments.where((s) => s.isShow)), _m(22));
+        }
+      });
+
+      test('the commercials\' shuffle isn\'t the bumpers\'', () {
+        // With the same seed and bag the two orders would match.
+        final same = [for (var i = 0; i < 8; i++) _clip('ident$i', _s(5), pools: ['idents'])];
+        final ids = <String>{};
+        for (var m = 0; m < 12; m++) {
+          final l = layout(custom(const CustomRoles(preRoll: Duration(seconds: 15))),
+              source: FixedClips(same, bumpers: same), at: _at(18, 0).add(Duration(minutes: m)));
+          final b = breaksOf(l).single;
+          ids.add(b.last.item!.id);
+        }
+        expect(ids.length, greaterThan(1), reason: 'the pick changes with the break');
+      });
+
+      test('a last mid-roll cuts its last commercial, and the closing bumper plays whole', () {
+        // No post-roll: the last mid-roll is the slot's last break.
+        const plan = CustomRoles(midInterval: Duration(minutes: 10), midLength: Duration(milliseconds: 60300));
+        final ads = [_clip('a', _s(15)), _clip('b', _s(16)), _clip('c', _s(17)), _clip('d', _s(18)), _clip('e', _s(19))];
+        final l = layout(custom(plan), source: FixedClips(ads, bumpers: [_clip('ident', _s(10), pools: ['idents'])]));
+        expect(l.segments.last.isShow, isTrue);
+        final last = breaksOf(l).last;
+        expect(last.last.item!.id, 'ident');
+        expect(last.last.length, _s(10));
+        expect(total(last), greaterThan(Duration.zero));
+        expect(l.length, resolve(custom(plan), show.runtime).slotLength);
+      });
+
+      test('a post-roll that ends the slot still ends it exactly', () {
+        const plan = CustomRoles(postRoll: Duration(milliseconds: 47300));
+        final l = layout(custom(plan), source: framed(idents));
+        final post = breaksOf(l).single;
+        expect(isBumper(post.first), isTrue);
+        expect(post.first.length, _s(10));
+        expect(post.last.to, l.length);
+        expect(l.length, _m(22) + _s(47.3));
+      });
+
+      test('Truncate cuts whatever crosses the slot\'s end, even a bumper', () {
+        final base = resolve(custom(const CustomRoles(preRoll: Duration(seconds: 15))), show.runtime);
+        final cut = base.withRule(length: _s(10), offline: false, truncate: true);
+        final l = SlotLayout.build(
+          item: show,
+          plan: cut,
+          layoutStart: _at(18, 0),
+          info: ProgramBreakInfo.unknown,
+          clips: FixedClips(varied, bumpers: [_clip('ident', _s(15), pools: ['idents'])]),
+          seed: 7,
+        );
+        expect(l.length, _s(10));
+        expect(l.segments.last.to, _s(10));
+      });
+
+      test('the BREAKFILL line counts them', () {
+        final lines = <String>[];
+        SlotLayout.log = lines.add;
+        addTearDown(() => SlotLayout.log = null);
+        layout(custom(const CustomRoles(midInterval: Duration(minutes: 10))), source: framed(idents));
+        expect(lines.first, endsWith('bumpers 1+1'));
+      });
+    });
+
     test('one BREAKFILL line per break', () {
       final lines = <String>[];
       SlotLayout.log = lines.add;
@@ -453,5 +624,149 @@ void main() {
     final last = s.playbackAt(_at(7, 19, 59));
     expect(last.end, _at(7, 20));
     expect(s.playbackAt(_at(7, 20)).blockTitle, isNull);
+  });
+
+  group('slot length and tails (slot-duration)', () {
+    ChannelSchedule ruled(SlotRule? rule, {BreakPlan plan = BreakPlan.off, ClipSource? source, LibraryIndex? lib, List<String>? items}) =>
+        ChannelSchedule.build(_channel(items ?? playlist), lib ?? library, const [],
+            BreakContext(plan: plan, clips: source ?? clips, slotRule: rule))!;
+    // A 100-minute movie and a 22-minute episode.
+    final movies = fakeLibrary(shows: {'Archer': 2}, movies: 1, lengths: {});
+    final movieLib = LibraryIndex(
+      series: movies.series,
+      episodes: movies.episodes,
+      movies: [
+        MediaEntry(id: 'movie-1', kind: MediaKind.movie, title: 'Movie', runtime: _m(100)),
+      ],
+      fetchedAt: DateTime(2026),
+    );
+
+    /// Checks the slot at [t] lays out with no gaps, ending exactly at its end.
+    void gapless(ChannelSchedule s, DateTime t) {
+      final slot = s.programAt(t);
+      final segments = _segments(s, slot.start, slot.end);
+      expect(segments.first.start, slot.start);
+      for (var i = 1; i < segments.length; i++) {
+        expect(segments[i].start, segments[i - 1].end, reason: 'no gap before segment $i');
+      }
+      expect(segments.last.end, slot.end);
+    }
+
+    test('22-minute episodes in 30-minute filler slots: 8 minutes of filler, every slot on the half hour', () {
+      final s = ruled(const SlotRule(length: Duration(minutes: 30)));
+      for (final p in s.programsBetween(_at(18, 0), _at(21, 0))) {
+        expect(p.start.minute % 30, 0);
+        expect(p.duration, _m(30));
+      }
+      expect(_outline(_segments(s, _at(18, 0), _at(18, 30))), ['show 0-1320', 'tail 480s']);
+      gapless(s, _at(18, 10));
+    });
+
+    test('a 100-minute movie in 60-minute offline slots: 120 minutes, the last 20 the offline card', () {
+      final s = ruled(const SlotRule(length: Duration(minutes: 60), tail: TailMode.offline),
+          lib: movieLib, items: ['movie-1']);
+      final slot = s.programAt(_at(18, 30));
+      expect(slot.duration, _m(120));
+      final tail = s.playbackAt(_at(19, 50));
+      expect(tail.item, isNull);
+      expect(tail.offline, isTrue);
+      expect(tail.isOffAir, isFalse);
+      expect(tail.start, _at(19, 40));
+      expect(tail.end, _at(20, 0));
+      expect(slot.endsEarly, isFalse);
+      gapless(s, _at(18, 30));
+    });
+
+    test('Truncate cuts the movie at 60 minutes and the next program starts on time', () {
+      final s = ruled(const SlotRule(length: Duration(minutes: 60), tail: TailMode.truncate),
+          lib: movieLib, items: ['movie-1', 'Archer-e1']);
+      final slot = s.programAt(_at(18, 30));
+      expect(slot.item!.id, 'movie-1');
+      expect(slot.duration, _m(60));
+      expect(slot.endsEarly, isTrue);
+      final last = s.playbackAt(_at(18, 59, 59));
+      expect(last.item!.id, 'movie-1');
+      expect(last.itemTo, _m(60));
+      expect(last.endsEarly, isTrue);
+      final next = s.playbackAt(_at(19, 0));
+      expect(next.item!.id, 'Archer-e1');
+      expect(next.start, _at(19, 0));
+      // The short one is padded with filler to the hour.
+      expect(_outline(_segments(s, _at(19, 0), _at(20, 0))), ['show 0-1320', 'tail 2280s']);
+    });
+
+    test('Truncate with breaks: the layout is cut at the slot end, the crossing segment trimmed', () {
+      final s = ruled(const SlotRule(length: Duration(minutes: 60), tail: TailMode.truncate),
+          plan: BreakPlan.automatic, lib: movieLib, items: ['movie-1']);
+      final slot = s.programAt(_at(18, 0));
+      expect(slot.duration, _m(60));
+      final segments = _segments(s, slot.start, slot.end);
+      expect(segments.last.end, slot.end);
+      expect(segments.any((p) => p.role == BreakRole.post), isFalse, reason: 'the post-roll falls after the cut');
+      gapless(s, _at(18, 10));
+    });
+
+    test('a cut that only shortens the post-roll does not end the program early', () {
+      final plan = resolve(const BreakPlan(mode: BreakMode.custom, roles: CustomRoles(postRoll: Duration(minutes: 5))),
+          _m(28));
+      final cut = plan.withRule(length: _m(30), offline: false, truncate: true);
+      expect(cut.slotLength, _m(30));
+      expect(cut.endsEarly, isFalse);
+      expect(resolve(BreakPlan.off, _m(40)).withRule(length: _m(30), offline: false, truncate: true).endsEarly, isTrue);
+    });
+
+    test('break plans still place pre-, mid- and post-rolls; the rule replaces their tail', () {
+      final s = ruled(const SlotRule(length: Duration(minutes: 60)),
+          plan: const BreakPlan(
+              mode: BreakMode.custom,
+              roles: CustomRoles(
+                  preRoll: Duration(seconds: 30), postRoll: Duration(minutes: 1), tailGrid: Duration(minutes: 15))));
+      final slot = s.programAt(_at(18, 0));
+      expect(slot.duration, _m(60), reason: '22 + 1.5 minutes rounded up to the hour, not to the quarter');
+      final outline = _outline(_segments(s, slot.start, slot.end));
+      expect(outline.first, 'pre 30s');
+      expect(outline, contains('post 60s'));
+      expect(outline.last, 'tail ${(60 - 22) * 60 - 90}s');
+    });
+
+    test('a filler tail with an empty pool shows the offline card', () {
+      final s = ruled(const SlotRule(length: Duration(minutes: 30), poolId: 'empty'),
+          source: const FixedClips([], byPool: {}));
+      final tail = s.playbackAt(_at(18, 25));
+      expect(tail.item, isNull);
+      expect(tail.offline, isTrue);
+      expect(tail.start, _at(18, 22));
+      expect(tail.end, _at(18, 30));
+    });
+
+    test('Off gives the same guide as no rule at all', () {
+      final plain = ChannelSchedule.build(
+          _channel(playlist), library, const [], BreakContext(plan: BreakPlan.automatic, clips: clips))!;
+      final off = ruled(null, plan: BreakPlan.automatic);
+      String guide(ChannelSchedule s) => [
+            for (final p in s.programsBetween(_at(18, 0), _at(23, 0))) '${p.item?.id} ${p.start} ${p.end}',
+          ].join('\n');
+      expect(guide(off), guide(plain));
+    });
+
+    test('programming blocks keep their own layout', () {
+      final block = ProgramBlock(
+        id: 'b',
+        title: 'Block',
+        channelId: 'ch',
+        days: {for (var d = 1; d <= 7; d++) d},
+        startMinute: 20 * 60,
+        endMinute: 21 * 60,
+        source: const ChannelSource(),
+        order: PlaybackOrder.cyclic,
+        playlist: playlist,
+        anchor: DateTime(2026, 10, 1),
+      );
+      final s = ChannelSchedule.build(_channel(playlist), library, [block],
+          BreakContext(plan: BreakPlan.off, clips: clips, slotRule: const SlotRule(length: Duration(minutes: 30))))!;
+      final inBlock = s.programAt(_at(20, 5));
+      expect(inBlock.blockTitle, 'Block');
+      expect(inBlock.duration, _m(22));
+    });
   });
 }

@@ -123,4 +123,16 @@ void main() {
     expect(first.duration, song.runtime);
     expect(s.playbackAt(first.end).isBreak, isTrue);
   });
+
+  test('a 22-minute episode at 8:00 PM in 30-minute filler slots is one cell, 8:00-8:30', () {
+    final eight = DateTime(2026, 10, 13, 20);
+    final ch = _channel(['Alpha-e1', 'Alpha-e2', 'Alpha-e3'], eight);
+    final s = ChannelSchedule.build(
+        ch, library, const [], const BreakContext(plan: BreakPlan.off, slotRule: SlotRule(length: Duration(minutes: 30))))!;
+    final cells = s.guideProgramsBetween(eight, eight.add(const Duration(hours: 1)));
+    expect([for (final c in cells) (c.item!.id, c.start, c.end)], [
+      ('Alpha-e1', eight, eight.add(const Duration(minutes: 30))),
+      ('Alpha-e2', eight.add(const Duration(minutes: 30)), eight.add(const Duration(minutes: 60))),
+    ]);
+  });
 }

@@ -192,6 +192,18 @@ class ExoTunerPlayer implements TunerPlayer {
   }
 
   @override
+  Future<void> pause() => _call<void>('pause');
+
+  @override
+  Future<void> resume() => _call<void>('resume');
+
+  @override
+  Future<void> seek(Duration position) async {
+    _at = position;
+    await _call<void>('seek', {'ms': position.inMilliseconds});
+  }
+
+  @override
   Future<void> showCaptions(bool on) async {
     if (!on) cues.value = ExoCues.none;
     await _call<void>('captions', {'on': on});
@@ -209,6 +221,11 @@ class ExoTunerPlayer implements TunerPlayer {
     await _call<void>('setLeveling', {'on': on});
   }
 
+  /// ExoPlayer's volume; one ExoPlayer plays the item on screen and the one
+  /// queued, so it covers both.
+  @override
+  Future<void> setVolume(double volume) => _call<void>('setVolume', {'volume': volume.clamp(0.0, 1.0)});
+
   @override
   Future<void> dispose() async {
     if (_disposed) return;
@@ -220,7 +237,7 @@ class ExoTunerPlayer implements TunerPlayer {
   }
 
   @override
-  Widget buildVideo() => _ExoVideo(this);
+  Widget buildVideo({BoxFit fit = BoxFit.contain}) => _ExoVideo(this, fit);
 
   // ---- Readings -------------------------------------------------------------
 
@@ -385,13 +402,15 @@ class ExoImageCue {
   final double aspect;
 }
 
-/// The texture fitted inside the space with black around it, image
+/// The texture fitted in the space by [fit] with black around it, image
 /// subtitles on the picture, and text captions over it all (as
-/// media_kit_video's `Video` shows them on Linux).
+/// media_kit_video's `Video` shows them on Linux). The subtitles fit the whole
+/// space, so cropping the picture never crops them.
 class _ExoVideo extends StatelessWidget {
-  const _ExoVideo(this.player);
+  const _ExoVideo(this.player, this.fit);
 
   final ExoTunerPlayer player;
+  final BoxFit fit;
 
   @override
   Widget build(BuildContext context) {
@@ -408,17 +427,16 @@ class _ExoVideo extends StatelessWidget {
                     valueListenable: player.videoSize,
                     builder: (context, size, _) => size == null
                         ? const SizedBox.shrink()
-                        : FittedBox(
-                            child: SizedBox.fromSize(
-                              size: size,
-                              child: Stack(
-                                fit: StackFit.expand,
-                                children: [
-                                  Texture(textureId: id),
-                                  _ImageCues(player.cues, size),
-                                ],
+                        : Stack(
+                            fit: StackFit.expand,
+                            children: [
+                              FittedBox(
+                                fit: fit,
+                                clipBehavior: Clip.hardEdge,
+                                child: SizedBox.fromSize(size: size, child: Texture(textureId: id)),
                               ),
-                            ),
+                              FittedBox(child: SizedBox.fromSize(size: size, child: _ImageCues(player.cues, size))),
+                            ],
                           ),
                   ),
           ),

@@ -138,7 +138,21 @@ class AnalysisEntry {
 /// An item is analyzed again only when its Etag or [analysisVersion]
 /// changes; until then its old result stays in use. Writes are batched
 /// ([debounce]) and atomic.
-class AnalysisCache extends ChangeNotifier implements BreakPointSource {
+/// What media analysis reads and records: one server's [AnalysisCache],
+/// or several servers' at once (multi-server's `ServerAnalysis`).
+abstract interface class AnalysisStore implements BreakPointSource, Listenable {
+  bool isAnalyzed(MediaEntry item);
+  bool gaveUpOn(MediaEntry item);
+  (int, DateTime?) failuresOf(MediaEntry item);
+  AnalysisResult? latest(MediaEntry item);
+  void recordReel(MediaEntry reel, ReelCuts? cuts, {required DateTime at});
+  void recordSegments(MediaEntry program, List<Span> skips, {required DateTime at});
+  void recordWindow(MediaEntry program, ScanWindow window);
+  void recordFailure(MediaEntry item, {required DateTime at, required int maxFailures});
+  Future<void> flush();
+}
+
+class AnalysisCache extends ChangeNotifier implements AnalysisStore {
   AnalysisCache._(this.file, this._entries, this.debounce);
 
   /// Writes within this of each other are saved together.
@@ -212,18 +226,21 @@ class AnalysisCache extends ChangeNotifier implements BreakPointSource {
 
   /// Whether [item]'s current file has been analyzed (as far as [reel]
   /// analysis or the program's segments go).
+  @override
   bool isAnalyzed(MediaEntry item) {
     final e = _entries[item.sourceId];
     return e != null && e.etag == _etag(item) && e.version == analysisVersion && e.current != null;
   }
 
   /// Gave up on [item]'s current file after too many failures.
+  @override
   bool gaveUpOn(MediaEntry item) {
     final e = _entries[item.sourceId];
     return e != null && e.etag == _etag(item) && e.version == analysisVersion && e.gaveUp;
   }
 
   /// Failures so far on [item]'s current file, and when the last was.
+  @override
   (int, DateTime?) failuresOf(MediaEntry item) {
     final e = _entries[item.sourceId];
     if (e == null || e.etag != _etag(item) || e.version != analysisVersion) return (0, null);
@@ -231,6 +248,7 @@ class AnalysisCache extends ChangeNotifier implements BreakPointSource {
   }
 
   /// The newest result for [item], even one for a file since replaced.
+  @override
   AnalysisResult? latest(MediaEntry item) => _entries[item.sourceId]?.results.firstOrNull;
 
   /// The entry for [item]'s current file, moving a result for an older file
@@ -252,6 +270,7 @@ class AnalysisCache extends ChangeNotifier implements BreakPointSource {
     return e;
   }
 
+  @override
   void recordReel(MediaEntry reel, ReelCuts? cuts, {required DateTime at}) {
     _entryFor(reel)
       ..current = AnalysisResult(analyzedAt: at, cutSource: cuts?.source, cuts: cuts?.clips ?? const [])
@@ -261,6 +280,7 @@ class AnalysisCache extends ChangeNotifier implements BreakPointSource {
   }
 
   /// A program's Commercial segments were read (maybe none).
+  @override
   void recordSegments(MediaEntry program, List<Span> skips, {required DateTime at}) {
     _entryFor(program)
       ..current = AnalysisResult(analyzedAt: at, skips: skips)
@@ -270,6 +290,7 @@ class AnalysisCache extends ChangeNotifier implements BreakPointSource {
   }
 
   /// A window of [program] was scanned. Its segments must have been read.
+  @override
   void recordWindow(MediaEntry program, ScanWindow window) {
     final e = _entryFor(program);
     final current = e.current;
@@ -280,6 +301,7 @@ class AnalysisCache extends ChangeNotifier implements BreakPointSource {
 
   /// Analysis of [item] failed; after [maxFailures] it is given up on until
   /// its file changes.
+  @override
   void recordFailure(MediaEntry item, {required DateTime at, required int maxFailures}) {
     final e = _entryFor(item);
     e
@@ -318,6 +340,7 @@ class AnalysisCache extends ChangeNotifier implements BreakPointSource {
   }
 
   /// Saves now (pending changes are otherwise saved after [debounce]).
+  @override
   Future<void> flush() {
     _saveTimer?.cancel();
     _saveTimer = null;

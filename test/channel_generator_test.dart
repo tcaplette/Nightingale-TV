@@ -2,6 +2,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:nightingale_tv/channels/channel.dart';
 import 'package:nightingale_tv/channels/channel_generator.dart';
 import 'package:nightingale_tv/commercials/break_plan.dart';
+import 'package:nightingale_tv/commercials/commercial_pool.dart';
 import 'package:nightingale_tv/library/library_index.dart';
 
 import 'fixtures.dart';
@@ -121,6 +122,74 @@ void main() {
       expect(ids(const ChannelSource(includeEpisodes: false, includeSongs: true, includeMusicVideos: true, decades: [1980])),
           hasLength(30));
       expect(ids(const ChannelSource()).any((id) => id.startsWith('song')), isFalse, reason: 'shows never get music');
+    });
+  });
+
+  group('custom channel sources and Least watched first', () {
+    // 100 movies: 50 never watched, 50 watched 3 or more times each.
+    LibraryIndex movies() => LibraryIndex.fromJellyfinItems(
+          seriesItems: const [],
+          episodeItems: const [],
+          movieItems: [
+            for (var i = 1; i <= 100; i++)
+              {
+                'Id': 'm$i',
+                'Name': 'Movie $i',
+                'ProductionYear': 1900 + i,
+                'RunTimeTicks': const Duration(minutes: 95).inMicroseconds * 10,
+                if (i > 50) 'UserData': {'PlayCount': 3 + i % 4},
+              },
+          ],
+        );
+    const all = ChannelSource(includeEpisodes: false, includeMovies: true);
+
+    test('unwatched comes first: over half of the first 20, averaged over 20 seeds', () {
+      final library = movies();
+      var unwatched = 0;
+      for (var seed = 0; seed < 20; seed++) {
+        final playlist = buildPlaylist(library, all, PlaybackOrder.weighted, seed: stableHash('user:$seed'));
+        unwatched += playlist.take(20).where((id) => library[id]!.playCount == 0).length;
+      }
+      expect(unwatched / 20, greaterThan(10));
+    });
+
+    test('the same seed and counts give the same playlist, every item once', () {
+      final library = movies();
+      final a = buildPlaylist(library, all, PlaybackOrder.weighted, seed: 7);
+      expect(buildPlaylist(library, all, PlaybackOrder.weighted, seed: 7), a);
+      expect(buildPlaylist(library, all, PlaybackOrder.weighted, seed: 8), isNot(a));
+      expect(a.toSet(), hasLength(100));
+      expect(a, hasLength(100));
+    });
+
+    test('no show twice in a row where another can go between', () {
+      final library = fakeLibrary(shows: {'Alpha': 20, 'Beta': 20, 'Gamma': 20});
+      for (var seed = 0; seed < 10; seed++) {
+        final playlist = buildPlaylist(library, const ChannelSource(), PlaybackOrder.weighted, seed: seed);
+        expect(playlist, hasLength(60));
+        for (var i = 1; i < playlist.length - 2; i++) {
+          expect(library[playlist[i]]!.seriesKey, isNot(library[playlist[i - 1]]!.seriesKey),
+              reason: 'seed $seed, position $i');
+        }
+      }
+    });
+
+    test('roots add to shows and movies; roots alone play only themselves', () {
+      final base = fakeLibrary(shows: {'Alpha': 10, 'Beta': 4, 'Gamma': 6}, movies: 4);
+      final library = base.withRoots({
+        'box': {'Alpha-e1', 'Alpha-e2', 'movie-1'},
+      });
+      const root = PoolRoot(itemId: 'box', libraryId: 'tv', label: 'Box');
+      final rootsOnly = buildPlaylist(library, const ChannelSource(roots: [root]), PlaybackOrder.cyclic, seed: 1);
+      expect(rootsOnly.toSet(), {'Alpha-e1', 'Alpha-e2', 'movie-1'});
+      final mixed = buildPlaylist(
+          library, const ChannelSource(roots: [root], seriesKeys: ['beta|2000']), PlaybackOrder.random, seed: 1);
+      expect(mixed.toSet(), {'Alpha-e1', 'Alpha-e2', 'movie-1', 'Beta-e1', 'Beta-e2', 'Beta-e3', 'Beta-e4'});
+      final withMovies = buildPlaylist(library, const ChannelSource(roots: [root], includeMovies: true),
+          PlaybackOrder.random, seed: 1);
+      expect(withMovies.toSet(), {'Alpha-e1', 'Alpha-e2', 'movie-1', 'movie-2', 'movie-3', 'movie-4'});
+      // Without roots, nothing changes for generated channels.
+      expect(buildPlaylist(library, const ChannelSource(), PlaybackOrder.cyclic, seed: 1), hasLength(20));
     });
   });
 }

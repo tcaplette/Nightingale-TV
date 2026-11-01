@@ -133,6 +133,14 @@ void main() {
         {...video('song-1', 'Audio', const Duration(minutes: 3)), 'Artists': ['Queen'], 'Album': 'The Game', 'AlbumId': 'al-1'},
       ],
       'photos': [video('photo-1', 'Audio', const Duration(minutes: 3))],
+      // A collection of a movie, two trailers and a show: the show's
+      // episodes come from listing it.
+      'box80s': [
+        video('movie-1', 'Movie', const Duration(minutes: 95)),
+        video('trailer-1', 'Movie', const Duration(minutes: 2)),
+        {'Id': 'Show', 'Name': 'Show', 'Type': 'Series'},
+      ],
+      'Show': [video('ep-1', 'Episode', const Duration(minutes: 22), series: 'Show')],
     };
     final asked = <String>[];
     JellyfinClient fakeServer() => JellyfinClient(
@@ -222,6 +230,26 @@ void main() {
       expect(ep.chapters, [Duration.zero, const Duration(milliseconds: 149358)]);
       expect(asked, contains('ads:Movie,Episode,Video,MusicVideo,Trailer:Chapters,Etag'));
       expect(asked, contains('tv:Episode:Overview,Chapters,Etag,DateCreated'));
+    });
+
+    test('a channel collection holds its movie and its show\'s episodes; pool items stay commercials', () async {
+      final pools = [
+        CommercialPool(id: 'trailers', name: 'Trailers', roots: const [
+          PoolRoot(itemId: 'trailers', libraryId: 'movies', label: 'Movies › Trailers'),
+        ]),
+      ];
+      final index = await fetchLibraryIndex(fakeServer(), pools: pools, channelRoots: {'box80s', 'deleted'});
+      expect(index.itemsByRoot['box80s'], {'movie-1', 'ep-1'});
+      expect(index['trailer-1']!.kind, MediaKind.commercial);
+      expect(index.roots, {'box80s', 'deleted'});
+      expect(index.missingRoots, {'deleted'}, reason: 'the server has nothing under it');
+      expect(asked.where((a) => a.startsWith('box80s:')), hasLength(1), reason: 'each root is listed once');
+      final playlist = buildPlaylist(
+          index,
+          const ChannelSource(roots: [PoolRoot(itemId: 'box80s', libraryId: 'movies', label: '80s')]),
+          PlaybackOrder.random,
+          seed: 1);
+      expect(playlist.toSet(), {'movie-1', 'ep-1'});
     });
 
     test('music libraries give songs and video libraries music videos', () async {

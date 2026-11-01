@@ -7,6 +7,7 @@ import '../../channels/channel.dart';
 import '../../channels/logo_windows.dart';
 import '../../channels/schedule.dart';
 import 'channel_logo.dart';
+import 'overlay_style.dart';
 
 /// The channel's logo in the corner of the picture (channel-logo spec): the
 /// channel's own icon, at 70% opacity, inside the title-safe area, during
@@ -49,6 +50,13 @@ class ChannelLogoBug extends StatefulWidget {
 }
 
 class _ChannelLogoBugState extends State<ChannelLogoBug> {
+  static const _mono = <double>[
+    0.2126, 0.7152, 0.0722, 0, 0,
+    0.2126, 0.7152, 0.0722, 0, 0,
+    0.2126, 0.7152, 0.0722, 0, 0,
+    0, 0, 0, 1, 0,
+  ];
+
   Timer? _timer;
   bool _inWindow = false;
 
@@ -99,6 +107,17 @@ class _ChannelLogoBugState extends State<ChannelLogoBug> {
   Widget build(BuildContext context) {
     final box = ChannelLogoBug.boxIn(MediaQuery.sizeOf(context));
     final visible = _inWindow && !widget.hidden;
+    final style = OverlayStyle.of(context);
+    Widget logo = ChannelLogo(
+      icon: widget.icon,
+      size: box.height,
+      width: box.maxWidth,
+      fallbackText: widget.fallbackText,
+      app: widget.app,
+      alignment: Alignment.centerRight,
+    );
+    if (style.logoPlate case final plate?) logo = DecoratedBox(decoration: plate, child: logo);
+    if (style.monoLogo) logo = ColorFiltered(colorFilter: const ColorFilter.matrix(_mono), child: logo);
     return Positioned(
       right: box.right,
       bottom: box.bottom,
@@ -107,14 +126,7 @@ class _ChannelLogoBugState extends State<ChannelLogoBug> {
           child: AnimatedOpacity(
             opacity: visible ? logoOpacity : 0,
             duration: logoFade,
-            child: ChannelLogo(
-              icon: widget.icon,
-              size: box.height,
-              width: box.maxWidth,
-              fallbackText: widget.fallbackText,
-              app: widget.app,
-              alignment: Alignment.centerRight,
-            ),
+            child: logo,
           ),
         ),
       ),

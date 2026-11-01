@@ -232,6 +232,10 @@ class ChannelStream {
     }
     final remaining = segment.end.difference(t);
     final item = segment.item;
+    if (item == null && segment.offline) {
+      // A slot's tail: the offline card until the next slot, as on the TV.
+      return _CardPlan(OfflineCardSpec(ctx.channel, segment.end), remaining > offAirPiece ? offAirPiece : remaining);
+    }
     if (item == null) {
       return _CardPlan(OffAirCard.at(schedule, t), remaining > offAirPiece ? offAirPiece : remaining);
     }

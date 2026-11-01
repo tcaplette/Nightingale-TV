@@ -29,6 +29,10 @@ class FakeJellyfin {
   /// Paths asked for, e.g. to check what was scanned.
   final requests = <Uri>[];
 
+  /// Collections: id → the ids of the items in it. One in [tvLibrary]'s
+  /// folder listing when given at start; changing it changes what it holds.
+  final collections = <String, List<String>>{};
+
   /// When true, every request fails (as if the server were down).
   bool down = false;
 
@@ -40,7 +44,7 @@ class FakeJellyfin {
 
   String get url => 'http://127.0.0.1:${_server.port}';
 
-  static Future<FakeJellyfin> start(FakeItems items) async {
+  static Future<FakeJellyfin> start(FakeItems items, {Map<String, Map<String, List<String>>> collections = const {}}) async {
     final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
     final folders = {
       adsLibrary: [
@@ -50,9 +54,15 @@ class FakeJellyfin {
       tvLibrary: [
         {'Id': 'tv-root', 'Name': 'tv', 'Type': 'Folder', 'ParentId': 'root'},
         for (final s in items.series) {'Id': s['Id'], 'Name': s['Name'], 'Type': 'Series', 'ParentId': 'tv-root'},
+        // name → (id → items).
+        for (final c in collections.entries)
+          for (final id in c.value.keys) {'Id': id, 'Name': c.key, 'Type': 'BoxSet', 'ParentId': 'tv-root'},
       ],
     };
     final fake = FakeJellyfin._(server, items, folders);
+    for (final c in collections.values) {
+      fake.collections.addAll(c);
+    }
     server.listen(fake._handle);
     return fake;
   }
@@ -112,6 +122,12 @@ class FakeJellyfin {
 
   List<Map<String, Object?>> _items(String parent, List<String> types) {
     if (types.contains('Folder')) return folders[parent] ?? const [];
+    if (collections[parent] case final ids?) {
+      return [
+        for (final i in [...items.episodes, ...items.movies])
+          if (ids.contains(i['Id']) && types.contains(i['Type'])) i,
+      ];
+    }
     final everything = switch (parent) {
       adsLibrary || reelFolder => items.commercials,
       tvLibrary || 'tv-root' => [...items.series, ...items.episodes, ...items.movies],

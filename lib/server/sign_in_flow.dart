@@ -8,6 +8,7 @@ import 'media_server.dart';
 import 'plex/plex_account.dart';
 import 'plex/plex_connections.dart';
 import 'server_clients.dart';
+import 'server_set.dart';
 
 /// What the address step found: a client for the server, and its info.
 typedef IdentifiedServer = ({MediaServer client, ServerInfo info});
@@ -29,6 +30,7 @@ class SignInStep {
     this.homeUsers = const [],
     this.homeUser,
     this.servers,
+    this.added = const {},
   });
 
   final SignInStage stage;
@@ -50,6 +52,10 @@ class SignInStep {
   /// The Home user whose PIN is asked.
   final PlexHomeUser? homeUser;
   final List<PlexResource>? servers;
+
+  /// Adding a server (multi-server): the server ids already in the profile,
+  /// shown as added and not pickable in the Plex server list.
+  final Set<String> added;
 
   ServerKind get kind => info?.kind ?? ServerKind.jellyfin;
 
@@ -76,6 +82,7 @@ class SignInStep {
         homeUsers: homeUsers ?? this.homeUsers,
         homeUser: homeUser == null ? this.homeUser : homeUser(),
         servers: servers == null ? this.servers : servers(),
+        added: added,
       );
 }
 
@@ -92,10 +99,24 @@ class SignInFlow {
     PlexAccount? plexAccount,
     this.pickPlexConnection,
     this.completeSignIn,
+    this.adding = false,
+    this.againKey,
   })  : _givenAccount = plexAccount,
-        state = ValueNotifier(SignInStep(error: message));
+        state = ValueNotifier(SignInStep(
+            error: message,
+            added: adding || againKey != null ? {for (final s in app.servers.all) ?s.serverId} : const {}));
 
   final AppState app;
+
+  /// Adds a server to the signed-in profile (multi-server D7) instead of
+  /// signing it in.
+  final bool adding;
+
+  /// Signs the profile's server [againKey] in again, keeping its key.
+  final String? againKey;
+
+  /// The server being signed in again.
+  ProfileServer? get _again => againKey == null ? null : app.servers.byKey(againKey!);
 
   /// Tests: what the address step asks instead of the network.
   final Future<IdentifiedServer> Function(String address)? identify;
@@ -149,7 +170,7 @@ class SignInFlow {
   /// A restored profile's sign-in hint (backup-restore D6): its server
   /// address, and its user name for Jellyfin and Emby.
   ({String server, String? user, bool plex})? get hint {
-    final hint = app.signInHint;
+    final hint = _hintJson;
     if (hint case {'serverUrl': final String url, 'userName': final String user}) {
       final plex = ServerKind.fromJson(hint['kind']) == ServerKind.plex;
       return (server: url, user: plex ? null : user, plex: plex);
@@ -162,12 +183,28 @@ class SignInFlow {
   Future<void> startFromHint() async {
     final h = hint;
     if (h == null) return;
-    final raw = app.signInHint!;
+    final raw = _hintJson!;
     if (h.plex) {
       await startPlex(server: raw['serverId'] as String?, user: raw['userId'] as String?);
     } else {
       await connect(h.server, then: SignInStage.password);
     }
+  }
+
+  /// What's known of the sign-in being made: a restored profile's hint, or
+  /// the server being signed in again (its sign-in or backup hint).
+  Map<String, Object?>? get _hintJson {
+    final again = _again;
+    if (again != null) return again.backupHint();
+    return adding ? null : app.signInHint;
+  }
+
+  /// Adding or signing in again: [id] (a server id) must not be another of
+  /// the profile's servers.
+  void _checkNotAdded(String? id, String name) {
+    if (!adding && againKey == null) return;
+    final other = app.servers.byServerId(id);
+    if (other != null && other.key != againKey) throw ServerException('$name is already in this profile');
   }
 
   Future<void> _run(Future<void> Function() task) async {
@@ -194,6 +231,12 @@ class SignInFlow {
         if (_disposed) {
           found.client.close();
           return;
+        }
+        try {
+          _checkNotAdded(found.info.id, found.info.name);
+        } on ServerException {
+          found.client.close();
+          rethrow;
         }
         if (found.info.kind == ServerKind.plex) {
           found.client.close();
@@ -368,18 +411,35 @@ class SignInFlow {
     final servers = await _plex.servers(_userToken!);
     if (_disposed) return;
     final wanted = servers.where((s) => s.clientIdentifier == _wantedServer).firstOrNull;
-    if (wanted != null || servers.length == 1) {
-      await _chooseServer(wanted ?? servers.single);
+    // Servers already in the profile can't be added again.
+    final open = [for (final s in servers) if (!_takenBy(s)) s];
+    if (wanted != null && !_takenBy(wanted) || servers.length == 1 && open.length == 1) {
+      await _chooseServer(wanted != null && !_takenBy(wanted) ? wanted : open.single);
       return;
     }
     _set(step.copyWith(
       servers: () => servers,
       stage: SignInStage.plexServers,
-      error: servers.isEmpty ? () => "This Plex account has no servers. Ask the server's owner to share it with you." : null,
+      error: servers.isEmpty
+          ? () => "This Plex account has no servers. Ask the server's owner to share it with you."
+          : open.isEmpty
+              ? () => 'Every server on this Plex account is already in this profile.'
+              : null,
     ));
   }
 
-  Future<void> pickServer(PlexResource server) => _run(() => _chooseServer(server));
+  /// [server] is already another of the profile's servers (adding, or
+  /// signing in again).
+  bool _takenBy(PlexResource server) {
+    if (!adding && againKey == null) return false;
+    final other = app.servers.byServerId(server.clientIdentifier);
+    return other != null && other.key != againKey;
+  }
+
+  Future<void> pickServer(PlexResource server) => _run(() async {
+        _checkNotAdded(server.clientIdentifier, server.name);
+        await _chooseServer(server);
+      });
 
   Future<void> _chooseServer(PlexResource server) async {
     final connection = await (pickPlexConnection?.call(server) ?? pickConnection(server));
@@ -407,6 +467,10 @@ class SignInFlow {
   }
 
   Future<void> _finish(ServerSession session, MediaServer client) async {
+    // Added servers need their id from the start (duplicates, analysis).
+    if (session.serverId == null && step.info?.id != null && (adding || againKey != null)) {
+      session = session.withServerId(step.info!.id!);
+    }
     if (completeSignIn case final complete?) {
       await complete(session, client);
       _finished = true;
@@ -421,7 +485,13 @@ class SignInFlow {
       }
     }
     if (_disposed) return;
-    await app.completeSignIn(session, client);
+    if (againKey case final key?) {
+      await app.signInAgainTo(key, session, client);
+    } else if (adding) {
+      await app.addServer(session, client);
+    } else {
+      await app.completeSignIn(session, client);
+    }
     _finished = true;
   }
 

@@ -4,6 +4,7 @@ import 'package:flutter_svg/flutter_svg.dart';
 
 import '../../channels/channel.dart';
 import '../../icons/icon_catalog.dart';
+import '../../ui/widgets/nightingale_mark.dart';
 import '../api_client.dart';
 import '../app.dart';
 import 'common.dart';
@@ -30,7 +31,7 @@ class ChannelIconView extends StatelessWidget {
     Widget picture(String url) => Image.network(url,
         fit: BoxFit.contain, filterQuality: FilterQuality.medium, errorBuilder: (_, _, _) => fallback());
     final child = switch (icon.kind) {
-      ChannelIconKind.builtin => Icon(iconForKey(icon.value), size: size * 0.82, color: Color(icon.color)),
+      ChannelIconKind.builtin => BuiltinIcon(iconKey: icon.value, size: size * 0.82, color: Color(icon.color)),
       ChannelIconKind.badge => StationBadge(text: icon.value, shape: icon.shape, color: Color(icon.color), size: size),
       ChannelIconKind.custom => icon.value.endsWith('.svg')
           ? SvgPicture.network(api.href('profiles/$profileId/icons/${icon.value}'), fit: BoxFit.contain)
@@ -257,7 +258,7 @@ class _IconPickerState extends State<_IconPicker> {
                       label: null,
                       onTap: () => _choose(ChannelIcon.builtin(e.key, color: _color)),
                       selected: widget.current.kind == ChannelIconKind.builtin && widget.current.value == e.key,
-                      child: Icon(e.value, size: 40, color: Color(_color), semanticLabel: e.key.replaceAll('_', ' ')),
+                      child: BuiltinIcon(iconKey: e.key, size: 40, color: Color(_color), semanticLabel: e.key.replaceAll('_', ' ')),
                     ),
                 ]),
               ],

@@ -34,6 +34,7 @@ import '../remote/remote_control.dart';
 import '../server/live_tv.dart';
 import '../server/media_server.dart';
 import '../server/server_log.dart';
+import '../server/server_set.dart';
 import '../server/sign_in_flow.dart';
 import '../ui/format.dart';
 import 'accounts.dart';
@@ -47,6 +48,7 @@ part 'api/library_api.dart';
 part 'api/channels_api.dart';
 part 'api/station_api.dart';
 part 'api/live_api.dart';
+part 'api/servers_api.dart';
 part 'api/admin_api.dart';
 
 /// Server mode's web admin and its JSON API (server-setup, admin-api), on
@@ -58,13 +60,14 @@ part 'api/admin_api.dart';
 /// can't send.
 class SetupServer {
   SetupServer(this.household, this.accounts,
-      {this.port = defaultPort, this.lanHost, this.signInFlow, WebFiles? web})
+      {this.port = defaultPort, this.lanHost, this.signInFlow, this.serverSignInFlow, WebFiles? web})
       : web = web ?? WebFiles.fromEnvironment(Platform.environment) {
     routes = ApiRoutes([
       ..._coreRoutes,
       ..._accountRoutes,
       ..._profileRoutes,
       ..._libraryRoutes,
+      ..._serverRoutes,
       ..._channelRoutes,
       ..._stationRoutes,
       ..._liveRoutes,
@@ -101,6 +104,10 @@ class SetupServer {
 
   /// Tests: the sign-in flow for a profile's state.
   final SignInFlow Function(AppState app)? signInFlow;
+
+  /// Tests: the flow for adding a server ([againKey] null) or signing one
+  /// in again (multi-server).
+  final SignInFlow Function(AppState app, String? againKey)? serverSignInFlow;
 
   /// Every API route.
   late final ApiRoutes routes;
@@ -167,6 +174,14 @@ class SetupServer {
       if (session is Map<String, Object?>) {
         ServerLog.secret(session['accessToken'] as String?);
         ServerLog.secret(session['accountToken'] as String?);
+      }
+      // Added servers' sign-ins (multi-server).
+      final servers = await (await household.storageFor(p)).readRaw(ServerSet.file);
+      for (final s in (servers is Map ? servers['servers'] as List? ?? const [] : const []).whereType<Map>()) {
+        if (s['session'] case final Map session) {
+          ServerLog.secret(session['accessToken'] as String?);
+          ServerLog.secret(session['accountToken'] as String?);
+        }
       }
     }
   }
@@ -347,7 +362,10 @@ class SetupServer {
     for (final e in [..._borrowed.entries]) {
       if (now.difference(e.value) < borrowIdle) continue;
       // A sign-in in progress keeps it; an exported profile has it off-screen.
-      if (_signIns[e.key]?.flow.finished == false) continue;
+      // A sign-in in progress (the profile's, or adding a server) keeps it.
+      if (_signIns.entries.any((s) => (s.key == e.key || s.key.startsWith('${e.key}/')) && !s.value.flow.finished)) {
+        continue;
+      }
       _borrowed.remove(e.key);
       await household.releaseSetup(e.key);
     }

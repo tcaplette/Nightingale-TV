@@ -5,6 +5,10 @@
 #   test_servers.sh up <jellyfin|emby|plex|tuner>
 #                                       start one (stops the other servers
 #                                       first); "tuner" starts the tuner alone
+#   test_servers.sh up emby+plex        start Emby and Plex together on the
+#                                       same library (multi-server's mirrored
+#                                       test); refuses while an emulator runs
+#                                       or memory is short
 #   test_servers.sh down                stop everything
 #   test_servers.sh status              what's running, and its address
 #   test_servers.sh setup <jellyfin|emby|plex>
@@ -63,17 +67,47 @@ up_tuner() {
   exit 1
 }
 
+# Memory Emby and Plex need together, beside the desktop (MiB).
+PAIR_MEMORY=3072
+
+# Two servers at once only with no emulator and enough memory free.
+check_pair() {
+  if pgrep -x 'qemu-system-x86_64' >/dev/null || pgrep -x 'qemu-system-x86_64-headless' >/dev/null; then
+    echo "An Android emulator is running; close it before starting two servers." >&2
+    exit 1
+  fi
+  local free
+  free="$(awk '/^MemAvailable:/ {print int($2 / 1024)}' /proc/meminfo)"
+  if (( free < PAIR_MEMORY )); then
+    echo "Only ${free} MiB of memory is free; Emby and Plex together need ${PAIR_MEMORY} MiB." >&2
+    exit 1
+  fi
+}
+
 up() {
-  local which="$1"
+  local which="$1" keep="$1"
   if [[ "$which" == tuner ]]; then up_tuner; status; return; fi
+  if [[ "$which" == emby+plex ]]; then
+    check_pair
+    keep="emby plex"
+  fi
   [[ -d "$TEST_MEDIA/TV" ]] || { echo "No test media in $TEST_MEDIA; run make_media.sh first." >&2; exit 1; }
   for other in $(running); do
-    if [[ "$other" != "$which" && " $SERVERS " == *" $other "* ]]; then
+    if [[ " $keep " != *" $other "* && " $SERVERS " == *" $other "* ]]; then
       echo "Stopping $other first (one server at a time)."
       compose stop "$other" >/dev/null
     fi
   done
   up_tuner
+  local one
+  for one in $keep; do
+    start_one "$one"
+  done
+  status
+}
+
+start_one() {
+  local which="$1"
   mkdir -p "$TEST_SERVERS_DATA/$which"
   [[ "$which" == plex ]] && mkdir -p "$TEST_SERVERS_DATA/plex-transcode"
   [[ "$which" == jellyfin ]] && mkdir -p "$TEST_SERVERS_DATA/jellyfin/config" "$TEST_SERVERS_DATA/jellyfin/cache"
@@ -95,7 +129,6 @@ up() {
         sleep 2
       done ;;
   esac
-  status
 }
 
 down() { compose stop >/dev/null; echo "Stopped."; }
@@ -328,7 +361,7 @@ setup_plex_dvr() {
 }
 
 case "${1:-}" in
-  up) [[ "${2:-}" =~ ^(jellyfin|emby|plex|tuner)$ ]] || { echo "up jellyfin|emby|plex|tuner" >&2; exit 2; }; up "$2" ;;
+  up) [[ "${2:-}" =~ ^(jellyfin|emby|plex|tuner|emby\+plex)$ ]] || { echo "up jellyfin|emby|plex|tuner|emby+plex" >&2; exit 2; }; up "$2" ;;
   down) down ;;
   status) status ;;
   setup)
@@ -338,5 +371,5 @@ case "${1:-}" in
       plex) setup_plex ;;
       *) echo "setup jellyfin|emby|plex" >&2; exit 2 ;;
     esac ;;
-  *) sed -n '2,21p' "$0" | sed 's/^# \{0,1\}//'; exit 2 ;;
+  *) sed -n '2,24p' "$0" | sed 's/^# \{0,1\}//'; exit 2 ;;
 esac

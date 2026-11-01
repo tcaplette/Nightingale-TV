@@ -1,9 +1,12 @@
+import 'dart:convert';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:nightingale_tv/app_state.dart';
 import 'package:nightingale_tv/channels/channel.dart';
 import 'package:nightingale_tv/channels/channel_groups.dart';
 import 'package:nightingale_tv/channels/premieres.dart';
 import 'package:nightingale_tv/library/library_index.dart';
+import 'package:nightingale_tv/profiles/profile.dart';
 
 Map<String, Object?> _audio(String id,
         {String? rating, List<String> artists = const ['Queen'], String? albumArtist, int year = 1980}) =>
@@ -305,6 +308,81 @@ void main() {
         expect(s.premieres.startMinute, 20 * 60);
         expect(s.premieres.days, PremiereSettings.everyDay);
       }
+    });
+  });
+
+  group('play counts and root membership', () {
+    LibraryIndex index() => LibraryIndex.fromJellyfinItems(
+          seriesItems: [
+            {'Id': 's1', 'Name': 'Cheers', 'ProductionYear': 1982, 'OfficialRating': 'TV-PG'},
+            {'Id': 's2', 'Name': 'Late', 'ProductionYear': 1990, 'OfficialRating': 'TV-MA'},
+          ],
+          episodeItems: [
+            for (final (id, series) in [('e1', 's1'), ('e2', 's1'), ('e3', 's2')])
+              {
+                'Id': id,
+                'Name': id,
+                'SeriesId': series,
+                'SeriesName': series == 's1' ? 'Cheers' : 'Late',
+                'ParentIndexNumber': 1,
+                'IndexNumber': int.parse(id.substring(1)),
+                'RunTimeTicks': const Duration(minutes: 22).inMicroseconds * 10,
+                if (id == 'e1') 'UserData': {'PlayCount': 4},
+                if (id == 'e3') 'UserData': {'PlayCount': 0, 'Played': true},
+              },
+          ],
+          movieItems: [
+            {'Id': 'm1', 'Name': 'Movie', 'RunTimeTicks': const Duration(minutes: 90).inMicroseconds * 10, 'OfficialRating': 'PG'},
+          ],
+          commercialItems: [
+            {'Id': 'ad', 'Name': 'Ad', 'RunTimeTicks': const Duration(seconds: 30).inMicroseconds * 10},
+          ],
+          poolsByItem: {'ad': ['p']},
+        );
+
+    test('play counts come from UserData, absent meaning 0', () {
+      final i = index();
+      expect(i['e1']!.playCount, 4);
+      expect(i['e2']!.playCount, 0);
+      expect(i['e3']!.playCount, 1, reason: 'marked played');
+    });
+
+    test('only episodes and movies join a root; commercials and unknown ids do not', () {
+      final i = index().withRoots({
+        'box': {'e1', 'm1', 'ad', 'home-video'},
+        'gone': {},
+      }, missing: {'gone'});
+      expect(i.rootsByItem, {'e1': ['box'], 'm1': ['box']});
+      expect(i.itemsByRoot['box'], {'e1', 'm1'});
+      expect(i.roots, {'box', 'gone'});
+      expect(i.missingRoots, {'gone'});
+    });
+
+    test('a root fetched again replaces its old membership', () {
+      final i = index().withRoots({'box': {'e1', 'm1'}}).withRoots({'box': {'e2'}, 'other': {'m1'}});
+      expect(i.itemsByRoot['box'], {'e2'});
+      expect(i.itemsByRoot['other'], {'m1'});
+    });
+
+    test('they round-trip; an index saved before them loads with none', () {
+      final i = index().withRoots({'box': {'e1', 'm1'}, 'gone': {}}, missing: {'gone'});
+      final back = LibraryIndex.fromJson(jsonDecode(jsonEncode(i.toJson())) as Map<String, Object?>);
+      expect(back['e1']!.playCount, 4);
+      expect(back.rootsByItem, i.rootsByItem);
+      expect(back.roots, {'box', 'gone'});
+      expect(back.missingRoots, {'gone'});
+      final old = index().toJson();
+      expect(old.containsKey('rootsByItem'), isFalse);
+      expect((old['episodes'] as List).where((e) => (e as Map).containsKey('plays')), hasLength(2),
+          reason: 'only a non-zero count is written');
+      final loaded = LibraryIndex.fromJson(jsonDecode(jsonEncode(old)) as Map<String, Object?>);
+      expect(loaded.roots, isEmpty);
+      expect(loaded.rootsByItem, isEmpty);
+    });
+
+    test('a kid profile keeps no root item over its limit', () {
+      final i = index().withRoots({'box': {'e1', 'e3', 'm1'}}).restrictedTo(ratingRank('TV-PG')!);
+      expect(i.itemsByRoot['box'], {'e1', 'm1'});
     });
   });
 }

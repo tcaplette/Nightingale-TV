@@ -115,5 +115,11 @@ class LiveSchedule implements ProgramSchedule {
   bool isLastPart(ScheduledProgram slot, ScheduledProgram segment) => true;
 
   @override
+  DateTime? programEndAt(DateTime t) {
+    final slot = programAt(t);
+    return slot.item?.title == noGuide ? null : slot.end;
+  }
+
+  @override
   bool get hasBreaks => false;
 }

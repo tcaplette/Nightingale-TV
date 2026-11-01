@@ -14,7 +14,9 @@ import '../platform/platform_info.dart';
 import '../playback/tuner.dart';
 import '../theme/tv_theme.dart';
 import 'format.dart';
+import 'widgets/retro_frame.dart';
 import 'widgets/channel_logo.dart';
+import 'widgets/nightingale_mark.dart';
 import 'widgets/new_tag.dart';
 import 'widgets/tv_focus.dart';
 
@@ -306,6 +308,21 @@ class _GuideViewState extends State<GuideView> with SingleTickerProviderStateMix
     return KeyEventResult.handled;
   }
 
+  /// Width of the channel number column: the widest number of all channels
+  /// plus a gap, so logos and names line up and don't move between tabs.
+  static double _numberWidth(List<Channel> channels, GuideTheme g) {
+    var widest = 0.0;
+    for (final c in channels) {
+      final painter = TextPainter(
+        text: TextSpan(text: '${c.number}', style: _GuideRow.numberStyle(g)),
+        textDirection: TextDirection.ltr,
+      )..layout();
+      if (painter.width > widest) widest = painter.width;
+      painter.dispose();
+    }
+    return widest.ceilToDouble() + 12;
+  }
+
   @override
   Widget build(BuildContext context) {
     final app = AppScope.of(context);
@@ -314,6 +331,7 @@ class _GuideViewState extends State<GuideView> with SingleTickerProviderStateMix
     _askLiveGuide(channels.sublist(
         _firstRow.clamp(0, channels.length), (_firstRow + _rows).clamp(0, channels.length)));
     final g = context.guide;
+    final numberWidth = _numberWidth(app.channels, g);
     if (_row >= channels.length) _setRow(channels.length - 1, channels.length);
     final focusedChannel = channels.isEmpty ? null : channels[_row];
     final focusedProgram = _focusedProgram(channels);
@@ -409,6 +427,7 @@ class _GuideViewState extends State<GuideView> with SingleTickerProviderStateMix
                             window: _window,
                             height: _rowHeight,
                             channelColumnWidth: _channelColumnWidth,
+                            numberWidth: numberWidth,
                             gridWidth: _gridWidth,
                             now: _now,
                             onHoverProgram: (p) => setState(() {
@@ -510,6 +529,8 @@ class _InfoPanel extends StatelessWidget {
         children: [
           Row(
             children: [
+              NightingaleMark(height: 28, color: g.accent),
+              const SizedBox(width: 14),
               Expanded(
                 child: Text(
                   'NIGHTINGALE TV GUIDE',
@@ -559,6 +580,7 @@ class _InfoPanel extends StatelessWidget {
                 if (p.blockTitle != null) p.blockTitle!.toUpperCase(),
                 p.isMusicHour ? musicHourLine(p, now) : p.subtitle,
                 formatRange(p.start, p.end),
+                if (p.endsEarly) endsEarlyLabel,
               ].join('    '),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
@@ -670,7 +692,21 @@ class _Preview extends StatelessWidget {
           child: Stack(
             fit: StackFit.expand,
             children: [
-              tuner.media.buildVideo(),
+              // The shape and surround, without effects (design D7).
+              ListenableBuilder(
+                listenable: Listenable.merge([tuner, AppScope.read(context)]),
+                builder: (context, _) {
+                  final app = AppScope.read(context), ch = tuner.channel;
+                  final retro = ch == null ? const ResolvedRetro() : app.retroFor(ch);
+                  return RetroFrame(
+                    retro: retro,
+                    icon: ch?.icon,
+                    app: app,
+                    effects: false,
+                    child: tuner.media.buildVideo(fit: RetroFrame.fitFor(retro.shape)),
+                  );
+                },
+              ),
               ListenableBuilder(
                 listenable: tuner,
                 builder: (context, _) => tuner.status == TunerStatus.playing
@@ -858,11 +894,14 @@ class _GuideRow extends StatelessWidget {
     required this.window,
     required this.height,
     required this.channelColumnWidth,
+    required this.numberWidth,
     required this.gridWidth,
     required this.now,
     required this.onHoverProgram,
     required this.onTap,
   });
+
+  static TextStyle numberStyle(GuideTheme g) => g.display(40, weight: FontWeight.w800, color: g.accent);
 
   final Channel channel;
   final ProgramSchedule? schedule;
@@ -873,6 +912,7 @@ class _GuideRow extends StatelessWidget {
   final Duration window;
   final double height;
   final double channelColumnWidth;
+  final double numberWidth;
   final double gridWidth;
   final DateTime now;
   final ValueChanged<ScheduledProgram?> onHoverProgram;
@@ -902,6 +942,8 @@ class _GuideRow extends StatelessWidget {
     return SizedBox(
       height: height,
       child: Row(
+        // The channel cell fills the row, like the programme cells.
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           MouseRegion(
             onEnter: (_) => onHoverProgram(null),
@@ -915,11 +957,8 @@ class _GuideRow extends StatelessWidget {
                 child: Row(
                   children: [
                     SizedBox(
-                      width: 64,
-                      child: Text(
-                        '${channel.number}',
-                        style: g.display(40, weight: FontWeight.w800, color: g.accent),
-                      ),
+                      width: numberWidth,
+                      child: Text('${channel.number}', maxLines: 1, softWrap: false, style: numberStyle(g)),
                     ),
                     ChannelLogo(
                       icon: channel.icon,

@@ -7,6 +7,41 @@ import 'package:nightingale_tv/commercials/analysis/stream_proxy.dart';
 import 'fixtures.dart';
 
 void main() {
+  test('Pause and rewind is on by default, also for older and unreadable settings, and saved', () {
+    expect(PlaybackSettings.off.pauseAndRewind, isTrue);
+    expect(PlaybackSettings.fromJson({'transcodeIfNeeded': true}).pauseAndRewind, isTrue);
+    expect(PlaybackSettings.fromJson({'pauseAndRewind': 'nonsense'}).pauseAndRewind, isTrue);
+    expect(PlaybackSettings.fromJson('nonsense').pauseAndRewind, isTrue);
+    const off = PlaybackSettings(pauseAndRewind: false);
+    expect(PlaybackSettings.fromJson(off.toJson()), off);
+    expect(off.decidesLike(PlaybackSettings.off), isTrue, reason: 'it changes no decision');
+  });
+
+  test('the on-screen clock is off by default, also for older and unreadable settings, and saved', () {
+    expect(PlaybackSettings.off.onScreenClock, isFalse);
+    expect(AppSettings.fresh().playback.onScreenClock, isFalse);
+    expect(PlaybackSettings.fromJson({'transcodeIfNeeded': true, 'bitrate': 8000}),
+        const PlaybackSettings(transcodeIfNeeded: true, maxKbps: 8000));
+    for (final v in ['yes', 1, null, <String, Object?>{}]) {
+      expect(PlaybackSettings.fromJson({'bitrate': 8000, 'onScreenClock': v}), const PlaybackSettings(maxKbps: 8000),
+          reason: '$v');
+    }
+    expect(PlaybackSettings.fromJson({'maxBitrateMbps': 8, 'onScreenClock': true}),
+        const PlaybackSettings(maxKbps: 8000, onScreenClock: true));
+    const clock = PlaybackSettings(onScreenClock: true, volumeLeveling: true);
+    expect(clock.toJson()['onScreenClock'], true);
+    expect(PlaybackSettings.fromJson(clock.toJson()), clock);
+    final s = AppSettings.fresh()..playback = clock;
+    expect(AppSettings.fromJson(s.toJson()).playback, clock);
+    expect(clock, isNot(const PlaybackSettings(volumeLeveling: true)));
+    expect(clock.hashCode, isNot(const PlaybackSettings(volumeLeveling: true).hashCode));
+    expect(PlaybackSettings.off.copyWith(onScreenClock: true), const PlaybackSettings(onScreenClock: true));
+    expect(clock.copyWith(breakNotices: false).onScreenClock, isTrue, reason: 'other changes keep it');
+    expect(clock.toString(), contains('clock on'));
+    expect(clock.decidesLike(const PlaybackSettings(volumeLeveling: true)), isTrue, reason: 'it changes no decision');
+    expect(clock.decidesLike(PlaybackSettings.off), isFalse);
+  });
+
   test('fresh settings are off, with Original chosen', () {
     final s = AppSettings.fresh();
     expect(s.playback, PlaybackSettings.off);
@@ -85,12 +120,12 @@ void main() {
     }
     const eight = PlaybackSettings(transcodeIfNeeded: true, maxKbps: 8000);
     expect(eight.toJson(),
-        {'transcodeIfNeeded': true, 'bitrate': 8000, 'volumeLeveling': false, 'breakNotices': true});
+        {'transcodeIfNeeded': true, 'bitrate': 8000, 'volumeLeveling': false, 'breakNotices': true, 'pauseAndRewind': true, 'onScreenClock': false});
     expect(eight.capKbps(), 8000);
     expect(PlaybackSettings.off.toJson(),
-        {'transcodeIfNeeded': false, 'bitrate': 'original', 'volumeLeveling': false, 'breakNotices': true});
+        {'transcodeIfNeeded': false, 'bitrate': 'original', 'volumeLeveling': false, 'breakNotices': true, 'pauseAndRewind': true, 'onScreenClock': false});
     expect(const PlaybackSettings(transcodeIfNeeded: true).toJson(),
-        {'transcodeIfNeeded': true, 'bitrate': 'original', 'volumeLeveling': false, 'breakNotices': true});
+        {'transcodeIfNeeded': true, 'bitrate': 'original', 'volumeLeveling': false, 'breakNotices': true, 'pauseAndRewind': true, 'onScreenClock': false});
   });
 
   test('volume leveling is off by default and round-trips through JSON', () {

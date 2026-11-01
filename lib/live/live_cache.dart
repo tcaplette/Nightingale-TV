@@ -80,6 +80,19 @@ class LiveCache {
 
   final Directory dir;
 
+  /// Each source's writes and delete, one after another, so a delete never
+  /// races a write still landing in the folder.
+  final _pending = <String, Future<void>>{};
+
+  Future<void> _queue(String sourceId, Future<void> Function() op) {
+    final next = (_pending[sourceId] ?? Future<void>.value()).catchError((Object _) {}).then((_) => op());
+    _pending[sourceId] = next;
+    next.whenComplete(() {
+      if (identical(_pending[sourceId], next)) _pending.remove(sourceId);
+    }).ignore();
+    return next;
+  }
+
   Directory _sourceDir(String sourceId) => Directory('${dir.path}/$sourceId');
   File _file(String sourceId, String name) => File('${_sourceDir(sourceId).path}/$name');
 
@@ -134,14 +147,17 @@ class LiveCache {
 
   Future<void> saveState(String sourceId, LiveRefreshState state) => _write(sourceId, 'state.json', state.toJson());
 
-  Future<void> delete(String sourceId) async {
-    final d = _sourceDir(sourceId);
-    if (await d.exists()) await d.delete(recursive: true);
-  }
+  Future<void> delete(String sourceId) => _queue(sourceId, () async {
+        final d = _sourceDir(sourceId);
+        if (await d.exists()) await d.delete(recursive: true);
+      });
 
   /// Atomically (temp file and rename); the playlist's URLs can hold the
   /// provider's credentials, so the files are private.
-  Future<void> _write(String sourceId, String name, Object data) async {
+  Future<void> _write(String sourceId, String name, Object data) =>
+      _queue(sourceId, () => _writeNow(sourceId, name, data));
+
+  Future<void> _writeNow(String sourceId, String name, Object data) async {
     final d = _sourceDir(sourceId);
     await d.create(recursive: true);
     final file = _file(sourceId, name);

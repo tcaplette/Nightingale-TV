@@ -2,11 +2,13 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:nightingale_tv/app_state.dart';
+import 'package:nightingale_tv/channels/channel.dart';
 import 'package:nightingale_tv/channels/schedule.dart';
 import 'package:nightingale_tv/commercials/analysis/detections.dart';
 import 'package:nightingale_tv/commercials/analysis/reel_cutter.dart';
 import 'package:nightingale_tv/commercials/break_plan.dart';
 import 'package:nightingale_tv/commercials/commercial_pool.dart';
+import 'package:nightingale_tv/library/library_index.dart';
 
 import 'fixtures.dart';
 
@@ -107,6 +109,98 @@ void main() {
       await again.start();
       expect(again.settings.commercialPlan.roles.midPool, isNull);
       expect(again.allChannels.first.commercialPlan!.roles.midPool, isNull);
+    });
+
+    group('a pool\'s type', () {
+      Future<(AppState, CommercialPool, CommercialPool)> twoPools() async {
+        final split = LibraryIndex(
+          series: library.series,
+          episodes: library.episodes,
+          movies: library.movies,
+          fetchedAt: library.fetchedAt,
+          commercials: [
+            for (final (i, c) in library.commercials.indexed) c.withPools([i.isEven ? fakePoolId : 'second']),
+          ],
+        );
+        final app = await signedInApp(dir, split,
+            settings: (AppSettings.fresh()
+                  ..commercialPools = [
+                    CommercialPool(id: fakePoolId, name: 'Commercials'),
+                    CommercialPool(id: 'second', name: 'Second'),
+                  ])
+                .toJson());
+        return (app, app.poolById(fakePoolId)!, app.poolById('second')!);
+      }
+
+      test('marking clears role and filler picks, unmarking clears bumper picks, with no re-scan', () async {
+        final (app, ads, pool) = await twoPools();
+        final roles = const CustomRoles(midInterval: Duration(minutes: 10), preRoll: Duration(seconds: 15))
+            .withPool(BreakRole.mid, pool.id)
+            .withPool(BreakRole.pre, ads.id);
+        await app.setGlobalPlan(BreakPlan(mode: BreakMode.custom, roles: roles));
+        final ch = app.allChannels.first;
+        await app.setChannelPlan(ch, BreakPlan(mode: BreakMode.custom, roles: roles));
+        await app.setSlotRule(ch, SlotRule(length: const Duration(minutes: 30), poolId: pool.id));
+        var scans = 0;
+        app.addListener(() {
+          if (app.refreshing) scans++;
+        });
+
+        await app.setPoolKind(pool, PoolKind.bumpers);
+        expect(pool.kind, PoolKind.bumpers);
+        expect(app.settings.commercialPlan.roles.midPool, isNull);
+        expect(app.settings.commercialPlan.roles.prePool, ads.id);
+        expect(ch.commercialPlan!.roles.midPool, isNull);
+        expect(ch.slotRule!.poolId, isNull);
+
+        await app.setGlobalPlan(BreakPlan(mode: BreakMode.custom, roles: roles.withBumpers(pool.id)));
+        await app.setChannelPlan(ch, BreakPlan(mode: BreakMode.custom, roles: roles.withBumpers(pool.id)));
+        await app.setPoolKind(pool, PoolKind.commercials);
+        expect(app.settings.commercialPlan.roles.bumperPool, isNull);
+        expect(ch.commercialPlan!.roles.bumperPool, isNull);
+        expect(scans, 0);
+
+        await app.setPoolKind(pool, PoolKind.bumpers);
+        final again = AppState(app.storage);
+        await again.start();
+        expect(again.poolById(pool.id)!.kind, PoolKind.bumpers);
+      });
+
+      test('its clips stop counting as commercials', () async {
+        final (app, _, pool) = await twoPools();
+        await app.setPoolKind(pool, PoolKind.commercials);
+        final all = app.catalog.clipsFor(null).length;
+        await app.setPoolKind(pool, PoolKind.bumpers);
+        expect(app.catalog.clipsFor(null).length, lessThan(all));
+        expect(app.catalog.current.bumpers, isNotEmpty);
+        expect(app.catalog.clipsFor(pool.id), isNotEmpty);
+      });
+
+      test('only bumpers: a plan airs as Off', () async {
+        final app = await signedInApp(dir, library);
+        await app.setGlobalPlan(BreakPlan.automatic);
+        final pool = app.settings.commercialPools.single;
+        final ch = app.allChannels.first;
+        expect(app.hasClipsFor(BreakPlan.automatic), isTrue);
+        expect(app.planFor(ch).isOff, isFalse);
+        await app.setPoolKind(pool, PoolKind.bumpers);
+        expect(app.hasClipsFor(BreakPlan.automatic), isFalse);
+        expect(app.planFor(ch).isOff, isTrue);
+      });
+
+      test('the guide doesn\'t move', () async {
+        final (app, _, pool) = await twoPools();
+        await app.setGlobalPlan(BreakPlan.automatic);
+        final ch = app.allChannels.first;
+        final from = DateTime.now(), to = from.add(const Duration(hours: 12));
+        List<(DateTime, DateTime, String?)> guide() => [
+              for (final p in app.scheduleFor(ch)!.programsBetween(from, to)) (p.start, p.end, p.item?.id),
+            ];
+        final before = guide();
+        expect(before, isNotEmpty);
+        await app.setPoolKind(pool, PoolKind.bumpers);
+        expect(guide(), before);
+      });
     });
 
     test('changing a pool\'s folders re-scans the library', () async {

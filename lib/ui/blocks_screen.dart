@@ -3,13 +3,13 @@ import 'package:flutter/material.dart';
 import '../app_scope.dart';
 import '../app_state.dart';
 import '../channels/channel.dart';
-import '../channels/channel_generator.dart';
 import '../channels/premieres.dart';
 import '../channels/program_block.dart';
 import '../channels/schedule.dart';
 import '../theme/tv_theme.dart';
 import 'format.dart';
 import 'menu_screen.dart';
+import 'source_picker_screen.dart';
 import 'widgets/channel_logo.dart';
 import 'widgets/new_tag.dart';
 import 'widgets/adaptive.dart';
@@ -44,8 +44,8 @@ class BlocksScreen extends StatelessWidget {
     final g = context.guide;
     final now = DateTime.now();
 
-    Future<void> edit(ProgramBlock? block) => Navigator.of(context).push(
-          MaterialPageRoute<void>(builder: (_) => BlockEditorScreen(block: block)),
+    Future<void> edit(ProgramBlock? block, {bool lateNight = false}) => Navigator.of(context).push(
+          MaterialPageRoute<void>(builder: (_) => BlockEditorScreen(block: block, lateNight: lateNight)),
         );
 
     final portrait = ScreenLayout.of(context).isPortrait;
@@ -65,14 +65,24 @@ class BlocksScreen extends StatelessWidget {
               style: g.body(28, color: g.textDim),
             ),
             const SizedBox(height: 28),
-            Align(
-              alignment: Alignment.centerLeft,
-              child: TvButton(
-                label: 'New programming block',
-                icon: Icons.add,
-                autofocus: app.blocks.isEmpty,
-                onPressed: () => edit(null),
-              ),
+            Wrap(
+              spacing: 16,
+              runSpacing: 16,
+              children: [
+                TvButton(
+                  label: 'New programming block',
+                  icon: Icons.add,
+                  autofocus: app.blocks.isEmpty,
+                  onPressed: () => edit(null),
+                ),
+                // Kid profiles get no late-night shortcut (late-night-drift D6).
+                if (app.maxRatingRank == null)
+                  TvButton(
+                    label: 'New late-night block',
+                    icon: Icons.nightlight_round,
+                    onPressed: () => edit(null, lateNight: true),
+                  ),
+              ],
             ),
             const SizedBox(height: 28),
             // Fixed first: the automatic premiere slot.
@@ -213,10 +223,13 @@ class _BlockRow extends StatelessWidget {
 
 /// Create or edit one programming block.
 class BlockEditorScreen extends StatefulWidget {
-  const BlockEditorScreen({super.key, this.block});
+  const BlockEditorScreen({super.key, this.block, this.lateNight = false});
 
   /// The block to edit; null to create a new one.
   final ProgramBlock? block;
+
+  /// A new block filled in by the late-night shortcut (late-night-drift D4).
+  final bool lateNight;
 
   @override
   State<BlockEditorScreen> createState() => _BlockEditorScreenState();
@@ -244,12 +257,21 @@ class _BlockEditorScreenState extends State<BlockEditorScreen> {
   final _addFocus = FocusNode();
   String? _error;
 
+  /// The late-night shortcut's source and order follow the chosen channel
+  /// until the user changes either.
+  late bool _followChannel = _isNew && widget.lateNight;
+
   bool get _isNew => widget.block == null;
 
   @override
   void initState() {
     super.initState();
-    _draft = widget.block?.copy() ?? AppScope.read(context).newBlock();
+    final app = AppScope.read(context);
+    _draft = widget.block?.copy() ?? app.newBlock();
+    if (_followChannel) {
+      lateNightDefaults(_draft);
+      _copyChannel(app.channelById(_draft.channelId));
+    }
     // The summary panel shows the title as it's typed.
     _title = TextEditingController(text: _draft.title)..addListener(() => setState(() {}));
   }
@@ -275,6 +297,15 @@ class _BlockEditorScreenState extends State<BlockEditorScreen> {
         _error = null;
       });
 
+  /// The late-night shortcut: [channel]'s source and order, keeping the
+  /// chosen minimum rating.
+  void _copyChannel(Channel? channel) {
+    if (channel == null) return;
+    final floor = _draft.source.ratingFloor;
+    _draft.source = lateNightSource(channel).copyWith(ratingFloor: () => floor);
+    _draft.order = lateNightOrder(channel, PlaybackOrder.cyclic);
+  }
+
   @override
   Widget build(BuildContext context) {
     final app = AppScope.of(context);
@@ -286,7 +317,7 @@ class _BlockEditorScreenState extends State<BlockEditorScreen> {
     final preview = hasContent ? app.previewBlock(_draft, _newChannel ? null : _draft.channelId) : null;
 
     return TvPage(
-      title: _isNew ? 'New programming block' : 'Edit programming block',
+      title: !_isNew ? 'Edit programming block' : widget.lateNight ? 'New late-night block' : 'New programming block',
       hints: '▲▼◀▶ Move    OK Select    ESC Cancel',
       onBack: () => Navigator.of(context).pop(),
       // Upright, what the block will air comes first.
@@ -434,10 +465,37 @@ class _BlockEditorScreenState extends State<BlockEditorScreen> {
                             label: order.label,
                             on: _draft.order == order,
                             radio: true,
-                            onPressed: () => _update(() => _draft.order = order),
+                            onPressed: () => _update(() {
+                              _draft.order = order;
+                              _followChannel = false;
+                            }),
                           ),
                       ],
                     ),
+                  if (!_lineupMode && app.maxRatingRank == null) ...[
+                    const SizedBox(height: 20),
+                    Text('Minimum rating', style: g.body(24, weight: FontWeight.w600)),
+                    const SizedBox(height: 10),
+                    Wrap(
+                      spacing: 12,
+                      runSpacing: 12,
+                      children: [
+                        for (final floor in <RatingFloor?>[null, ...RatingFloor.values])
+                          TvToggle(
+                            label: floor?.label ?? 'Any rating',
+                            on: _draft.source.ratingFloor == floor,
+                            radio: true,
+                            onPressed: () =>
+                                _update(() => _draft.source = _draft.source.copyWith(ratingFloor: () => floor)),
+                          ),
+                      ],
+                    ),
+                    if (_draft.source.ratingFloor != null) ...[
+                      const SizedBox(height: 10),
+                      Text('Only shows and movies rated this or higher. Unrated ones are left out.',
+                          style: g.body(22, color: g.textDim)),
+                    ],
+                  ],
                   _section(g, 'ON THE AIR'),
                   TvToggle(
                     label: _draft.enabled ? 'Block is on' : 'Block is off',
@@ -686,15 +744,24 @@ class _BlockEditorScreenState extends State<BlockEditorScreen> {
     if (picked == null) return;
     _update(() {
       _newChannel = picked == _ChannelPickerScreen.newChannel;
-      if (!_newChannel) _draft.channelId = picked;
+      if (!_newChannel) {
+        _draft.channelId = picked;
+        if (_followChannel) _copyChannel(AppScope.read(context).channelById(picked));
+      }
     });
   }
 
   Future<void> _pickContent() async {
     final source = await Navigator.of(context).push<ChannelSource>(
-      MaterialPageRoute(builder: (_) => _ContentPickerScreen(initial: _draft.source)),
+      MaterialPageRoute(builder: (_) => SourcePickerScreen(initial: _draft.source)),
     );
-    if (source != null) _update(() => _draft.source = source);
+    // The picker doesn't know the minimum rating; it stays as chosen.
+    if (source != null) {
+      _update(() {
+        _draft.source = source.copyWith(ratingFloor: () => _draft.source.ratingFloor);
+        _followChannel = false;
+      });
+    }
   }
 
   Future<void> _save() async {
@@ -1195,213 +1262,6 @@ class _ChannelPickerScreen extends StatelessWidget {
                   ),
                 ),
               ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-/// Pick what a block plays: specific shows, or genres, plus movies.
-/// Pops with the new [ChannelSource].
-class _ContentPickerScreen extends StatefulWidget {
-  const _ContentPickerScreen({required this.initial});
-
-  final ChannelSource initial;
-
-  @override
-  State<_ContentPickerScreen> createState() => _ContentPickerScreenState();
-}
-
-class _ContentPickerScreenState extends State<_ContentPickerScreen> {
-  late final Set<String> _shows = {...widget.initial.seriesKeys};
-  late final Set<String> _genres = {...widget.initial.genres};
-  late bool _movies = widget.initial.includeMovies;
-
-  ChannelSource get _source => ChannelSource(
-        seriesKeys: _shows.toList()..sort(),
-        genres: _genres.toList()..sort(),
-        // Nothing picked means nothing, not "every show".
-        includeEpisodes: _shows.isNotEmpty || _genres.isNotEmpty,
-        includeMovies: _movies,
-      );
-
-  @override
-  Widget build(BuildContext context) {
-    final app = AppScope.of(context);
-    final g = context.guide;
-    final library = app.library;
-    final series = [...library.series]..sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
-    final genres = {
-      for (final s in library.series) ...s.genres.map(normalizeGenre),
-      for (final m in library.movies) ...m.genres.map(normalizeGenre),
-    }.toList()
-      ..sort();
-    final count = buildPlaylist(library, _source, PlaybackOrder.cyclic, seed: 0).length;
-    final layout = ScreenLayout.of(context);
-
-    final shows = [
-      Text('SHOWS', style: g.display(26, weight: FontWeight.w800, color: g.accent)),
-      const SizedBox(height: 12),
-      for (final (i, s) in series.indexed)
-        Padding(
-          padding: const EdgeInsets.only(bottom: 8),
-          child: _CheckRow(
-            autofocus: i == 0,
-            label: s.year == null ? s.name : '${s.name} (${s.year})',
-            detail: '${library.episodesBySeries[s.key]?.length ?? 0} episodes',
-            on: _shows.contains(s.key),
-            onPressed: () => setState(() {
-              if (!_shows.remove(s.key)) _shows.add(s.key);
-            }),
-          ),
-        ),
-    ];
-    final summary = [
-      Text('$count programs', style: g.display(44, weight: FontWeight.w800)),
-      Text(
-        _shows.isNotEmpty
-            ? 'Plays the shows you picked${_movies ? ', plus movies' : ''}.'
-            : _genres.isNotEmpty
-                ? 'Plays every show${_movies ? ' and movie' : ''} in these genres.'
-                : _movies
-                    ? 'Plays every movie.'
-                    : 'Pick shows, genres or movies.',
-        style: g.body(24, color: g.textDim),
-      ),
-      const SizedBox(height: 24),
-      Wrap(
-        spacing: 16,
-        runSpacing: 16,
-        children: [
-          TvButton(
-            label: 'Done',
-            icon: Icons.check,
-            onPressed: () => Navigator.of(context).pop(_source),
-          ),
-          if (_shows.isNotEmpty || _genres.isNotEmpty || _movies)
-            TvButton(
-              label: 'Clear',
-              onPressed: () => setState(() {
-                _shows.clear();
-                _genres.clear();
-                _movies = false;
-              }),
-            ),
-        ],
-      ),
-    ];
-    final moviesAndGenres = [
-      _CheckRow(
-        label: 'Include movies',
-        on: _movies,
-        onPressed: () => setState(() => _movies = !_movies),
-      ),
-      const SizedBox(height: 32),
-      Text('GENRES', style: g.display(26, weight: FontWeight.w800, color: g.accent)),
-      const SizedBox(height: 6),
-      Text('Used when no shows are picked. Also narrows down movies.',
-          style: g.body(22, color: g.textDim)),
-      const SizedBox(height: 12),
-      Wrap(
-        spacing: 12,
-        runSpacing: 12,
-        children: [
-          for (final genre in genres)
-            TvToggle(
-              label: genre,
-              on: _genres.contains(genre),
-              onPressed: () => setState(() {
-                if (!_genres.remove(genre)) _genres.add(genre);
-              }),
-            ),
-        ],
-      ),
-    ];
-
-    return TvPage(
-      title: 'Choose shows & movies',
-      hints: '▲▼◀▶ Move    OK Toggle    ESC Cancel',
-      onBack: () => Navigator.of(context).pop(),
-      // Upright, one list: the count and Done, the shows, then movies and
-      // genres.
-      child: layout.isPortrait
-          ? FocusTraversalGroup(
-              child: ListView(
-                padding: layout.pagePadding(EdgeInsets.zero),
-                children: [
-                  ...summary,
-                  const SizedBox(height: 32),
-                  ...shows,
-                  const SizedBox(height: 32),
-                  ...moviesAndGenres,
-                ],
-              ),
-            )
-          : Row(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Expanded(
-            child: FocusTraversalGroup(
-              child: ListView(
-                padding: const EdgeInsets.fromLTRB(100, 32, 24, 32),
-                children: shows,
-              ),
-            ),
-          ),
-          SizedBox(
-            width: 720,
-            child: FocusTraversalGroup(
-              child: ListView(
-                padding: const EdgeInsets.fromLTRB(24, 32, 100, 32),
-                children: [
-                  ...summary,
-                  const SizedBox(height: 32),
-                  ...moviesAndGenres,
-                ],
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _CheckRow extends StatelessWidget {
-  const _CheckRow({required this.label, required this.on, required this.onPressed, this.detail, this.autofocus = false});
-
-  final String label;
-  final String? detail;
-  final bool on;
-  final bool autofocus;
-  final VoidCallback onPressed;
-
-  @override
-  Widget build(BuildContext context) {
-    final g = context.guide;
-    return TvFocusable(
-      autofocus: autofocus,
-      onPressed: onPressed,
-      builder: (context, focused) => AnimatedContainer(
-        duration: const Duration(milliseconds: 100),
-        height: 72,
-        padding: const EdgeInsets.symmetric(horizontal: 20),
-        decoration: BoxDecoration(
-          color: focused ? g.cellBorder : g.cell,
-          borderRadius: BorderRadius.circular(g.radius),
-          border: Border.all(color: focused ? g.focus : Colors.transparent, width: 4),
-        ),
-        child: Row(
-          children: [
-            Icon(on ? Icons.check_box : Icons.check_box_outline_blank,
-                size: 36, color: on ? g.accent : g.textDim),
-            const SizedBox(width: 18),
-            Expanded(
-              child: Text(label,
-                  maxLines: 1, overflow: TextOverflow.ellipsis, style: g.display(30, weight: FontWeight.w600)),
-            ),
-            if (detail != null) Text(detail!, style: g.body(22, color: g.textDim)),
           ],
         ),
       ),

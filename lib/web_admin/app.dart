@@ -12,6 +12,7 @@ import 'pages/guide_page.dart';
 import 'pages/live_page.dart';
 import 'pages/profiles_page.dart';
 import 'pages/server_page.dart';
+import 'pages/servers_page.dart';
 import 'pages/sign_in_page.dart';
 import 'pages/users_page.dart';
 import 'session.dart';
@@ -211,6 +212,7 @@ class WebRouter extends RouterDelegate<Uri> with ChangeNotifier, PopNavigatorRou
             ['live'] => LivePage(key: key, profileId: id),
             ['live', final sid] => LiveChannelsPage(key: key, profileId: id, sourceId: sid),
             ['library'] => LibraryPage(key: key, profileId: id),
+            ['servers'] => ServersPage(key: key, profileId: id),
             _ => const NotFound(),
           },
         );
@@ -223,7 +225,9 @@ class WebRouter extends RouterDelegate<Uri> with ChangeNotifier, PopNavigatorRou
 class _Destination {
   const _Destination(this.label, this.icon, this.path, {this.profile = false, this.admin = false});
   final String label;
-  final IconData icon;
+
+  /// Null: the app's TV with the bird.
+  final IconData? icon;
 
   /// Under `/profiles/{id}` when [profile].
   final String path;
@@ -232,13 +236,14 @@ class _Destination {
 }
 
 const _destinations = [
-  _Destination('Channels', Icons.live_tv, 'channels', profile: true),
+  _Destination('Channels', null, 'channels', profile: true),
   _Destination('Guide', Icons.view_timeline_outlined, 'guide', profile: true),
   _Destination('Programming blocks', Icons.event_note_outlined, 'blocks', profile: true),
   _Destination('Channel groups', Icons.folder_outlined, 'groups', profile: true),
   _Destination('Commercials', Icons.campaign_outlined, 'commercials', profile: true),
   _Destination('Live TV sources', Icons.settings_input_antenna, 'live', profile: true),
   _Destination('Library', Icons.video_library_outlined, 'library', profile: true),
+  _Destination('Servers', Icons.dns_outlined, 'servers', profile: true),
   _Destination('Profiles', Icons.people_outline, '/profiles'),
   _Destination('Server and sign-in', Icons.dns_outlined, '/setup'),
   _Destination('Live TV export', Icons.cast_outlined, '/export', admin: true),
@@ -293,7 +298,7 @@ class Shell extends StatelessWidget {
               for (final (i, d) in shown.indexed) ...[
                 if (i > 0 && shown[i - 1].profile && !d.profile) const Divider(indent: 16, endIndent: 16),
                 ListTile(
-                  leading: Icon(d.icon),
+                  leading: d.icon == null ? const NightingaleTv(height: 24) : Icon(d.icon),
                   title: Text(d.label),
                   selected: i == selected,
                   selectedColor: scheme.onSecondaryContainer,

@@ -77,8 +77,12 @@ void main() {
     final cache = await AnalysisCache.open(dir, 'srv', debounce: const Duration(milliseconds: 200));
     cache.recordReel(_reel('a'), null, at: t0);
     expect(File('${dir.path}/srv.json').existsSync(), isFalse);
-    await Future<void>.delayed(const Duration(milliseconds: 400));
-    expect(File('${dir.path}/srv.json').existsSync(), isTrue);
+    // Written after the debounce; a loaded machine may take longer than it.
+    final file = File('${dir.path}/srv.json');
+    for (var i = 0; i < 100 && !file.existsSync(); i++) {
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+    }
+    expect(file.existsSync(), isTrue);
     await cache.close();
   });
 

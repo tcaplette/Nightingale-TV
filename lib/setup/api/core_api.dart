@@ -222,6 +222,8 @@ extension _CoreApi on SetupServer {
 
   // ---- Signing a profile in ---------------------------------------------------
 
+  /// [id]: a profile's sign-in, or another sign-in slot (adding a server,
+  /// signing one in again: see `_ServersApi`).
   Map<String, Object?> _signInJson(String id) {
     final s = _signIns[id];
     if (s == null) return {'stage': null, 'finished': false};
@@ -244,22 +246,37 @@ extension _CoreApi on SetupServer {
       ],
       'homeUser': step.homeUser?.title,
       'servers': [
-        for (final r in step.servers ?? const []) {'id': r.clientIdentifier, 'label': r.label, 'online': r.online},
+        for (final r in step.servers ?? const [])
+          {
+            'id': r.clientIdentifier,
+            'label': r.label,
+            'online': r.online,
+            // Adding a server: already in the profile, not pickable.
+            if (step.added.contains(r.clientIdentifier) && !id.contains('/again/')) 'added': true,
+          },
       ],
     };
   }
 
-  Future<Object?> _signInStep(ApiRequest r) async {
-    final id = r['id'];
+  Future<Object?> _signInStep(ApiRequest r) => _signInStepIn(r, r['id'], (app) async {
+        final flow = signInFlow?.call(app) ?? SignInFlow(app);
+        return (flow: flow, onStep: (_SignIn s) => _onSignInStep(r['id'], s));
+      });
+
+  /// One step of the sign-in in [id] (a slot of [_signIns]); `start` makes
+  /// its flow with [make].
+  Future<Object?> _signInStepIn(ApiRequest r, String id,
+      Future<({SignInFlow flow, void Function(_SignIn) onStep})> Function(AppState app) make) async {
     final body = await r.body();
     final action = body.string('action');
     var s = _signIns[id];
     if (action == 'start') {
       s?.flow.dispose();
-      final app = await _app(id);
-      final flow = signInFlow?.call(app) ?? SignInFlow(app);
+      final app = await _app(r['id'], library: id != r['id']);
+      final made = await make(app);
+      final flow = made.flow;
       final signIn = s = _signIns[id] = _SignIn(app, flow);
-      flow.state.addListener(() => _onSignInStep(id, signIn));
+      flow.state.addListener(() => made.onStep(signIn));
       if (flow.hint != null) await flow.startFromHint();
       return _signInJson(id);
     }

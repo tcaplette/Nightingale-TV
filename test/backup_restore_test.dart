@@ -14,10 +14,13 @@ import 'package:nightingale_tv/backup/backup_store.dart';
 import 'package:nightingale_tv/channels/channel.dart';
 import 'package:nightingale_tv/channels/premieres.dart';
 import 'package:nightingale_tv/data/app_storage.dart';
+import 'package:nightingale_tv/commercials/break_plan.dart';
+import 'package:nightingale_tv/commercials/commercial_pool.dart';
 import 'package:nightingale_tv/export/export_service.dart';
 import 'package:nightingale_tv/export/export_settings.dart';
 import 'package:nightingale_tv/export/ssdp_responder.dart';
 import 'package:nightingale_tv/jellyfin/jellyfin_client.dart';
+import 'package:nightingale_tv/playback/device_effects.dart';
 import 'package:nightingale_tv/platform/platform_info.dart';
 import 'package:nightingale_tv/profiles/household.dart';
 import 'package:nightingale_tv/profiles/profile.dart';
@@ -222,6 +225,92 @@ void main() {
   });
 
   group('restoring', () {
+    test('a custom channel comes back with its sources, slot rule and offline image, the same program on the air', () async {
+      await writeHousehold(dir, momAndKids(), fakeLibrary(), logos: 0);
+      final h = await open(dir);
+      await h.select(mom);
+      final app = h.app!;
+      final image = await app.icons.importOfflineBytes(fakeLogo(100), 'difficulties.png');
+      expect(BackupArchive.logoName.hasMatch(image), isTrue);
+      final ch = await app.createCustomChannel('80s TV', const ChannelSource(seriesKeys: ['alpha|2000']));
+      await app.setSlotRule(ch, SlotRule(length: const Duration(minutes: 30), tail: TailMode.offline, offlineImage: image));
+      final now = DateTime.now();
+      final onAir = app.scheduleFor(ch)!.playbackAt(now);
+      final backup = (await h.backups!.backUp(BackupReason.manual))!;
+
+      await app.deleteUserChannel(ch);
+      await File('${dir.path}/logos/$image').delete();
+      final bytes = await h.backups!.store.read(backup);
+      expect(BackupArchive.check(bytes).logos.keys, contains(image));
+      await BackupRestorer(h).restore(bytes);
+      await h.select(h.profiles.first);
+
+      final back = h.app!.channelById(ch.id)!;
+      expect(back.source.seriesKeys, ['alpha|2000']);
+      expect(back.slotRule, ch.slotRule);
+      expect(await File('${dir.path}/logos/$image').exists(), isTrue);
+      expect(h.app!.scheduleFor(back)!.playbackAt(now).item?.id, onAir.item?.id);
+    });
+
+    test('pool types and plans\' bumper settings come back', () async {
+      await writeHousehold(dir, momAndKids(), fakeLibrary(), logos: 0);
+      final h = await open(dir);
+      await h.select(mom);
+      final app = h.app!;
+      final pool = await app.createPool();
+      await app.setPoolKind(pool, PoolKind.bumpers);
+      final roles = const CustomRoles(midInterval: Duration(minutes: 10)).withBumpers(pool.id);
+      await app.setGlobalPlan(BreakPlan(mode: BreakMode.custom, roles: roles));
+      final ch = app.allChannels.first;
+      await app.setChannelPlan(ch, BreakPlan(mode: BreakMode.custom, roles: roles.withBumpers(null, none: true)));
+      final backup = (await h.backups!.backUp(BackupReason.manual))!;
+
+      await app.setPoolKind(pool, PoolKind.commercials);
+      await app.setChannelPlan(ch, null);
+      await BackupRestorer(h).restore(await h.backups!.store.read(backup));
+      await h.select(h.profiles.first);
+
+      expect(h.app!.poolById(pool.id)!.kind, PoolKind.bumpers);
+      expect(h.app!.settings.commercialPlan.roles.bumperPool, pool.id);
+      expect(h.app!.channelById(ch.id)!.commercialPlan!.roles.noBumpers, isTrue);
+    });
+
+    test('retro settings come back, and the device switch is neither saved nor changed', () async {
+      await writeHousehold(dir, momAndKids(), fakeLibrary(), logos: 0);
+      final h = await open(dir);
+      await h.select(mom);
+      final app = h.app!;
+      const main = RetroSettings(
+        shape: PictureShape.fill43,
+        crt: CrtStyle.custom,
+        overlay: OverlayThemeName.vcr,
+        custom: CrtValues(scanlines: CrtLevel.high, lines: 240),
+        accents: {OverlayThemeName.vcr: OverlayAccent.channel},
+      );
+      const own = ChannelRetro(shape: PictureShape.fit43, surround: Surround.charcoal, crt: CrtStyle.arcade);
+      final ch = app.allChannels.first;
+      await app.setMainRetro(main);
+      await app.setChannelRetro(ch, own);
+      DeviceEffects.instance.reset();
+      await DeviceEffects.instance.load(h.root);
+      await DeviceEffects.instance.setOn(false);
+      await h.root.flush();
+      final backup = (await h.backups!.backUp(BackupReason.manual))!;
+      final bytes = await h.backups!.store.read(backup);
+      expect(utf8.decode(bytes, allowMalformed: true), isNot(contains('device_effects')));
+
+      await app.setMainRetro(const RetroSettings());
+      await app.setChannelRetro(ch, ChannelRetro.main);
+      await DeviceEffects.instance.setOn(true);
+      await BackupRestorer(h).restore(bytes);
+      await h.select(h.profiles.first);
+
+      expect(h.app!.settings.retro.toJson(), main.toJson());
+      expect(h.app!.channelById(ch.id)!.retro, own);
+      expect(DeviceEffects.instance.on, isTrue, reason: 'a restore leaves this device as it is');
+      DeviceEffects.instance.reset();
+    });
+
     test('on the same device: everyone stays signed in, the backup\'s channels are back', () async {
       await writeHousehold(dir, momAndKids(), fakeLibrary(), logos: 1);
       final h = await open(dir);
@@ -288,6 +377,11 @@ void main() {
           guide: (name: 'guide.xml', path: guide.path, bytes: null));
       await app.chooseLiveChannels(source, {'c2.1', 'c4.1'});
       await app.refreshLiveSource(source, channels: false);
+      // Choosing starts a refresh of its own; the one above returns at once
+      // while it runs, and it writes the cache until it ends.
+      while (app.live.isRefreshing(source)) {
+        await Future<void>.delayed(const Duration(milliseconds: 10));
+      }
       final ch = app.allChannels.firstWhere((c) => c.live?.key == 'c4.1');
       await app.updateChannel(ch, favorite: true);
       final group = await app.createGroup('Locals');

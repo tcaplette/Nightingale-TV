@@ -286,12 +286,19 @@ class JellyfinClient implements MediaServer {
   /// pools they're in) and are left out of the programs, even when their
   /// folder sits inside a library of shows or movies. A library that is itself
   /// a pool folder isn't scanned for programs at all.
+  ///
+  /// Each of [channelRoots] is listed once, ids only, and the episodes and
+  /// movies under it are recorded ([LibraryIndex.rootsByItem]).
   @override
   Future<LibraryIndex> fetchLibraryIndex(
       {List<CommercialPool> pools = const [],
+      Set<String> channelRoots = const {},
+      bool providerIds = false,
       void Function(String status)? onStatus,
       void Function(List<ServerLibrary> libraries)? onLibraries}) async {
     final libraries = (await this.libraries()).where((l) => l.isVideo || l.isMusic).toList();
+    // Only a profile with several servers asks for them (multi-server D4).
+    final ids = providerIds ? ',ProviderIds' : '';
     onLibraries?.call(libraries);
     final poolsByItem = <String, List<String>>{};
     final commercials = <String, Map<String, Object?>>{};
@@ -337,22 +344,23 @@ class JellyfinClient implements MediaServer {
       series.addAll(await allItems({
         ...common,
         'IncludeItemTypes': 'Series',
-        'Fields': 'Genres,OfficialRating',
+        'Fields': 'Genres,OfficialRating$ids',
       }));
       episodes.addAll(await allItems({
         ...common,
         'IncludeItemTypes': 'Episode',
         'IsMissing': 'false',
-        'Fields': 'Overview,Chapters,Etag,DateCreated',
+        'Fields': 'Overview,Chapters,Etag,DateCreated$ids',
         'EnableImages': 'false',
-        'EnableUserData': 'false',
+        // Play counts, for Least watched first.
+        'EnableUserData': 'true',
       }));
       movies.addAll(await allItems({
         ...common,
         'IncludeItemTypes': 'Movie',
-        'Fields': 'Overview,Genres,OfficialRating,Chapters,Etag',
+        'Fields': 'Overview,Genres,OfficialRating,Chapters,Etag$ids',
         'EnableImages': 'false',
-        'EnableUserData': 'false',
+        'EnableUserData': 'true',
       }));
       musicVideos.addAll(await allItems({
         ...common,
@@ -364,7 +372,7 @@ class JellyfinClient implements MediaServer {
       }));
       PlaybackDiagnostics.note('SCAN', '${lib.name}: ${DateTime.now().difference(scanStart).inMilliseconds} ms');
     }
-    return LibraryIndex.fromJellyfinItems(
+    final index = LibraryIndex.fromJellyfinItems(
       seriesItems: series,
       episodeItems: episodes,
       movieItems: movies,
@@ -373,6 +381,38 @@ class JellyfinClient implements MediaServer {
       musicVideoItems: musicVideos,
       poolsByItem: poolsByItem,
     );
+    if (channelRoots.isEmpty) return index;
+    onStatus?.call('Scanning channel sources…');
+    final rootsStart = DateTime.now();
+    final roots = await fetchRoots(this, channelRoots);
+    PlaybackDiagnostics.note('SCAN', '${channelRoots.length} channel roots: '
+        '${DateTime.now().difference(rootsStart).inMilliseconds} ms');
+    return index.withRoots(roots.found, missing: roots.missing);
+  }
+
+  @override
+  Future<List<String>> idsUnder(String rootId) async {
+    Future<List<Map<String, Object?>>> under(String id, String types) => allItems({
+          'ParentId': id,
+          'Recursive': 'true',
+          'IncludeItemTypes': types,
+          'IsMissing': 'false',
+          'EnableImages': 'false',
+          'EnableUserData': 'false',
+        });
+    final items = await under(rootId, 'Movie,Episode,Series,BoxSet');
+    final ids = [for (final i in items) if (i['Type'] == 'Movie' || i['Type'] == 'Episode') i['Id'] as String];
+    // A folder of collections: each one's items are its own.
+    for (final box in items.where((i) => i['Type'] == 'BoxSet' && i['Id'] != rootId)) {
+      ids.addAll(await idsUnder(box['Id'] as String));
+    }
+    // A collection holds its shows, not their episodes: shows none of whose
+    // episodes came with them are listed on their own.
+    final covered = {for (final i in items) if (i['Type'] == 'Episode') i['SeriesId']};
+    for (final show in items.where((i) => i['Type'] == 'Series' && !covered.contains(i['Id']))) {
+      ids.addAll([for (final e in await under(show['Id'] as String, 'Episode')) e['Id'] as String]);
+    }
+    return ids;
   }
 
   /// Every video under pool root [rootId] (a folder, show, season or

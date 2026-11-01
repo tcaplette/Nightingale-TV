@@ -30,6 +30,10 @@ const remoteKeys = <String, (LogicalKeyboardKey, PhysicalKeyboardKey)>{
   '9': (LogicalKeyboardKey.digit9, PhysicalKeyboardKey.digit9),
 };
 
+/// Takes keys before any screen does, as `FocusManager`'s early handlers do
+/// for real ones (the sleep timer's warning and sleep screen). True if taken.
+bool Function(KeyEvent event)? interceptKey;
+
 /// Delivers [key] to the focused widget and up through its ancestors, the
 /// way Flutter delivers a real key press (shortcuts such as arrow-key focus
 /// moves and OK-to-activate included). True if something handled it.
@@ -40,6 +44,7 @@ bool dispatchKey(LogicalKeyboardKey key, PhysicalKeyboardKey physical) {
     character: key.keyLabel.length == 1 ? key.keyLabel : null,
     timeStamp: Duration(microseconds: DateTime.now().microsecondsSinceEpoch),
   );
+  if (interceptKey?.call(event) ?? false) return true;
   for (FocusNode? node = FocusManager.instance.primaryFocus; node != null; node = node.parent) {
     final result = node.onKeyEvent?.call(node, event) ?? KeyEventResult.ignored;
     if (result == KeyEventResult.handled) return true;

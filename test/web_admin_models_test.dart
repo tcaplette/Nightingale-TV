@@ -77,6 +77,24 @@ void main() {
     same(b.toJson(), ProgramBlock.fromJson);
   });
 
+  test('ProgramBlock with a minimum rating (late-night-drift)', () {
+    final b = lateNightDefaults(ProgramBlock(
+      id: 'block:late',
+      title: '',
+      channelId: 'c1',
+      days: {6},
+      startMinute: 7 * 60,
+      endMinute: 12 * 60,
+      source: const ChannelSource(genres: ['comedy']),
+      order: PlaybackOrder.weighted,
+      playlist: const [],
+      anchor: DateTime(2026, 10, 31),
+    ));
+    same(b.toJson(), ProgramBlock.fromJson);
+    final back = ProgramBlock.fromJson((jsonDecode(jsonEncode(b.toJson())) as Map).cast<String, Object?>());
+    expect(back.source.ratingFloor, RatingFloor.mature);
+  });
+
   test('BreakPlan in every mode', () {
     for (final plan in const [BreakPlan.off, BreakPlan.automatic, BreakPlan(mode: BreakMode.custom, roles: roles)]) {
       same(plan.toJson(), BreakPlan.fromJson);

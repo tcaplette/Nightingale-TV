@@ -15,6 +15,7 @@ import 'widgets/broadcast_cards.dart';
 import 'widgets/channel_logo.dart';
 import 'widgets/new_tag.dart';
 import 'widgets/screen_layout.dart';
+import 'widgets/transport_bar.dart';
 import 'widgets/tv_focus.dart';
 
 /// The TV screen and the guide in one, for a phone or tablet held upright
@@ -27,6 +28,7 @@ class PortraitWatchScreen extends StatefulWidget {
     required this.onTune,
     required this.onMenu,
     required this.onFullScreen,
+    this.onSleep,
     this.onTouch,
     this.numberEntry,
     this.toast,
@@ -37,6 +39,9 @@ class PortraitWatchScreen extends StatefulWidget {
   final ValueChanged<Channel> onTune;
   final VoidCallback onMenu;
   final VoidCallback onFullScreen;
+
+  /// Opens the sleep timer picker (a Sleep button before Menu).
+  final VoidCallback? onSleep;
 
   /// Any tap or press on the screen (cancels the exit prompt).
   final VoidCallback? onTouch;
@@ -53,6 +58,9 @@ class PortraitWatchScreen extends StatefulWidget {
 
   /// How long the player's buttons stay up after a tap.
   static const controlsFor = Duration(seconds: 3);
+
+  /// How long they stay with the transport controls among them.
+  static const transportFor = Duration(seconds: 5);
 
   /// How far ahead a channel's schedule sheet goes.
   static const scheduleSpan = Duration(hours: 12);
@@ -97,9 +105,22 @@ class PortraitWatchScreenState extends State<PortraitWatchScreen> {
 
   void _showControls() {
     widget.onTouch?.call();
+    showControls();
+  }
+
+  /// Shows the player's buttons (a tap, or a media key).
+  void showControls() {
     _controlsTimer?.cancel();
     setState(() => _controls = true);
-    _controlsTimer = Timer(PortraitWatchScreen.controlsFor, _hideControls);
+    final transport = AppScope.tunerOf(context).canTimeshift;
+    _controlsTimer = Timer(transport ? PortraitWatchScreen.transportFor : PortraitWatchScreen.controlsFor, () {
+      // Not with a seek pending.
+      if (mounted && AppScope.tunerOf(context).seekTarget != null) {
+        showControls();
+      } else {
+        _hideControls();
+      }
+    });
   }
 
   List<Channel> _channels() => shownGuideTab(AppScope.read(context).guideTabs(), _tab).channels;
@@ -165,7 +186,15 @@ class PortraitWatchScreenState extends State<PortraitWatchScreen> {
         children: [
           ColoredBox(color: Colors.black, child: SizedBox(height: padding.top)),
           _player(g),
-          if (tuned != null) PortraitNowPanel(channel: tuned, now: _now, inBreak: tuner.inBreak, gutter: layout.gutter),
+          if (tuned != null)
+            PortraitNowPanel(
+              channel: tuned,
+              now: tuner.shifted ? tuner.viewNow() : _now,
+              inBreak: tuner.inBreak,
+              gutter: layout.gutter,
+              schedule: tuner.schedule,
+              behind: tuner.shifted ? tuner.behind : null,
+            ),
           GuideTabRow(
             tabs: tabs,
             selected: tab.id,
@@ -223,8 +252,10 @@ class PortraitWatchScreenState extends State<PortraitWatchScreen> {
   }
 
   /// The live picture at 16:9, with the TV screen's overlays; a tap shows
-  /// Full screen and Menu, a long-press opens the menu.
+  /// Full screen and Menu and the transport controls, a long-press opens the
+  /// menu.
   Widget _player(GuideTheme g) {
+    final tuner = AppScope.tunerOf(context);
     return AspectRatio(
       aspectRatio: 16 / 9,
       child: GestureDetector(
@@ -247,7 +278,9 @@ class PortraitWatchScreenState extends State<PortraitWatchScreen> {
                     children: [
                       widget.picture,
                       if (widget.numberEntry case final text?)
-                        Positioned(top: 60, right: 90, child: ChannelNumberOsd(text: text)),
+                        Positioned(top: 60, right: 90, child: ChannelNumberOsd(text: text))
+                      else if (tuner.paused && !_controls)
+                        const Positioned(top: 60, right: 90, child: PausedChip()),
                     ],
                   ),
                 ),
@@ -259,13 +292,32 @@ class PortraitWatchScreenState extends State<PortraitWatchScreen> {
                   duration: const Duration(milliseconds: 200),
                   child: Stack(
                     children: [
+                      if (tuner.canTimeshift && _controls)
+                        Positioned.fill(
+                          child: TransportBar(
+                            tuner: tuner,
+                            compact: true,
+                            onInteract: _showControls,
+                          ),
+                        ),
                       Positioned(
                         top: 12,
                         right: 12,
-                        child: _PlayerButton(label: 'Menu', icon: Icons.settings, onPressed: () {
-                          widget.onTouch?.call();
-                          widget.onMenu();
-                        }),
+                        child: Row(
+                          children: [
+                            if (widget.onSleep case final onSleep?) ...[
+                              _PlayerButton(label: 'Sleep', icon: Icons.bedtime, onPressed: () {
+                                widget.onTouch?.call();
+                                onSleep();
+                              }),
+                              const SizedBox(width: 12),
+                            ],
+                            _PlayerButton(label: 'Menu', icon: Icons.settings, onPressed: () {
+                              widget.onTouch?.call();
+                              widget.onMenu();
+                            }),
+                          ],
+                        ),
                       ),
                       Positioned(
                         bottom: 12,
@@ -337,17 +389,30 @@ double _progress(ScheduledProgram p, DateTime now) =>
 
 /// The tuned channel: its number, logo and name, what's on and what's next.
 class PortraitNowPanel extends StatelessWidget {
-  const PortraitNowPanel({super.key, required this.channel, required this.now, required this.inBreak, required this.gutter});
+  const PortraitNowPanel(
+      {super.key,
+      required this.channel,
+      required this.now,
+      required this.inBreak,
+      required this.gutter,
+      this.schedule,
+      this.behind});
 
   final Channel channel;
   final DateTime now;
   final bool inBreak;
   final double gutter;
 
+  /// The schedule what's on screen comes from (the channel's own if null).
+  final ProgramSchedule? schedule;
+
+  /// How far behind the schedule the viewer is, if they are.
+  final Duration? behind;
+
   @override
   Widget build(BuildContext context) {
     final g = context.guide;
-    final on = _nowNext(AppScope.read(context).scheduleFor(channel), now);
+    final on = _nowNext(schedule ?? AppScope.read(context).scheduleFor(channel), now);
     final p = on?.now;
     final next = on?.next;
     return Container(
@@ -373,6 +438,10 @@ class PortraitNowPanel extends StatelessWidget {
                     style: g.display(26, weight: FontWeight.w700, color: g.accent)),
               ),
               if (channel.isLive) ...[const SizedBox(width: 12), const LiveTag(size: 24)],
+              if (behind case final b?) ...[
+                const SizedBox(width: 12),
+                Text(formatBehind(b), style: g.display(26, weight: FontWeight.w700, color: g.accent)),
+              ],
             ],
           ),
           const SizedBox(height: 12),
@@ -392,6 +461,7 @@ class PortraitNowPanel extends StatelessWidget {
                   : [
                       if (p.blockTitle != null) p.blockTitle!.toUpperCase(),
                       p.isMusicHour ? musicHourLine(p, now) : p.subtitle,
+                      if (p.endsEarly) endsEarlyLabel,
                     ].join('  ·  '),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,

@@ -154,6 +154,56 @@ void main() {
     });
   });
 
+  group('adding a server (multi-server)', () {
+    SignInFlow adder(ServerKind kind, {PlexAccount? plex}) => SignInFlow(
+          app,
+          identify: (_) async => (client: fakeServer(kind), info: _info(kind)),
+          plexAccount: plex,
+          pickPlexConnection: (s) async => s.connections.first,
+          completeSignIn: (session, _) async => signedIn.add(session),
+          adding: true,
+        );
+
+    void signedInTo(String serverId) => app.session = ServerSession(
+        serverUrl: 'http://main.example',
+        serverName: 'Home Server',
+        userId: 'u',
+        userName: 'howard',
+        accessToken: 't',
+        deviceId: 'd',
+        serverId: serverId);
+
+    test("the profile's own server is refused at the address step", () async {
+      signedInTo('srv');
+      final flow = adder(ServerKind.jellyfin);
+      addTearDown(flow.dispose);
+      await flow.connect('jf.example');
+      expect(flow.step.error, 'Home Server is already in this profile');
+      expect(flow.step.stage, SignInStage.server);
+      expect(signedIn, isEmpty);
+    });
+
+    test('the Plex list shows servers already in the profile as added, and only the other can be picked', () {
+      fakeAsync((async) {
+        signedInTo('m1');
+        final flow = adder(ServerKind.plex,
+            plex: FakePlexAccount(serverList: [server('Basement', 'm1'), server('Attic', 'm2')]));
+        flow.startPlex();
+        async.elapse(SignInFlow.plexPoll);
+        expect(flow.step.stage, SignInStage.plexServers);
+        expect(flow.step.added, contains('m1'));
+        flow.pickServer(flow.step.servers!.first);
+        async.flushMicrotasks();
+        expect(flow.step.error, 'Basement is already in this profile');
+        expect(signedIn, isEmpty);
+        flow.pickServer(flow.step.servers!.last);
+        async.flushMicrotasks();
+        expect(signedIn.single.serverId, 'm2');
+        flow.dispose();
+      });
+    });
+  });
+
   test('plex.tv saying "too many requests" makes the code checks wait', () {
     fakeAsync((async) {
       final account = _ThrottledAccount();

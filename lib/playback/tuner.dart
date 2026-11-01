@@ -13,6 +13,7 @@ import '../live/live_source_client.dart';
 import '../live/url_privacy.dart';
 import '../platform/platform_info.dart';
 import '../server/live_tv.dart';
+import '../server/server_set.dart';
 import 'android_device_profile.dart';
 import 'index_cache.dart';
 import 'playback_diagnostics.dart';
@@ -48,7 +49,7 @@ class Tuner extends ChangeNotifier {
         _clock = clock ?? DateTime.now,
         _proxy = proxy ?? (player == null && !PlaybackProxy.disabled ? PlaybackProxy() : null) {
     _diagnostics = PlaybackDiagnostics.start(
-        app.storage.root, media, app.analyzerDebugState, () => status == TunerStatus.playing);
+        app.storage.root, media, app.analyzerDebugState, () => status == TunerStatus.playing && !paused);
     if (_diagnostics != null) debugPrint('Playback diagnostics: ${_diagnostics!.path}');
     _subscriptions.addAll([
       // Tuned in once the picture moves: mpv reports "playing" (and not
@@ -59,6 +60,11 @@ class Tuner extends ChangeNotifier {
       media.tracksStream.listen((_) => _applyCaptions()),
       media.completedStream.listen((completed) {
         if (!completed || status != TunerStatus.playing) return;
+        // A stream given up while paused opens again at the resume.
+        if (paused) {
+          _reopenOnResume = true;
+          return;
+        }
         // A live stream never ends by itself: it dropped.
         if (_live != null) {
           _liveLost('the stream ended');
@@ -85,6 +91,7 @@ class Tuner extends ChangeNotifier {
     _leveling = app.volumeLeveling.value;
     unawaited(media.setVolumeLeveling(_leveling));
     app.volumeLeveling.addListener(_onLevelingChanged);
+    app.addListener(_onSettingsChanged);
     _startProxy();
   }
 
@@ -101,7 +108,12 @@ class Tuner extends ChangeNotifier {
     _leveling = on;
     _diagnostics?.event('volume leveling ${on ? 'on' : 'off'}');
     await media.setVolumeLeveling(on);
-    if (PlatformInfo.isAndroid) await retune();
+    if (PlatformInfo.isAndroid) await _retuneInPlace();
+  }
+
+  /// Pause and rewind turned off: a viewer behind goes live at once.
+  void _onSettingsChanged() {
+    if (shifted && !app.settings.playback.pauseAndRewind) unawaited(goLive());
   }
 
   static const _progressInterval = Duration(seconds: 10);
@@ -122,7 +134,7 @@ class Tuner extends ChangeNotifier {
   /// part joined early on a keyframe plays that much longer), so overlays
   /// worked out from the schedule (break notices) match the real cut.
   DateTime pictureNow() {
-    final now = _clock(), seg = segment, end = _segmentEnd;
+    final now = viewNow(), seg = segment, end = _segmentEnd;
     if (seg == null || end == null || !end.isAfter(seg.end)) return now;
     return now.subtract(end.difference(seg.end));
   }
@@ -301,15 +313,35 @@ class Tuner extends ChangeNotifier {
     }();
   }
 
-  /// Keeps connections to the server warm: at start and after each open.
+  /// Keeps connections to the servers warm (each one that can be used,
+  /// multi-server): at start and after each open.
   void _warmConnections() {
-    final client = app.client;
     final proxy = _proxy;
-    if (client == null || proxy == null || !proxy.running) return;
-    unawaited(proxy.warm(client.pingUri, client.authHeaders).catchError((Object e) {
-      debugPrint('Playback proxy: warm-up failed: $e');
-    }));
+    if (proxy == null || !proxy.running) return;
+    for (final server in app.servers.all) {
+      final client = server.client;
+      if (client == null || !server.usable) continue;
+      unawaited(proxy.warm(client.pingUri, client.authHeaders).catchError((Object e) {
+        debugPrint('Playback proxy: warm-up failed: $e');
+      }));
+    }
   }
+
+  /// Which copy of [entry] plays (multi-server D5): [entry] as that copy,
+  /// with the client to play it through. With one server, [entry] and the
+  /// server's client.
+  ({MediaEntry item, MediaServer client, String key})? _pick(MediaEntry entry) => app.copyToPlay(entry);
+
+  /// The cap a program part of [item] plays under, in kbps: the profile's,
+  /// lowered by its server's quality limit.
+  int? _capFor(MediaEntry item) => app.capFor(ServerSet.keyOf(item.sourceId), app.capInEffect);
+
+  /// The copy the segment on now plays from.
+  ({MediaEntry item, MediaServer client, String key})? _playing;
+
+  /// The server the segment on now plays from.
+  @visibleForTesting
+  String? get debugPlayingKey => _playing?.key;
 
   void _onProxyEvent(ProxyEvent e) {
     final d = _diagnostics;
@@ -384,7 +416,7 @@ class Tuner extends ChangeNotifier {
     if (ch == null) return const [];
     final now = _clock();
     final programs = <ScheduledProgram?>[];
-    final schedule = app.scheduleFor(ch);
+    final schedule = this.schedule;
     final current = program;
     if (schedule != null && current != null) programs.add(schedule.next(current));
     if (ch.isLive) return const [];
@@ -434,14 +466,17 @@ class Tuner extends ChangeNotifier {
   /// one at a time, at the analyzer's budget, while [_mayFill].
   Future<void> _fillPass() async {
     final proxy = _proxy;
-    final client = app.client;
-    if (proxy == null || client == null || !proxy.running || _filling) return;
+    if (proxy == null || app.client == null || !proxy.running || _filling) return;
     _fillDue = false;
     _filling = true;
     final generation = _generation;
     try {
-      for (final item in _fillCandidates()) {
+      for (final entry in _fillCandidates()) {
         if (generation != _generation || !_mayFill) break;
+        // The copy that would play (multi-server).
+        final pick = _pick(entry);
+        if (pick == null) continue;
+        final (:item, :client, key: _) = pick;
         if (await proxy.cached(item.sourceId)) continue;
         final budget = app.analyzerBudgetNow;
         if (budget.paused) break;
@@ -456,13 +491,18 @@ class Tuner extends ChangeNotifier {
     }
   }
 
-  Future<void> tune(Channel ch) async {
+  /// Tunes [ch], at the live point, or at [at]: where the viewer was before
+  /// the app went out of sight (timeshift D12).
+  Future<void> tune(Channel ch, {ViewingPlace? at}) async {
+    // A sleep timer's fade that was cancelled never leaves a channel quiet.
+    unawaited(media.setVolume(1));
     // Diagnostics: the first tune is the launch's; one after [stop] (Android
     // coming back to the front) is a resume.
     final trigger = !_tunedOnce ? 'launch' : (channel == null ? 'resume' : 'channel');
     _tunedOnce = true;
     // How far the program on the channel being left got.
     _noteReached(atSegmentEnd: false);
+    _endShift();
     if (channel != null && channel!.id != ch.id) previousChannel = channel;
     channel = ch;
     _recent
@@ -472,12 +512,36 @@ class Tuner extends ChangeNotifier {
     // In front again (Android) if it was hidden.
     if (_proxyReady != null) unawaited(_proxy!.setBackground(false).catchError((Object _) {}));
     unawaited(app.setLastChannel(ch));
-    await _playCurrent(++_generation, trigger: trigger);
+    var exact = false;
+    if (at != null && !ch.isLive) {
+      if (_clock().difference(at.view) > maxBehind) {
+        _notices.add(backToLiveNotice);
+      } else {
+        exact = true;
+        _pinned = at.schedule;
+        if (at.paused) {
+          _frozen = at.view;
+          _pausedWall = _clock();
+          _pausedPosition = null;
+        } else {
+          _shift = _clock().difference(at.view);
+        }
+      }
+    }
+    await _playCurrent(++_generation, trigger: trigger, exact: exact);
   }
 
-  /// Re-tunes the current channel, e.g. after its playlist changed.
+  /// Re-tunes the current channel, e.g. after its playlist changed. A viewer
+  /// behind the schedule goes live.
   Future<void> retune() async {
+    _endShift();
     if (channel != null) await _playCurrent(++_generation, trigger: 'retune');
+  }
+
+  /// Re-tunes for the player's or server's sake: a viewer behind the schedule
+  /// keeps their place.
+  Future<void> _retuneInPlace() async {
+    if (channel != null) await _playCurrent(++_generation, trigger: 'retune', exact: shifted);
   }
 
   /// After a schedule change that keeps the program on air (e.g. a new break
@@ -488,14 +552,16 @@ class Tuner extends ChangeNotifier {
     final ch = channel;
     final current = segment;
     if (ch == null) return;
+    // Behind the schedule, playback goes on from the pinned one.
+    if (shifted) return;
     if (ch.isLive) {
       // The guide changed; the stream plays on.
       _setLiveProgramme(ch, _generation);
       notifyListeners();
       return;
     }
-    final schedule = app.scheduleFor(ch);
-    final now = _clock();
+    final schedule = this.schedule;
+    final now = viewNow();
     if (schedule == null || current == null || !current.end.isAfter(now)) {
       await retune();
       return;
@@ -554,7 +620,10 @@ class Tuner extends ChangeNotifier {
 
   /// Opens what's on now. [atSegmentEnd]: called because the previous
   /// segment played to its end (and nothing was preloaded to take over).
-  Future<void> _playCurrent(int generation, {bool atSegmentEnd = false, String? trigger}) async {
+  /// [quiet]: a move within the channel (timeshift), with no channel number
+  /// shown. [exact]: landing exactly on the viewing time, not on a keyframe.
+  Future<void> _playCurrent(int generation,
+      {bool atSegmentEnd = false, String? trigger, bool quiet = false, bool exact = false}) async {
     _programEnd?.cancel();
     _cancelPrefetch();
     _awaitingFirstFrame = false;
@@ -562,8 +631,7 @@ class Tuner extends ChangeNotifier {
     final from = segment;
     _noteReached(atSegmentEnd: atSegmentEnd);
     final ch = channel;
-    final client = app.client;
-    if (ch == null || client == null || generation != _generation) return;
+    if (ch == null || app.client == null || generation != _generation) return;
     _diagnostics?.tuneStarted(trigger ?? (atSegmentEnd ? 'segment' : 'retune'), 'ch=${ch.number}');
     // Whatever was preloaded goes before anything else opens.
     await _dropPreload();
@@ -576,7 +644,7 @@ class Tuner extends ChangeNotifier {
     await _closeLive();
     if (generation != _generation) return;
 
-    final schedule = app.scheduleFor(ch);
+    final schedule = this.schedule;
     if (schedule == null) {
       _diagnostics?.tuneFailed('no schedule');
       // Nothing opens, so nothing to wait for.
@@ -584,26 +652,32 @@ class Tuner extends ChangeNotifier {
       unawaited(flushReports());
       program = null;
       segment = null;
-      error = 'Nothing to play on this channel.';
+      // A channel with nothing in its playlist (a custom channel whose
+      // collection is gone) is off the air, not out of signal.
+      error = 'Nothing to play on this channel';
       _stopTranscode();
-      _setStatus(TunerStatus.error);
+      _setStatus(TunerStatus.offAir);
       await media.stop();
       return;
     }
-    final now = _clock();
+    final now = viewNow();
     var current = schedule.playbackAt(now);
     // Joining with only a moment left would just flash the end credits.
     if (current.end.difference(now) < const Duration(seconds: 4)) {
       current = schedule.playbackAt(current.end);
     }
     final startAt = current.positionAt(now);
-    _setOnNow(generation, ch, client, schedule, current, now, startAt);
+    // The copy it plays from (multi-server): the first in Play from whose
+    // server can be used.
+    final pick = current.item == null ? null : _pick(current.item!);
+    _setOnNow(generation, ch, schedule, current, now, startAt, pick);
     _handover = atSegmentEnd ? _Handover(_label(from), _label(current), preloaded: false, trigger: 'tuner') : null;
 
     // Whatever was transcoding stops before anything else opens.
     _stopTranscode();
-    final item = current.item;
-    if (item == null) {
+    final item = pick?.item;
+    final client = pick?.client;
+    if (item == null || client == null) {
       _diagnostics?.tuneFailed('off air (nothing to open)');
       final handover = _handover;
       _handover = null;
@@ -615,7 +689,7 @@ class Tuner extends ChangeNotifier {
       if (generation == _generation) _armPreload();
       return;
     }
-    _changingChannel = !atSegmentEnd;
+    _changingChannel = !atSegmentEnd && !quiet;
     _setStatus(TunerStatus.tuning);
 
     final playback = app.settings.playback;
@@ -623,7 +697,7 @@ class Tuner extends ChangeNotifier {
     // On Android every segment plays as Jellyfin decides for the device
     // (android-playback). The cap is only ever for program parts.
     final android = app.decidesEverySegment;
-    final cap = isProgram ? app.capInEffect : null;
+    final cap = isProgram ? _capFor(item) : null;
     // Elsewhere only program parts ever transcode; commercials and bumpers
     // always direct-play.
     final transcodable = playback.transcodeIfNeeded && isProgram;
@@ -651,6 +725,8 @@ class Tuner extends ChangeNotifier {
           debugPrint('Playback decision failed: $e');
           _diagnostics?.tuneWaited('playback-info (failed)', waited.elapsed);
           _diagnostics?.event('decision for $source failed: $e');
+          // Its server is down and another has a copy: that one plays.
+          if (e is ServerException && e.unreachable && await _failOver(generation)) return;
         }
         // The job only starts once the stream is requested, so a decision
         // that arrives after a newer tune leaves nothing running.
@@ -672,7 +748,7 @@ class Tuner extends ChangeNotifier {
       // so the picture comes without decoding up to the exact second.
       // Whatever must start exactly keeps a precise seek: commercial clips
       // cut from reels, and segments starting on schedule.
-      final keyframe = !atSegmentEnd && _isProgramPart(current) && startAt - current.itemFrom > _keyframeJoinMargin;
+      final keyframe = !exact && !atSegmentEnd && _isProgramPart(current) && startAt - current.itemFrom > _keyframeJoinMargin;
       _expectFirstFrame(startAt);
       _keyframeJoin = keyframe ? (startAt: startAt, end: current.end, generation: generation) : null;
       try {
@@ -699,8 +775,9 @@ class Tuner extends ChangeNotifier {
   /// Makes [current] what's on now, whether it opens or was preloaded: the
   /// segment and program, the viewing's reports, break state and the
   /// hand-over timer. [startAt]: where in its item it starts.
-  void _setOnNow(int generation, Channel ch, MediaServer client, ProgramSchedule schedule, ScheduledProgram current,
-      DateTime now, Duration startAt) {
+  /// [pick]: the copy it plays from (see [_pick]).
+  void _setOnNow(int generation, Channel ch, ProgramSchedule schedule, ScheduledProgram current, DateTime now,
+      Duration startAt, ({MediaEntry item, MediaServer client, String key})? pick) {
     final step = reportStep(_report?.viewing, ch.id, current);
     // Sent after the new picture: the open doesn't wait for the server.
     if (step == ReportStep.finish || step == ReportStep.finishAndStart) _queueFinish();
@@ -709,14 +786,21 @@ class Tuner extends ChangeNotifier {
     program = schedule.programAt(current.start.isAfter(now) ? current.start : now);
     error = null;
     _endSegmentAt(current.end, generation);
-    final item = current.item;
-    if (item == null) return;
+    _playing = pick;
+    if (pick == null) return;
+    final (:item, :client, :key) = pick;
     // A new viewing is reported from its first picture (see [_beginReport]);
-    // one that never shows a picture isn't reported at all.
-    if (step == ReportStep.start || step == ReportStep.finishAndStart) {
-      _report = _Report(client, item, _newSessionId().substring(0, 16), viewingOf(ch.id, current)!)..reached = startAt;
+    // one that never shows a picture isn't reported at all. A viewing that
+    // moved to another server's copy is reported there (multi-server).
+    final moved = step == ReportStep.keep && _report != null && _report!.key != key;
+    if (step == ReportStep.start || step == ReportStep.finishAndStart || moved) {
+      _report = _Report(client, item, _newSessionId().substring(0, 16), viewingOf(ch.id, current)!, key: key)
+        ..reached = startAt
+        ..cut = current.endsEarly;
     } else if (step == ReportStep.keep && !current.isBreak) {
-      _report?.reached = startAt;
+      // Rewinding never lowers how far the viewing got.
+      final report = _report;
+      if (report != null && startAt > report.reached) report.reached = startAt;
     }
   }
 
@@ -724,7 +808,9 @@ class Tuner extends ChangeNotifier {
   void _endSegmentAt(DateTime end, int generation) {
     _programEnd?.cancel();
     _segmentEnd = end;
-    _programEnd = Timer(end.difference(_clock()), () => unawaited(_atHandover(generation)));
+    // Paused, the viewing time stands still: [resume] sets it again.
+    if (paused) return;
+    _programEnd = Timer(end.difference(viewNow()), () => unawaited(_atHandover(generation)));
   }
 
   /// The schedule's hand-over: to the preloaded segment if there is one
@@ -733,7 +819,7 @@ class Tuner extends ChangeNotifier {
     if (generation != _generation) return;
     final enqueueing = _enqueueing;
     if (enqueueing != null) await enqueueing.then((_) {}, onError: (Object _) {});
-    if (generation != _generation) return;
+    if (generation != _generation || paused) return;
     final next = _preloaded;
     if (next != null && _mayPreload) {
       _advancing = true;
@@ -790,9 +876,9 @@ class Tuner extends ChangeNotifier {
   /// open, but nothing opens, and the status stays `playing`.
   void _handOver(_Preload next, {required String trigger}) {
     _preloaded = null;
-    final ch = channel, client = app.client;
-    final schedule = ch == null ? null : app.scheduleFor(ch);
-    if (ch == null || client == null || schedule == null || next.generation != _generation) return;
+    final ch = channel;
+    final schedule = this.schedule;
+    if (ch == null || app.client == null || schedule == null || next.generation != _generation) return;
     final from = segment;
     final current = next.segment;
     _cancelPrefetch();
@@ -800,7 +886,7 @@ class Tuner extends ChangeNotifier {
     _awaitingFirstFrame = false;
     _keyframeJoin = null;
     _noteReached(atSegmentEnd: true);
-    _setOnNow(_generation, ch, client, schedule, current, _clock(), next.start);
+    _setOnNow(_generation, ch, schedule, current, viewNow(), next.start, next.pick);
     // A conversion the part before played from ends with it.
     _stopTranscode();
     _readingFrom(next.routed);
@@ -828,9 +914,9 @@ class Tuner extends ChangeNotifier {
   void _armPreload() {
     _cancelPreloadTimers();
     final end = _segmentEnd;
-    if (!preload || end == null || _preloaded != null || channel == null) return;
+    if (!preload || end == null || _preloaded != null || channel == null || paused) return;
     final generation = _generation, serial = _preloadSerial;
-    final now = _clock();
+    final now = viewNow();
     Duration before(Duration lead) {
       final d = end.subtract(lead).difference(now);
       return d.isNegative ? Duration.zero : d;
@@ -867,8 +953,8 @@ class Tuner extends ChangeNotifier {
   /// only a moment of it left at the hand-over is skipped, as an open skips
   /// it (a clip's last seconds), for the one after it.
   ({ScheduledProgram segment, Duration start})? _nextSegment() {
-    final ch = channel, current = segment, end = _segmentEnd;
-    final schedule = ch == null ? null : app.scheduleFor(ch);
+    final current = segment, end = _segmentEnd;
+    final schedule = this.schedule;
     if (schedule == null || current == null || end == null) return null;
     var next = schedule.playbackAt(current.end);
     if (next.end.difference(end) < const Duration(seconds: 4)) next = schedule.playbackAt(next.end);
@@ -881,10 +967,11 @@ class Tuner extends ChangeNotifier {
   /// by this session's decision, asked now if there's none (shared with a
   /// request in flight). False when it can't be asked.
   Future<bool> _playsDirect(ScheduledProgram s) async {
-    final source = s.item!.sourceId;
+    final item = _pick(s.item!)?.item ?? s.item!;
+    final source = item.sourceId;
     final isProgram = _isProgramPart(s);
     final android = app.decidesEverySegment;
-    final cap = isProgram ? app.capInEffect : null;
+    final cap = isProgram ? _capFor(item) : null;
     if (!android && !(app.settings.playback.transcodeIfNeeded && isProgram)) return true;
     final saved = app.savedDecision(source, cap);
     if (saved != null) return saved.template == null;
@@ -905,12 +992,13 @@ class Tuner extends ChangeNotifier {
   /// opens at the hand-over as usual.
   Future<void> _preloadNext(int generation, int serial) async {
     bool stale() => generation != _generation || serial != _preloadSerial || !_mayPreload;
-    final client = app.client;
     final next = _nextSegment();
-    if (stale() || client == null || next == null || _preloaded != null) return;
+    if (stale() || app.client == null || next == null || _preloaded != null) return;
     final segment = next.segment;
-    final item = segment.item;
-    if (item == null) {
+    final pick = segment.item == null ? null : _pick(segment.item!);
+    final item = pick?.item;
+    final client = pick?.client;
+    if (item == null || client == null) {
       _diagnostics?.event('next segment ${_label(segment)}: nothing to play, not preloaded');
       return;
     }
@@ -936,9 +1024,9 @@ class Tuner extends ChangeNotifier {
       await media.clearQueue();
       return;
     }
-    _preloaded = _Preload(segment, next.start, generation, url, routed);
+    _preloaded = _Preload(segment, next.start, generation, url, routed, pick);
     _diagnostics?.event('preloaded ${_label(segment)} from ${next.start} (hand-over in '
-        '${_segmentEnd?.difference(_clock()).inMilliseconds} ms)');
+        '${_segmentEnd?.difference(viewNow()).inMilliseconds} ms)');
   }
 
   /// A segment as the diagnostics name it.
@@ -986,6 +1074,7 @@ class Tuner extends ChangeNotifier {
   /// jump or stand still, and a late tick from the file before is far away.
   void _onPosition(Duration position) {
     _live?.moved(position, _clock());
+    _justResumed = false;
     if (!_awaitingFirstFrame) return;
     // A live stream's timeline starts wherever the broadcast is.
     if (_live == null && (position - _landing).abs() > const Duration(seconds: 30)) {
@@ -1041,6 +1130,8 @@ class Tuner extends ChangeNotifier {
     // The stream is up: the app's own requests may go now.
     unawaited(flushReports());
     _beginReport();
+    // Opened while paused: it holds here until the resume.
+    if (paused) _holdPicture();
     if (prefetch) _armPrefetch();
     // A spare connection was used by this open.
     _warmConnections();
@@ -1075,10 +1166,14 @@ class Tuner extends ChangeNotifier {
   /// decides (design D1). Only with a cap set, or on Android; otherwise
   /// nothing is asked.
   void _prefetchDecisions() {
-    final cap = app.capInEffect;
-    if ((cap == null && !app.decidesEverySegment) || app.client == null || channel == null) return;
+    if (app.client == null || channel == null) return;
     for (final p in _likelyNext()) {
-      final source = p.item!.sourceId;
+      final item = _pick(p.item!)?.item;
+      if (item == null) continue;
+      // The profile's cap, lowered by the server's quality limit.
+      final cap = _capFor(item);
+      if (cap == null && !app.decidesEverySegment) continue;
+      final source = item.sourceId;
       if (app.savedDecision(source, cap) != null || app.deciding(source, cap)) continue;
       // The join position doesn't matter: opening sets the real one. A tune
       // there meanwhile awaits this request.
@@ -1121,7 +1216,7 @@ class Tuner extends ChangeNotifier {
       if (current != null && !current.isBreak && current.item?.id == report.item.id) {
         final position = _itemPosition;
         if (position > report.reached) report.reached = position;
-        _quietly(() => client.reportPlaybackProgress(_reportAt(report, position)));
+        _quietly(() => client.reportPlaybackProgress(_reportAt(report, position, paused: paused)));
       } else {
         // During its breaks the program is paused where it stopped.
         _quietly(() => client.reportPlaybackProgress(_reportAt(report, report.reached, paused: true)));
@@ -1130,7 +1225,8 @@ class Tuner extends ChangeNotifier {
   }
 
   /// Ends the viewing being reported: as watched when it got to the end,
-  /// otherwise at position 0 (see [stoppedPosition]). The report is queued
+  /// otherwise (or when Truncate cut it) at position 0 (see
+  /// [stoppedPosition]). The report is queued
   /// (see [flushReports]); a viewing that never started sends nothing.
   void _queueFinish() {
     _progress?.cancel();
@@ -1138,7 +1234,9 @@ class Tuner extends ChangeNotifier {
     final report = _report;
     _report = null;
     if (report == null || !report.started) return;
-    _stoppedQueue.add((report.client, _reportAt(report, stoppedPosition(report.item, report.reached))));
+    // A program Truncate cut never reached its end: never watched.
+    final position = report.cut ? Duration.zero : stoppedPosition(report.item, report.reached);
+    _stoppedQueue.add((report.client, _reportAt(report, position)));
     _stoppedTimer ??= Timer(stoppedReportDelay, () => unawaited(flushReports()));
   }
 
@@ -1202,7 +1300,7 @@ class Tuner extends ChangeNotifier {
 
   /// Where in the program's video the player is. A transcode starts at 0
   /// where it joined.
-  Duration get _itemPosition => media.position + (_active?.timeOffset ?? Duration.zero);
+  Duration get _itemPosition => _pausedPosition ?? media.position + (_active?.timeOffset ?? Duration.zero);
 
   /// Opens [current] as a new transcode job joined at [startAt] (Jellyfin
   /// seeks; mpv never does). False if it failed.
@@ -1212,6 +1310,7 @@ class Tuner extends ChangeNotifier {
       {required int? capKbps, bool fallback = false, bool directStream = false}) async {
     final job = _active = _Transcode(
         playSessionId: _newSessionId(),
+        client: client,
         item: item,
         template: template,
         joinedAt: startAt,
@@ -1263,6 +1362,38 @@ class Tuner extends ChangeNotifier {
       _onLiveError(message);
       return;
     }
+    // A stream that gave up while paused opens again at the resume, and a
+    // resume that fails reopens once before it counts.
+    if (paused && status == TunerStatus.playing) {
+      _reopenOnResume = true;
+      return;
+    }
+    if (_justResumed) {
+      _justResumed = false;
+      _diagnostics?.event('resume failed ($message); reopening');
+      unawaited(_playCurrent(++_generation, trigger: 'resume', quiet: true, exact: true));
+      return;
+    }
+    final handingOver = _handover?.preloaded == true;
+    if (!handingOver && status != TunerStatus.tuning && status != TunerStatus.playing) return;
+    // Another server has a copy (multi-server): if this one can't be
+    // reached, that copy opens at the same position.
+    final playing = _playing;
+    final entry = segment?.item;
+    if (playing != null && entry != null && app.hasOtherCopy(entry, playing.key)) {
+      final generation = _generation;
+      unawaited(() async {
+        if (await _failOver(generation) || generation != _generation) return;
+        _onPlaybackErrorHere(message);
+      }());
+      return;
+    }
+    _onPlaybackErrorHere(message);
+  }
+
+  /// [_onPlaybackError] once no other copy is to be tried.
+  void _onPlaybackErrorHere(String message) {
+    if (_live != null) return;
     final handingOver = _handover?.preloaded == true;
     if (!handingOver && status != TunerStatus.tuning && status != TunerStatus.playing) return;
     if (status == TunerStatus.tuning && _mayFallBack) {
@@ -1282,30 +1413,50 @@ class Tuner extends ChangeNotifier {
     _fail(message);
   }
 
+  /// When the server the segment on now plays from doesn't answer and
+  /// another server has a copy (multi-server D5): marks it Can't be reached
+  /// and opens the next copy at the scheduled position. False when there's
+  /// nothing to fail over to, or the server answers.
+  Future<bool> _failOver(int generation) async {
+    final playing = _playing;
+    final entry = segment?.item;
+    if (playing == null || entry == null || !app.hasOtherCopy(entry, playing.key)) return false;
+    if (await app.serverAnswers(playing.key)) return false;
+    if (generation != _generation) return true;
+    app.markUnreachable(playing.key);
+    final next = _pick(entry);
+    _diagnostics?.event('server ${playing.key} unreachable');
+    PlaybackDiagnostics.note('SERVER', '${playing.key} → ${next?.key ?? '-'}');
+    await _playCurrent(++_generation, trigger: 'failover', quiet: true, exact: true);
+    return true;
+  }
+
   Future<void> _fallBack(int generation) async {
     _mayFallBack = false;
     final current = segment;
-    final item = current?.item;
-    final client = app.client;
+    final item = _playing?.item;
+    final client = _playing?.client;
     if (current == null || item == null || client == null) return;
     _diagnostics?.tuneStarted('fallback', 'ch=${channel?.number}');
     _armStartup(generation);
     // Under the cap this open was decided with.
-    final cap = app.capInEffect;
+    final cap = _capFor(item);
     final PlaybackDecision decision;
     try {
       decision = await client.playbackDecision(item.sourceId,
           maxBitrate: cap == null ? null : cap * 1000,
           forceTranscode: true,
-          startAt: current.positionAt(_clock()),
+          startAt: current.positionAt(viewNow()),
           profile: app.decidesEverySegment ? await app.deviceProfile(cap) : null);
     } on Object catch (e) {
-      if (generation == _generation) _fail('$e');
+      if (generation != _generation) return;
+      if (e is ServerException && e.unreachable && await _failOver(generation)) return;
+      _fail('$e');
       return;
     }
     if (generation != _generation) return;
     // The scheduled position for this moment, not where the failed open was.
-    final startAt = current.positionAt(_clock());
+    final startAt = current.positionAt(viewNow());
     var template = decision.transcodeTemplate!;
     // On Android, with no cap, at what keeps the original picture.
     if (app.decidesEverySegment && cap == null) {
@@ -1321,6 +1472,11 @@ class Tuner extends ChangeNotifier {
     _diagnostics?.event('fail while ${status.name}: $message (stops transcode ${_active?.playSessionId})');
     _diagnostics?.tuneFailed(message);
     _mayFallBack = false;
+    // A time the viewer chose: they go live rather than wait on a card.
+    if (shifted) {
+      unawaited(goLive(notice: couldntPlayNotice));
+      return;
+    }
     _stopTranscode();
     unawaited(_dropPreload());
     error = message;
@@ -1328,7 +1484,7 @@ class Tuner extends ChangeNotifier {
     // A Plex server may answer at another address now: tune again there.
     final generation = _generation;
     unawaited(app.reachServerAgain().then((moved) {
-      if (moved && generation == _generation && status == TunerStatus.error) unawaited(retune());
+      if (moved && generation == _generation && status == TunerStatus.error) unawaited(_retuneInPlace());
     }));
   }
 
@@ -1338,10 +1494,9 @@ class Tuner extends ChangeNotifier {
     _startup?.cancel();
     final job = _active;
     _active = null;
-    final client = app.client;
-    if (job == null || client == null) return;
+    if (job == null) return;
     _diagnostics?.event('stop transcode ${job.playSessionId} (status ${status.name})');
-    unawaited(_quietly(() => client.stopTranscode(job.playSessionId).timeout(const Duration(seconds: 5))));
+    unawaited(_quietly(() => job.client.stopTranscode(job.playSessionId).timeout(const Duration(seconds: 5))));
   }
 
   /// Stops the active transcode job and waits (briefly) for the server, for
@@ -1350,9 +1505,431 @@ class Tuner extends ChangeNotifier {
     _startup?.cancel();
     final job = _active;
     _active = null;
-    final client = app.client;
-    if (job == null || client == null) return;
-    await _quietly(() => client.stopTranscode(job.playSessionId).timeout(exitTimeout));
+    if (job == null) return;
+    await _quietly(() => job.client.stopTranscode(job.playSessionId).timeout(exitTimeout));
+  }
+
+  // ---- Timeshift (timeshift spec) ----------------------------------------------
+  // A generated channel's schedule is arithmetic on the clock and its files
+  // stay on the server, so watching behind it is a time offset: nothing is
+  // recorded. All schedule work reads [viewNow]; timers are differences on
+  // that one timeline.
+
+  /// The furthest behind a viewer may be.
+  static const maxBehind = Duration(hours: 4);
+
+  /// How far back a program shorter than this can always be rewound.
+  static const rewindWindow = Duration(minutes: 30);
+
+  /// Paused this long, the stream reopens at the resume: its connections
+  /// will have gone idle (the proxy's idle timeout).
+  static const reopenAfter = Duration(minutes: 2);
+
+  /// Key presses within this of each other make one seek.
+  static const seekDebounce = Duration(milliseconds: 400);
+
+  /// A paused transcode's job stops after this.
+  @visibleForTesting
+  Duration pausedJobStop = const Duration(seconds: 30);
+
+  static const backToLiveNotice = 'Back to live';
+  static const couldntPlayNotice = "Couldn't play that part. Back to live";
+
+  Duration _shift = Duration.zero;
+
+  /// The viewing time while paused.
+  DateTime? _frozen;
+  DateTime? _pausedWall;
+
+  /// Where in the item the picture was held.
+  Duration? _pausedPosition;
+  Timer? _pausedJobTimer;
+
+  /// The open stream can't go on from the pause (a stopped job, a stream
+  /// that gave up).
+  bool _reopenOnResume = false;
+  bool _justResumed = false;
+
+  /// The schedule in use while behind: scans and edits don't disturb it.
+  ProgramSchedule? _pinned;
+
+  /// Where key presses have moved to, until the seek happens.
+  DateTime? _seekTarget;
+  bool _seekToLive = false;
+  Timer? _seekTimer;
+
+  final _notices = StreamController<String>.broadcast();
+
+  /// Short messages for the screen ("Back to live").
+  Stream<String> get notices => _notices.stream;
+
+  /// The schedule's time for what's being watched: the clock, behind it by
+  /// the shift, or stopped while paused.
+  DateTime viewNow() => _frozen ?? _clock().subtract(_shift);
+
+  bool get paused => _frozen != null;
+
+  /// Behind the schedule, or paused.
+  bool get shifted => paused || _shift > Duration.zero;
+
+  /// How far behind the schedule the viewer is.
+  Duration get behind {
+    final d = _clock().difference(viewNow());
+    return d.isNegative ? Duration.zero : d;
+  }
+
+  /// The schedule what's on screen comes from.
+  ProgramSchedule? get schedule {
+    final ch = channel;
+    return _pinned ?? (ch == null ? null : app.scheduleFor(ch));
+  }
+
+  /// The controls apply to what's on: a generated channel, with the setting
+  /// on.
+  bool get canTimeshift {
+    final ch = channel;
+    return ch != null && !ch.isLive && app.settings.playback.pauseAndRewind;
+  }
+
+  /// Where key presses have moved to, shown at once (null: none pending).
+  DateTime? get seekTarget => _seekTarget;
+
+  /// What the seek bar shows: the viewing position, within what can be
+  /// reached, and where the program on screen started.
+  ({DateTime from, DateTime to, DateTime position, DateTime? programStart}) get timeline {
+    final position = _seekTarget ?? viewNow();
+    final to = _clock();
+    final earliest = earliestView();
+    final programStart = program == null || program!.isOffAir ? null : _restartPoint(program!);
+    var from = position.isBefore(earliest) ? position : earliest;
+    if (programStart != null && programStart.isBefore(from)) from = programStart;
+    return (from: from, to: to, position: position, programStart: programStart);
+  }
+
+  /// The earliest reachable viewing time: the earlier of 30 minutes ago and
+  /// the start of the program on air now, within this session's schedule
+  /// floor and the 4-hour limit.
+  DateTime earliestView() {
+    final now = _clock();
+    var earliest = now.subtract(rewindWindow);
+    final schedule = this.schedule;
+    if (schedule == null) return now;
+    final onAir = schedule.programAt(now);
+    if (onAir.start.isBefore(earliest)) earliest = onAir.start;
+    final floor = _floor(onAir);
+    if (floor != null && earliest.isBefore(floor)) earliest = floor;
+    final cap = now.subtract(maxBehind);
+    return earliest.isBefore(cap) ? cap : earliest;
+  }
+
+  /// The start of the slot on air when the schedule in use last changed, so
+  /// rewinding can't show a past that never aired. Never past [onAir]'s start:
+  /// restarting what's on always works.
+  DateTime? _floor(ScheduledProgram onAir) {
+    final ch = channel;
+    final changed = ch == null ? null : app.scheduleChangedAt(ch.id);
+    final schedule = this.schedule;
+    if (changed == null || schedule == null) return null;
+    // A pinned schedule is older than any change since it was pinned.
+    if (_pinned != null && _pinnedAt != null && changed.isAfter(_pinnedAt!)) return null;
+    final start = schedule.programAt(changed).start;
+    return start.isAfter(onAir.start) ? onAir.start : start;
+  }
+
+  DateTime? _pinnedAt;
+
+  /// Holds on to the schedule in use: the viewer is about to be behind it.
+  void _pin() {
+    if (_pinned != null) return;
+    _pinned = schedule;
+    _pinnedAt = _clock();
+  }
+
+  /// Back on the clock: everything about being behind goes.
+  void _endShift() {
+    _seekTimer?.cancel();
+    _seekTimer = null;
+    _seekTarget = null;
+    _seekToLive = false;
+    _pausedJobTimer?.cancel();
+    _pausedJobTimer = null;
+    _shift = Duration.zero;
+    _frozen = null;
+    _pausedWall = null;
+    _pausedPosition = null;
+    _reopenOnResume = false;
+    _justResumed = false;
+    _pinned = null;
+    _pinnedAt = null;
+    _notice = null;
+  }
+
+  /// A viewer behind or paused: where they are, to come back to after the app
+  /// was out of sight. Null at the live point.
+  ViewingPlace? get place {
+    if (!shifted || channel == null) return null;
+    return ViewingPlace(pictureNow(), paused: paused, schedule: schedule);
+  }
+
+  void _noteShift(String action, {String? method}) {
+    PlaybackDiagnostics.note(
+        'SHIFT',
+        'action=$action ch=${channel?.number} view=${viewNow().toIso8601String()} '
+            'behind=${behind.inMilliseconds / 1000}s${method == null ? '' : ' method=$method'}');
+  }
+
+  /// Holds the picture and silences the sound. Only what's playing pauses:
+  /// off-air, stand-by, error and tuning states don't.
+  Future<void> pause() async {
+    if (!canTimeshift || paused || status != TunerStatus.playing) return;
+    _pin();
+    _frozen = _seekTarget ?? viewNow();
+    _seekToLive = false;
+    _pausedWall = _clock();
+    _notice = null;
+    _programEnd?.cancel();
+    _noteShift('pause');
+    notifyListeners();
+    _holdPicture();
+    await _dropPreload();
+    if (_seekTarget != null) await _applySeek();
+  }
+
+  /// The player holds what it shows; the server's told, and a transcode's job
+  /// is stopped before long.
+  void _holdPicture() {
+    final seg = segment;
+    _pausedPosition = seg?.item == null ? _itemPosition : seg!.positionAt(viewNow());
+    unawaited(media.pause().catchError((Object e) {
+      _diagnostics?.event('pause failed: $e');
+      _reopenOnResume = true;
+    }));
+    _reportNow();
+    _pausedJobTimer?.cancel();
+    if (_active == null) return;
+    _pausedJobTimer = Timer(pausedJobStop, () {
+      if (!paused || _active == null) return;
+      _reopenOnResume = true;
+      _stopTranscode();
+    });
+  }
+
+  /// A progress report at once: the dashboard shows a pause or resume now.
+  void _reportNow() {
+    final report = _report;
+    if (report == null || !report.started) return;
+    final current = segment;
+    final position = current != null && !current.isBreak && current.item?.id == report.item.id ? _itemPosition : report.reached;
+    final client = report.client;
+    final at = _reportAt(report, position, paused: paused);
+    unawaited(_quietly(() => client.reportPlaybackProgress(at)));
+  }
+
+  /// Goes on from the paused place, now behind by the time paused.
+  Future<void> resume() async {
+    final frozen = _frozen;
+    if (frozen == null) return;
+    final now = _clock();
+    if (now.difference(frozen) > maxBehind) {
+      await goLive(notice: backToLiveNotice);
+      return;
+    }
+    final pausedFor = now.difference(_pausedWall ?? now);
+    final reopen = _reopenOnResume || pausedFor >= reopenAfter || status != TunerStatus.playing;
+    // A reopen lands exactly where the picture was: a keyframe join's picture
+    // runs behind the viewing time.
+    final view = reopen ? pictureNow() : frozen;
+    final seek = _seekTarget;
+    _frozen = null;
+    _pausedWall = null;
+    _pausedPosition = null;
+    _pausedJobTimer?.cancel();
+    _pausedJobTimer = null;
+    _reopenOnResume = false;
+    _shift = now.difference(seek ?? view);
+    if (_shift.isNegative) _shift = Duration.zero;
+    _noteShift('resume', method: reopen ? 'reopen' : 'resume');
+    notifyListeners();
+    if (seek != null) {
+      _seekTimer?.cancel();
+      _seekTarget = null;
+      _seekToLive = false;
+      await _moveTo(seek, wasPaused: true);
+      return;
+    }
+    if (_shift == Duration.zero) {
+      _pinned = null;
+      _pinnedAt = null;
+    }
+    if (reopen) {
+      await _playCurrent(++_generation, trigger: 'resume', quiet: true, exact: true);
+      return;
+    }
+    final generation = _generation;
+    _justResumed = true;
+    try {
+      await media.resume();
+    } on Object catch (e) {
+      if (generation != _generation) return;
+      _justResumed = false;
+      _diagnostics?.event('resume failed ($e); reopening');
+      await _playCurrent(++_generation, trigger: 'resume', quiet: true, exact: true);
+      return;
+    }
+    if (generation != _generation) return;
+    if (_segmentEnd case final end?) _endSegmentAt(end, generation);
+    _armPreload();
+    _reportNow();
+  }
+
+  Future<void> togglePause() => paused ? resume() : pause();
+
+  /// Moves the pending seek by [by]; the seek happens [seekDebounce] after the
+  /// last press.
+  void skip(Duration by) {
+    if (!canTimeshift) return;
+    seekTo((_seekTarget ?? viewNow()).add(by));
+  }
+
+  /// Moves the pending seek to [target], within what can be reached: forward
+  /// up to the live point, back to the start of the window (a viewer already
+  /// earlier than that isn't moved forward).
+  void seekTo(DateTime target) {
+    if (!canTimeshift) return;
+    final now = _clock();
+    final from = _seekTarget ?? viewNow();
+    final earliest = earliestView();
+    final floor = from.isBefore(earliest) ? from : earliest;
+    _seekToLive = !target.isBefore(now);
+    _seekTarget = _seekToLive ? now : (target.isBefore(floor) ? floor : target);
+    _seekTimer?.cancel();
+    _seekTimer = Timer(seekDebounce, () => unawaited(_applySeek()));
+    notifyListeners();
+  }
+
+  /// Plays the program on screen from its first picture.
+  Future<void> restart() async {
+    final slot = program;
+    if (!canTimeshift || slot == null || slot.item == null) return;
+    final wasPaused = paused;
+    var target = _restartPoint(slot);
+    final floor = _floor(schedule?.programAt(_clock()) ?? slot);
+    if (floor != null && target.isBefore(floor)) target = floor;
+    final cap = _clock().subtract(maxBehind);
+    if (target.isBefore(cap)) target = cap;
+    _seekTimer?.cancel();
+    _seekTarget = null;
+    _seekToLive = false;
+    _noteShift('restart');
+    // Restarting plays.
+    _frozen = null;
+    _pausedPosition = null;
+    _pausedWall = null;
+    _pausedJobTimer?.cancel();
+    final lost = _reopenOnResume;
+    _reopenOnResume = false;
+    await _moveTo(target, wasPaused: wasPaused || lost);
+  }
+
+  DateTime _restartPoint(ScheduledProgram slot) => switch (schedule) {
+        final ChannelSchedule s => s.firstPictureOf(slot),
+        _ => slot.start,
+      };
+
+  /// Returns to what's airing now, playing. [notice]: shown as it does.
+  Future<void> goLive({String? notice}) async {
+    if (notice != null) _notices.add(notice);
+    if (!shifted) {
+      if (_seekTarget != null) {
+        _endShift();
+        notifyListeners();
+      }
+      return;
+    }
+    _noteShift('go-live', method: 'reopen');
+    _endShift();
+    notifyListeners();
+    await _playCurrent(++_generation, trigger: 'go-live', quiet: true);
+  }
+
+  /// The pending seek's time has come.
+  Future<void> _applySeek() async {
+    final target = _seekTarget;
+    if (target == null) return;
+    final toLive = _seekToLive;
+    _seekTimer?.cancel();
+    _seekTarget = null;
+    _seekToLive = false;
+    if (paused) {
+      _frozen = target;
+      await _moveTo(target);
+    } else if (toLive) {
+      if (shifted) await _moveToLive();
+    } else {
+      await _moveTo(target);
+    }
+  }
+
+  /// A forward skip reached the live point.
+  Future<void> _moveToLive() async {
+    final pinned = _pinned;
+    final same = pinned == null || identical(pinned, channel == null ? null : app.scheduleFor(channel!));
+    _pinned = null;
+    _pinnedAt = null;
+    _shift = Duration.zero;
+    await _seekOrReopen(_clock(), reopen: !same);
+    notifyListeners();
+  }
+
+  /// Watches from [target] on, behind the schedule by what that leaves.
+  /// [wasPaused]: the picture is held and must play again.
+  Future<void> _moveTo(DateTime target, {bool wasPaused = false}) async {
+    _pin();
+    if (!paused) {
+      final d = _clock().difference(target);
+      _shift = d.isNegative ? Duration.zero : d;
+    }
+    await _seekOrReopen(target, reopen: wasPaused);
+    notifyListeners();
+  }
+
+  /// Inside the direct-played segment on screen, the open stream seeks;
+  /// anywhere else the existing open path runs at the viewing time, exact and
+  /// with no channel number.
+  Future<void> _seekOrReopen(DateTime target, {bool reopen = false}) async {
+    final seg = segment;
+    final inSegment = !reopen &&
+        status == TunerStatus.playing &&
+        !_awaitingFirstFrame &&
+        _active == null &&
+        !_reopenOnResume &&
+        seg != null &&
+        seg.item != null &&
+        seg.isOnAt(target);
+    _noteShift('seek', method: inSegment ? 'seek' : 'reopen');
+    _notice = null;
+    if (!inSegment) {
+      await _playCurrent(++_generation, trigger: 'seek', quiet: true, exact: true);
+      return;
+    }
+    _noteReached(atSegmentEnd: false);
+    final generation = ++_generation;
+    await _dropPreload();
+    if (generation != _generation) return;
+    final position = seg.positionAt(target);
+    if (paused) _pausedPosition = position;
+    try {
+      await media.seek(position);
+    } on Object catch (e) {
+      if (generation != _generation) return;
+      _diagnostics?.event('seek failed ($e); reopening');
+      await _playCurrent(++_generation, trigger: 'seek', quiet: true, exact: true);
+      return;
+    }
+    if (generation != _generation) return;
+    _keyframeJoin = null;
+    _endSegmentAt(seg.end, generation);
+    _armPreload();
   }
 
   // ---- Live channels (live-playback) -------------------------------------------
@@ -1784,6 +2361,7 @@ class Tuner extends ChangeNotifier {
     _keyframeJoin = null;
     _handover = null;
     _noteReached(atSegmentEnd: false);
+    _endShift();
     await _dropPreload();
     // Nothing is opening: what's queued goes now.
     _queueFinish();
@@ -1818,6 +2396,10 @@ class Tuner extends ChangeNotifier {
     _stopTranscode();
     unawaited(_diagnostics?.close());
     app.volumeLeveling.removeListener(_onLevelingChanged);
+    app.removeListener(_onSettingsChanged);
+    _seekTimer?.cancel();
+    _pausedJobTimer?.cancel();
+    unawaited(_notices.close());
     for (final s in _subscriptions) {
       s.cancel();
     }
@@ -1826,11 +2408,25 @@ class Tuner extends ChangeNotifier {
   }
 }
 
+/// Where a viewer behind the schedule was, to return to (timeshift D12).
+class ViewingPlace {
+  const ViewingPlace(this.view, {required this.paused, required this.schedule});
+
+  final DateTime view;
+  final bool paused;
+
+  /// The schedule they were watching.
+  final ProgramSchedule? schedule;
+}
+
 /// One viewing being reported to Jellyfin, across the program's parts.
 class _Report {
-  _Report(this.client, this.item, this.sessionId, this.viewing);
+  _Report(this.client, this.item, this.sessionId, this.viewing, {this.key = ServerSet.mainKey});
 
   final MediaServer client;
+
+  /// The server [client] is (multi-server).
+  final String key;
   final MediaEntry item;
   final String sessionId;
   Viewing viewing;
@@ -1840,14 +2436,20 @@ class _Report {
 
   /// The furthest position played.
   Duration reached = Duration.zero;
+
+  /// Truncate cuts the program at its slot's end.
+  bool cut = false;
 }
 
 /// The next segment, in the player's playlist: [segment] from [start] in its
 /// item, read from [url] (through [routed]).
 class _Preload {
-  _Preload(this.segment, this.start, this.generation, this.url, this.routed);
+  _Preload(this.segment, this.start, this.generation, this.url, this.routed, this.pick);
 
   final ScheduledProgram segment;
+
+  /// The copy it plays from (multi-server).
+  final ({MediaEntry item, MediaServer client, String key})? pick;
   final Duration start;
   final int generation;
   final Uri url;
@@ -1871,6 +2473,7 @@ class _Handover {
 class _Transcode {
   _Transcode(
       {required this.playSessionId,
+      required this.client,
       required this.item,
       required this.template,
       required this.joinedAt,
@@ -1882,6 +2485,9 @@ class _Transcode {
   /// A new id per job, so stopping the last part's job can never stop the
   /// next one.
   final String playSessionId;
+
+  /// The server it runs on (multi-server).
+  final MediaServer client;
   final MediaEntry item;
   final Uri template;
   final Duration joinedAt;

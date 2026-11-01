@@ -1,16 +1,20 @@
+import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
 
 import '../../channels/channel.dart';
+import '../../channels/retro.dart';
 import '../../channels/premiere_settings.dart';
 import '../../commercials/break_plan.dart';
+import '../../commercials/commercial_pool.dart';
 import '../../ui/format.dart';
 import '../app.dart';
 import '../widgets/break_plan_editor.dart';
 import '../widgets/channel_icon.dart';
 import '../widgets/common.dart';
+import '../widgets/source_editor.dart';
 
-/// A profile's channels: search, open one to edit, add block and music
-/// channels, reset the lineup; the main logo mode and premieres.
+/// A profile's channels: search, open one to edit, add custom, block and
+/// music channels, reset the lineup; the main logo mode and premieres.
 class ChannelsPage extends StatefulWidget {
   const ChannelsPage({super.key, required this.profileId});
   final String profileId;
@@ -46,6 +50,14 @@ class _ChannelsPageState extends State<ChannelsPage> {
     if (r != null) await _load();
   }
 
+  Future<void> _addCustom() async {
+    final added = await showDialog<bool>(
+      context: context,
+      builder: (_) => _CustomChannelDialog(profileId: widget.profileId),
+    );
+    if (added == true) await _load();
+  }
+
   Future<void> _addMusic() async {
     final body = await showDialog<Map<String, Object?>>(
       context: context,
@@ -78,6 +90,7 @@ class _ChannelsPageState extends State<ChannelsPage> {
         children: [
           Semantics(header: true, child: Text('Channels', style: Theme.of(context).textTheme.headlineSmall)),
           Wrap(spacing: 8, runSpacing: 8, children: [
+            FilledButton.icon(icon: const Icon(Icons.add), label: const Text('New channel'), onPressed: _addCustom),
             FilledButton.tonalIcon(
               icon: const Icon(Icons.add),
               label: const Text('Block channel'),
@@ -93,7 +106,7 @@ class _ChannelsPageState extends State<ChannelsPage> {
               onPressed: () async {
                 final ok = await confirm(context,
                     title: 'Reset channel lineup?',
-                    message: 'Every channel edit is discarded and the default lineup is made again. Block channels are '
+                    message: 'Every channel edit is discarded and the default lineup is made again. Channels you added are '
                         'kept. A backup is saved first.',
                     action: 'Reset');
                 if (ok && context.mounted) await _do(() => context.api.post('$_base/channels/reset'));
@@ -150,6 +163,126 @@ class _ChannelsPageState extends State<ChannelsPage> {
   }
 }
 
+/// One retro setting's choices: a [null] value is "Main setting".
+class _RetroDropdown<T> extends StatelessWidget {
+  const _RetroDropdown({required this.title, required this.values, required this.value, required this.label, required this.onChanged});
+
+  final String title;
+  final List<T> values;
+  final T value;
+  final String Function(T) label;
+  final ValueChanged<T> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: DropdownButtonFormField<T>(
+        key: ValueKey('$title $value'),
+        initialValue: value,
+        decoration: InputDecoration(labelText: title),
+        items: [for (final v in values) DropdownMenuItem(value: v, child: Text(label(v)))],
+        onChanged: (v) {
+          if (v is T) onChanged(v);
+        },
+      ),
+    );
+  }
+}
+
+const _retroNote = "These settings apply on screens running the app. They don't apply to Live TV export.";
+
+/// The main retro look and the Custom CRT style.
+class _MainRetro extends StatelessWidget {
+  const _MainRetro({required this.retro, required this.put, required this.onChooseImage});
+
+  final RetroSettings retro;
+  final Future<void> Function(Map<String, Object?> body) put;
+  final VoidCallback onChooseImage;
+
+  @override
+  Widget build(BuildContext context) {
+    final custom = retro.custom;
+    Widget level(String title, CrtLevel value, String key) => _RetroDropdown<CrtLevel>(
+          title: title,
+          values: CrtLevel.values,
+          value: value,
+          label: (v) => v.label,
+          onChanged: (v) => put({
+            'custom': {key: v.name}
+          }),
+        );
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('Retro look', style: Theme.of(context).textTheme.labelLarge),
+        const SizedBox(height: 4),
+        const Text(_retroNote),
+        const SizedBox(height: 12),
+        _RetroDropdown<PictureShape>(
+            title: 'Picture shape',
+            values: PictureShape.values,
+            value: retro.shape,
+            label: (v) => v.label,
+            onChanged: (v) => put({'shape': v.name})),
+        _RetroDropdown<Surround>(
+            title: 'Surround',
+            values: [for (final s in Surround.values) if (s != Surround.image || retro.surroundImage != null) s],
+            value: retro.surround,
+            label: (v) => v.label,
+            onChanged: (v) => put({'surround': v.name})),
+        Align(
+          alignment: Alignment.centerLeft,
+          child: TextButton(onPressed: onChooseImage, child: const Text('Choose surround image…')),
+        ),
+        _RetroDropdown<CrtStyle>(
+            title: 'CRT effect',
+            values: CrtStyle.values,
+            value: retro.crt,
+            label: (v) => v.label,
+            onChanged: (v) => put({'crt': v.name})),
+        _RetroDropdown<OverlayThemeName>(
+            title: 'Overlay theme',
+            values: OverlayThemeName.values,
+            value: retro.overlay,
+            label: (v) => v.label,
+            onChanged: (v) => put({'overlay': v.name})),
+        _RetroDropdown<OverlayAccent>(
+            title: 'Accent (${retro.overlay.label})',
+            values: OverlayAccent.values,
+            value: retro.accentOf(retro.overlay),
+            label: (v) => v.label,
+            onChanged: (v) => put({
+                  'accents': {retro.overlay.name: v.name}
+                })),
+        Text('Custom CRT style', style: Theme.of(context).textTheme.labelLarge),
+        const SizedBox(height: 12),
+        level('Scanlines', custom.scanlines, 'scanlines'),
+        _RetroDropdown<int>(
+            title: 'Lines',
+            values: CrtValues.lineCounts,
+            value: custom.lines,
+            label: (v) => '$v',
+            onChanged: (v) => put({
+                  'custom': {'lines': v}
+                })),
+        level('Mask', custom.mask, 'mask'),
+        level('Vignette', custom.vignette, 'vignette'),
+        level('Curvature', custom.curvature, 'curvature'),
+        level('Glow', custom.glow, 'glow'),
+        _RetroDropdown<CrtColor>(
+            title: 'Color',
+            values: CrtColor.values,
+            value: custom.color,
+            label: (v) => v.label,
+            onChanged: (v) => put({
+                  'custom': {'color': v.name}
+                })),
+      ],
+    );
+  }
+}
+
 /// The main logo mode and the premiere slot.
 class _MainSettings extends StatelessWidget {
   const _MainSettings({required this.profileId, required this.data, required this.onChanged});
@@ -182,6 +315,15 @@ class _MainSettings extends StatelessWidget {
           onSelectionChanged: (s) => put('logo', {'logoMode': s.single.name}),
         ),
         const SizedBox(height: 16),
+        _MainRetro(
+          retro: RetroSettings.fromJson(data['retro']),
+          put: (body) => put('retro', body),
+          onChooseImage: () async {
+            final name = await _uploadFullScreenImage(context, profileId);
+            if (name != null) await put('retro', {'surround': Surround.image.name, 'surroundImage': name});
+          },
+        ),
+        const SizedBox(height: 16),
         SwitchListTile(
           contentPadding: EdgeInsets.zero,
           title: const Text('New episode premieres'),
@@ -206,6 +348,77 @@ class _MainSettings extends StatelessWidget {
       ],
     );
   }
+}
+
+/// A custom channel: a name, what it plays and its order. Added on Add
+/// with something picked; Cancel adds nothing.
+class _CustomChannelDialog extends StatefulWidget {
+  const _CustomChannelDialog({required this.profileId});
+  final String profileId;
+
+  @override
+  State<_CustomChannelDialog> createState() => _CustomChannelDialogState();
+}
+
+class _CustomChannelDialogState extends State<_CustomChannelDialog> {
+  final _name = TextEditingController(text: 'My Channel');
+  ChannelSource _source = const ChannelSource(includeEpisodes: false);
+  PlaybackOrder _order = PlaybackOrder.random;
+  bool _saving = false;
+
+  /// Adds the channel; on a refusal the dialog stays, with the picks in it.
+  Future<void> _add() async {
+    setState(() => _saving = true);
+    final r = await attempt(
+        context,
+        () => context.api.post('profiles/${widget.profileId}/channels', {
+              'kind': 'custom',
+              'name': _name.text.trim(),
+              'order': _order.name,
+              'source': _source.toJson(),
+            }),
+        profileId: widget.profileId);
+    if (!mounted) return;
+    setState(() => _saving = false);
+    if (r != null) Navigator.of(context).pop(true);
+  }
+
+  @override
+  Widget build(BuildContext context) => AlertDialog(
+        title: const Text('New channel'),
+        scrollable: true,
+        content: SizedBox(
+          width: 640,
+          child: DataView<Map<String, Object?>>(
+            load: () async => (await context.api.get('profiles/${widget.profileId}/library/catalog'))! as Map<String, Object?>,
+            builder: (context, catalog, _) => Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+              TextField(controller: _name, decoration: const InputDecoration(labelText: 'Name')),
+              const SizedBox(height: 12),
+              SourceEditor(
+                profileId: widget.profileId,
+                source: _source,
+                catalog: catalog,
+                onChanged: (s) => setState(() => _source = s),
+              ),
+              RadioGroup<PlaybackOrder>(
+                groupValue: _order,
+                onChanged: (v) => setState(() => _order = v!),
+                child: Column(children: [
+                  for (final o in PlaybackOrder.values)
+                    RadioListTile<PlaybackOrder>(contentPadding: EdgeInsets.zero, value: o, title: Text(o.label)),
+                ]),
+              ),
+            ]),
+          ),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('Cancel')),
+          FilledButton(
+            onPressed: !_source.hasPicks || _saving ? null : _add,
+            child: const Text('Add'),
+          ),
+        ],
+      );
 }
 
 /// A music channel: songs or music videos, optionally only some genres and
@@ -309,6 +522,10 @@ class _ChannelEditorPageState extends State<ChannelEditorPage> {
   final _name = TextEditingController();
   final _number = TextEditingController();
   Map<String, Object?>? _commercials;
+  Map<String, Object?>? _catalog;
+
+  /// The source being edited on a custom channel, until it's saved.
+  ChannelSource? _source;
 
   String get _path => 'profiles/${widget.profileId}/channels/${Uri.encodeComponent(widget.channelId)}';
 
@@ -323,9 +540,14 @@ class _ChannelEditorPageState extends State<ChannelEditorPage> {
       final api = context.api;
       final c = (await api.get(_path))! as Map<String, Object?>;
       final commercials = (await api.get('profiles/${widget.profileId}/commercials'))! as Map<String, Object?>;
+      final catalog = (c['view'] as Map)['custom'] == true
+          ? (await api.get('profiles/${widget.profileId}/library/catalog'))! as Map<String, Object?>
+          : null;
       if (!mounted) return;
       setState(() {
         _c = c;
+        _catalog = catalog;
+        _source = null;
         _commercials = commercials;
         _name.text = c['name'] as String;
         _number.text = '${c['number']}';
@@ -365,6 +587,8 @@ class _ChannelEditorPageState extends State<ChannelEditorPage> {
     final mainPlan = BreakPlan.fromJson(((_commercials?['plan'] as Map?) ?? const {}).cast<String, Object?>());
     final logoMode = LogoMode.parse(c['logoMode']);
     final pools = ((_commercials?['pools'] as List?) ?? const []).cast<Map<String, Object?>>();
+    final saved = ChannelSource.fromJson((c['source'] as Map).cast<String, Object?>());
+    final catalog = _catalog;
     return PageBody(
       title: '${c['number']}  ${c['name']}',
       actions: [
@@ -447,6 +671,28 @@ class _ChannelEditorPageState extends State<ChannelEditorPage> {
               onChanged: (v) => _put({'premieres': v}),
             ),
         ]),
+        if (view['custom'] == true && catalog != null)
+          Section(title: 'What it plays', children: [
+            SourceEditor(
+              profileId: widget.profileId,
+              source: _source ?? saved,
+              catalog: catalog,
+              missingRoots: {...((view['missingRoots'] as List?) ?? const []).cast<String>()},
+              onChanged: (s) => setState(() => _source = s),
+            ),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: FilledButton(
+                onPressed: _source == null || !_source!.hasPicks
+                    ? null
+                    : () async {
+                        await _put({'source': _source!.toJson()});
+                        if (mounted) setState(() => _source = null);
+                      },
+                child: const Text('Save what it plays'),
+              ),
+            ),
+          ]),
         if (!blockOnly && !isLive)
           Section(title: 'Play order', children: [
             if (music) const Text('Music channels only shuffle, never the same artist twice in a row.'),
@@ -459,7 +705,21 @@ class _ChannelEditorPageState extends State<ChannelEditorPage> {
                     RadioListTile<PlaybackOrder>(contentPadding: EdgeInsets.zero, value: o, title: Text(o.label)),
               ]),
             ),
+            if (view['canReshuffle'] == true)
+              Align(
+                alignment: Alignment.centerLeft,
+                child: OutlinedButton.icon(
+                  icon: const Icon(Icons.shuffle),
+                  label: const Text('Reshuffle'),
+                  onPressed: () async {
+                    final r = await attempt(context, () => context.api.post('$_path/reshuffle'),
+                        profileId: widget.profileId, onConflict: _load);
+                    if (r is Map<String, Object?> && mounted) setState(() => _c = r);
+                  },
+                ),
+              ),
           ]),
+        if (view['playsPrograms'] == true) _slotSection(c, pools),
         if (!isLive)
           Section(title: 'Commercials', children: [
             RadioGroup<String>(
@@ -509,6 +769,7 @@ class _ChannelEditorPageState extends State<ChannelEditorPage> {
             ]),
           ),
         ]),
+        Section(title: 'Retro look', children: _retroRows(c, view)),
         if (view['auto'] == false && !isLive)
           Section(children: [
             Align(
@@ -531,4 +792,137 @@ class _ChannelEditorPageState extends State<ChannelEditorPage> {
       ],
     );
   }
+
+  /// The slot length, tail mode, filler pool and offline image.
+  Widget _slotSection(Map<String, Object?> c, List<Map<String, Object?>> pools) {
+    final rule = SlotRule.fromJson(c['slot']);
+    final fillers = [for (final p in pools) if (p['kind'] != PoolKind.bumpers.name) p];
+    Future<void> set(SlotRule? r) => _put({'slot': r?.toJson()});
+    return Section(title: 'Slot length', children: [
+      const Text('Every program starts on the clock. The tail fills the rest of each slot.'),
+      const SizedBox(height: 12),
+      DropdownButtonFormField<int>(
+        key: ValueKey('slot-${rule?.length.inMinutes}'),
+        initialValue: rule?.length.inMinutes ?? 0,
+        decoration: const InputDecoration(labelText: 'Slot length'),
+        items: [
+          const DropdownMenuItem(value: 0, child: Text('Off')),
+          for (final l in SlotRule.lengths) DropdownMenuItem(value: l.inMinutes, child: Text('${l.inMinutes} minutes')),
+        ],
+        onChanged: (m) {
+          if (m == null) return;
+          final length = Duration(minutes: m);
+          set(m == 0 ? null : rule?.copyWith(length: length) ?? SlotRule(length: length));
+        },
+      ),
+      if (rule != null) ...[
+        const SizedBox(height: 12),
+        DropdownButtonFormField<TailMode>(
+          key: ValueKey('tail-${rule.tail.name}'),
+          initialValue: rule.tail,
+          decoration: const InputDecoration(labelText: 'Tail'),
+          items: [for (final t in TailMode.values) DropdownMenuItem(value: t, child: Text(t.label))],
+          onChanged: (t) {
+            if (t != null) set(rule.copyWith(tail: t));
+          },
+        ),
+        if (rule.tail != TailMode.offline) ...[
+          const SizedBox(height: 12),
+          DropdownButtonFormField<String>(
+            key: ValueKey('pool-${rule.poolId}'),
+            initialValue: fillers.any((p) => p['id'] == rule.poolId) ? rule.poolId : '',
+            decoration: const InputDecoration(labelText: 'Filler pool'),
+            items: [
+              const DropdownMenuItem(value: '', child: Text('All pools')),
+              for (final p in fillers) DropdownMenuItem(value: p['id'] as String, child: Text(p['name'] as String)),
+            ],
+            onChanged: (id) => set(rule.copyWith(poolId: () => id == null || id.isEmpty ? null : id)),
+          ),
+        ],
+        const SizedBox(height: 12),
+        Wrap(spacing: 8, runSpacing: 8, children: [
+          FilledButton.tonal(
+            onPressed: () => _uploadOffline(rule),
+            child: Text(rule.offlineImage == null ? 'Choose offline image…' : 'Change offline image…'),
+          ),
+          if (rule.offlineImage != null)
+            OutlinedButton(
+              onPressed: () => set(rule.copyWith(offlineImage: () => null)),
+              child: const Text('Default card'),
+            ),
+        ]),
+      ],
+    ]);
+  }
+
+  /// A channel's four retro settings, each with its "Main setting" choice.
+  List<Widget> _retroRows(Map<String, Object?> c, Map<dynamic, dynamic> view) {
+    final own = ChannelRetro.fromJson(c['retro']);
+    final used = ResolvedRetro.of(ChannelRetro.main, RetroSettings.fromJson(view['mainRetro']));
+    String main(String value) => 'Main setting ($value)';
+    Future<void> set(ChannelRetro retro) => _put({'retro': retro.toJson()});
+    return [
+      const Text(_retroNote),
+      const SizedBox(height: 12),
+      _RetroDropdown<PictureShape?>(
+          title: 'Picture shape',
+          values: [null, ...PictureShape.values],
+          value: own.shape,
+          label: (v) => v?.label ?? main(used.shape.label),
+          onChanged: (v) => set(own.copyWith(shape: () => v))),
+      _RetroDropdown<Surround?>(
+          title: 'Surround',
+          values: [
+            null,
+            for (final s in Surround.values)
+              if (s != Surround.image || own.surroundImage != null) s
+          ],
+          value: own.surround,
+          label: (v) => v?.label ?? main(used.surround.label),
+          onChanged: (v) => set(own.copyWith(surround: () => v))),
+      Align(
+        alignment: Alignment.centerLeft,
+        child: TextButton(onPressed: () => _uploadSurround(own), child: const Text('Choose surround image…')),
+      ),
+      _RetroDropdown<CrtStyle?>(
+          title: 'CRT effect',
+          values: [null, ...CrtStyle.values],
+          value: own.crt,
+          label: (v) => v?.label ?? main(used.crt.label),
+          onChanged: (v) => set(own.copyWith(crt: () => v))),
+      _RetroDropdown<OverlayThemeName?>(
+          title: 'Overlay theme',
+          values: [null, ...OverlayThemeName.values],
+          value: own.overlay,
+          label: (v) => v?.label ?? main(used.overlay.label),
+          onChanged: (v) => set(own.copyWith(overlay: () => v))),
+    ];
+  }
+
+  Future<void> _uploadSurround(ChannelRetro own) async {
+    final name = await _uploadFullScreenImage(context, widget.profileId);
+    if (name != null && mounted) {
+      await _put({'retro': own.copyWith(surround: () => Surround.image, surroundImage: () => name).toJson()});
+    }
+  }
+
+  Future<void> _uploadOffline(SlotRule rule) async {
+    final name = await _uploadFullScreenImage(context, widget.profileId);
+    if (name != null && mounted) await _put({'slot': rule.copyWith(offlineImage: () => name).toJson()});
+  }
+}
+
+/// A picture chosen and stored for a full-screen use; its name, or null.
+Future<String?> _uploadFullScreenImage(BuildContext context, String profileId) async {
+  final file = await openFile(acceptedTypeGroups: const [
+    XTypeGroup(label: 'Images', extensions: ['png', 'jpg', 'jpeg', 'webp', 'gif', 'bmp', 'svg'], mimeTypes: ['image/*']),
+  ]);
+  if (file == null || !context.mounted) return null;
+  final bytes = await file.readAsBytes();
+  if (!context.mounted) return null;
+  final r = await attempt(
+      context,
+      () => context.api.upload('profiles/$profileId/icons', bytes, query: {'name': file.name, 'kind': 'offline'}),
+      profileId: profileId);
+  return r is Map ? r['name'] as String : null;
 }

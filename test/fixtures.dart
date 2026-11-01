@@ -23,6 +23,7 @@ LibraryIndex fakeLibrary({
   Map<String, String> ratings = const {},
   Map<String, Duration> lengths = const {},
   int movies = 0,
+  Map<int, String> movieRatings = const {},
   Duration episodeLength = const Duration(minutes: 22),
   List<Duration> commercials = const [],
   String commercialPool = fakePoolId,
@@ -35,6 +36,7 @@ LibraryIndex fakeLibrary({
       ratings: ratings,
       lengths: lengths,
       movies: movies,
+      movieRatings: movieRatings,
       episodeLength: episodeLength,
       commercials: commercials);
   return LibraryIndex.fromJellyfinItems(
@@ -76,13 +78,14 @@ List<Map<String, Object?>> fakeMusic(int count,
     ];
 
 /// The Jellyfin JSON for the items of a [fakeLibrary] with the same
-/// arguments (for a fake server).
+/// arguments (for a fake server). [movieRatings] rates `movie-<n>` by n.
 FakeItems fakeItems({
   Map<String, int> shows = const {'Alpha': 10, 'Beta': 4},
   Map<String, List<String>> genres = const {},
   Map<String, String> ratings = const {},
   Map<String, Duration> lengths = const {},
   int movies = 0,
+  Map<int, String> movieRatings = const {},
   Duration episodeLength = const Duration(minutes: 22),
   List<Duration> commercials = const [],
 }) {
@@ -120,6 +123,7 @@ FakeItems fakeItems({
         'ProductionYear': 1990 + i,
         'Type': 'Movie',
         'Genres': i.isEven ? ['Family'] : ['Comedy'],
+        'OfficialRating': ?movieRatings[i],
         'RunTimeTicks': const Duration(minutes: 95).inMicroseconds * 10,
         'LocationType': 'FileSystem',
       },
@@ -165,6 +169,9 @@ Future<AppState> signedInApp(Directory dir, LibraryIndex fake,
       commercials: fake.commercials,
       songs: fake.songs,
       musicVideos: fake.musicVideos,
+      rootsByItem: fake.rootsByItem,
+      roots: fake.roots,
+      missingRoots: fake.missingRoots,
       fetchedAt: DateTime.now().subtract(libraryAge));
   // A library with commercials comes with the pool that holds them.
   await storage.writeJson(

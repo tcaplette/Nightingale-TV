@@ -232,6 +232,10 @@ class ServerLibrary {
 
   /// A library of songs.
   bool get isMusic => collectionType == 'music';
+
+  /// Jellyfin's and Emby's view of the collections: browsed for pools and
+  /// sources, never scanned for programs (its items are in other libraries).
+  bool get isCollections => collectionType == 'boxsets';
 }
 
 /// What [MediaServer.playbackDecision] decided: direct play (from
@@ -335,11 +339,19 @@ abstract interface class MediaServer {
   Future<List<ServerLibrary>> libraries();
 
   /// The whole index of the user's video and music libraries (see
-  /// `fetchLibraryIndex`).
+  /// `fetchLibraryIndex`), with the programs under each of [channelRoots]
+  /// (channel and block source roots) recorded. With [providerIds], titles'
+  /// TVDB, TMDB and IMDb ids are asked for too (multi-server).
   Future<LibraryIndex> fetchLibraryIndex(
       {List<CommercialPool> pools = const [],
+      Set<String> channelRoots = const {},
+      bool providerIds = false,
       void Function(String status)? onStatus,
       void Function(List<ServerLibrary> libraries)? onLibraries});
+
+  /// The ids of the videos under root [rootId] (a library, folder, show,
+  /// season or collection), recursively; nothing else of them.
+  Future<List<String>> idsUnder(String rootId);
 
   /// The folders inside library [libraryId], as a tree.
   Future<List<FolderNode>> folderTree(String libraryId);

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../commercials/break_plan.dart';
+import '../../commercials/commercial_pool.dart';
 import '../../ui/format.dart';
 
 /// The Custom break settings, with the same choices and wording as the
@@ -26,6 +27,10 @@ class _BreakPlanEditor extends StatefulWidget {
 
 class _BreakPlanEditorState extends State<_BreakPlanEditor> {
   late CustomRoles _roles = widget.initial;
+
+  bool _isBumpers(Map<String, Object?> pool) => pool['kind'] == PoolKind.bumpers.name;
+  late final _commercialPools = [for (final p in widget.pools) if (!_isBumpers(p)) p];
+  late final _bumperPools = [for (final p in widget.pools) if (_isBumpers(p)) p];
 
   static String _length(Duration d) {
     if (d == Duration.zero) return 'None';
@@ -58,11 +63,11 @@ class _BreakPlanEditorState extends State<_BreakPlanEditor> {
     return Padding(
       padding: const EdgeInsets.only(top: 8),
       child: DropdownButtonFormField<String?>(
-        initialValue: widget.pools.any((p) => p['id'] == current) ? current : null,
+        initialValue: _commercialPools.any((p) => p['id'] == current) ? current : null,
         decoration: const InputDecoration(labelText: 'Clips from'),
         items: [
           const DropdownMenuItem(value: null, child: Text('All pools')),
-          for (final p in widget.pools)
+          for (final p in _commercialPools)
             DropdownMenuItem(
               value: p['id'] as String,
               child: Text('${p['name']}  ·  ${(p['view'] as Map?)?['clips'] ?? 0} clips'),
@@ -72,6 +77,31 @@ class _BreakPlanEditorState extends State<_BreakPlanEditor> {
       ),
     );
   }
+
+  static const _noBumpers = ':none', _allBumpers = ':all';
+
+  Widget _bumpers() => DropdownButtonFormField<String>(
+        initialValue: _roles.noBumpers
+            ? _noBumpers
+            : _bumperPools.any((p) => p['id'] == _roles.bumperPool)
+                ? _roles.bumperPool
+                : _allBumpers,
+        decoration: const InputDecoration(labelText: 'Clips from'),
+        items: [
+          const DropdownMenuItem(value: _noBumpers, child: Text('None')),
+          const DropdownMenuItem(value: _allBumpers, child: Text('All bumper pools')),
+          for (final p in _bumperPools)
+            DropdownMenuItem(
+              value: p['id'] as String,
+              child: Text('${p['name']}  ·  ${(p['view'] as Map?)?['clips'] ?? 0} clips'),
+            ),
+        ],
+        onChanged: (v) => setState(() => _roles = switch (v) {
+              _noBumpers => _roles.withBumpers(null, none: true),
+              _allBumpers || null => _roles.withBumpers(null),
+              final id => _roles.withBumpers(id),
+            }),
+      );
 
   Widget _heading(String title, String detail) => Padding(
         padding: const EdgeInsets.only(top: 20),
@@ -122,6 +152,8 @@ class _BreakPlanEditorState extends State<_BreakPlanEditor> {
               (v) => _roles.copyWith(tailGrid: () => v),
             ),
             _pool(BreakRole.tail, _roles.tailGrid != null),
+            _heading('Bumpers', 'Open and close breaks, from pools set to Bumpers'),
+            _bumpers(),
           ]),
         ),
         actions: [

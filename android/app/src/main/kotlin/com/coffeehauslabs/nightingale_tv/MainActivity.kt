@@ -89,6 +89,16 @@ class MainActivity : FlutterActivity() {
                             false
                         }
                     )
+                    // The sleep timer (sleep-timer spec): asleep, the device's
+                    // own screensaver and sleep take over; awake, held on again.
+                    "keepScreenOn" -> {
+                        if (call.arguments == true) {
+                            window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+                        } else {
+                            window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+                        }
+                        result.success(null)
+                    }
                     else -> result.notImplemented()
                 }
             }

@@ -16,6 +16,7 @@ class LayoutSegment {
     this.role,
     this.item,
     this.itemFrom = Duration.zero,
+    this.offline = false,
   });
 
   final Duration from;
@@ -30,6 +31,10 @@ class LayoutSegment {
 
   /// Where in [item]'s video ([MediaEntry.sourceId]) this segment starts.
   final Duration itemFrom;
+
+  /// A slot tail showing the channel's offline card (slot-duration); its
+  /// [item] is null.
+  final bool offline;
 
   bool get isShow => role == null;
   Duration get length => to - from;
@@ -56,7 +61,8 @@ class SlotLayout {
   /// and the break's start, with the clips adding up closest to its length
   /// (see [_fill]). A break that falls short shortens, and the next break
   /// makes up for it; the slot's last break reaches its end exactly, its
-  /// last clip cut short by the excess.
+  /// last clip cut short by the excess. Bumpers frame the breaks (see
+  /// [_frame]) inside their lengths, so they never move the slot.
   factory SlotLayout.build({
     required MediaEntry item,
     required SlotPlan plan,
@@ -129,12 +135,32 @@ class SlotLayout {
         continue;
       }
       final target = p.to + carry;
-      final filled = _fill(segments, role, t, target, i == last, layoutStart, clips, roles, seed, used, item.title);
+      if (role == BreakRole.tail && plan.offlineTail) {
+        // The offline card, for all of it: it's the slot's last piece.
+        segments.add(LayoutSegment(from: t, to: t + target, role: role, offline: true));
+        carry = Duration.zero;
+        t += target;
+        continue;
+      }
+      final filled = _fill(segments, role, t, target, i == last, layoutStart, clips, roles, seed, used, item.title,
+          offline: plan.ruled);
       carry = target - filled;
       t += filled;
     }
+    final cut = plan.cutAt;
+    if (cut != null) {
+      // Truncate: what starts at or after the slot's end is dropped, and
+      // what crosses it ends there.
+      segments.removeWhere((s) => s.from >= cut);
+      if (segments.isNotEmpty && segments.last.to > cut) {
+        final s = segments.removeLast();
+        segments.add(LayoutSegment(
+            from: s.from, to: cut, role: s.role, item: s.item, itemFrom: s.itemFrom, offline: s.offline));
+      }
+    }
     return SlotLayout._(segments);
   }
+
 
   /// The segment playing [offset] into the slot (the last one past its end).
   LayoutSegment at(Duration offset) {
@@ -185,35 +211,91 @@ class SlotLayout {
   /// how long it is: up to [target] (any shortfall is the caller's to carry),
   /// or for the slot's [last] break exactly [target], its last clip cut by
   /// the excess. Clips in [used] (already in the slot) repeat only when the
-  /// others can't get within 1 s.
+  /// others can't get within 1 s. With no commercials there's no frame, and
+  /// a closing bumper stays whole: commercials stop short of it.
   static Duration _fill(List<LayoutSegment> out, BreakRole role, Duration from, Duration target, bool last,
-      DateTime layoutStart, ClipSource clips, CustomRoles roles, int seed, Set<String> used, String program) {
+      DateTime layoutStart, ClipSource clips, CustomRoles roles, int seed, Set<String> used, String program,
+      {bool offline = false}) {
     final start = layoutStart.add(from);
     final end = from + target;
     final poolId = roles.poolFor(role);
     var pool = clips.clipsAt(poolId, start);
     if (pool.isEmpty && poolId != null) pool = clips.clipsAt(null, start);
     final bag = [for (final c in pool) if (c.runtime > Duration.zero) c]..shuffle(_random(seed, start));
-    final picks = _bestFit(bag, target, used, reach: last);
+    var (open: open, close: close) = bag.isEmpty ? _noFrame : _frame(role, target, start, clips, roles, seed, used);
+    Duration length(MediaEntry? bumper) => bumper?.runtime ?? Duration.zero;
+    List<MediaEntry> commercials() => _bestFit(bag, target - length(open) - length(close),
+        open == null && close == null ? used : {...used, ?open?.id, ?close?.id}, reach: last);
+    var picks = commercials();
+    // Bumpers around nothing aren't a break, but a pre-roll's bumper alone
+    // leads into the show.
+    if (picks.isEmpty && role != BreakRole.pre && (open != null || close != null)) {
+      open = close = null;
+      picks = commercials();
+    }
+    final adsEnd = end - length(close);
     var t = from, full = Duration.zero, repeats = 0;
+    void bumper(MediaEntry clip) {
+      out.add(LayoutSegment(from: t, to: t + clip.runtime, role: role, item: clip, itemFrom: clip.sourceStart));
+      used.add(clip.id);
+      full += clip.runtime;
+      t += clip.runtime;
+    }
+
+    if (open != null) bumper(open);
     for (final clip in picks) {
-      if (t >= end) break;
-      final to = t + clip.runtime < end ? t + clip.runtime : end;
+      if (t >= adsEnd) break;
+      final to = t + clip.runtime < adsEnd ? t + clip.runtime : adsEnd;
       out.add(LayoutSegment(from: t, to: to, role: role, item: clip, itemFrom: clip.sourceStart));
       if (!used.add(clip.id)) repeats++;
       full += clip.runtime;
       t = to;
     }
+    if (close != null) bumper(close);
     if (last && t < end) {
-      // No pool has a clip at this time (a plan with none airs as Off).
-      out.add(LayoutSegment(from: t, to: end, role: role));
+      // No pool has a clip at this time (a plan with none airs as Off); on
+      // a channel with a slot length, the offline card shows.
+      out.add(LayoutSegment(from: t, to: end, role: role, offline: offline));
       t = end;
     }
     final filled = t - from;
     log?.call('${start.toIso8601String()} "$program" ${role.name} target ${_secs(target)} total ${_secs(full)} '
         '${last ? 'trimmed ${_secs(full - filled)}' : 'carried ${_secs(target - filled)}'} '
-        'clips ${picks.length} repeats $repeats pool ${bag.length}');
+        'clips ${picks.length} repeats $repeats pool ${bag.length} '
+        'bumpers ${open == null ? 0 : 1}+${close == null ? 0 : 1}');
     return filled;
+  }
+
+  static const ({MediaEntry? open, MediaEntry? close}) _noFrame = (open: null, close: null);
+
+  /// Keeps the bumper shuffle apart from the commercials' one.
+  static const _bumperSalt = 0x2f6e2b1;
+
+  /// The bumpers framing a break: a mid-roll opens and closes with one, a
+  /// post-roll opens, a pre-roll closes, a tail has none. Except in a
+  /// pre-roll they take at most half of [target], and a mid-roll with room
+  /// for one closes with it. Clips in [used] come last, and a mid-roll's two
+  /// are the same clip only when no other pair fits.
+  static ({MediaEntry? open, MediaEntry? close}) _frame(BreakRole role, Duration target, DateTime start,
+      ClipSource clips, CustomRoles roles, int seed, Set<String> used) {
+    if (roles.noBumpers || role == BreakRole.tail) return _noFrame;
+    final limit = role == BreakRole.pre ? target : target ~/ 2;
+    final fits = [
+      for (final c in clips.bumpersAt(roles.bumperPool, start))
+        if (c.runtime > Duration.zero && c.runtime <= limit) c
+    ]..shuffle(_random(seed ^ _bumperSalt, start));
+    if (fits.isEmpty) return _noFrame;
+    final order = [
+      for (final c in fits) if (!used.contains(c.id)) c,
+      for (final c in fits) if (used.contains(c.id)) c,
+    ];
+    if (role == BreakRole.pre) return (open: null, close: order.first);
+    if (role == BreakRole.post) return (open: order.first, close: null);
+    final shortest = fits.map((c) => c.runtime).reduce((a, b) => a < b ? a : b);
+    final close = order.where((c) => c.runtime + shortest <= limit).firstOrNull;
+    if (close == null) return (open: null, close: order.first);
+    final open = order.where((c) => c.id != close.id && c.runtime + close.runtime <= limit).firstOrNull;
+    return (open: open ?? close, close: close);
   }
 
   static String _secs(Duration d) => (d.inMicroseconds / 1e6).toStringAsFixed(3);

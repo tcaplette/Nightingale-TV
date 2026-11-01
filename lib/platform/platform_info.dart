@@ -84,6 +84,18 @@ abstract final class PlatformInfo {
     }
   }
 
+  /// Android holds the screen on while the app is in front; the sleep timer
+  /// lets it go while asleep and holds it again on waking. Nothing elsewhere:
+  /// on Linux, mpv stops holding off the screensaver once playback stops.
+  static Future<void> keepScreenOn(bool on) async {
+    if (!isAndroid) return;
+    try {
+      await _channel.invokeMethod<void>('keepScreenOn', on);
+    } on Object catch (e) {
+      debugPrint('Keep screen on: $e');
+    }
+  }
+
   /// Forgets the looked-up name and the override, between tests.
   @visibleForTesting
   static void debugReset() {

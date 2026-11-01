@@ -100,6 +100,12 @@ void main() {
     expect(client.streamUri('3').toString(), 'http://192.168.1.20:32400/library/parts/1/1792606547/file.mp4');
   });
 
+  test('play counts come from viewCount, absent meaning 0', () async {
+    final index = await plex(testServer).fetchLibraryIndex();
+    expect(index['4']!.playCount, 1);
+    expect(index['3']!.playCount, 0);
+  });
+
   test('saved Jellyfin entries load and save without a part path', () {
     const entry = {'id': 'a', 'kind': 'episode', 'title': 't', 'runtimeMs': 1000};
     final e = MediaEntry.fromJson(entry);
@@ -169,6 +175,46 @@ void main() {
           id: 'p', name: 'Trailers', roots: [const PoolRoot(itemId: '128', libraryId: 'library:3', label: 'Trailers')]);
       final index = await client.fetchLibraryIndex(pools: [pool]);
       expect(index.commercials, hasLength(20));
+    });
+
+    test('a channel collection of a movie and a show holds the movie and the show\'s episodes', () async {
+      final leaves = [
+        for (final page in ['episodes_page1', 'episodes_page2'])
+          for (final e in (((fixture(page) as Map)['MediaContainer'] as Map)['Metadata'] as List).cast<Map<String, Object?>>())
+            if ('${e['grandparentRatingKey']}' == '12') e,
+      ];
+      final client = plex((r) async {
+        if (r.url.path == '/library/metadata/200') {
+          return json({
+            'MediaContainer': {
+              'Metadata': [
+                {'ratingKey': '200', 'type': 'collection', 'title': '80s'}
+              ]
+            }
+          });
+        }
+        if (r.url.path == '/library/metadata/200/children') {
+          return json({
+            'MediaContainer': {
+              'size': 2,
+              'totalSize': 2,
+              'Metadata': [
+                {'ratingKey': '34', 'type': 'movie'},
+                {'ratingKey': '12', 'type': 'show'},
+              ]
+            }
+          });
+        }
+        if (r.url.path == '/library/metadata/12/allLeaves') {
+          return json({'MediaContainer': {'size': leaves.length, 'totalSize': leaves.length, 'Metadata': leaves}});
+        }
+        if (r.url.path == '/library/metadata/999') return json({}, 404);
+        return testServer(r);
+      });
+      final index = await client.fetchLibraryIndex(channelRoots: {'200', '999'});
+      expect(leaves, isNotEmpty);
+      expect(index.itemsByRoot['200'], {'34', for (final e in leaves) '${e['ratingKey']}'});
+      expect(index.missingRoots, {'999'}, reason: 'deleted on the server');
     });
 
     test('shows and seasons are folders in a TV library, with collections', () async {

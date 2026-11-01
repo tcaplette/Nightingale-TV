@@ -17,7 +17,7 @@ import 'live_source.dart';
 import 'live_source_files.dart';
 import 'live_source_client.dart';
 
-/// What the profile is signed in to, for its server Live TV source.
+/// The server a server Live TV source plays through, while signed in to it.
 typedef SignedIn = ({MediaServer client, ServerSession session});
 
 /// A profile's Live TV sources and the live channels they bring
@@ -34,7 +34,9 @@ class LiveTvManager extends ChangeNotifier {
   final LiveSourceStore store;
   final LiveCache cache;
   final LiveDownloader downloader;
-  final SignedIn? Function() signedIn;
+  /// The profile's server [source] comes from (multi-server: each server
+  /// Live TV source has its own), while signed in to it.
+  final SignedIn? Function(LiveSource source) signedIn;
   final DateTime Function() _now;
 
   List<LiveSource> _sources = [];
@@ -54,6 +56,11 @@ class LiveTvManager extends ChangeNotifier {
   /// The profile's server Live TV source, if it has one.
   LiveSource? get serverSource => _sources.where((s) => s.kind == LiveSourceKind.server).firstOrNull;
 
+  /// The server Live TV source of the server with [serverId], if any.
+  LiveSource? serverSourceFor(String? serverId) => _sources
+      .where((s) => s.kind == LiveSourceKind.server && (s.serverId == serverId || s.serverId == null && serverId == null))
+      .firstOrNull;
+
   Future<void> load() async {
     _sources = await store.load();
     final now = _now();
@@ -68,7 +75,7 @@ class LiveTvManager extends ChangeNotifier {
   /// Live TV, while signed in to that server.
   bool isActive(LiveSource s) {
     if (s.kind == LiveSourceKind.m3u) return true;
-    final signed = signedIn();
+    final signed = signedIn(s);
     if (signed == null || signed.session.kind != s.serverKind) return false;
     final id = signed.session.serverId;
     return s.serverId == null || id == null || id == s.serverId;
@@ -79,7 +86,7 @@ class LiveTvManager extends ChangeNotifier {
       return M3uSource(s, store: store, downloader: downloader, tempDir: Directory('${Directory.systemTemp.path}/nightingale_live'));
     }
     if (!isActive(s)) return null;
-    final tv = signedIn()?.client.liveTv;
+    final tv = signedIn(s)?.client.liveTv;
     return tv == null ? null : ServerLiveSource(s, tv);
   }
 
@@ -128,7 +135,8 @@ class LiveTvManager extends ChangeNotifier {
           ..icon = settings.icon ?? defaultIcon(info)
           ..hidden = settings.hidden
           ..favorite = settings.favorite
-          ..logoMode = settings.logoMode;
+          ..logoMode = settings.logoMode
+          ..retro = settings.retro;
         keep.add(id);
         out.add(ch);
       }
@@ -170,14 +178,16 @@ class LiveTvManager extends ChangeNotifier {
           !_sameIcon(settings.icon, icon) ||
           settings.hidden != c.hidden ||
           settings.favorite != c.favorite ||
-          settings.logoMode != c.logoMode) {
+          settings.logoMode != c.logoMode ||
+          settings.retro != c.retro) {
         settings
           ..number = c.number
           ..name = name
           ..icon = icon
           ..hidden = c.hidden
           ..favorite = c.favorite
-          ..logoMode = c.logoMode;
+          ..logoMode = c.logoMode
+          ..retro = c.retro;
         changed = true;
       }
       if (_schedules[c.id]?.channelName != c.name) _schedules.remove(c.id);

@@ -186,20 +186,27 @@ class _ProfileSignIn extends StatelessWidget {
 }
 
 /// Signs profile [id] in to Jellyfin, Emby or Plex, one step at a time as
-/// the TV does, with the TV's wording.
-Future<void> signInDialog(BuildContext context, String id, String name) => showDialog<void>(
+/// the TV does, with the TV's wording. With [path] (multi-server): adding a
+/// server (`profiles/{id}/servers`) or signing one in again
+/// (`profiles/{id}/servers/{key}/sign-in`), titled [title].
+Future<void> signInDialog(BuildContext context, String id, String name, {String? path, String? title}) =>
+    showDialog<void>(
       context: context,
       barrierDismissible: false,
       builder: (_) => Dialog(
         insetPadding: const EdgeInsets.all(16),
-        child: ConstrainedBox(constraints: const BoxConstraints(maxWidth: 480), child: _SignInFlow(id: id, name: name)),
+        child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 480),
+            child: _SignInFlow(id: id, name: name, path: path, title: title)),
       ),
     );
 
 class _SignInFlow extends StatefulWidget {
-  const _SignInFlow({required this.id, required this.name});
+  const _SignInFlow({required this.id, required this.name, this.path, this.title});
   final String id;
   final String name;
+  final String? path;
+  final String? title;
 
   @override
   State<_SignInFlow> createState() => _SignInFlowState();
@@ -215,7 +222,7 @@ class _SignInFlowState extends State<_SignInFlow> {
   final _password = TextEditingController();
   final _pin = TextEditingController();
 
-  String get _path => 'profiles/${widget.id}/sign-in';
+  String get _path => widget.path ?? 'profiles/${widget.id}/sign-in';
 
   @override
   void initState() {
@@ -287,9 +294,11 @@ class _SignInFlowState extends State<_SignInFlow> {
       children.add(const Center(child: CircularProgressIndicator()));
     } else if (step['finished'] == true) {
       children.addAll([
-        Text('${widget.name} is signed in.', style: text.titleMedium),
+        Text(widget.path == null ? '${widget.name} is signed in.' : 'Done.', style: text.titleMedium),
         const SizedBox(height: 8),
-        const Text('Its library is being read and its channels made. This takes a minute or two.'),
+        Text(widget.path == null
+            ? 'Its library is being read and its channels made. This takes a minute or two.'
+            : "The library is being read again; the server's programs join the channels when it's done."),
         const SizedBox(height: 16),
         FilledButton(onPressed: () => Navigator.of(context).pop(), child: const Text('Done')),
       ]);
@@ -411,8 +420,10 @@ class _SignInFlowState extends State<_SignInFlow> {
             for (final s in servers)
               ListTile(
                 title: Text(s['label'] as String),
-                trailing: Text(s['online'] == true ? 'Online' : 'Offline'),
-                onTap: busy ? null : () => _send({'action': 'server', 'id': s['id']}),
+                // Already in the profile (adding a server): not pickable.
+                trailing: Text(s['added'] == true ? 'Added' : (s['online'] == true ? 'Online' : 'Offline')),
+                enabled: s['added'] != true,
+                onTap: busy || s['added'] == true ? null : () => _send({'action': 'server', 'id': s['id']}),
               ),
             TextButton(onPressed: busy ? null : () => _send({'action': 'back'}), child: const Text('Back')),
           ]);
@@ -425,7 +436,7 @@ class _SignInFlowState extends State<_SignInFlow> {
       child: SingleChildScrollView(
         child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
           Row(children: [
-            Expanded(child: Text('Sign ${widget.name} in', style: text.labelLarge)),
+            Expanded(child: Text(widget.title ?? 'Sign ${widget.name} in', style: text.labelLarge)),
             IconButton(tooltip: 'Close', icon: const Icon(Icons.close), onPressed: _close),
           ]),
           ...children,

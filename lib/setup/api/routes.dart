@@ -70,8 +70,8 @@ class ApiRoute {
 
   bool get changes => method != 'GET';
 
-  /// PUT and DELETE need `If-Match` with the current revision.
-  bool get needsIfMatch => (method == 'PUT' || method == 'DELETE') && revision != Revision.none && checkIfMatch;
+  /// PUT, PATCH and DELETE need `If-Match` with the current revision.
+  bool get needsIfMatch => (method == 'PUT' || method == 'PATCH' || method == 'DELETE') && revision != Revision.none && checkIfMatch;
 
   /// The `{name}` values when [path] matches.
   Map<String, String>? match(List<String> path) {
