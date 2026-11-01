@@ -8,36 +8,59 @@ It's inspired by NostalgiaTV for Android. It's built for the couch, so everythin
 
 ## Features
 
-- **Channels made for you.** The app builds a lineup from your library: an all-shows channel, genre channels (comedy, kids, sci-fi…), marathon channels for your biggest shows, and movie channels. You can rename, renumber, hide or favorite any channel, and give it a built-in icon, a station badge, a show logo or your own image, or build your own (below).
-- **Build your own channels.** In Channels & icons → **New channel**, mix collections, folders, shows, seasons, genres and movies from your server into a channel of your own, such as "80s Sitcoms" or "Saturday Night Movies". Choose **In order**, **Shuffled** or **Least watched first**, which brings up what you've played least more often. Give any channel a **slot length** (15 minutes to 2 hours) so every program starts on the clock, and choose what fills the rest of each slot: filler clips from a commercial pool, an offline image of your own, or **Truncate**, which ends programs that run long at the slot's end. Channels you build are kept when you reset the lineup, and the web admin can build them too.
+### Channels
+
+- **Channels made for you.** The app builds a lineup from your library: an all-shows channel, genre channels (comedy, kids, sci-fi…), marathon channels for your biggest shows, and movie channels. Rename, renumber, hide or favorite any channel, and give it a built-in icon, a station badge, a show logo or your own image.
+- **Build your own channels.** In Channels & icons → **New channel**, mix collections, folders, shows, seasons, genres and movies into a channel of your own, such as "80s Sitcoms" or "Saturday Night Movies". Play them **In order**, **Shuffled** or **Least watched first**. Channels you build are kept when you reset the lineup.
+- **Programs that start on the clock.** Give any channel a **slot length** (15 minutes to 2 hours) so every program starts on time. Fill the rest of each slot with clips from a commercial pool or an offline image of your own, or choose **Truncate** to end programs that run long.
 - **Always on the air.** Channels run on the clock, so you join a show mid-episode, just like flipping to it on cable.
-- **Channel logo in the corner.** A translucent station logo sits in the bottom-right corner of the picture, like a network's. By default it shows *now and then*: for 20 seconds when a show starts or comes back from a break, and at each quarter hour. Choose **Always**, **Now and then** or **Off** at the top of Channels & icons, and override it for any channel. It hides during breaks, while songs play, and while the channel banner or the Up next card covers the corner. Exported streams carry the same logo at the same moments.
-- **Program guide.** A scrolling cable-style grid with a live preview window. Near the end of each show, an "Up next" card says what's on next.
-- **Guide tabs and channel groups.** Tabs at the top of the guide show **All**, **Favorites**, **Movies**, **Music** and **Kids** channels, plus groups you make yourself. Pick a tab with the remote (Up from the first channel, then Left and Right), a mouse or a tap. Channel up and down still go through every channel. Make, rename, reorder and hide tabs in Menu → **Channel groups**. Each profile has its own groups, and exported M3U playlists use them as categories.
-- **Music channels.** Music libraries and music videos get their own channels: **Music Videos** and **Music Radio**, plus genre and decade channels when your library is big enough ("80s Radio", "Rock Music Videos"). Songs play over a full-screen **Now Playing** card with the album art, song, artist, album and a progress bar. The same artist never plays twice in a row, music channels have no commercial breaks unless you turn them on, and music never shows up in your server's play history. Kid profiles only get music rated for their age, and since most music isn't rated on media servers, they usually have no music channels.
-- **New episode premieres.** Episodes newly added to your server premiere in prime time (8:00 PM by default) on one channel that plays the show: one new episode per show each night, for up to two hours, marked **NEW** in the guide, the banner and the Up next card. Change the time and days, or turn it off, in Programming blocks → **New episode premieres**, and turn it off for single channels in Channels & icons. A library scan never changes what's already on the air.
-- **Programming blocks.** Set up lineups such as "Saturday Morning Cartoons" on chosen days and times. They can also run only during a date range each year, such as "Christmas Specials, Dec 1–25". A block plays a mix of shows, movies, collections and folders, or a lineup you program slot by slot (DuckTales, then two Animaniacs, then Rugrats), with each show playing its next episode every airing. Each airing picks up where the last one left off.
-- **Commercial breaks (experimental, off by default).** Make TV feel like TV again, with ads between and during shows:
-  - **Your own ads.** Pick the folders or collections on your server that hold your commercials and bumpers. Their videos leave your regular channels and fill the breaks instead.
-  - **Bumpers around the ads.** Set a pool's type to **Bumpers** and its station idents frame the breaks: a break inside a show opens and closes with one, a break after a show opens with one, and a break before a show closes with one leading into it. Bumpers never play among the ads and never move the guide. A Custom plan can pick its own bumper pool or turn them off, so a channel can have its own idents.
-  - **Ad compilations split automatically.** Long compilations (an hour of '80s ads in one file, say) are cut into individual ads at chapters, or, using ffmpeg, where the picture goes black and silent.
-  - **Breaks where they belong.** Ads play before, during and after shows and movies. Mid-show breaks go at act breaks when the show's chapters mark them, and otherwise at a scene change near evenly spaced points.
-  - **Automatic or Custom.** **Automatic** lays breaks out broadcast-style, so shows start on the hour and half hour. **Custom** lets you set how long each break is, how often shows break, and which ads each break uses. Use one setting for every channel, or give a channel its own.
-  - **Same ads for everyone.** Like real TV, tuning away and back shows the same ads at the same spot. Ads never show up in your server's watch history.
+- **Programming blocks.** Set up lineups such as "Saturday Morning Cartoons" on chosen days and times, or only during a date range each year ("Christmas Specials, Dec 1–25"). A block plays a mix of shows, movies, collections and folders, or a lineup you program slot by slot (DuckTales, then two Animaniacs, then Rugrats). Each airing picks up where the last one left off.
+- **Late-night blocks.** A block can play only what's rated at or above a minimum rating, so a channel can drift into mature programming late at night. **New late-night block** sets one up in a step: "Late Night", every day from 11 PM to 4 AM, TV-MA and up. Blocks can follow one another (TV-14 and up at 9, TV-MA and up at 11). Kid profiles never get them.
+- **New episode premieres.** Episodes newly added to your server premiere in prime time (8:00 PM by default) on a channel that plays the show, one new episode per show each night, marked **NEW** in the guide, the banner and the Up next card. Change the time and days or turn it off in Programming blocks → **New episode premieres**.
+- **Music channels.** Music libraries and music videos get their own channels: **Music Videos** and **Music Radio**, plus genre and decade channels when your library is big enough ("80s Radio", "Rock Music Videos"). Songs play over a full-screen **Now Playing** card with the album art, song, artist and album. The same artist never plays twice in a row, music channels have no commercial breaks unless you turn them on, and music never shows up in your server's play history.
+- **Live TV channels.** Add real broadcasts and IPTV to the lineup in Menu → **Live TV sources**: your Jellyfin, Emby or Plex server's Live TV (an HDHomeRun or other tuner on the server), or any **M3U playlist** with an **XMLTV guide**, from a web address or a file. Pick the channels you want, and they join the guide with their own logos and listings, numbered from the next hundred (100, 101…). Live channels play from the live point, reconnect after a drop, and have no commercial breaks. Kid profiles don't get them.
 
-  Being experimental, this feature may change between versions, and splitting a long compilation for the first time can take several minutes. The rest of the app works the same with breaks off.
-- **Profiles.** Everyone gets their own sign-in, channels and blocks. Kid profiles only see content rated for their age. Grown-up profiles and settings can be locked with a PIN.
+### The guide
+
+- **Program guide.** A scrolling cable-style grid with a live preview window, programming blocks labeled across their time slots, and an "Up next" card near the end of each show.
+- **Guide tabs and channel groups.** Tabs at the top of the guide show **All**, **Favorites**, **Movies**, **Music** and **Kids** channels, plus groups you make yourself in Menu → **Channel groups**. Channel up and down still go through every channel, and exported M3U playlists use your groups as categories.
+- **A phone layout.** Held upright, a phone shows the picture on top, what's on now and next below it, and a scrolling channel list under the tabs. **Full screen** turns it sideways into the TV layout.
+
+### Watching
+
+- **Pause and rewind.** Pause what's on, skip back 10 seconds or forward 30, **Restart** the program, or go back to **Live**, from the transport bar (◀ or ▶ while watching) or the remote's Play/Pause, Rewind and Fast-forward buttons. You can go back to the start of the program on now, or 30 minutes, whichever is earlier. Nothing is recorded: the channel's schedule is simply played a little later for you. Turn it off in Menu → **Playback** to keep every channel on the clock. Live channels can't be paused.
+- **Sleep timer.** Stop playback after 15 minutes to 2 hours, or at the end of the program on now, and let the TV sleep. Press S, or choose **Sleep timer** in the menu.
+- **On-screen clock.** Shows the time in the corner of the picture (off by default, in Menu → **Playback**).
+- **Volume leveling.** Evens out the volume as you watch, so loud commercials and quiet shows come out about the same (off by default, in Menu → **Playback**). On Android, surround audio is decoded on the device while it's on, instead of passed through to a receiver.
+- **Channel logo in the corner.** A translucent station logo sits in the bottom-right corner of the picture, like a network's. Show it **Always**, **Now and then** (for 20 seconds when a show starts or comes back from a break, and at each quarter hour) or **Off**, for every channel or for one.
+- **Retro look.** Make a channel look like an old TV in Menu → **Retro look**: a **4:3 picture** (filled or fitted) with a black, charcoal, channel-colored or picture surround, a **CRT effect** (Soft tube, Living room, Arcade, Studio monitor, or your own mix of scanlines, glow, curvature and color), and an **overlay theme** for the banner and channel number (Standard, VCR, Cable box, Station ident). Set it for every channel and override it for any one. **Effects on this device** turns the CRT effects off on a slower TV without changing anything else. Exported streams are never changed.
+- **Quick channel changes.** The app keeps its connections to your server ready, remembers how each file plays, and loads the next part of a channel before it's due, so channels come up fast and breaks play in and out with no gap.
+- **Always direct play.** Nightingale TV plays your original files and never asks your server to transcode, unless you turn on **Transcode only if needed**. Then pick a **maximum bitrate** (40 Mbps · 4K down to 4 Mbps · 720p) for Wi-Fi or a remote connection, and your server converts only what's above it. *Original*, the default, never converts because of bitrate.
+
+### Commercial breaks (experimental, off by default)
+
+Make TV feel like TV again, with ads between and during shows. Being experimental, this may change between versions. The rest of the app works the same with breaks off.
+
+- **Your own ads.** Pick the folders or collections on your server that hold your commercials. Their videos leave your regular channels and fill the breaks instead.
+- **Bumpers around the ads.** Set a pool's type to **Bumpers** and its station idents open and close the breaks. A Custom plan can pick its own bumper pool or turn them off, so a channel can have its own idents.
+- **Ad compilations split automatically.** Long compilations (an hour of '80s ads in one file, say) are cut into individual ads at their chapters, or, on a computer, where the picture goes black and silent.
+- **Breaks where they belong.** Ads play before, during and after shows and movies. Mid-show breaks go at act breaks when the show's chapters mark them, and otherwise at a scene change near evenly spaced points.
+- **Automatic or Custom.** **Automatic** lays breaks out broadcast-style, fitting the ads so shows start on the hour and half hour, with no break longer than 5 minutes. **Custom** sets how long each break is, how often shows break and which ads each break uses, for every channel or for one.
+- **Break notices.** A small countdown says when a break is about to start and when the program is coming back (on by default, in Menu → **Playback**).
+- **Same ads for everyone.** Like real TV, tuning away and back shows the same ads at the same spot. Ads never show up in your server's watch history.
+
+### Your household
+
+- **Jellyfin, Emby and Plex.** Sign in to any of them. Every feature works on all three. The one exception: a Plex server that doesn't list its artists' music videos gets no music video channels.
+- **Several servers in one lineup.** Add more servers to a profile in Menu → **Servers**, in any mix (Jellyfin at home and a friend's Plex, say). Their libraries become one, and something on two servers appears once and plays from the first in your **Play from** order that answers. Give a slow remote server its own **Quality limit**. If one server is down, the others keep playing.
+- **Profiles.** Everyone gets their own channels, blocks and settings. Kid profiles only see content rated for their age. Grown-up profiles and settings can be locked with a PIN.
 - **Phone remote.** Turn it on in the menu, scan the QR code, and your phone's browser becomes the remote. There's nothing to install.
-- **Backup and restore.** Your whole setup is backed up every day something changes, and right before anything that replaces a lot at once: restoring a backup, **Reset channel lineup**, deleting a profile, or an update that changes saved settings. Menu → **Backup & restore** lists every backup, restores one, saves it to a file, or moves it to another device through your phone or computer. See [Backup and restore](#backup-and-restore).
-- **Always direct play.** Nightingale TV plays your original files and never asks your server to transcode, unless you turn on *Transcode only if needed*.
-- **Bitrate cap.** With *Transcode only if needed* on, pick a maximum bitrate from 40 Mbps down to 4 Mbps for Wi-Fi or a remote connection. Your server converts a show only when it's over the cap you picked, and nothing lowers it while you watch. *Original* (the default) never converts because of bitrate.
-- **Live TV export (HDHomeRun, M3U and XMLTV, desktop only).** Watch your channels in Jellyfin Live TV, Plex or any IPTV app on your home network. Turn it on for each profile you want to share:
-  - **HDHomeRun tuner.** Each exported profile shows up as its own network TV tuner. Add it in Jellyfin or Plex by its address, or let Plex find it on the network.
-  - **M3U playlist.** A playlist of the profile's channels, with numbers, names and logos, for Jellyfin's M3U tuner and IPTV apps such as VLC, Kodi and TiviMate.
-  - **XMLTV guide.** Three days of listings from the same schedule as the on-screen guide, with episode titles, season and episode numbers, descriptions, posters and programming blocks. Premieres are marked new, and music channels are listed hour by hour with their songs.
-  - **Plays like this TV.** Each channel is one continuous stream that joins mid-show, with the same breaks and the same ads at the same moments.
+- **Backup and restore.** Your whole setup is backed up every day something changes, and before anything that replaces a lot at once. Restore a backup, save it to a file, or move it to another device through your phone or computer. See [Backup and restore](#backup-and-restore).
 
-  See [Live TV export](#live-tv-export) for setup.
+### Watch on your other screens
+
+- **Live TV export (desktop).** Your channels play in Jellyfin Live TV, Plex, Emby or any IPTV app on your home network, with the same schedule, breaks and ads as this TV. Each profile you export shows up as its own **HDHomeRun tuner**, with an **M3U playlist** and a three-day **XMLTV guide**. See [Live TV export](#live-tv-export).
+- **Nightingale TV server (Docker).** Run your channels on an always-on machine such as a NAS instead of a desktop that has to stay open, and set everything up from a browser in its **web admin**: profiles, channels, blocks, commercials, Live TV sources, export, backups and user accounts. See [Running it as a server](#running-it-as-a-server).
 
 | Who's watching? | Phone remote | Programming block editor |
 | --- | --- | --- |
@@ -75,7 +98,7 @@ The simplest way is from your computer: turn on *Developer options* and *USB deb
 
 It shows up in the TV's apps row and the phone's app drawer as **Nightingale TV**.
 
-On Android the app always fills the screen, runs sideways on phones, and keeps the screen from turning off while it's in front. Going to the home screen stops playback, and coming back tunes in to the same channel live.
+On Android the app fills the screen and keeps it from turning off while it's in front. On a phone held upright it uses the [phone layout](#the-guide), and turns sideways for full screen. Going to the home screen stops playback, and coming back tunes in to the same channel live.
 
 ### On a computer
 
@@ -98,7 +121,7 @@ To uninstall it: `sudo apt remove nightingale-tv`. Your settings in `~/.local/sh
 ### What you need
 
 - An Android TV, Google TV or Fire TV device, or an Android phone or tablet, running Android 7.0 or newer. Or, for the desktop version, a 64-bit PC running Ubuntu 24.04 or newer, or a similar Debian-based Linux.
-- A [Jellyfin](https://jellyfin.org) server (10.11 or newer), an [Emby](https://emby.media) server (4.8 or newer) or a [Plex Media Server](https://www.plex.tv) with your shows and movies, and music or music videos if you want music channels.
+- A [Jellyfin](https://jellyfin.org) server (10.11 or newer), an [Emby](https://emby.media) server (4.8 or newer) or a [Plex Media Server](https://www.plex.tv) with your shows and movies, and music or music videos if you want music channels. You can add more than one.
 - For the phone remote, a phone on the same Wi-Fi as the TV. On Linux, if the firewall blocks it, allow the remote's port once: `sudo ufw allow 8642/tcp`.
 - On Linux, ffmpeg, which `apt` installs with the app. It splits long commercial compilations into individual ads and converts Live TV export's streams.
 
@@ -110,6 +133,8 @@ To uninstall it: `sudo apt remove nightingale-tv`. Your settings in `~/.local/sh
    - **Plex:** go to plex.tv/link on your phone or computer and enter the code the TV shows. If the account can use more than one server, pick one, and in a Plex Home pick who's watching.
 3. The app scans your library and builds your channels. That's it. It starts on channel 2.
 
+To add another server to the same lineup later, use Menu → **Servers** → **Add a server**. It signs in the same way.
+
 Moving from another device? Choose **Restore from a backup** on the sign-in screen. If the app finds a backup of its own when it starts with no profiles (after a reinstall, or from Android's backup), it shows **Welcome back** and offers to **Restore it**. See [Moving to a new device](#moving-to-a-new-device).
 
 ## Controls
@@ -117,14 +142,17 @@ Moving from another device? Choose **Restore from a backup** on the sign-in scre
 | Remote button (keyboard) | Watching TV | In the guide |
 | --- | --- | --- |
 | ▲ ▼, Channel Up/Down (Page Up/Down) | Change channel | Move between channels (▲ from the top row reaches the guide tabs, then **Menu**) |
-| ◀ ▶ | Show the banner | Move through time (on the tab row, pick a tab) |
+| ◀ ▶ | Open the pause and rewind controls (the banner on a live channel, or with Pause and rewind off) | Move through time (on the tab row, pick a tab) |
+| Play/Pause (P), Play, Pause | Pause or resume | |
+| Rewind, Fast-forward | Back 10 seconds, forward 30 (hold to go faster) | |
 | Info (I) | Show the banner | |
-| OK (Enter) | Open the guide | Watch that channel |
+| OK (Enter) | Open the guide (resume, while paused) | Watch that channel |
 | Guide (G) | Open the guide | Back to TV |
 | Back (Esc) | See below | Back to TV |
 | 0–9 | Go to a channel number | |
 | Last or Recall (Backspace, L) | Last channel | |
 | Captions (C) | Captions on/off | |
+| (S) | Sleep timer | |
 | Menu (M, right-click) | Menu | Menu |
 | (F11) | Full screen on/off, on a computer | |
 
@@ -132,7 +160,7 @@ Moving from another device? Choose **Restore from a backup** on the sign-in scre
 
 **With an air mouse:** move the pointer while watching, and **Guide** and **Menu** buttons appear in the top-left corner. In the guide, click a channel to watch it, click a tab to filter the channels, or click **Menu** at the top.
 
-**On a phone or tablet:** tap where you'd click and long-press where you'd right-click (the TV picture or the guide opens the menu). Drag to scroll the guide and lists. The back gesture works as the Back button does.
+**On a phone or tablet:** tap where you'd click and long-press where you'd right-click (the TV picture or the guide opens the menu). Tapping the picture shows the pause and rewind controls, with the guide among them. Drag to scroll the guide and lists. The back gesture works as the Back button does.
 
 ## Backup and restore
 
@@ -178,6 +206,14 @@ Good to know:
 - If the computer's firewall is on, allow the profile's port, and port 1900 so Plex can find it: `sudo ufw allow 5004/tcp` and `sudo ufw allow 1900/udp`.
 - Plex and Jellyfin remember the address, so give this computer a fixed address in your router (a "DHCP reservation").
 - Plex and Jellyfin refresh the guide on their own schedule. After changing channels or blocks, refresh the guide there to see it sooner. What plays is always up to date.
+
+## Running it as a server
+
+Live TV export on a desktop needs that computer to stay on with the app open. The Nightingale TV server runs the same channels with no screen, on a NAS or home server, as a Docker container. It serves each profile as a network tuner with an M3U playlist and XMLTV guide, exactly as Live TV export does.
+
+Everything is set up in its **web admin**, in a browser on a computer or phone at `http://<server>:8484`: profiles, channels and icons, programming blocks, channel groups, commercials, Live TV sources, servers, export and backups. It works with no internet connection. Each person signs in with their own account: **admins** can do everything, and **users** see only the profiles an admin gives them.
+
+To start, restore a backup from the Nightingale TV app, or start fresh and sign in to your Jellyfin, Emby or Plex server. Setup, settings and updating are in [docker/README.md](docker/README.md). The Linux release archive (`nightingale-tv-linux-x64-<version>.tar.gz`, which includes the web admin) also runs as a server without Docker: start it with `--server`.
 
 ## Building from source
 
