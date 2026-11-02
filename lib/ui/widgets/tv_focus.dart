@@ -84,8 +84,10 @@ class TvTextField extends StatelessWidget {
   }
 }
 
-/// Focusable, clickable surface for 10-foot UIs. Hovering with a mouse or air
-/// mouse moves focus to it, so pointer and arrow keys share one highlight.
+/// Focusable, clickable surface for 10-foot UIs. Moving a mouse or air mouse
+/// over it moves focus to it, so pointer and arrow keys share one highlight.
+/// Only real pointer movement counts: content scrolling under a still pointer
+/// doesn't take focus, and focus taken by the pointer doesn't scroll.
 class TvFocusable extends StatefulWidget {
   const TvFocusable({
     super.key,
@@ -111,6 +113,10 @@ class _TvFocusableState extends State<TvFocusable> {
   FocusNode get _node => widget.focusNode ?? (_ownNode ??= FocusNode());
   bool _focused = false;
 
+  /// Set while the pointer is taking focus, so the focus change doesn't
+  /// scroll: the item is under the pointer, so it's already in view.
+  bool _pointerFocus = false;
+
   @override
   void dispose() {
     _ownNode?.dispose();
@@ -131,21 +137,29 @@ class _TvFocusableState extends State<TvFocusable> {
           return null;
         }),
       },
-      onShowHoverHighlight: (hovering) {
-        if (hovering && enabled && !_node.hasFocus) _node.requestFocus();
-      },
       onFocusChange: (f) {
         setState(() => _focused = f);
         widget.onFocusChanged?.call(f);
-        if (f) {
+        if (f && !_pointerFocus) {
           Scrollable.ensureVisible(context,
               alignment: 0.5, duration: const Duration(milliseconds: 150));
         }
+        _pointerFocus = false;
       },
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTap: widget.onPressed,
-        child: widget.builder(context, _focused),
+      // Hover events come only from a moving pointer; the enter events
+      // sent when a list scrolls under a still one would steal focus.
+      child: MouseRegion(
+        onHover: (_) {
+          _pointerFocus = false;
+          if (!enabled || _node.hasFocus) return;
+          _pointerFocus = true;
+          _node.requestFocus();
+        },
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: widget.onPressed,
+          child: widget.builder(context, _focused),
+        ),
       ),
     );
   }

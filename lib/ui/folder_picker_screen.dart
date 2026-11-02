@@ -273,6 +273,9 @@ class _FolderPickerScreenState extends State<FolderPickerScreen> {
               Text('No folders inside. Tick the library to use its videos.', style: g.body(26, color: g.textDim)),
             for (final node in folders)
               Padding(
+                // A row keeps its focus highlight in its state: opening a
+                // folder mustn't hand the focused row's state to a new one.
+                key: ValueKey(node.id),
                 padding: const EdgeInsets.only(bottom: 8),
                 child: _FolderRow(
                   focusNode: _nodeFor('f:${node.id}'),
@@ -387,6 +390,10 @@ class _FolderRow extends StatefulWidget {
 class _FolderRowState extends State<_FolderRow> {
   bool _focused = false;
 
+  /// Set while the pointer is taking focus, so the focus change doesn't
+  /// scroll (see TvFocusable).
+  bool _pointerFocus = false;
+
   @override
   Widget build(BuildContext context) {
     final g = context.guide;
@@ -398,8 +405,11 @@ class _FolderRowState extends State<_FolderRow> {
         setState(() => _focused = f);
         if (f) {
           w.onFocus();
-          Scrollable.ensureVisible(context, alignment: 0.5, duration: const Duration(milliseconds: 150));
+          if (!_pointerFocus) {
+            Scrollable.ensureVisible(context, alignment: 0.5, duration: const Duration(milliseconds: 150));
+          }
         }
+        _pointerFocus = false;
       },
       onKeyEvent: (node, event) {
         if (event is! KeyDownEvent && event is! KeyRepeatEvent) return KeyEventResult.ignored;
@@ -420,8 +430,12 @@ class _FolderRowState extends State<_FolderRow> {
       },
       child: MouseRegion(
         cursor: SystemMouseCursors.click,
-        onEnter: (_) {
-          if (!w.focusNode.hasFocus) w.focusNode.requestFocus();
+        // Only a moving pointer takes focus, not rows scrolling under it.
+        onHover: (_) {
+          _pointerFocus = false;
+          if (w.focusNode.hasFocus) return;
+          _pointerFocus = true;
+          w.focusNode.requestFocus();
         },
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 100),

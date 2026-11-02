@@ -430,14 +430,24 @@ class _GuideViewState extends State<GuideView> with SingleTickerProviderStateMix
                             numberWidth: numberWidth,
                             gridWidth: _gridWidth,
                             now: _now,
-                            onHoverProgram: (p) => setState(() {
-                              _menuFocused = false;
-                              _tabsFocused = false;
-                              _setRow(i, channels.length);
-                              _cursorTime = p == null || p.start.isBefore(_now)
-                                  ? _now
-                                  : p.start.add(const Duration(seconds: 1));
-                            }),
+                            onHoverProgram: (p) {
+                              // Hover fires on every pointer move; only a
+                              // new program moves the cursor.
+                              if (i == _row &&
+                                  !_menuFocused &&
+                                  !_tabsFocused &&
+                                  (p == null ? _cursorTime == _now : focusedProgram?.start == p.start)) {
+                                return;
+                              }
+                              setState(() {
+                                _menuFocused = false;
+                                _tabsFocused = false;
+                                _setRow(i, channels.length);
+                                _cursorTime = p == null || p.start.isBefore(_now)
+                                    ? _now
+                                    : p.start.add(const Duration(seconds: 1));
+                              });
+                            },
                             onTap: () => widget.onWatch(channels[i]),
                           ),
                       ],
@@ -946,7 +956,7 @@ class _GuideRow extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           MouseRegion(
-            onEnter: (_) => onHoverProgram(null),
+            onHover: (_) => onHoverProgram(null),
             child: GestureDetector(
               onTap: onTap,
               child: Container(
@@ -1073,7 +1083,9 @@ class _ProgramCell extends StatelessWidget {
     final fg = focused ? g.onFocus : g.text;
     return MouseRegion(
       cursor: SystemMouseCursors.click,
-      onEnter: (_) => onHover(),
+      // Hover, not enter: rows scrolling under a still pointer don't move
+      // the cursor.
+      onHover: (_) => onHover(),
       child: GestureDetector(
         onTap: onTap,
         child: Container(
