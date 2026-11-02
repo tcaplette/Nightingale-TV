@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -27,6 +28,10 @@ class AppStorage {
   static Future<AppStorage> open() async {
     final dir = await getApplicationSupportDirectory();
     await adoptLegacyData(Directory('${dir.parent.path}/$legacyAppId'), dir);
+    final home = Platform.environment['HOME'];
+    if (Platform.isLinux && home != null) {
+      unawaited(removeUserCopies(home, Platform.resolvedExecutable));
+    }
     final storage = AppStorage._(dir);
     await storage.logosDir.create(recursive: true);
     return storage;
@@ -42,6 +47,41 @@ class AppStorage {
       await current.delete();
     }
     await legacy.rename(current.path);
+  }
+
+  /// The Linux package's install folder.
+  static const packageDir = '/opt/nightingale-tv/';
+
+  /// Deletes the copy of the app an older `tool/install.sh` put in [home],
+  /// whose menu entry hides the package's one, when the app is running from
+  /// the package ([executable] under [packageDir]). Only those three paths;
+  /// never the data folder. Errors are ignored: start-up never fails here.
+  static Future<void> removeUserCopies(String home, String executable) async {
+    if (!executable.startsWith(packageDir)) return;
+    const id = 'com.coffeehauslabs.nightingale_tv';
+    final apps = '$home/.local/share/applications';
+    final copies = <FileSystemEntity>[
+      Directory('$home/.local/opt/nightingale-tv'),
+      File('$apps/$id.desktop'),
+      File('$home/.local/share/icons/hicolor/scalable/apps/$id.svg'),
+    ];
+    var removed = false;
+    for (final copy in copies) {
+      try {
+        if (await copy.exists()) {
+          await copy.delete(recursive: true);
+          removed = true;
+        }
+      } on FileSystemException {
+        // Left in place; the menu keeps working either way.
+      }
+    }
+    if (!removed) return;
+    try {
+      await Process.run('update-desktop-database', [apps]);
+    } on ProcessException {
+      // Not installed; the menu notices the change on its own.
+    }
   }
 
   /// Storage rooted at [dir] (a profile's folder, or a temp folder in

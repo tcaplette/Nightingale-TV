@@ -263,7 +263,9 @@ class PlexClient implements MediaServer {
         tracks.addAll(await _all(section, 10));
         musicVideos.addAll(await _musicVideos(section));
       } else if (lib.collectionType == 'tvshows') {
-        shows.addAll(await _all(section, 2, query: guids));
+        // Guids always: they tell a server's copies of a show apart
+        // (lineup-dedup D1).
+        shows.addAll(await _all(section, 2, query: const {'includeGuids': 1}));
         episodes.addAll(await _withChapters(await _all(section, 4, query: guids)));
       } else if (lib.collectionType == 'movies') {
         movies.addAll(await _withChapters(await _all(section, 1, query: guids)));

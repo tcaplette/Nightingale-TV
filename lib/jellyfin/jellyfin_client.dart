@@ -344,7 +344,9 @@ class JellyfinClient implements MediaServer {
       series.addAll(await allItems({
         ...common,
         'IncludeItemTypes': 'Series',
-        'Fields': 'Genres,OfficialRating$ids',
+        // Provider ids always: they tell a server's copies of a show apart
+        // (lineup-dedup D1).
+        'Fields': 'Genres,OfficialRating,ProviderIds',
       }));
       episodes.addAll(await allItems({
         ...common,

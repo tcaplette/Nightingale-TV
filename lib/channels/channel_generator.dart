@@ -192,7 +192,7 @@ class ChannelGenerator {
 
   List<Channel> generate() {
     final channels = <Channel>[];
-    var number = 2;
+    var number = 1;
 
     void add(String id, String name, ChannelIcon icon, ChannelSource source, PlaybackOrder order) {
       final playlist = buildPlaylist(library, source, order, seed: stableHash(id));
@@ -219,7 +219,7 @@ class ChannelGenerator {
     // Marathon channels for the biggest shows. Those shows air there (and
     // on All Shows), leaving the genre channels to the others.
     int episodesOf(String show) => library.episodesBySeries[show]?.length ?? 0;
-    final bigShows = (library.series.where((s) => episodesOf(s.key) >= options.minEpisodesForShowChannel).toList()
+    final bigShows = (library.series.where((s) => !s.isUnknown && episodesOf(s.key) >= options.minEpisodesForShowChannel).toList()
           ..sort((a, b) => episodesOf(b.key).compareTo(episodesOf(a.key))))
         .take(options.maxShowChannels)
         .toList();
@@ -351,8 +351,46 @@ class ChannelGenerator {
     music(library.songs, videos: false);
     PlaybackDiagnostics.note('MUSIC', '${library.musicVideos.length} music videos, ${library.songs.length} songs: '
         '${[for (final c in channels.skip(before)) '${c.name} (${c.playlist.length})'].join(', ')}');
+    nameApart(library, channels);
     return channels;
   }
+
+  /// Gives generated [channels] that share a name their own (lineup-dedup
+  /// D4): the first channel of the name that isn't a show's keeps it (one
+  /// in [keep], the lineup's own, when there is one), the others add their
+  /// kind ("Name (Show)"), or a show's year next to a show of the same name.
+  static void nameApart(LibraryIndex library, List<Channel> channels, {Set<String> keep = const {}}) {
+    final byName = <String, List<Channel>>{};
+    for (final c in channels) {
+      byName.putIfAbsent(c.name.toLowerCase(), () => []).add(c);
+    }
+    final taken = byName.keys.toSet();
+    bool isShow(Channel c) => c.id.startsWith('auto:show:');
+    for (final group in byName.values.where((g) => g.length > 1)) {
+      final kept = group.where((c) => keep.contains(c.id)).firstOrNull ??
+          group.where((c) => !isShow(c)).firstOrNull ??
+          group.first;
+      for (final c in group) {
+        if (c == kept || keep.contains(c.id)) continue;
+        final year = isShow(c) && isShow(kept) ? library.seriesByKey[c.source.seriesKeys.firstOrNull]?.year : null;
+        final label = year?.toString() ?? _kindOf(c);
+        var name = '${c.name} ($label)';
+        for (var n = 2; taken.contains(name.toLowerCase()); n++) {
+          name = '${c.name} ($label $n)';
+        }
+        taken.add(name.toLowerCase());
+        c.name = name;
+      }
+    }
+  }
+
+  static String _kindOf(Channel c) => switch (c.id) {
+        final id when id.startsWith('auto:show:') => 'Show',
+        final id when id.startsWith('auto:movies') => 'Movies',
+        final id when id.startsWith('auto:music-videos') => 'Music Videos',
+        final id when id.startsWith('auto:radio') => 'Radio',
+        _ => 'Shows',
+      };
 
   static double _jaccard(Set<String> a, Set<String> b) =>
       a.intersection(b).length / a.union(b).length;
@@ -361,29 +399,42 @@ class ChannelGenerator {
 
   /// Spreads the library over [channels]' generated genre channels again,
   /// as a refresh does: each show airs on one show genre channel (none,
-  /// when it has a marathon channel), each movie on one movie genre
-  /// channel. Sets their [ChannelSource.excluded]; hidden channels are
-  /// left as they are, and take no titles from the others.
+  /// when it has a show channel of its own), each movie on one movie genre
+  /// channel. Sets their [ChannelSource.excluded]. Hidden channels count
+  /// too, after the visible ones: they take what no visible channel has.
   ///
-  /// A channel left with nothing of its own plays its whole genre again;
-  /// returns their ids.
-  static Set<String> spreadTitles(LibraryIndex library, List<Channel> channels) {
+  /// A genre channel left under [GeneratorOptions]' minimums, as [generate]
+  /// applies them, is thin: its titles go to the other channels of its
+  /// genres and it plays nothing. Returns the thin channels' ids.
+  static Set<String> spreadTitles(LibraryIndex library, List<Channel> channels,
+      {GeneratorOptions options = const GeneratorOptions()}) {
     List<Channel> generated(String prefix) => [
           for (final c in channels)
-            if (c.auto && !c.hidden && !c.isLive && c.id.startsWith(prefix) && c.source.genres.isNotEmpty) c,
+            if (c.auto && !c.isLive && c.id.startsWith(prefix) && c.source.genres.isNotEmpty) c,
         ]..sort((a, b) => a.number.compareTo(b.number));
+    int episodesOf(String show) => library.episodesBySeries[show]?.length ?? 0;
+    // Shows big enough for their own channel air there instead.
     final marathon = {
       for (final c in channels)
-        if (c.auto && !c.hidden && c.id.startsWith('auto:show:')) ...c.source.seriesKeys,
+        if (c.auto && c.id.startsWith('auto:show:'))
+          for (final k in c.source.seriesKeys)
+            if (library.seriesByKey[k] case final s? when !s.isUnknown && episodesOf(k) >= options.minEpisodesForShowChannel)
+              k,
     };
-    final empty = <String>{};
-    void spread(List<Channel> genreChannels, Map<String, Set<String>> titlesOf, Set<String> skip, int Function(String) size) {
-      final shared = _share([for (final c in genreChannels) c.id],
-          {for (final c in genreChannels) c.id: titlesOf[c.id]!.difference(skip)}, size);
-      for (final c in genreChannels) {
-        final mine = shared[c.id]!;
-        if (mine.isEmpty) empty.add(c.id);
-        c.source = c.source.copyWith(excluded: mine.isEmpty ? const [] : _sorted(titlesOf[c.id]!.difference(mine)));
+    final thin = <String>{};
+    void spread(List<Channel> genreChannels, Map<String, Set<String>> titlesOf, Set<String> skip,
+        int Function(String) size, bool Function(Set<String>) tooThin) {
+      final owned = {...skip};
+      for (final hidden in [false, true]) {
+        final group = [for (final c in genreChannels) if (c.hidden == hidden) c];
+        final shared = _pickAndShare([for (final c in group) c.id], group.length,
+            {for (final c in group) c.id: titlesOf[c.id]!.difference(owned)}, size, tooThin);
+        for (final c in group) {
+          final mine = shared[c.id];
+          if (mine == null) thin.add(c.id);
+          owned.addAll(mine ?? const {});
+          c.source = c.source.copyWith(excluded: _sorted(titlesOf[c.id]!.difference(mine ?? const {})));
+        }
       }
     }
 
@@ -394,7 +445,10 @@ class ChannelGenerator {
           for (final s in library.series)
             if (s.genres.map(normalizeGenre).any(c.source.genres.contains)) s.key,
         },
-    }, marathon, (show) => library.episodesBySeries[show]?.length ?? 0);
+    }, marathon, episodesOf,
+        (shows) =>
+            shows.length < options.minSeriesPerGenre ||
+            shows.fold(0, (n, k) => n + episodesOf(k)) < options.minEpisodesPerGenre);
     final movieChannels = generated('auto:movies:');
     spread(movieChannels, {
       for (final c in movieChannels)
@@ -402,8 +456,8 @@ class ChannelGenerator {
           for (final m in library.movies)
             if (m.genres.map(normalizeGenre).any(c.source.genres.contains)) m.id,
         },
-    }, const {}, (_) => 1);
-    return empty;
+    }, const {}, (_) => 1, (movies) => movies.length < options.minMoviesPerMovieGenre);
+    return thin;
   }
 
   /// Picks up to [max] of [candidates] (best first) and shares their

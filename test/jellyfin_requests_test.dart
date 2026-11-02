@@ -74,7 +74,7 @@ void main() {
       'GET https://jf.example:8920/Items?ParentId=ads&Recursive=true&IncludeItemTypes=Movie%2CEpisode%2CVideo%2CMusicVideo%2CTrailer'
           '&IsMissing=false&Fields=Chapters%2CEtag&EnableImages=false&EnableUserData=false&userId=u1&StartIndex=0&Limit=500',
       'GET https://jf.example:8920/Items?ParentId=tv&Recursive=true&ImageTypeLimit=1&IncludeItemTypes=Series'
-          '&Fields=Genres%2COfficialRating&userId=u1&StartIndex=0&Limit=500',
+          '&Fields=Genres%2COfficialRating%2CProviderIds&userId=u1&StartIndex=0&Limit=500',
       'GET https://jf.example:8920/Items?ParentId=tv&Recursive=true&ImageTypeLimit=1&IncludeItemTypes=Episode&IsMissing=false'
           '&Fields=Overview%2CChapters%2CEtag%2CDateCreated&EnableImages=false&EnableUserData=true&userId=u1&StartIndex=0&Limit=500',
       'GET https://jf.example:8920/Items?ParentId=tv&Recursive=true&ImageTypeLimit=1&IncludeItemTypes=Movie'

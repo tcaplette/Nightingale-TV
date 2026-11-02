@@ -37,6 +37,7 @@ class StoredBackup {
         BackupReason.beforeReset => 'Before reset',
         BackupReason.beforeDelete => archive.subject == null ? 'Before deleting a profile' : 'Before deleting ${archive.subject}',
         BackupReason.beforeUpgrade => 'Before update',
+        BackupReason.beforeLineupCleanup => 'Before lineup cleanup',
         BackupReason.file => 'From a file',
         _ => 'Made by you',
       };

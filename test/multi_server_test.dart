@@ -248,13 +248,17 @@ void main() {
       expect(Directory('${dir.path}/library_parts').existsSync(), isFalse);
     });
 
-    test('a refresh asks for no provider ids and writes no part', () async {
+    test('a refresh asks for provider ids only for shows and writes no part', () async {
       final items = fakeItems(shows: const {'Alpha': 3});
       final server = FakeServer('Home', items: items);
       final app = await signedInApp(dir, _part(items));
       app.client = server.client;
       await app.refreshLibrary(background: true);
-      expect(server.requests.where((r) => r.contains('ProviderIds')), isEmpty);
+      // Shows always (lineup-dedup D1); episodes and movies only with
+      // several servers.
+      expect(server.requests.where((r) => r.contains('ProviderIds') && !r.contains('IncludeItemTypes=Series')), isEmpty);
+      expect(server.requests.where((r) => r.contains('IncludeItemTypes=Series')).every((r) => r.contains('ProviderIds')),
+          isTrue);
       expect(Directory('${dir.path}/library_parts').existsSync(), isFalse);
       await app.close();
     });

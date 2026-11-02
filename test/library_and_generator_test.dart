@@ -329,8 +329,8 @@ void main() {
       // has its own marathon, which leaves Comedy and that one with a show
       // each: too few for a genre channel.
       expect(names, ['All Shows', 'Toons', 'Movie Channel']);
-      // Numbers are unique and sequential from 2.
-      expect(channels.map((c) => c.number), [for (var i = 0; i < channels.length; i++) i + 2]);
+      // Numbers are unique and sequential from 1.
+      expect(channels.map((c) => c.number), [for (var i = 0; i < channels.length; i++) i + 1]);
     });
 
     test('each show airs on one genre channel; marathon shows only on their own', () {

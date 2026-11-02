@@ -105,13 +105,16 @@ On Android the app fills the screen and keeps it from turning off while it's in 
 The desktop version runs on Linux today. Windows and macOS versions are planned. To install it on Ubuntu or another Debian-based Linux, set up the tools in [Building for Linux](#building-for-linux), then run this from the project folder:
 
 ```bash
-tool/build_deb.sh
-sudo apt install ./dist/nightingale-tv_*_amd64.deb
+tool/install.sh
 ```
 
-`apt` also installs the libraries Nightingale TV needs. Afterward, open **Nightingale TV** from your app menu, or run `nightingale-tv`.
+It builds the app as a package and installs it with `apt`, which asks for your password and also installs the libraries Nightingale TV needs. Afterward, open **Nightingale TV** from your app menu, or run `nightingale-tv`.
 
-To uninstall it: `sudo apt remove nightingale-tv`. Your settings in `~/.local/share/com.coffeehauslabs.nightingale_tv` are kept.
+**Updating:** pull the latest code and run `tool/install.sh` again. Every build is a newer version, so it replaces the installed app; you never end up with two copies. Your profiles and settings stay.
+
+**Another computer:** `tool/build_deb.sh` makes the package without installing it, as `dist/nightingale-tv_<version>_amd64.deb`. Copy it over and install it there with `sudo apt install ./nightingale-tv_<version>_amd64.deb`, run from the folder it's in (the `./` matters: without it apt looks for a package of that name online). The package only installs on a Linux release with the same libmpv version as the computer that built it (Ubuntu 22.04 and 24.04 differ), so build it on the same release as the computer it's for.
+
+To uninstall it: `tool/install.sh --uninstall`, or `sudo apt remove nightingale-tv`. Your settings in `~/.local/share/com.coffeehauslabs.nightingale_tv` are kept.
 
 **Only in the desktop version:** two features need ffmpeg, so the Android app doesn't have them.
 
@@ -120,7 +123,7 @@ To uninstall it: `sudo apt remove nightingale-tv`. Your settings in `~/.local/sh
 
 ### What you need
 
-- An Android TV, Google TV or Fire TV device, or an Android phone or tablet, running Android 7.0 or newer. Or, for the desktop version, a 64-bit PC running Ubuntu 24.04 or newer, or a similar Debian-based Linux.
+- An Android TV, Google TV or Fire TV device, or an Android phone or tablet, running Android 7.0 or newer. Or, for the desktop version, a 64-bit PC running Ubuntu 22.04 or newer, or a similar Debian-based Linux.
 - A [Jellyfin](https://jellyfin.org) server (10.11 or newer), an [Emby](https://emby.media) server (4.8 or newer) or a [Plex Media Server](https://www.plex.tv) with your shows and movies, and music or music videos if you want music channels. You can add more than one.
 - For the phone remote, a phone on the same Wi-Fi as the TV. On Linux, if the firewall blocks it, allow the remote's port once: `sudo ufw allow 8642/tcp`.
 - On Linux, ffmpeg, which `apt` installs with the app. It splits long commercial compilations into individual ads and converts Live TV export's streams.
@@ -255,8 +258,8 @@ On Ubuntu:
 sudo apt install clang cmake ninja-build pkg-config libgtk-3-dev libmpv-dev ffmpeg
 
 flutter run -d linux        # NIGHTINGALE_TV_WINDOWED=1 runs it in a window
-tool/install.sh             # build and install for the current user
-tool/build_deb.sh           # build dist/nightingale-tv_<version>_amd64.deb
+tool/install.sh             # build the package and install or update it with apt
+tool/build_deb.sh           # only build dist/nightingale-tv_<version>_amd64.deb
 ```
 
 Windows and macOS builds aren't set up yet.

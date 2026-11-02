@@ -33,7 +33,9 @@ LibraryIndex mergeLibraries(List<LibraryIndex> parts, {LibraryIndex? previous, D
         // Artwork from the first copy with a logo.
         final useNew = !existing.hasLogo && s.hasLogo;
         series[s.key] = existing.withId(useNew ? s.id : existing.id,
-            hasLogo: existing.hasLogo || s.hasLogo, genres: {...existing.genres, ...s.genres}.toList());
+            hasLogo: existing.hasLogo || s.hasLogo,
+            genres: {...existing.genres, ...s.genres}.toList(),
+            providerIds: {...existing.providerIds, ...s.providerIds}.toList());
       }
     }
   }
@@ -112,51 +114,70 @@ LibraryIndex mergeLibraries(List<LibraryIndex> parts, {LibraryIndex? previous, D
 
 String _norm(String s) => s.trim().toLowerCase();
 
-/// [parts] with a show listed without a year on one server keyed as the
-/// same-named show with a year on another (one server's metadata knows the
-/// year, the other's doesn't), so their episodes match. The main server's
-/// key wins, else the first part's; shows with two different years stay
-/// apart.
+/// [parts] with each server's copy of a show keyed as one show
+/// ([ShowIdentity]): a shared provider id decides; otherwise the cleaned
+/// names match and a year missing on one server is filled in from another
+/// (one server's metadata knows the year, the other's doesn't), so their
+/// episodes match. The main server's key wins, else the first part's; shows
+/// with two different years stay apart.
 List<LibraryIndex> _sameShows(List<LibraryIndex> parts) {
-  String name(String key) => key.substring(0, key.lastIndexOf('|'));
+  String name(SeriesEntry s) => ShowIdentity.of(s.name, year: s.year).key;
   bool yearless(String key) => key.endsWith('|');
-  final keyOf = <String, String>{};
+  final byName = <String, SeriesEntry>{};
   // The main server's part (ids without a key) first.
   final ranked = [...parts]..sort((a, b) => (_isMain(a) ? 0 : 1).compareTo(_isMain(b) ? 0 : 1));
+  final mainKeys = {for (final s in ranked.first.series) s.key};
   for (final part in ranked) {
     for (final s in part.series) {
-      final n = name(s.key);
-      final known = keyOf[n];
-      if (known == null || yearless(known) && !yearless(s.key) && !ranked.first.series.any((x) => x.key == known)) {
-        keyOf[n] = s.key;
+      final known = byName[name(s)];
+      if (known == null || yearless(known.key) && !yearless(s.key) && !mainKeys.contains(known.key)) {
+        byName[name(s)] = s;
       }
     }
   }
-  String canonical(String key) {
-    final known = keyOf[name(key)];
-    if (known == null || known == key) return key;
+  String byNameRule(SeriesEntry s) {
+    final known = byName[name(s)];
+    if (known == null || known.key == s.key) return s.key;
+    if (ShowIdentity.providersAgree(known.providerIds, s.providerIds) == false) return s.key;
     // Only a missing year is filled in; two different years are two shows.
-    return yearless(key) || yearless(known) ? known : key;
+    return yearless(s.key) || yearless(known.key) ? known.key : s.key;
   }
 
+  // A shared provider id wins over names, the higher-ranked server's key
+  // first.
+  final byProvider = <String, String>{};
+  for (final part in ranked) {
+    for (final s in part.series) {
+      for (final p in s.providerIds) {
+        byProvider.putIfAbsent(p, () => byNameRule(s));
+      }
+    }
+  }
+  String canonical(SeriesEntry s) =>
+      s.providerIds.map((p) => byProvider[p]).nonNulls.firstOrNull ?? byNameRule(s);
+
   return [
-    for (final part in parts)
-      if (part.series.every((s) => canonical(s.key) == s.key))
-        part
-      else
-        LibraryIndex(
-          series: [for (final s in part.series) s.withKey(canonical(s.key))],
-          episodes: [for (final e in part.episodes) e.seriesKey == null ? e : e.withSeriesKey(canonical(e.seriesKey!))],
-          movies: part.movies,
-          commercials: part.commercials,
-          songs: part.songs,
-          musicVideos: part.musicVideos,
-          fetchedAt: part.fetchedAt,
-          rootsByItem: part.rootsByItem,
-          roots: part.roots,
-          missingRoots: part.missingRoots,
-        )
+    for (final part in parts) _rekeyed(part, {for (final s in part.series) s.key: canonical(s)}),
   ];
+}
+
+/// [part] with its shows under [keys] (each show's key to its new one).
+LibraryIndex _rekeyed(LibraryIndex part, Map<String, String> keys) {
+  if (keys.entries.every((e) => e.key == e.value)) return part;
+  return LibraryIndex(
+    series: [for (final s in part.series) s.withKey(keys[s.key]!)],
+    episodes: [
+      for (final e in part.episodes) e.seriesKey == null ? e : e.withSeriesKey(keys[e.seriesKey!] ?? e.seriesKey!)
+    ],
+    movies: part.movies,
+    commercials: part.commercials,
+    songs: part.songs,
+    musicVideos: part.musicVideos,
+    fetchedAt: part.fetchedAt,
+    rootsByItem: part.rootsByItem,
+    roots: part.roots,
+    missingRoots: part.missingRoots,
+  );
 }
 
 bool _isMain(LibraryIndex part) =>

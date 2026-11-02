@@ -42,7 +42,10 @@ abstract final class BackupReason {
   static const beforeDelete = 'before-delete';
   static const beforeUpgrade = 'before-upgrade';
 
-  static const all = [daily, manual, file, beforeRestore, beforeReset, beforeDelete, beforeUpgrade];
+  /// Before the one-time lineup cleanup (lineup-dedup D7).
+  static const beforeLineupCleanup = 'before-lineup-cleanup';
+
+  static const all = [daily, manual, file, beforeRestore, beforeReset, beforeDelete, beforeUpgrade, beforeLineupCleanup];
 
   /// Safety backups, taken right before a big change.
   static bool isSafety(String reason) => reason.startsWith('before-');

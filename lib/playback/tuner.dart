@@ -599,7 +599,11 @@ class Tuner extends ChangeNotifier {
 
   Future<void> lastChannel() async {
     final prev = previousChannel;
-    if (prev != null && app.channels.any((c) => c.id == prev.id)) await tune(prev);
+    if (prev == null) return;
+    // A channel merged into another since (lineup-dedup D6) tunes that one.
+    final id = app.currentChannelId(prev.id);
+    final ch = app.channels.where((c) => c.id == id).firstOrNull;
+    if (ch != null) await tune(ch);
   }
 
   /// Tunes to channel [number] if it exists.

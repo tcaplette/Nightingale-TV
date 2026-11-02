@@ -22,7 +22,7 @@ abstract final class ChannelNumbers {
   }
 
   /// Numbers [channels] in their order from [start] up, skipping [taken].
-  static void numberSkipping(List<Channel> channels, Set<int> taken, {int start = 2}) {
+  static void numberSkipping(List<Channel> channels, Set<int> taken, {int start = 1}) {
     var next = start;
     for (final c in channels) {
       c.number = nextFree(taken, from: next);
@@ -35,7 +35,7 @@ abstract final class ChannelNumbers {
   /// channel goes.
   static int nextGenerated(Iterable<Channel> channels) {
     final taken = {for (final c in channels) c.number};
-    final highest = channels.where((c) => !c.isLive).fold(1, (n, c) => max(n, c.number));
+    final highest = channels.where((c) => !c.isLive).fold(0, (n, c) => max(n, c.number));
     return nextFree(taken, from: highest + 1);
   }
 }

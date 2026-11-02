@@ -469,6 +469,31 @@ class Channel {
   /// The seed of the playlist's order.
   int get seed => generation == 0 ? stableHash(id) : stableHash('$id#$generation');
 
+  /// This channel under another [id] (lineup-dedup D3: its show's key
+  /// changed), with everything else the same.
+  Channel withId(String id) => Channel(
+        id: id,
+        number: number,
+        name: name,
+        icon: icon,
+        source: source,
+        order: order,
+        playlist: playlist,
+        anchor: anchor,
+        hidden: hidden,
+        favorite: favorite,
+        auto: auto,
+        blockOnly: blockOnly,
+        commercialPlan: commercialPlan,
+        logoMode: logoMode,
+        retro: retro,
+        premieres: premieres,
+        live: live,
+        slotRule: slotRule,
+        slotCarry: slotCarry,
+        generation: generation,
+      );
+
   Map<String, Object?> toJson() => {
         'id': id,
         'number': number,

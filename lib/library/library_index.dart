@@ -1,4 +1,5 @@
 import '../commercials/commercial_pool.dart';
+import '../playback/playback_diagnostics.dart';
 import '../server/media_server.dart';
 import '../profiles/profile.dart';
 
@@ -182,8 +183,11 @@ class MediaEntry {
       _copy(primary: primary, alternates: alternates, playCount: playCount, added: added, providerIds: providerIds);
 
   /// A copy under another show key (multi-server, see [SeriesEntry.withKey]).
-  MediaEntry withSeriesKey(String key) => MediaEntry(
-        id: id, kind: kind, title: title, runtime: runtime, seriesKey: key, seriesId: seriesId, seriesName: seriesName,
+  MediaEntry withSeriesKey(String key) => withShow(key, seriesName, season);
+
+  /// A copy under another show (lineup-dedup D2): its key, name and season.
+  MediaEntry withShow(String key, String? name, int? season) => MediaEntry(
+        id: id, kind: kind, title: title, runtime: runtime, seriesKey: key, seriesId: seriesId, seriesName: name,
         season: season, episode: episode, year: year, overview: overview, genres: genres, officialRating: officialRating,
         sourceId: sourceId, clipStart: clipStart, etag: etag, container: container, size: size, chapters: chapters,
         poolIds: poolIds, artist: artist, album: album, albumId: albumId, added: added, availableAt: availableAt,
@@ -354,10 +358,12 @@ class SeriesEntry {
     this.genres = const [],
     this.officialRating,
     this.hasLogo = false,
+    this.providerIds = const [],
   });
 
-  /// Jellyfin can list the same show as several Series items (one per
-  /// library folder); `name|year` merges them.
+  /// Servers can list the same show as several items (a matched and a bare
+  /// copy, season folders); they merge under `cleaned name|year` (see
+  /// [ShowIdentity]).
   final String key;
 
   /// Representative Jellyfin id, used for artwork.
@@ -368,15 +374,34 @@ class SeriesEntry {
   final String? officialRating;
   final bool hasLogo;
 
-  static String keyFor(String name, int? year) => '${name.trim().toLowerCase()}|${year ?? ''}';
+  /// The show's ids at metadata providers (`tvdb:123`), when the server
+  /// knows them (see [LibraryIndex.providerIdsOf]).
+  final List<String> providerIds;
+
+  static String keyFor(String name, int? year) => ShowIdentity.of(name, year: year).seriesKey;
+
+  /// Episodes with no show name are filed under this show, which never gets
+  /// a channel of its own.
+  static const unknownName = 'Unknown show';
+  static final unknownKey = keyFor(unknownName, null);
+
+  /// The show of episodes with no show name.
+  bool get isUnknown => key == unknownKey;
 
   /// A copy under another [key] (multi-server: the same show, its year known
   /// on another server).
   SeriesEntry withKey(String key) => SeriesEntry(
-      key: key, id: id, name: name, year: year, genres: genres, officialRating: officialRating, hasLogo: hasLogo);
+      key: key,
+      id: id,
+      name: name,
+      year: year,
+      genres: genres,
+      officialRating: officialRating,
+      hasLogo: hasLogo,
+      providerIds: providerIds);
 
   /// A copy with another artwork [id] (multi-server).
-  SeriesEntry withId(String id, {bool? hasLogo, List<String>? genres}) => SeriesEntry(
+  SeriesEntry withId(String id, {bool? hasLogo, List<String>? genres, List<String>? providerIds}) => SeriesEntry(
         key: key,
         id: id,
         name: name,
@@ -384,6 +409,7 @@ class SeriesEntry {
         genres: genres ?? this.genres,
         officialRating: officialRating,
         hasLogo: hasLogo ?? this.hasLogo,
+        providerIds: providerIds ?? this.providerIds,
       );
 
   Map<String, Object?> toJson() => {
@@ -394,6 +420,7 @@ class SeriesEntry {
         if (genres.isNotEmpty) 'genres': genres,
         if (officialRating != null) 'rating': officialRating,
         if (hasLogo) 'hasLogo': true,
+        if (providerIds.isNotEmpty) 'providerIds': providerIds,
       };
 
   factory SeriesEntry.fromJson(Map<String, Object?> j) => SeriesEntry(
@@ -404,7 +431,265 @@ class SeriesEntry {
         genres: (j['genres'] as List?)?.cast<String>() ?? const [],
         officialRating: j['rating'] as String?,
         hasLogo: j['hasLogo'] as bool? ?? false,
+        providerIds: (j['providerIds'] as List?)?.cast<String>() ?? const [],
       );
+}
+
+/// What a show item's name says about the show (lineup-dedup D1): the name
+/// without release tags and season or disc folder suffixes.
+class ShowIdentity {
+  const ShowIdentity._(this.key, this.name, this.year, this.season);
+
+  /// The cleaned name: lowercased, `&` read as "and", punctuation as spaces.
+  final String key;
+
+  /// The name as shown: [key]'s cleaning without the case folding.
+  final String name;
+
+  /// The item's year, else a lone year in parentheses in its name.
+  final int? year;
+
+  /// The season a folder suffix named ("Season 02", "S3"); null for none,
+  /// a range or a disc.
+  final int? season;
+
+  /// `key|year`: what [SeriesEntry.key] is.
+  String get seriesKey => '$key|${year ?? ''}';
+
+  static final _brackets = RegExp(r'\[[^\]]*\]');
+  static final _openBracket = RegExp(r'\[[^\]]*$');
+  static final _parens = RegExp(r'\(([^)]*)\)');
+  static final _openParen = RegExp(r'\([^)]*$');
+  static final _lonelyYear = RegExp(r'^\s*((?:18|19|20)\d\d)\s*$');
+  static final _marker = RegExp(
+      r'[\s._\-–:,]+(?:(seasons?|series|disc|disk|dvd|vol(?:ume)?)\.?\s*(\d{1,3})(\s*[-–&]\s*\d{1,3})?'
+      r'|s(\d{1,2})|complete(?:\s+(?:series|seasons?|collection))?)[\s._\-–:,]*$',
+      caseSensitive: false);
+  static final _space = RegExp(r'\s+');
+  static final _edges = RegExp(r'^[\s._\-–:,]+|[\s._\-–:,]+$');
+  static final _punctuation = RegExp(r'[^\p{L}\p{N}]+', unicode: true);
+
+  factory ShowIdentity.of(String raw, {int? year}) {
+    // Release tags in brackets, an unclosed one at the end included.
+    var s = raw.replaceAll(_brackets, ' ').replaceFirst(_openBracket, ' ');
+    // Parenthesised tags; a lone year is the show's year.
+    int? found;
+    s = s.replaceAllMapped(_parens, (m) {
+      if (_lonelyYear.firstMatch(m[1]!) case final y?) found ??= int.parse(y[1]!);
+      return ' ';
+    }).replaceFirst(_openParen, ' ');
+    // Season, disc and "complete" folder suffixes, several in a row.
+    int? season;
+    while (true) {
+      final m = _marker.firstMatch(s);
+      if (m == null) break;
+      final word = m[1]?.toLowerCase();
+      if (m[4] case final n?) {
+        season ??= int.parse(n);
+      } else if ((word == 'season' || word == 'series') && m[3] == null) {
+        season ??= int.parse(m[2]!);
+      }
+      s = s.substring(0, m.start);
+    }
+    var name = s.replaceAll(_space, ' ').replaceAll(_edges, '');
+    // A name that is nothing but tags stays as it was.
+    if (name.isEmpty) name = raw.trim();
+    if (name.isEmpty) name = SeriesEntry.unknownName;
+    final key = name.toLowerCase().replaceAll('&', ' and ').replaceAll(_punctuation, ' ').trim();
+    return ShowIdentity._(key.isEmpty ? name.toLowerCase() : key, name, year ?? found, season);
+  }
+
+  /// Whether [a] and [b] are the same show: they share a provider id, or
+  /// (unless the same provider gives them different ids) their cleaned names
+  /// match and their years match or one is missing.
+  static bool same(ShowItem a, ShowItem b) {
+    if (providersAgree(a.providerIds, b.providerIds) case final agree?) return agree;
+    final x = a.identity, y = b.identity;
+    return x.key == y.key && (x.year == null || y.year == null || x.year == y.year);
+  }
+
+  /// True when [a] and [b] share a provider id, false when a provider gives
+  /// them different ids, null when the ids don't say.
+  static bool? providersAgree(Iterable<String> a, Iterable<String> b) {
+    final mine = a.toSet();
+    if (b.any(mine.contains)) return true;
+    String provider(String id) => id.substring(0, id.indexOf(':') + 1);
+    final providers = {for (final p in mine) provider(p)};
+    return b.any((p) => providers.contains(provider(p))) ? false : null;
+  }
+}
+
+/// One item a server lists for a show (a Series, a Plex show, or the show
+/// name of episodes whose show isn't listed).
+class ShowItem {
+  ShowItem({
+    required this.id,
+    required this.name,
+    this.year,
+    this.genres = const [],
+    this.officialRating,
+    this.hasLogo = false,
+    this.providerIds = const [],
+    String? artworkId,
+  }) : artworkId = artworkId ?? id;
+
+  /// What the item's episodes name it by.
+  final String id;
+  final String name;
+  final int? year;
+  final List<String> genres;
+  final String? officialRating;
+  final bool hasLogo;
+  final List<String> providerIds;
+
+  /// The server item the show's artwork comes from.
+  final String artworkId;
+
+  late final identity = ShowIdentity.of(name, year: year);
+
+  /// Episodes with no show name.
+  bool get isUnknown => name == SeriesEntry.unknownName;
+
+  /// Year, genres and logo: how well the server matched the item.
+  int get _metadata => (identity.year != null ? 1 : 0) + (genres.isNotEmpty ? 1 : 0) + (hasLogo ? 1 : 0);
+}
+
+/// An episode as [ShowIndexer] sees it: its show item ([showId], else
+/// [showName]), numbers and raw title.
+typedef EpisodeRef = ({String? showId, String? showName, int? season, int? number, String title});
+
+/// The shows of one server's scan (lineup-dedup D2): its show items merged
+/// into shows ([ShowIdentity]), and each episode's show and season, or null
+/// for a copy of an episode already indexed. Every server type's scan uses
+/// it, and so does re-keying a saved index.
+class ShowIndexer {
+  ShowIndexer(List<ShowItem> shows, List<EpisodeRef> episodes) {
+    final items = <String, ShowItem>{for (final s in shows) s.id: s};
+    // Episodes whose show isn't listed are matched by their show name.
+    ShowItem itemOf(EpisodeRef e) {
+      if (items[e.showId] case final listed?) return listed;
+      final name = e.showName?.trim() ?? '';
+      if (name.isEmpty) {
+        return items.putIfAbsent(SeriesEntry.unknownKey, () => ShowItem(id: SeriesEntry.unknownKey, name: SeriesEntry.unknownName));
+      }
+      final id = e.showId ?? SeriesEntry.keyFor(name, null);
+      return items.putIfAbsent(id, () => ShowItem(id: id, name: name));
+    }
+
+    final itemOfEpisode = [for (final e in episodes) itemOf(e)];
+    final count = <String, int>{};
+    final allSeasonOne = <String, bool>{};
+    for (final (i, e) in episodes.indexed) {
+      final id = itemOfEpisode[i].id;
+      count[id] = (count[id] ?? 0) + 1;
+      allSeasonOne[id] = (allSeasonOne[id] ?? true) && (e.season == null || e.season == 1);
+    }
+
+    final keyOf = <String, String>{};
+    final byKey = <String, SeriesEntry>{};
+    for (final group in _group(items.values.toList())) {
+      final best = ([...group]..sort((a, b) {
+              final byMetadata = b._metadata.compareTo(a._metadata);
+              return byMetadata != 0 ? byMetadata : (count[b.id] ?? 0).compareTo(count[a.id] ?? 0);
+            }))
+          .first;
+      final year = best.identity.year ?? group.map((s) => s.identity.year).nonNulls.firstOrNull;
+      final key = best.isUnknown ? SeriesEntry.unknownKey : '${best.identity.key}|${year ?? ''}';
+      final logo = best.hasLogo ? best : group.where((s) => s.hasLogo).firstOrNull;
+      byKey[key] = SeriesEntry(
+        key: key,
+        id: (logo ?? best).artworkId,
+        name: best.isUnknown ? SeriesEntry.unknownName : best.identity.name,
+        year: year,
+        genres: {for (final s in group) ...s.genres}.toList(),
+        officialRating: best.officialRating ?? group.map((s) => s.officialRating).nonNulls.firstOrNull,
+        hasLogo: logo != null,
+        providerIds: {for (final s in group) ...s.providerIds}.toList(),
+      );
+      for (final s in group) {
+        keyOf[s.id] = key;
+      }
+      if (group.length > 1) {
+        PlaybackDiagnostics.note('SCAN', 'merged ${[for (final s in group) '"${s.name}" (${s.year ?? '-'})'].join(' + ')} → $key');
+      }
+    }
+
+    final seen = <String>{};
+    final withEpisodes = <String>{};
+    this.episodes = [
+      for (final (i, e) in episodes.indexed)
+        () {
+          final item = itemOfEpisode[i];
+          final key = keyOf[item.id]!;
+          // A season folder's episodes numbered as season 1 (or not at all).
+          final folder = item.identity.season;
+          final season = folder != null && (e.season == null || (allSeasonOne[item.id]! && folder != 1))
+              ? folder
+              : e.season;
+          final dedupe = season != null && e.number != null ? '$key|$season|${e.number}' : '$key|${e.title}';
+          if (!seen.add(dedupe)) return null;
+          withEpisodes.add(key);
+          return (key: key, name: byKey[key]!.name, season: season);
+        }(),
+    ];
+    // Shows with no playable episodes (only missing-episode stubs) go.
+    series = [for (final s in byKey.values) if (withEpisodes.contains(s.key)) s];
+  }
+
+  /// The shows with episodes.
+  late final List<SeriesEntry> series;
+
+  /// Each episode's show key, show name and season, in the order given;
+  /// null for a copy of an earlier one.
+  late final List<({String key, String name, int? season})?> episodes;
+
+  /// [items] as shows (D1). Items with a year (or provider ids) group first;
+  /// then a yearless item joins the one show of its name, or stays its own
+  /// show when the name has shows of several years.
+  static List<List<ShowItem>> _group(List<ShowItem> items) {
+    final groups = <List<ShowItem>>[];
+    bool conflicts(List<ShowItem> g, ShowItem s) =>
+        g.any((o) => ShowIdentity.providersAgree(o.providerIds, s.providerIds) == false);
+    bool sharesProvider(List<ShowItem> g, ShowItem s) =>
+        g.any((o) => ShowIdentity.providersAgree(o.providerIds, s.providerIds) == true);
+    void join(ShowItem s, List<ShowItem>? g) => g == null ? groups.add([s]) : g.add(s);
+
+    final unknown = [for (final s in items) if (s.isUnknown) s];
+    final dated = [for (final s in items) if (!s.isUnknown && s.identity.year != null) s];
+    final yearless = [for (final s in items) if (!s.isUnknown && s.identity.year == null) s];
+    for (final s in dated) {
+      join(
+          s,
+          groups.where((g) => sharesProvider(g, s)).firstOrNull ??
+              groups
+                  .where((g) => !conflicts(g, s) && g.any((o) => o.identity.key == s.identity.key && o.identity.year == s.identity.year))
+                  .firstOrNull);
+    }
+    final datedGroups = [...groups];
+    for (final s in yearless) {
+      final byProvider = groups.where((g) => sharesProvider(g, s)).firstOrNull;
+      if (byProvider != null) {
+        byProvider.add(s);
+        continue;
+      }
+      final named = [
+        for (final g in datedGroups)
+          if (!conflicts(g, s) && g.any((o) => o.identity.key == s.identity.key)) g,
+      ];
+      if (named.length == 1) {
+        named.single.add(s);
+        continue;
+      }
+      // No dated show of the name, or several (ambiguous): one yearless show.
+      join(
+          s,
+          groups
+              .where((g) => !datedGroups.contains(g) && !conflicts(g, s) && g.first.identity.key == s.identity.key)
+              .firstOrNull);
+    }
+    if (unknown.isNotEmpty) groups.add(unknown);
+    return groups;
+  }
 }
 
 /// Snapshot of the playable parts of the user's libraries.
@@ -605,6 +890,42 @@ class LibraryIndex {
         missingRoots: {for (final r in missingRoots) prefix(r)},
       );
 
+  /// This index with its shows merged by [ShowIdentity] (lineup-dedup D7):
+  /// an index saved before the rule, re-keyed without a scan. Episode ids
+  /// stay; a copy of an episode another of the show's items holds goes.
+  LibraryIndex rekeyed() {
+    final shows = ShowIndexer([
+      for (final s in series)
+        ShowItem(
+            id: s.key,
+            name: s.name,
+            year: s.year,
+            genres: s.genres,
+            officialRating: s.officialRating,
+            hasLogo: s.hasLogo,
+            providerIds: s.providerIds,
+            artworkId: s.id),
+    ], [
+      for (final e in episodes)
+        (showId: e.seriesKey, showName: e.seriesName, season: e.season, number: e.episode, title: e.title),
+    ]);
+    return LibraryIndex(
+      series: shows.series,
+      episodes: [
+        for (final (i, e) in episodes.indexed)
+          if (shows.episodes[i] case final show?) e.withShow(show.key, show.name, show.season),
+      ],
+      movies: movies,
+      commercials: commercials,
+      songs: songs,
+      musicVideos: musicVideos,
+      fetchedAt: fetchedAt,
+      rootsByItem: rootsByItem,
+      roots: roots,
+      missingRoots: missingRoots,
+    );
+  }
+
   late final Map<String, SeriesEntry> seriesByKey = {for (final s in series) s.key: s};
 
   late final Map<String, List<MediaEntry>> episodesBySeries = () {
@@ -683,66 +1004,48 @@ class LibraryIndex {
   }) {
     // Pool contents never air as programs, wherever their folder is.
     bool inPool(Map<String, Object?> item) => poolsByItem.containsKey(item['Id']);
-    final seriesByKey = <String, SeriesEntry>{};
-    final keyBySeriesId = <String, String>{};
-    for (final s in seriesItems) {
-      final name = s['Name'] as String? ?? 'Unknown show';
-      final year = s['ProductionYear'] as int?;
-      final key = SeriesEntry.keyFor(name, year);
-      keyBySeriesId[s['Id'] as String] = key;
-      final imageTags = s['ImageTags'] as Map<String, Object?>? ?? const {};
-      final existing = seriesByKey[key];
-      if (existing != null) {
-        // Merge duplicates: union genres, prefer the copy that has a logo.
-        final hasLogo = imageTags.containsKey('Logo');
-        seriesByKey[key] = SeriesEntry(
-          key: key,
-          id: !existing.hasLogo && hasLogo ? s['Id'] as String : existing.id,
-          name: existing.name,
-          year: year,
-          genres: {...existing.genres, ..._strings(s['Genres'])}.toList(),
-          officialRating: existing.officialRating ?? s['OfficialRating'] as String?,
-          hasLogo: existing.hasLogo || hasLogo,
-        );
-        continue;
-      }
-      seriesByKey[key] = SeriesEntry(
-        key: key,
-        id: s['Id'] as String,
-        name: name,
-        year: year,
-        genres: _strings(s['Genres']),
-        officialRating: s['OfficialRating'] as String?,
-        hasLogo: imageTags.containsKey('Logo'),
-      );
-    }
+    final playable = [
+      for (final e in episodeItems)
+        if (_runtime(e) != null && e['LocationType'] != 'Virtual' && !inPool(e)) e,
+    ];
+    // The server's items for one show (matched and bare copies, season
+    // folders) become one show; its episodes are indexed once.
+    final shows = ShowIndexer([
+      for (final s in seriesItems)
+        ShowItem(
+          id: s['Id'] as String,
+          name: s['Name'] as String? ?? SeriesEntry.unknownName,
+          year: s['ProductionYear'] as int?,
+          genres: _strings(s['Genres']),
+          officialRating: s['OfficialRating'] as String?,
+          hasLogo: (s['ImageTags'] as Map<String, Object?>? ?? const {}).containsKey('Logo'),
+          providerIds: providerIdsOf(s['ProviderIds']),
+        ),
+    ], [
+      for (final e in playable)
+        (
+          showId: e['SeriesId'] as String?,
+          showName: e['SeriesName'] as String?,
+          season: e['ParentIndexNumber'] as int?,
+          number: e['IndexNumber'] as int?,
+          title: '${e['Name']}',
+        ),
+    ]);
 
     final episodes = <MediaEntry>[];
-    final seenEpisodes = <String>{};
-    for (final e in episodeItems) {
-      final runtime = _runtime(e);
-      if (runtime == null || e['LocationType'] == 'Virtual' || inPool(e)) continue;
-      final seriesId = e['SeriesId'] as String?;
-      final seriesName = e['SeriesName'] as String? ?? 'Unknown show';
-      final key = keyBySeriesId[seriesId] ?? SeriesEntry.keyFor(seriesName, null);
-      seriesByKey.putIfAbsent(
-          key, () => SeriesEntry(key: key, id: seriesId ?? key, name: seriesName));
-      final season = e['ParentIndexNumber'] as int?;
+    for (final (i, e) in playable.indexed) {
+      final show = shows.episodes[i];
+      if (show == null) continue;
       final number = e['IndexNumber'] as int?;
-      // The same episode file can show up under duplicate series entries.
-      final dedupe = season != null && number != null
-          ? '$key|$season|$number'
-          : '$key|${e['Name']}';
-      if (!seenEpisodes.add(dedupe)) continue;
       episodes.add(MediaEntry(
         id: e['Id'] as String,
         kind: MediaKind.episode,
         title: cleanEpisodeTitle(e['Name'] as String? ?? '', episode: number),
-        runtime: runtime,
-        seriesKey: key,
-        seriesId: seriesId,
-        seriesName: seriesByKey[key]!.name,
-        season: season,
+        runtime: _runtime(e)!,
+        seriesKey: show.key,
+        seriesId: e['SeriesId'] as String?,
+        seriesName: show.name,
+        season: show.season,
         episode: number,
         year: e['ProductionYear'] as int?,
         overview: e['Overview'] as String?,
@@ -837,10 +1140,8 @@ class LibraryIndex {
       return result;
     }
 
-    // Drop series with no playable episodes (e.g. only missing-episode stubs).
-    final withEpisodes = {for (final e in episodes) e.seriesKey};
     return LibraryIndex(
-      series: seriesByKey.values.where((s) => withEpisodes.contains(s.key)).toList(),
+      series: shows.series,
       episodes: episodes,
       movies: movies,
       commercials: commercials,

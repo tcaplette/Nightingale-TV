@@ -5,10 +5,12 @@ import 'dart:math';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' show Client;
 
+import 'backup/backup_archive.dart';
 import 'channels/channel.dart';
 import 'channels/retro.dart';
 export 'channels/retro.dart';
 import 'channels/channel_generator.dart';
+import 'channels/show_key_remap.dart';
 import 'channels/channel_groups.dart';
 import 'channels/channel_groups.dart' as channel_groups show m3uGroupFor;
 import 'channels/channel_numbers.dart';
@@ -260,6 +262,7 @@ class AppSettings {
     Set<String>? hiddenTabs,
     this.guideTab,
     this.premieres = const PremiereSettings(),
+    this.lineupVersion = 0,
   })  : commercialPools = commercialPools ?? [],
         groups = groups ?? [],
         guideTabs = guideTabs ?? [...GuideTabs.defaultOrder],
@@ -299,6 +302,12 @@ class AppSettings {
   /// The nightly new episode premiere slot.
   PremiereSettings premieres;
 
+  /// Which one-time lineup cleanups have run: 0 for a lineup made before
+  /// show identity, [currentLineupVersion] once cleaned up (lineup-dedup D7).
+  int lineupVersion;
+
+  static const currentLineupVersion = 1;
+
   /// The pool settings from before break plans became, with an id that's
   /// the same every time the upgrade runs.
   static const legacyPoolId = 'pool-commercials';
@@ -324,6 +333,7 @@ class AppSettings {
         if (hiddenTabs.isNotEmpty) 'hiddenTabs': hiddenTabs.toList(),
         if (guideTab != null) 'guideTab': guideTab,
         'premieres': premieres.toJson(),
+        'lineupVersion': lineupVersion,
       };
 
   /// Jellyfin device IDs start with this.
@@ -351,7 +361,8 @@ class AppSettings {
       ..guideTabs = GuideTabs.normalize((j['guideTabs'] as List?)?.whereType<String>().toList() ?? GuideTabs.defaultOrder, groups)
       ..hiddenTabs = {...?(j['hiddenTabs'] as List?)?.whereType<String>()}
       ..guideTab = j['guideTab'] as String?
-      ..premieres = PremiereSettings.fromJson(j['premieres']);
+      ..premieres = PremiereSettings.fromJson(j['premieres'])
+      ..lineupVersion = j['lineupVersion'] as int? ?? 0;
     if (j['commercialPlan'] case final Map<String, Object?> plan) {
       return withExtras(AppSettings(
         installId: installId,
@@ -387,7 +398,8 @@ class AppSettings {
   static AppSettings fresh() {
     final rng = Random.secure();
     final id = List.generate(16, (_) => rng.nextInt(256).toRadixString(16).padLeft(2, '0')).join();
-    return AppSettings(installId: '$deviceIdPrefix$id');
+    // A new profile's lineup is made with show identity.
+    return AppSettings(installId: '$deviceIdPrefix$id', lineupVersion: currentLineupVersion);
   }
 }
 
@@ -1364,6 +1376,7 @@ class AppState extends ChangeNotifier {
       PlaybackDiagnostics.mark('analysis cache open');
       _updateCatalog(rebase: false);
       _setChannels([for (final c in channelsJson.cast<Map<String, Object?>>()) Channel.fromJson(c)]);
+      await _cleanUpLineup();
       _askLaunchDecision();
       _setPhase(AppPhase.ready);
       PlaybackDiagnostics.mark('ready (channels set)');
@@ -1392,6 +1405,37 @@ class AppState extends ChangeNotifier {
       await refreshLibrary();
     }
     _armLaunchGate();
+  }
+
+  /// Once per profile, a lineup made before show identity is cleaned up
+  /// (lineup-dedup D7), without a scan: the saved library re-keyed, saved
+  /// show keys rewritten, duplicate and thin generated channels retired and
+  /// merged as a refresh does, then generated channels numbered from 1 in
+  /// their order, around the numbers live and user-built channels hold. A
+  /// safety backup comes first; without one, it waits for the next launch.
+  Future<void> _cleanUpLineup() async {
+    if (settings.lineupVersion >= AppSettings.currentLineupVersion) return;
+    if (_channels.any((c) => c.auto && !c.isLive)) {
+      try {
+        await safetyBackup?.call(BackupReason.beforeLineupCleanup);
+      } on Object catch (e) {
+        debugPrint('No backup before cleaning up the lineup; trying again next launch: $e');
+        return;
+      }
+      final previous = library;
+      final plansBefore = _plans();
+      library = previous.rekeyed();
+      _mergeLibraryIntoChannels(previous, plansBefore);
+      final held = {for (final c in _channels) if (!c.auto || c.isLive) c.number};
+      ChannelNumbers.numberSkipping([for (final c in _channels) if (c.auto && !c.isLive) c], held);
+      _setChannels(_channels);
+      PlaybackDiagnostics.note('LINEUP', 'cleaned up: ${[for (final c in _channels) '${c.number} ${c.name}'].join(', ')}');
+      await storage.writeJson(_libraryFile, library.toJson());
+      await _saveChannels();
+      await _saveBlocks();
+    }
+    settings.lineupVersion = AppSettings.currentLineupVersion;
+    await _saveSettings();
   }
 
   Future<void> _loadBlocks() async {
@@ -2033,6 +2077,7 @@ class AppState extends ChangeNotifier {
       } else {
         _schedules.clear();
         _setChannels(_generated());
+        settings.lineupVersion = AppSettings.currentLineupVersion;
       }
       // New pool contents may bring clips (or take them away).
       _updateCatalog();
@@ -2046,6 +2091,8 @@ class AppState extends ChangeNotifier {
       await storage.writeJson(_libraryFile, library.toJson());
       await _saveChannels();
       await _saveBlocks();
+      // Groups and the last channel follow merged channels.
+      await _saveSettings();
       _setPhase(AppPhase.ready);
       _startAnalysis();
       _startLiveRefresh();
@@ -2151,7 +2198,8 @@ class AppState extends ChangeNotifier {
   Future<LibraryIndex?> _savedPart(String key) async {
     final json = await storage.readJson(_partFile(key));
     try {
-      return json is Map<String, Object?> ? LibraryIndex.fromJson(json) : null;
+      // Saved before show identity (lineup-dedup): its shows merged again.
+      return json is Map<String, Object?> ? LibraryIndex.fromJson(json).rekeyed() : null;
     } on Object catch (e) {
       debugPrint('Unreadable library part $key: $e');
       return null;
@@ -2239,20 +2287,30 @@ class AppState extends ChangeNotifier {
     await storage.writeJson(_libraryFile, library.toJson());
     await _saveChannels();
     await _saveBlocks();
+    await _saveSettings();
   }
 
   void _mergeLibraryIntoChannels(LibraryIndex previous, Map<String, BreakPlan> plansBefore) {
     final now = DateTime.now();
+    // Saved show keys follow the shows the scan merged; a show's second
+    // channel merges into its first (lineup-dedup D3, D6).
+    final renamed = _remapShowKeys(previous);
     // Channels the bigger library now qualifies for, after the generated
     // ones (skipping numbers live channels hold).
     final existingIds = {for (final c in _channels) c.id};
+    // Show channels up to the generator's limit: a kept channel a growing
+    // show would outrank isn't joined by one more (D5).
+    const options = GeneratorOptions();
+    var showRoom = options.maxShowChannels -
+        _channels.where((c) => c.id.startsWith(_showPrefix) && !_showTooSmall(c)).length;
     final added = [
-      for (final c in ChannelGenerator(library).generate())
-        if (!existingIds.contains(c.id)) c..number = 1 << 30,
+      for (final c in ChannelGenerator(library, options: options).generate())
+        if (!existingIds.contains(c.id) && (!c.id.startsWith(_showPrefix) || showRoom-- > 0)) c..number = 1 << 30,
     ];
-    // Each show and movie airs on one genre channel; a new one left with
-    // nothing of its own isn't added.
-    final empty = ChannelGenerator.spreadTitles(library, [..._channels, ...added]);
+    // Each show and movie airs on one genre channel; a genre channel left
+    // under its minimums is thin: retired, or not added.
+    final thin = ChannelGenerator.spreadTitles(library, [..._channels, ...added]);
+    final retired = <Channel>[];
     for (final ch in _channels) {
       if (ch.isLive) continue;
       if (ch.blockOnly) {
@@ -2260,6 +2318,10 @@ class AppState extends ChangeNotifier {
         continue;
       }
       final fresh = buildPlaylist(library, ch.source, ch.order, seed: ch.seed);
+      if (_retires(ch, fresh, thin)) {
+        retired.add(ch);
+        continue;
+      }
       // What's new airs from the next program on.
       final onAir = ChannelSchedule.build(
               ch, previous, const [], _breakContext(plansBefore[ch.id] ?? planFor(ch), ch.effectiveSlotRule))
@@ -2277,19 +2339,148 @@ class AppState extends ChangeNotifier {
       }
       _rebase(ch, merged, now, previous: previous, planBefore: plansBefore[ch.id]);
     }
+    // What the generator no longer makes goes, its schedule and premiere
+    // home with it (D5).
+    for (final ch in retired) {
+      _channels.remove(ch);
+      PlaybackDiagnostics.note('LINEUP', 'retired ${ch.number} ${ch.name} (${ch.id})');
+    }
     for (final b in _blocks) {
       b.playlist = _mergedPlaylist(b.playlist, blockPlaylist(b),
           onlyFresh: !b.hasLineup && (b.source.roots.isNotEmpty || b.source.ratingFloor != null), previous: previous);
     }
     _schedules.clear();
     for (final c in added) {
-      if (empty.contains(c.id)) continue;
+      if (thin.contains(c.id)) continue;
       c.playlist = buildPlaylist(library, c.source, c.order, seed: c.seed);
       if (c.playlist.isEmpty) continue;
       c.number = ChannelNumbers.nextGenerated(_channels);
       _channels.add(c);
     }
+    ChannelGenerator.nameApart(library, [for (final c in _channels) if (c.auto && !c.isLive) c],
+        keep: existingIds.difference(renamed));
     _setChannels(_channels);
+  }
+
+  /// Whether a refresh retires generated [ch] (lineup-dedup D5): it plays
+  /// nothing ([fresh] is empty), it is a [thin] genre channel, or its show
+  /// is gone or has too few episodes for a channel of its own. Hidden
+  /// channels too; a channel carrying the user's blocks stays, and nothing
+  /// goes when the scan found nothing at all.
+  bool _retires(Channel ch, List<String> fresh, Set<String> thin) {
+    if (!ch.auto || ch.isLive || ch.blockOnly || library.isEmpty) return false;
+    if (_blocks.any((b) => b.channelId == ch.id)) return false;
+    return fresh.isEmpty || thin.contains(ch.id) || (ch.id.startsWith(_showPrefix) && _showTooSmall(ch));
+  }
+
+  /// Whether show channel [ch]'s show is gone, unnamed, or has too few
+  /// episodes for a channel of its own.
+  bool _showTooSmall(Channel ch) {
+    final key = ch.source.seriesKeys.firstOrNull;
+    final show = library.seriesByKey[key];
+    return show == null ||
+        show.isUnknown ||
+        (library.episodesBySeries[key]?.length ?? 0) < const GeneratorOptions().minEpisodesForShowChannel;
+  }
+
+  static const _showPrefix = 'auto:show:';
+
+  /// Channels retired into another, by id: where the remote's last channel
+  /// goes now (lineup-dedup D6).
+  final _movedChannels = <String, String>{};
+
+  /// The id channel [id] has now: its own, or the channel it was merged
+  /// into.
+  String currentChannelId(String id) {
+    var current = id;
+    for (var i = 0; i < 8 && _movedChannels.containsKey(current); i++) {
+      current = _movedChannels[current]!;
+    }
+    return current;
+  }
+
+  /// Rewrites saved show keys for [library] (lineup-dedup D3): sources,
+  /// block lineups and show channels' ids. A show channel whose id another
+  /// channel already has retires into it (D6). Show channels with the name
+  /// the generator gave them take their show's name now; returns their ids.
+  Set<String> _remapShowKeys(LibraryIndex previous) {
+    bool isShow(Channel c) => c.auto && !c.isLive && c.id.startsWith(_showPrefix);
+    // Each show channel's show name before the scan; a channel named that,
+    // or the generator's "Name (kind)" for it, has the generator's name.
+    final showName = {
+      for (final c in _channels)
+        if (isShow(c)) c.id: previous.seriesByKey[c.source.seriesKeys.firstOrNull]?.name,
+    };
+    bool generated(Channel c) => switch (showName[c.id]) {
+          final name? => c.name == name || c.name.startsWith('$name ('),
+          null => false,
+        };
+    final generatedName = {for (final c in _channels) if (isShow(c)) c.id: generated(c)};
+    final renames = ShowKeyRemap(library, previous: previous).apply(_channels, _blocks);
+    for (final MapEntry(key: from, value: to) in renames.entries) {
+      final a = channelById(from);
+      if (a == null) continue;
+      final b = channelById(to);
+      final aGenerated = generatedName.remove(from) ?? true;
+      if (b == null) {
+        _channels[_channels.indexOf(a)] = a.withId(to);
+        _channelMoved(from, to);
+        generatedName[to] = aGenerated;
+        showName[to] = showName.remove(from);
+        continue;
+      }
+      final bGenerated = generatedName[to] ?? true;
+      _retireInto(a, b, nameEdited: !aGenerated && bGenerated);
+      generatedName[to] = aGenerated && bGenerated;
+    }
+    final renamed = <String>{};
+    for (final c in _channels.where(isShow)) {
+      final show = library.seriesByKey[c.source.seriesKeys.firstOrNull];
+      // "Name (kind)" stays: the generator named it apart from another.
+      if (show == null || !(generatedName[c.id] ?? false) || c.name != showName[c.id] || c.name == show.name) continue;
+      c.name = show.name;
+      renamed.add(c.id);
+    }
+    return renamed;
+  }
+
+  /// Retires show channel [a] into [b], the other channel of its show
+  /// (lineup-dedup D6): [b] takes [a]'s favorite and groups, stays hidden
+  /// only if both were, takes [a]'s name ([nameEdited]), icon, logo, retro
+  /// look and break plan where the user changed [a]'s and not [b]'s, and
+  /// the lower number. Its playlist and schedule are [b]'s, rebased by the
+  /// refresh.
+  void _retireInto(Channel a, Channel b, {required bool nameEdited}) {
+    bool iconEdited(Channel c) =>
+        c.icon.kind != ChannelIconKind.jellyfin &&
+        !(c.icon.kind == ChannelIconKind.builtin && c.icon.value == 'live_tv');
+    b.favorite = a.favorite || b.favorite;
+    b.hidden = a.hidden && b.hidden;
+    if (nameEdited) b.name = a.name;
+    if (iconEdited(a) && !iconEdited(b)) b.icon = a.icon;
+    b.logoMode ??= a.logoMode;
+    if (b.retro.followsMain) b.retro = a.retro;
+    b.commercialPlan ??= a.commercialPlan;
+    b.number = min(a.number, b.number);
+    _channels.remove(a);
+    _schedules.remove(a.id);
+    _channelMoved(a.id, b.id);
+    PlaybackDiagnostics.note('LINEUP', 'merged ${a.name} (${a.id}) into ${b.number} ${b.name} (${b.id})');
+  }
+
+  /// Points what refers to channel [from] at [to]: groups, the last
+  /// channel, blocks and the remote's last channel.
+  void _channelMoved(String from, String to) {
+    for (final g in settings.groups) {
+      final ids = g.channelIds;
+      if (!ids.contains(from)) continue;
+      g.channelIds = ids.contains(to) ? [for (final id in ids) if (id != from) id] : [for (final id in ids) id == from ? to : id];
+    }
+    if (settings.lastChannelId == from) settings.lastChannelId = to;
+    for (final b in _blocks) {
+      if (b.channelId == from) b.channelId = to;
+    }
+    _movedChannels[from] = to;
   }
 
   /// Keeps [playlist]'s order, dropping items gone from the library (with
@@ -2573,6 +2764,10 @@ class AppState extends ChangeNotifier {
     }
     _setChannels(fresh);
     await _saveChannels();
+    if (settings.lineupVersion != AppSettings.currentLineupVersion) {
+      settings.lineupVersion = AppSettings.currentLineupVersion;
+      await _saveSettings();
+    }
   }
 
   // ---- Channel logo (channel-logo) -------------------------------------------

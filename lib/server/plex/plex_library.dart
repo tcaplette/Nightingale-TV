@@ -3,8 +3,9 @@ import '../../library/library_index.dart';
 /// Builds an index from Plex section listings (design D6): shows (`type=2`),
 /// episodes (`type=4`), movies (`type=1`), tracks (`type=10`) and music
 /// videos, plus the videos of commercial pools ([poolsByItem]). The same
-/// rules as for Jellyfin: duplicate shows merge by name and year, programs
-/// under 30 seconds are left out, pool contents never air as programs.
+/// rules as for Jellyfin: a show's items merge into one show
+/// ([ShowIndexer]), programs under 30 seconds are left out, pool contents
+/// never air as programs.
 LibraryIndex libraryIndexFromPlex({
   List<Map<String, Object?>> shows = const [],
   List<Map<String, Object?>> episodes = const [],
@@ -17,53 +18,44 @@ LibraryIndex libraryIndexFromPlex({
 }) {
   bool inPool(Map<String, Object?> item) => poolsByItem.containsKey(_id(item));
 
-  final seriesByKey = <String, SeriesEntry>{};
-  final keyByShow = <String, String>{};
-  for (final s in shows) {
-    final name = s['title'] as String? ?? 'Unknown show';
-    final year = _int(s['year']);
-    final key = SeriesEntry.keyFor(name, year);
-    keyByShow[_id(s)] = key;
-    final hasLogo = plexHasLogo(s);
-    final existing = seriesByKey[key];
-    seriesByKey[key] = existing == null
-        ? SeriesEntry(
-            key: key,
-            id: _id(s),
-            name: name,
-            year: year,
-            genres: _tags(s['Genre']),
-            officialRating: s['contentRating'] as String?,
-            hasLogo: hasLogo)
-        : SeriesEntry(
-            key: key,
-            id: !existing.hasLogo && hasLogo ? _id(s) : existing.id,
-            name: existing.name,
-            year: year,
-            genres: {...existing.genres, ..._tags(s['Genre'])}.toList(),
-            officialRating: existing.officialRating ?? s['contentRating'] as String?,
-            hasLogo: existing.hasLogo || hasLogo);
-  }
+  final playable = [
+    for (final e in episodes)
+      if (_runtime(e) != null && !inPool(e)) e,
+  ];
+  String? showIdOf(Map<String, Object?> e) => switch ('${e['grandparentRatingKey'] ?? ''}') { '' => null, final id => id };
+  // The server's items for one show become one show, as on Jellyfin.
+  final indexed = ShowIndexer([
+    for (final s in shows)
+      ShowItem(
+          id: _id(s),
+          name: s['title'] as String? ?? SeriesEntry.unknownName,
+          year: _int(s['year']),
+          genres: _tags(s['Genre']),
+          officialRating: s['contentRating'] as String?,
+          hasLogo: plexHasLogo(s),
+          providerIds: plexProviderIds(s['Guid'])),
+  ], [
+    for (final e in playable)
+      (
+        showId: showIdOf(e),
+        showName: e['grandparentTitle'] as String?,
+        season: _int(e['parentIndex']),
+        number: _int(e['index']),
+        title: '${e['title']}',
+      ),
+  ]);
 
   final episodeEntries = <MediaEntry>[];
-  final seenEpisodes = <String>{};
-  for (final e in episodes) {
-    final runtime = _runtime(e);
-    if (runtime == null || inPool(e)) continue;
-    final showId = '${e['grandparentRatingKey'] ?? ''}';
-    final showName = e['grandparentTitle'] as String? ?? 'Unknown show';
-    final key = keyByShow[showId] ?? SeriesEntry.keyFor(showName, null);
-    seriesByKey.putIfAbsent(key, () => SeriesEntry(key: key, id: showId.isEmpty ? key : showId, name: showName));
-    final season = _int(e['parentIndex']);
+  for (final (i, e) in playable.indexed) {
+    final show = indexed.episodes[i];
+    if (show == null) continue;
     final number = _int(e['index']);
-    final dedupe = season != null && number != null ? '$key|$season|$number' : '$key|${e['title']}';
-    if (!seenEpisodes.add(dedupe)) continue;
-    episodeEntries.add(_entry(e, MediaKind.episode, runtime,
+    episodeEntries.add(_entry(e, MediaKind.episode, _runtime(e)!,
         title: LibraryIndex.cleanEpisodeTitle(e['title'] as String? ?? '', episode: number),
-        seriesKey: key,
-        seriesId: showId.isEmpty ? null : showId,
-        seriesName: seriesByKey[key]!.name,
-        season: season,
+        seriesKey: show.key,
+        seriesId: showIdOf(e),
+        seriesName: show.name,
+        season: show.season,
         episode: number,
         added: _epoch(e['addedAt']),
         playCount: _int(e['viewCount']) ?? 0));
@@ -118,9 +110,8 @@ LibraryIndex libraryIndexFromPlex({
     return result;
   }
 
-  final withEpisodes = {for (final e in episodeEntries) e.seriesKey};
   return LibraryIndex(
-    series: seriesByKey.values.where((s) => withEpisodes.contains(s.key)).toList(),
+    series: indexed.series,
     episodes: episodeEntries,
     movies: movieEntries,
     commercials: commercialEntries,

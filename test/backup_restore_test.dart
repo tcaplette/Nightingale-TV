@@ -151,8 +151,11 @@ void main() {
       });
       await storageOf(dir, mom.id).flush();
       await h.select(mom);
-      final upgrade = (await stored()).first;
-      expect(upgrade.kind, BackupReason.beforeUpgrade);
+      // Settings this old also predate show identity: the lineup cleanup
+      // saves its own backup after the upgrade's (lineup-dedup D7).
+      final kinds = [for (final b in await stored()) b.kind];
+      expect(kinds.take(2), [BackupReason.beforeLineupCleanup, BackupReason.beforeUpgrade]);
+      final upgrade = (await stored()).firstWhere((b) => b.kind == BackupReason.beforeUpgrade);
       // It holds the settings as they were before the upgrade.
       expect(upgrade.archive.profiles[mom.id]!.settings!['commercialsEnabled'], isTrue);
       expect((await storageOf(dir, mom.id).readRaw('settings.json') as Map)['commercialPlan'], isNotNull);
