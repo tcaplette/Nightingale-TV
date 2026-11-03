@@ -490,12 +490,18 @@ class TvPointerButton extends StatefulWidget {
     required this.icon,
     required this.onPressed,
     this.highlighted = false,
+    this.onHover,
   });
 
   final String label;
   final IconData icon;
   final VoidCallback onPressed;
   final bool highlighted;
+
+  /// Called when the pointer moves onto the button. An owner that passes it
+  /// keeps the one highlight itself (pointer and D-pad share it), so the
+  /// button then draws only [highlighted].
+  final VoidCallback? onHover;
 
   @override
   State<TvPointerButton> createState() => _TvPointerButtonState();
@@ -507,10 +513,13 @@ class _TvPointerButtonState extends State<TvPointerButton> {
   @override
   Widget build(BuildContext context) {
     final g = context.guide;
-    final on = _hover || widget.highlighted;
+    final on = widget.highlighted || (widget.onHover == null && _hover);
     return MouseRegion(
       cursor: SystemMouseCursors.click,
-      onEnter: (_) => setState(() => _hover = true),
+      onEnter: (_) {
+        widget.onHover?.call();
+        setState(() => _hover = true);
+      },
       onExit: (_) => setState(() => _hover = false),
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,

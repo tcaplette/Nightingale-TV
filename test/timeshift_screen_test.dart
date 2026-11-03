@@ -11,6 +11,7 @@ import 'package:nightingale_tv/ui/format.dart';
 import 'package:nightingale_tv/ui/portrait_watch_screen.dart';
 import 'package:nightingale_tv/ui/tv_screen.dart';
 import 'package:nightingale_tv/ui/widgets/transport_bar.dart';
+import 'package:nightingale_tv/ui/widgets/tv_focus.dart';
 
 import 'fake_playback.dart';
 import 'portrait_harness.dart';
@@ -98,7 +99,7 @@ void main() {
       await end(tester);
     });
 
-    testWidgets('Down goes to Restart and Live, Up comes back and then closes', (tester) async {
+    testWidgets('Down goes to Restart and Live, Up comes back and then goes to the button row', (tester) async {
       await start(tester);
       await key(tester, LogicalKeyboardKey.arrowLeft);
       TransportFocus? focused() => tester.widget<TransportBar>(bar).focused;
@@ -114,8 +115,12 @@ void main() {
       expect(tuner().shifted, now != tuner().viewNow());
       await key(tester, LogicalKeyboardKey.arrowUp);
       expect(focused(), TransportFocus.seekBar);
+      final was = tuner().channel!.id;
       await key(tester, LogicalKeyboardKey.arrowUp);
-      expect(bar, findsNothing);
+      expect(bar, findsOneWidget, reason: 'Back closes it, not Up');
+      expect(focused(), isNull);
+      expect(tester.widget<TvPointerButton>(find.widgetWithText(TvPointerButton, 'Guide')).highlighted, isTrue);
+      expect(tuner().channel!.id, was);
       await end(tester);
     });
 
@@ -125,6 +130,12 @@ void main() {
       await key(tester, LogicalKeyboardKey.arrowUp);
       expect(tuner().channel!.id, isNot(was));
       expect(bar, findsNothing);
+      expect(
+          tester.widget<AnimatedOpacity>(
+                  find.ancestor(of: find.text('Guide'), matching: find.byType(AnimatedOpacity)).first)
+              .opacity,
+          0,
+          reason: 'no button row on a surf');
       await end(tester);
     });
 

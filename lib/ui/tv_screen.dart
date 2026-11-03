@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math';
 import 'dart:ui' show PointerDeviceKind;
 
 import 'package:flutter/material.dart';
@@ -67,6 +68,12 @@ class _TvScreenState extends State<TvScreen> {
   bool _guideOpen = false;
   bool _banner = false;
   Timer? _bannerTimer;
+
+  /// The on-screen button row (Guide, Menu, Sleep...) is up: it comes with
+  /// the controls, not with a channel change (dpad-buttons D1). [_rowFocus]
+  /// is the highlighted button, shared by the D-pad and the pointer.
+  bool _buttons = false;
+  int? _rowFocus;
   String _digits = '';
   Timer? _digitTimer;
   String? _toast;
@@ -135,9 +142,13 @@ class _TvScreenState extends State<TvScreen> {
     // Into full screen: the banner shows what's on, with Exit full screen
     // beside Guide and Menu.
     if (FullScreen.instance.isOn) {
+      _buttons = true;
       _showBanner();
     } else {
-      setState(() {});
+      // Exit full screen went from the row.
+      setState(() {
+        if (_rowFocus != null) _rowFocus = min(_rowFocus!, _rowButtons().length - 1);
+      });
     }
   }
 
@@ -189,12 +200,19 @@ class _TvScreenState extends State<TvScreen> {
       final last = channels.where((c) => c.id == app.settings.lastChannelId).firstOrNull;
       tuner.tune(last ?? channels.first);
     }
-    _showBanner();
+    _showChannel();
   }
 
   void _showBanner() {
     setState(() => _banner = true);
     _armBanner();
+  }
+
+  /// A channel change: the banner without the button row.
+  void _showChannel() {
+    _buttons = false;
+    _rowFocus = null;
+    _showBanner();
   }
 
   /// Woken from sleep: the channel slept on tunes again, now if the TV screen
@@ -215,7 +233,7 @@ class _TvScreenState extends State<TvScreen> {
     if (tuner.channel != null || app.channels.isEmpty) return;
     final id = _sleep?.sleptOn?.id ?? app.settings.lastChannelId;
     await tuner.tune(app.channels.where((c) => c.id == id).firstOrNull ?? app.channels.first);
-    if (mounted && !_guideOpen) _showBanner();
+    if (mounted && !_guideOpen) _showChannel();
   }
 
   /// The sleep timer picker (S, the Sleep button).
@@ -239,17 +257,21 @@ class _TvScreenState extends State<TvScreen> {
         setState(() {
           _banner = false;
           _bar = false;
+          _buttons = false;
+          _rowFocus = null;
         });
       }
     });
   }
 
-  /// The banner, with the transport bar where there is one.
+  /// The banner and the button row, with the transport bar where there is
+  /// one.
   void _showControls() {
     if (AppScope.tunerOf(context).canTimeshift && !_bar) {
       _bar = true;
       _barFocus = TransportFocus.seekBar;
     }
+    _buttons = true;
     _showBanner();
   }
 
@@ -258,6 +280,8 @@ class _TvScreenState extends State<TvScreen> {
     setState(() {
       _bar = false;
       _banner = false;
+      _buttons = false;
+      _rowFocus = null;
     });
   }
 
@@ -309,7 +333,7 @@ class _TvScreenState extends State<TvScreen> {
     // A surf shows only the banner.
     _bar = false;
     await action();
-    if (mounted) _showBanner();
+    if (mounted) _showChannel();
   }
 
   void _typeDigit(int digit) {
@@ -329,7 +353,7 @@ class _TvScreenState extends State<TvScreen> {
     if (!mounted) return;
     if (ok) {
       _bar = false;
-      _showBanner();
+      _showChannel();
     } else {
       _showToast('There is no channel $number');
     }
@@ -382,7 +406,7 @@ class _TvScreenState extends State<TvScreen> {
   void _closeGuide() {
     setState(() => _guideOpen = false);
     _focus.requestFocus();
-    _showBanner();
+    _showChannel();
   }
 
   void _watch(Channel ch) {
@@ -456,6 +480,8 @@ class _TvScreenState extends State<TvScreen> {
       if (event is KeyDownEvent) _openSleep();
       return KeyEventResult.handled;
     }
+    // Before Android's Back, which leaves the row rather than the app.
+    if (!ScreenLayout.of(context).isPortrait && _rowKey(key, event)) return KeyEventResult.handled;
     if (PlatformInfo.isAndroid) {
       // Back leaves the app, as Android expects (Escape from a keyboard
       // still opens the guide). Held down, it doesn't repeat into quitting.
@@ -514,6 +540,7 @@ class _TvScreenState extends State<TvScreen> {
         key == LogicalKeyboardKey.info ||
         key == LogicalKeyboardKey.arrowLeft ||
         key == LogicalKeyboardKey.arrowRight) {
+      _buttons = true;
       _showBanner();
     } else if (key == LogicalKeyboardKey.keyC || key == LogicalKeyboardKey.closedCaptionToggle) {
       tuner.toggleCaptions().then((_) => _showToast(tuner.captions ? 'Captions on' : 'Captions off'));
@@ -524,6 +551,64 @@ class _TvScreenState extends State<TvScreen> {
     }
     return KeyEventResult.handled;
   }
+
+  /// The on-screen button row, left to right.
+  List<({String label, IconData icon, VoidCallback onPressed})> _rowButtons() => [
+        (label: 'Guide', icon: Icons.grid_view, onPressed: _openGuide),
+        (label: 'Menu', icon: Icons.settings, onPressed: _openMenu),
+        if (_sleep != null) (label: 'Sleep', icon: Icons.bedtime, onPressed: _openSleep),
+        if (FullScreen.instance.isOn && !PlatformInfo.isTelevision)
+          (label: 'Exit full screen', icon: Icons.fullscreen_exit, onPressed: _exitFullScreen),
+      ];
+
+  /// The D-pad on the on-screen button row (dpad-buttons D3). Up reaches it
+  /// while it's up; on it, Left/Right move, Select presses, Down and Back
+  /// leave. Tuning and media keys leave it and act as usual. True if [key]
+  /// was handled here.
+  bool _rowKey(LogicalKeyboardKey key, KeyEvent event) {
+    if (!_buttons) return false;
+    // Any key keeps the controls up.
+    _armBanner();
+    final at = _rowFocus;
+    if (at == null) {
+      // Up from the seek bar, or with only the banner and row up.
+      if (key != LogicalKeyboardKey.arrowUp || (_bar && _barFocus != TransportFocus.seekBar)) return false;
+      setState(() => _rowFocus = 0);
+      return true;
+    }
+    final left = key == LogicalKeyboardKey.arrowLeft, right = key == LogicalKeyboardKey.arrowRight;
+    if (left || right) {
+      setState(() => _rowFocus = (at + (right ? 1 : -1)).clamp(0, _rowButtons().length - 1));
+    } else if (isSelectKey(key)) {
+      if (event is KeyDownEvent) _rowButtons()[at].onPressed();
+    } else if (key == LogicalKeyboardKey.arrowDown ||
+        key == LogicalKeyboardKey.escape ||
+        key == LogicalKeyboardKey.goBack ||
+        key == LogicalKeyboardKey.browserBack) {
+      setState(() {
+        _rowFocus = null;
+        if (_bar && key == LogicalKeyboardKey.arrowDown) _barFocus = TransportFocus.seekBar;
+      });
+    } else if (key == LogicalKeyboardKey.arrowUp) {
+      // The top of the screen.
+    } else {
+      if (_leavesRow(key)) setState(() => _rowFocus = null);
+      return false;
+    }
+    return true;
+  }
+
+  /// Tuning and media keys: they take the highlight off the row.
+  static bool _leavesRow(LogicalKeyboardKey key) =>
+      _digitFor(key) != null ||
+      const [
+        LogicalKeyboardKey.channelUp, LogicalKeyboardKey.channelDown,
+        LogicalKeyboardKey.pageUp, LogicalKeyboardKey.pageDown,
+        LogicalKeyboardKey.backspace, LogicalKeyboardKey.keyL, LogicalKeyboardKey.mediaLast,
+        LogicalKeyboardKey.guide, LogicalKeyboardKey.keyG,
+        LogicalKeyboardKey.mediaPlayPause, LogicalKeyboardKey.mediaPlay, LogicalKeyboardKey.mediaPause,
+        LogicalKeyboardKey.mediaRewind, LogicalKeyboardKey.mediaFastForward, LogicalKeyboardKey.keyP,
+      ].contains(key);
 
   /// Play/Pause, Play, Pause, Rewind, Fast-forward and the keyboard's P act
   /// at once. True if [key] was one of them and did something. With Pause and
@@ -590,8 +675,11 @@ class _TvScreenState extends State<TvScreen> {
       } else if (below) {
         setState(() => _barFocus = TransportFocus.restart);
       } else {
-        _closeBar();
-        return true;
+        // Up to the button row.
+        setState(() {
+          _buttons = true;
+          _rowFocus = 0;
+        });
       }
     } else if (left) {
       setState(() => _barFocus = TransportFocus.restart);
@@ -693,7 +781,8 @@ class _TvScreenState extends State<TvScreen> {
       );
     }
     if (_guideOpen) {
-      return GuideView(onWatch: _watch, onClose: _closeGuide, onMenu: _openMenu);
+      return GuideView(
+          onWatch: _watch, onClose: _closeGuide, onMenu: _openMenu, onSleep: _sleep == null ? null : _openSleep);
     }
     return Focus(
       focusNode: _focus,
@@ -759,7 +848,8 @@ class _TvScreenState extends State<TvScreen> {
                     left: 0,
                     right: 0,
                     bottom: 0,
-                    child: TransportBar(tuner: tuner, focused: _barFocus, onInteract: _showBanner),
+                    child: TransportBar(
+                        tuner: tuner, focused: _rowFocus == null ? _barFocus : null, onInteract: _showBanner),
                   ),
                 if (tuner.paused && !_bar && _digits.isEmpty && !tuner.changingChannel)
                   const Positioned(top: 60, right: 90, child: PausedChip()),
@@ -769,23 +859,21 @@ class _TvScreenState extends State<TvScreen> {
                   top: 48,
                   left: 60,
                   child: IgnorePointer(
-                    ignoring: !_banner,
+                    ignoring: !_buttons,
                     child: AnimatedOpacity(
-                      opacity: _banner ? 1 : 0,
+                      opacity: _buttons ? 1 : 0,
                       duration: const Duration(milliseconds: 220),
                       child: Row(
                         children: [
-                          TvPointerButton(label: 'Guide', icon: Icons.grid_view, onPressed: _openGuide),
-                          const SizedBox(width: 16),
-                          TvPointerButton(label: 'Menu', icon: Icons.settings, onPressed: _openMenu),
-                          if (_sleep != null) ...[
-                            const SizedBox(width: 16),
-                            TvPointerButton(label: 'Sleep', icon: Icons.bedtime, onPressed: _openSleep),
-                          ],
-                          if (FullScreen.instance.isOn && !PlatformInfo.isTelevision) ...[
-                            const SizedBox(width: 16),
+                          for (final (i, b) in _rowButtons().indexed) ...[
+                            if (i > 0) const SizedBox(width: 16),
                             TvPointerButton(
-                                label: 'Exit full screen', icon: Icons.fullscreen_exit, onPressed: _exitFullScreen),
+                              label: b.label,
+                              icon: b.icon,
+                              highlighted: _rowFocus == i,
+                              onHover: () => setState(() => _rowFocus = i),
+                              onPressed: b.onPressed,
+                            ),
                           ],
                         ],
                       ),

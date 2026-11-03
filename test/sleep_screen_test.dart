@@ -11,6 +11,7 @@ import 'package:nightingale_tv/ui/guide_view.dart';
 import 'package:nightingale_tv/ui/menu_screen.dart';
 import 'package:nightingale_tv/ui/sleep_overlay.dart';
 import 'package:nightingale_tv/ui/tv_screen.dart';
+import 'package:nightingale_tv/ui/widgets/tv_focus.dart';
 
 import 'portrait_harness.dart';
 
@@ -166,6 +167,82 @@ void main() {
       await tester.pump(const Duration(milliseconds: 400));
       expect(sleep().phase, SleepPhase.idle);
       expect(toast('Sleep timer off'), findsOneWidget);
+      await h.end(tester);
+    });
+  });
+
+  group('in the guide', () {
+    /// The guide's highlighted header buttons.
+    List<String> lit(WidgetTester tester) => [
+          for (final b in tester.widgetList<TvPointerButton>(
+              find.descendant(of: guide, matching: find.byType(TvPointerButton))))
+            if (b.highlighted) b.label,
+        ];
+
+    Future<void> openGuide(WidgetTester tester) async {
+      await key(tester, LogicalKeyboardKey.enter);
+      expect(guide, findsOneWidget);
+      // The tuned channel is a row down; Up to the first row.
+      for (var i = 0; i < 10 && lit(tester).isEmpty; i++) {
+        await key(tester, LogicalKeyboardKey.arrowUp);
+      }
+    }
+
+    testWidgets('Up to Menu, Right to Sleep, OK; 45 min shows its toast and the guide stays', (tester) async {
+      await start(tester);
+      await openGuide(tester);
+      expect(lit(tester), ['Menu']);
+      expect(tester.getTopLeft(find.descendant(of: guide, matching: find.text('Sleep'))).dx,
+          greaterThan(tester.getTopLeft(find.descendant(of: guide, matching: find.text('Menu'))).dx));
+      await key(tester, LogicalKeyboardKey.arrowRight);
+      expect(lit(tester), ['Sleep']);
+      await key(tester, LogicalKeyboardKey.arrowRight);
+      expect(lit(tester), ['Sleep'], reason: 'the end of the header');
+      await key(tester, LogicalKeyboardKey.enter);
+      expect(dialog, findsOneWidget);
+      // Off, End of this program, 15, 30, 45.
+      for (var i = 0; i < 4; i++) {
+        await key(tester, LogicalKeyboardKey.arrowDown);
+      }
+      await key(tester, LogicalKeyboardKey.enter);
+      await tester.pump(const Duration(milliseconds: 400));
+      expect(dialog, findsNothing);
+      expect(sleep().choice, const SleepChoice.after(45));
+      expect(toast('Sleep in 45 min'), findsOneWidget);
+      expect(guide, findsOneWidget, reason: 'the guide stays open');
+      expect(lit(tester), ['Sleep']);
+      // The guide still has the keys.
+      await key(tester, LogicalKeyboardKey.arrowLeft);
+      expect(lit(tester), ['Menu']);
+      await key(tester, LogicalKeyboardKey.arrowDown);
+      expect(lit(tester), isEmpty);
+      await h.end(tester);
+    });
+
+    testWidgets('S opens the picker anywhere in the guide', (tester) async {
+      await start(tester);
+      await key(tester, LogicalKeyboardKey.enter);
+      expect(guide, findsOneWidget);
+      await key(tester, LogicalKeyboardKey.keyS);
+      expect(dialog, findsOneWidget);
+      await key(tester, LogicalKeyboardKey.escape);
+      expect(dialog, findsNothing);
+      expect(guide, findsOneWidget);
+      await h.end(tester);
+    });
+
+    testWidgets('hover and keys keep one highlight on the header', (tester) async {
+      await start(tester);
+      await openGuide(tester);
+      expect(lit(tester), ['Menu']);
+      final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
+      await mouse.addPointer(location: const Offset(900, 600));
+      addTearDown(mouse.removePointer);
+      await mouse.moveTo(tester.getCenter(find.descendant(of: guide, matching: find.text('Sleep'))));
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(lit(tester), ['Sleep']);
+      await key(tester, LogicalKeyboardKey.arrowLeft);
+      expect(lit(tester), ['Menu'], reason: 'the keys move on from where the pointer left it');
       await h.end(tester);
     });
   });

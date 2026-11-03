@@ -22,11 +22,14 @@ import 'widgets/tv_focus.dart';
 
 /// The program guide: info panel + live preview on top, channel grid below.
 class GuideView extends StatefulWidget {
-  const GuideView({super.key, required this.onWatch, required this.onClose, required this.onMenu});
+  const GuideView({super.key, required this.onWatch, required this.onClose, required this.onMenu, this.onSleep});
 
   final ValueChanged<Channel> onWatch;
   final VoidCallback onClose;
   final VoidCallback onMenu;
+
+  /// Opens the sleep timer picker; null without a sleep timer.
+  final VoidCallback? onSleep;
 
   @override
   State<GuideView> createState() => _GuideViewState();
@@ -71,9 +74,13 @@ class _GuideViewState extends State<GuideView> with SingleTickerProviderStateMix
   }
   Timer? _clock;
 
-  /// The Menu button at the top has the keyboard highlight (Up from the
-  /// tab row gets there).
-  bool _menuFocused = false;
+  /// The header button with the highlight: 0 is Menu (Up from the tab row
+  /// gets there), 1 Sleep. The pointer moves it too.
+  int? _headerFocus;
+  bool get _menuFocused => _headerFocus != null;
+
+  /// The header's buttons, left to right.
+  List<VoidCallback> get _headerButtons => [widget.onMenu, ?widget.onSleep];
 
   /// The tab row has the keyboard highlight (Up from the first channel gets
   /// there), and the tab whose channels the grid shows.
@@ -237,16 +244,24 @@ class _GuideViewState extends State<GuideView> with SingleTickerProviderStateMix
       widget.onClose();
       return KeyEventResult.handled;
     }
-    if (_menuFocused) {
+    if (key == LogicalKeyboardKey.keyS && widget.onSleep != null) {
+      if (event is KeyDownEvent) widget.onSleep!();
+      return KeyEventResult.handled;
+    }
+    final header = _headerFocus;
+    if (header != null) {
       if (isSelectKey(key)) {
-        widget.onMenu();
+        if (event is KeyDownEvent) _headerButtons[header]();
+      } else if (key == LogicalKeyboardKey.arrowLeft || key == LogicalKeyboardKey.arrowRight) {
+        final step = key == LogicalKeyboardKey.arrowRight ? 1 : -1;
+        setState(() => _headerFocus = (header + step).clamp(0, _headerButtons.length - 1));
       } else if (key == LogicalKeyboardKey.arrowDown) {
         setState(() {
-          _menuFocused = false;
+          _headerFocus = null;
           _tabsFocused = true;
         });
       } else if (isBackKey(key)) {
-        setState(() => _menuFocused = false);
+        setState(() => _headerFocus = null);
       } else if (key == LogicalKeyboardKey.keyM || key == LogicalKeyboardKey.contextMenu) {
         widget.onMenu();
       }
@@ -261,7 +276,7 @@ class _GuideViewState extends State<GuideView> with SingleTickerProviderStateMix
       } else if (key == LogicalKeyboardKey.arrowUp) {
         setState(() {
           _tabsFocused = false;
-          _menuFocused = true;
+          _headerFocus = 0;
         });
       } else if (key == LogicalKeyboardKey.arrowDown || isSelectKey(key) || isBackKey(key)) {
         setState(() {
@@ -359,8 +374,13 @@ class _GuideViewState extends State<GuideView> with SingleTickerProviderStateMix
                       channel: focusedChannel,
                       program: focusedProgram,
                       now: _now,
-                      menuFocused: _menuFocused,
+                      headerFocus: _headerFocus,
                       onMenu: widget.onMenu,
+                      onSleep: widget.onSleep,
+                      onHover: (i) => setState(() {
+                        _headerFocus = i;
+                        _tabsFocused = false;
+                      }),
                     ),
                   ),
                   Padding(
@@ -377,7 +397,7 @@ class _GuideViewState extends State<GuideView> with SingleTickerProviderStateMix
               height: _tabRowHeight,
               onSelect: (tab) {
                 setState(() {
-                  _menuFocused = false;
+                  _headerFocus = null;
                   _tabsFocused = false;
                 });
                 _selectTab(tab);
@@ -440,7 +460,7 @@ class _GuideViewState extends State<GuideView> with SingleTickerProviderStateMix
                                 return;
                               }
                               setState(() {
-                                _menuFocused = false;
+                                _headerFocus = null;
                                 _tabsFocused = false;
                                 _setRow(i, channels.length);
                                 _cursorTime = p == null || p.start.isBefore(_now)
@@ -517,15 +537,21 @@ class _InfoPanel extends StatelessWidget {
     required this.channel,
     required this.program,
     required this.now,
-    required this.menuFocused,
+    required this.headerFocus,
     required this.onMenu,
+    required this.onSleep,
+    required this.onHover,
   });
 
   final Channel? channel;
   final ScheduledProgram? program;
   final DateTime now;
-  final bool menuFocused;
+
+  /// The highlighted header button: 0 Menu, 1 Sleep.
+  final int? headerFocus;
   final VoidCallback onMenu;
+  final VoidCallback? onSleep;
+  final ValueChanged<int> onHover;
 
   @override
   Widget build(BuildContext context) {
@@ -549,12 +575,33 @@ class _InfoPanel extends StatelessWidget {
                   style: g.display(30, weight: FontWeight.w800, color: g.accent),
                 ),
               ),
-              Text(
-                '${formatDate(now)}   ${formatTime(now)}',
-                style: g.display(30, weight: FontWeight.w600),
+              // Room for the header buttons whatever the font (about 240 wide).
+              ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 360),
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: Text(
+                    '${formatDate(now)}   ${formatTime(now)}',
+                    style: g.display(30, weight: FontWeight.w600),
+                  ),
+                ),
               ),
               const SizedBox(width: 28),
-              TvPointerButton(label: 'Menu', icon: Icons.settings, highlighted: menuFocused, onPressed: onMenu),
+              TvPointerButton(
+                  label: 'Menu',
+                  icon: Icons.settings,
+                  highlighted: headerFocus == 0,
+                  onHover: () => onHover(0),
+                  onPressed: onMenu),
+              if (onSleep != null) ...[
+                const SizedBox(width: 16),
+                TvPointerButton(
+                    label: 'Sleep',
+                    icon: Icons.bedtime,
+                    highlighted: headerFocus == 1,
+                    onHover: () => onHover(1),
+                    onPressed: onSleep!),
+              ],
             ],
           ),
           const SizedBox(height: 10),

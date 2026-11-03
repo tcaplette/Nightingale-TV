@@ -236,6 +236,29 @@ void main() {
     expect(inView(tester, below), isTrue);
   });
 
+  testWidgets('a pointer button with onHover reports hover and draws only its owner\'s highlight', (tester) async {
+    tester.view.physicalSize = TvCanvas.size;
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    var hovers = 0;
+    await tester.pumpWidget(MaterialApp(
+      theme: GuideTheme.cableGuide.toThemeData(),
+      home: Scaffold(
+        body: Center(
+          child: TvPointerButton(label: 'Menu', icon: Icons.settings, onPressed: () {}, onHover: () => hovers++),
+        ),
+      ),
+    ));
+    final g = GuideTheme.cableGuide;
+    Color fill() =>
+        (tester.widget<AnimatedContainer>(find.byType(AnimatedContainer)).decoration! as BoxDecoration).color!;
+    expect(fill(), isNot(g.focus));
+    final m = await mouse(tester);
+    await hover(tester, m, find.text('Menu'));
+    expect(hovers, 1);
+    expect(fill(), isNot(g.focus));
+  });
+
   group('signed in', () {
     late Directory dir;
     late AppState app;
