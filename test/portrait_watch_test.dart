@@ -1,6 +1,7 @@
 // portrait-layout: the layout rule and canvas, full screen, and the portrait
 // watch screen, run on Linux as an Android phone (or TV) through
 // PlatformInfo's override.
+import 'dart:async';
 import 'dart:ui' show PointerDeviceKind;
 
 import 'package:flutter/material.dart';
@@ -15,6 +16,7 @@ import 'package:nightingale_tv/platform/orientation.dart';
 import 'package:nightingale_tv/platform/platform_info.dart';
 import 'package:nightingale_tv/playback/sleep_timer.dart';
 import 'package:nightingale_tv/playback/tuner.dart';
+import 'package:nightingale_tv/ui/format.dart';
 import 'package:nightingale_tv/ui/guide_view.dart';
 import 'package:nightingale_tv/ui/menu_screen.dart';
 import 'package:nightingale_tv/ui/portrait_watch_screen.dart';
@@ -308,7 +310,7 @@ void main() {
         expect(find.descendant(of: row(other.name), matching: find.byIcon(Icons.volume_up)), findsOneWidget);
       });
 
-      tvTest('a long-press shows the next 12 hours, and Watch tunes', pixel8, (tester, h) async {
+      tvTest('a long-press shows the Guide range, and Watch tunes', pixel8, (tester, h) async {
         final other = h.app.channels[1];
         await tester.longPress(row(other.name));
         await tester.pumpAndSettle(const Duration(milliseconds: 100));
@@ -319,6 +321,31 @@ void main() {
         expect(find.byType(ChannelScheduleSheet), findsNothing);
         expect(h.tuner.channel?.id, other.id);
       });
+
+      for (final hours in [null, 3]) {
+        tvTest('the sheet lists ${hours ?? 'the default 8'} hours', pixel8, (tester, h) async {
+          if (hours != null) {
+            // Its save finishes on the test's clock.
+            unawaited(h.app.setGuideRange(hours));
+            await tester.pump();
+          }
+          final other = h.app.channels[1];
+          await tester.longPress(row(other.name));
+          await tester.pumpAndSettle(const Duration(milliseconds: 100));
+          final from = tester.widget<ChannelScheduleSheet>(find.byType(ChannelScheduleSheet)).from;
+          final schedule = h.app.scheduleFor(other)!;
+          final listed = schedule.guideProgramsBetween(from, from.add(Duration(hours: hours ?? 8)));
+          final after = schedule.guideProgramAt(listed.last.end);
+          final list = find.descendant(of: find.byType(ChannelScheduleSheet), matching: find.byType(ListView));
+          for (var i = 0; i < 20; i++) {
+            await tester.drag(list, const Offset(0, -600));
+            await tester.pumpAndSettle(const Duration(milliseconds: 100));
+          }
+          expect(find.descendant(of: list, matching: find.text(formatTime(listed.last.start))), findsOneWidget);
+          expect(find.descendant(of: list, matching: find.text(formatTime(after.start))), findsNothing);
+          expect(find.descendant(of: list, matching: find.text(listed.last.title)), findsWidgets);
+        });
+      }
 
       tvTest('a tab is picked and saved', pixel8, (tester, h) async {
         final tabs = h.app.guideTabs();
@@ -341,6 +368,14 @@ void main() {
         await tester.pump();
         expect(FullScreen.instance.isOn, isTrue);
         await tester.pump(const Duration(seconds: 6));
+      });
+
+      tvTest('a tap on the player, then Menu, opens the menu', pixel8, (tester, h) async {
+        await tester.tap(find.byType(TvPicture));
+        await tester.pump(const Duration(milliseconds: 300));
+        await tester.tap(find.text('Menu'));
+        await tester.pumpAndSettle(const Duration(milliseconds: 100));
+        expect(find.byType(MenuScreen), findsOneWidget);
       });
 
       tvTest('a long-press on the player opens the menu', pixel8, (tester, h) async {

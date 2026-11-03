@@ -404,6 +404,8 @@ void main() {
   group('guide (4.7)', () {
     test("the guide's airings are the export's XMLTV programmes for the same window", () async {
       final app = await signIn();
+      // The profile's Guide range doesn't shorten it.
+      await app.setGuideRange(3);
       final now = DateTime.now();
       final from = DateTime(now.year, now.month, now.day, now.hour);
       final guide = (await get('/api/v1/profiles/$id/guide?from=${Uri.encodeQueryComponent(from.toIso8601String())}&hours=24'))!

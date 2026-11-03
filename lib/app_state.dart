@@ -247,6 +247,16 @@ Budget analyzerBudget(PlaybackActivity activity, PlaybackSettings playback, {int
   }
 }
 
+/// How far ahead the TV guide and the portrait schedule sheet go, in whole
+/// hours (guide-range).
+abstract final class GuideRange {
+  static const choices = [3, 5, 8];
+  static const defaultHours = 8;
+
+  /// [v] when it's one of [choices], else [defaultHours].
+  static int parse(Object? v) => v is int && choices.contains(v) ? v : defaultHours;
+}
+
 class AppSettings {
   AppSettings({
     required this.installId,
@@ -263,6 +273,7 @@ class AppSettings {
     this.guideTab,
     this.premieres = const PremiereSettings(),
     this.lineupVersion = 0,
+    this.guideRangeHours = GuideRange.defaultHours,
   })  : commercialPools = commercialPools ?? [],
         groups = groups ?? [],
         guideTabs = guideTabs ?? [...GuideTabs.defaultOrder],
@@ -308,6 +319,11 @@ class AppSettings {
 
   static const currentLineupVersion = 1;
 
+  /// How far ahead the guide goes, one of [GuideRange.choices].
+  int guideRangeHours;
+
+  Duration get guideRange => Duration(hours: guideRangeHours);
+
   /// The pool settings from before break plans became, with an id that's
   /// the same every time the upgrade runs.
   static const legacyPoolId = 'pool-commercials';
@@ -334,6 +350,7 @@ class AppSettings {
         if (guideTab != null) 'guideTab': guideTab,
         'premieres': premieres.toJson(),
         'lineupVersion': lineupVersion,
+        'guideRangeHours': guideRangeHours,
       };
 
   /// Jellyfin device IDs start with this.
@@ -362,7 +379,8 @@ class AppSettings {
       ..hiddenTabs = {...?(j['hiddenTabs'] as List?)?.whereType<String>()}
       ..guideTab = j['guideTab'] as String?
       ..premieres = PremiereSettings.fromJson(j['premieres'])
-      ..lineupVersion = j['lineupVersion'] as int? ?? 0;
+      ..lineupVersion = j['lineupVersion'] as int? ?? 0
+      ..guideRangeHours = GuideRange.parse(j['guideRangeHours']);
     if (j['commercialPlan'] case final Map<String, Object?> plan) {
       return withExtras(AppSettings(
         installId: installId,
@@ -2787,6 +2805,14 @@ class AppState extends ChangeNotifier {
     ch.logoMode = mode;
     notifyListeners();
     await _saveChannels();
+  }
+
+  /// Sets how far ahead the guide goes (guide-range). Nothing re-tunes.
+  Future<void> setGuideRange(int hours) async {
+    if (hours == settings.guideRangeHours || !GuideRange.choices.contains(hours)) return;
+    settings.guideRangeHours = hours;
+    notifyListeners();
+    await _saveSettings();
   }
 
   // ---- Retro look (retro-presentation) -----------------------------------------

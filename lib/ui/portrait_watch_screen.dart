@@ -62,9 +62,6 @@ class PortraitWatchScreen extends StatefulWidget {
   /// How long they stay with the transport controls among them.
   static const transportFor = Duration(seconds: 5);
 
-  /// How far ahead a channel's schedule sheet goes.
-  static const scheduleSpan = Duration(hours: 12);
-
   @override
   State<PortraitWatchScreen> createState() => PortraitWatchScreenState();
 }
@@ -606,7 +603,8 @@ class _ChannelRow extends StatelessWidget {
   }
 }
 
-/// A channel's next 12 hours, with a Watch button (long-press on a row).
+/// A channel's schedule for the profile's Guide range (guide-range), with a
+/// Watch button (long-press on a row).
 /// Pops true for Watch.
 class ChannelScheduleSheet extends StatelessWidget {
   const ChannelScheduleSheet({super.key, required this.channel, required this.from});
@@ -618,8 +616,9 @@ class ChannelScheduleSheet extends StatelessWidget {
   Widget build(BuildContext context) {
     final g = context.guide;
     final layout = ScreenLayout.of(context);
-    final schedule = AppScope.read(context).scheduleFor(channel);
-    final programs = schedule?.guideProgramsBetween(from, from.add(PortraitWatchScreen.scheduleSpan)) ?? const [];
+    final app = AppScope.read(context);
+    final schedule = app.scheduleFor(channel);
+    final programs = schedule?.guideProgramsBetween(from, from.add(app.settings.guideRange)) ?? const [];
     return ConstrainedBox(
       constraints: BoxConstraints(maxHeight: layout.canvas.height * 0.75),
       child: SafeArea(

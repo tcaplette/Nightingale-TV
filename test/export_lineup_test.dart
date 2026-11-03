@@ -83,7 +83,8 @@ void main() {
       expect(numbers, [...numbers]..sort());
     });
 
-    test('the guide has the same slots as the TV guide for 72 hours from the hour', () {
+    test('the guide has the same slots as the TV guide for 72 hours from the hour, whatever the Guide range', () async {
+      await app.setGuideRange(3);
       final xml = guide();
       final now = DateTime.now();
       final from = DateTime(now.year, now.month, now.day, now.hour);

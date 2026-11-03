@@ -78,6 +78,17 @@ class _ChannelEditorScreenState extends State<ChannelEditorScreen> {
         ),
     ];
     const logoHelp = 'The channel logo in the corner of the picture, on the TV and in Live TV export.';
+    // How far ahead the guide goes (guide-range).
+    final guideRanges = [
+      for (final hours in GuideRange.choices)
+        TvToggle(
+          label: '$hours hours',
+          radio: true,
+          on: app.settings.guideRangeHours == hours,
+          onPressed: () => app.setGuideRange(hours),
+        ),
+    ];
+    const rangeHelp = 'How far ahead the guide shows, from now.';
     final rows = [
       for (final (i, ch) in channels.indexed)
         Padding(
@@ -153,6 +164,12 @@ class _ChannelEditorScreenState extends State<ChannelEditorScreen> {
             const SizedBox(height: 12),
             Text(logoHelp, style: g.body(22, color: g.textDim)),
             const SizedBox(height: 28),
+            Text('GUIDE RANGE', style: g.display(24, weight: FontWeight.w800, color: g.accent)),
+            const SizedBox(height: 12),
+            Wrap(spacing: 16, runSpacing: 16, children: guideRanges),
+            const SizedBox(height: 12),
+            Text(rangeHelp, style: g.body(22, color: g.textDim)),
+            const SizedBox(height: 28),
           ],
           Align(
             alignment: Alignment.centerLeft,
@@ -177,13 +194,33 @@ class _ChannelEditorScreenState extends State<ChannelEditorScreen> {
             FocusTraversalGroup(
               child: Padding(
                 padding: const EdgeInsets.fromLTRB(80, 24, 100, 0),
-                child: Row(
+                child: Column(
                   children: [
-                    Text('CHANNEL LOGO', style: g.display(24, weight: FontWeight.w800, color: g.accent)),
-                    const SizedBox(width: 24),
-                    for (final toggle in logoModes) ...[toggle, const SizedBox(width: 16)],
-                    Expanded(
-                      child: Text(logoHelp, maxLines: 2, overflow: TextOverflow.ellipsis, style: g.body(22, color: g.textDim)),
+                    Row(
+                      children: [
+                        // One label width, so both rows' toggles line up.
+                        SizedBox(
+                          width: 250,
+                          child: Text('CHANNEL LOGO', style: g.display(24, weight: FontWeight.w800, color: g.accent)),
+                        ),
+                        for (final toggle in logoModes) ...[toggle, const SizedBox(width: 16)],
+                        Expanded(
+                          child: Text(logoHelp, maxLines: 2, overflow: TextOverflow.ellipsis, style: g.body(22, color: g.textDim)),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 16),
+                    Row(
+                      children: [
+                        SizedBox(
+                          width: 250,
+                          child: Text('GUIDE RANGE', style: g.display(24, weight: FontWeight.w800, color: g.accent)),
+                        ),
+                        for (final toggle in guideRanges) ...[toggle, const SizedBox(width: 16)],
+                        Expanded(
+                          child: Text(rangeHelp, maxLines: 2, overflow: TextOverflow.ellipsis, style: g.body(22, color: g.textDim)),
+                        ),
+                      ],
                     ),
                   ],
                 ),

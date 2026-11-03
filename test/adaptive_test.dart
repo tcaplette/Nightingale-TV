@@ -12,6 +12,7 @@ import 'package:nightingale_tv/ui/widgets/screen_layout.dart';
 import 'package:nightingale_tv/ui/widgets/tv_canvas.dart';
 import 'package:nightingale_tv/ui/widgets/tv_focus.dart';
 
+import 'fake_playback.dart';
 import 'portrait_harness.dart';
 
 const sideways = Size(915, 412);
@@ -133,6 +134,32 @@ void main() {
       expect(tester.getRect(find.text('WATCHING')).left, greaterThan(tester.getRect(find.text('Back to TV')).right));
       expect(FocusManager.instance.primaryFocus?.context?.findAncestorWidgetOfExactType<TvButton>()?.label, 'Back to TV');
     });
+  });
+
+  group('Guide range (the channel editor)', () {
+    for (final (name, window) in [('upright', pixel8), ('the TV layout', sideways)]) {
+      testWidgets('$name: picking a choice saves it and does not re-tune', (tester) async {
+        runAs(TargetPlatform.android);
+        setWindow(tester, window);
+        final h = await PortraitHarness.start(tester);
+        final ch = h.app.channels.first;
+        await tester.runAsync(() => h.tuner.tune(ch));
+        final player = h.tuner.media as FakePlayer;
+        final opens = player.opens.length;
+        await h.show(tester, const ChannelEditorScreen());
+        await tester.pump(const Duration(milliseconds: 500));
+        expect(find.text('GUIDE RANGE'), findsOneWidget);
+        expect(h.app.settings.guideRangeHours, 8);
+        await tester.ensureVisible(find.text('3 hours'));
+        await tester.pump();
+        await tester.tap(find.text('3 hours'));
+        await tester.pump(const Duration(milliseconds: 300));
+        expect(h.app.settings.guideRangeHours, 3);
+        expect(h.tuner.channel?.id, ch.id);
+        expect(player.opens.length, opens, reason: 'nothing re-tunes');
+        await h.end(tester);
+      });
+    }
   });
 
   group('ListDetail (the channel editor)', () {

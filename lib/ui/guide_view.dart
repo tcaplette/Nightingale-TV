@@ -22,7 +22,8 @@ import 'widgets/tv_focus.dart';
 
 /// The program guide: info panel + live preview on top, channel grid below.
 class GuideView extends StatefulWidget {
-  const GuideView({super.key, required this.onWatch, required this.onClose, required this.onMenu, this.onSleep});
+  const GuideView(
+      {super.key, required this.onWatch, required this.onClose, required this.onMenu, this.onSleep, this.clock = DateTime.now});
 
   final ValueChanged<Channel> onWatch;
   final VoidCallback onClose;
@@ -30,6 +31,9 @@ class GuideView extends StatefulWidget {
 
   /// Opens the sleep timer picker; null without a sleep timer.
   final VoidCallback? onSleep;
+
+  /// The time now (tests move it).
+  final DateTime Function() clock;
 
   @override
   State<GuideView> createState() => _GuideViewState();
@@ -58,8 +62,10 @@ class _GuideViewState extends State<GuideView> with SingleTickerProviderStateMix
 
   /// A server Live TV source fetches guide data the window reaches past
   /// what it has (live-tv-sources "Guide scrolled ahead").
+  /// Asks no further than the end of the range (guide-range).
   void _askLiveGuide(List<Channel> rows) {
-    final until = _windowStart.add(_window);
+    final windowEnd = _windowStart.add(_window);
+    final until = windowEnd.isAfter(_rangeEnd) ? _rangeEnd : windowEnd;
     if (until == _liveAskedUntil) return;
     _liveAskedUntil = until;
     final live = [for (final c in rows) if (c.isLive) c];
@@ -73,6 +79,20 @@ class _GuideViewState extends State<GuideView> with SingleTickerProviderStateMix
     });
   }
   Timer? _clock;
+
+  /// How far ahead the guide goes: now plus the profile's Guide range,
+  /// moving with the clock (guide-range D3).
+  DateTime get _rangeEnd => _now.add(AppScope.read(context).settings.guideRange);
+
+  /// The latest the window can start: its end stays at the half hour
+  /// holding [_rangeEnd].
+  DateTime get _maxWindowStart {
+    final end = _rangeEnd;
+    final floor = floorToHalfHour(end);
+    final latest = (floor == end ? end : floor.add(_slot)).subtract(_window);
+    final earliest = floorToHalfHour(_now);
+    return latest.isBefore(earliest) ? earliest : latest;
+  }
 
   /// The header button with the highlight: 0 is Menu (Up from the tab row
   /// gets there), 1 Sleep. The pointer moves it too.
@@ -100,7 +120,7 @@ class _GuideViewState extends State<GuideView> with SingleTickerProviderStateMix
   @override
   void initState() {
     super.initState();
-    _now = DateTime.now();
+    _now = widget.clock();
     _windowStart = floorToHalfHour(_now);
     _cursorTime = _now;
     final app = AppScope.read(context);
@@ -150,7 +170,7 @@ class _GuideViewState extends State<GuideView> with SingleTickerProviderStateMix
 
   void _tick() {
     setState(() {
-      _now = DateTime.now();
+      _now = widget.clock();
       if (_cursorTime.isBefore(_now)) _cursorTime = _now;
       // Roll the grid forward like a real guide once a half hour passes.
       final floor = floorToHalfHour(_now);
@@ -212,6 +232,8 @@ class _GuideViewState extends State<GuideView> with SingleTickerProviderStateMix
   void _moveTime(int direction, List<Channel> channels) {
     final p = _focusedProgram(channels);
     if (p == null) return;
+    // The program airing at the end of the range is the last one.
+    if (direction > 0 && !p.end.isBefore(_rangeEnd)) return;
     setState(() {
       if (direction > 0) {
         // Land a hair inside the next program.
@@ -221,7 +243,8 @@ class _GuideViewState extends State<GuideView> with SingleTickerProviderStateMix
         _cursorTime = previous.isBefore(_now) ? _now : previous;
       }
       // Scroll the window so the cursor stays visible.
-      while (!_cursorTime.isBefore(_windowStart.add(_window))) {
+      final maxStart = _maxWindowStart;
+      while (!_cursorTime.isBefore(_windowStart.add(_window)) && _windowStart.isBefore(maxStart)) {
         _windowStart = _windowStart.add(_slot);
       }
       while (_cursorTime.isBefore(_windowStart) && _windowStart.isAfter(floorToHalfHour(_now))) {
@@ -445,6 +468,7 @@ class _GuideViewState extends State<GuideView> with SingleTickerProviderStateMix
                             isTuned: AppScope.tunerOf(context).channel?.id == channels[i].id,
                             windowStart: _windowStart,
                             window: _window,
+                            rangeEnd: _rangeEnd,
                             height: _rowHeight,
                             channelColumnWidth: _channelColumnWidth,
                             numberWidth: numberWidth,
@@ -949,6 +973,7 @@ class _GuideRow extends StatelessWidget {
     required this.isTuned,
     required this.windowStart,
     required this.window,
+    required this.rangeEnd,
     required this.height,
     required this.channelColumnWidth,
     required this.numberWidth,
@@ -967,6 +992,9 @@ class _GuideRow extends StatelessWidget {
   final bool isTuned;
   final DateTime windowStart;
   final Duration window;
+
+  /// Programs starting at or after it aren't shown (guide-range).
+  final DateTime rangeEnd;
   final double height;
   final double channelColumnWidth;
   final double numberWidth;
@@ -979,8 +1007,10 @@ class _GuideRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final g = context.guide;
     final windowEnd = windowStart.add(window);
-    final programs =
-        schedule?.guideProgramsBetween(windowStart, windowEnd) ?? const <ScheduledProgram>[];
+    final all = schedule?.guideProgramsBetween(windowStart, windowEnd) ?? const <ScheduledProgram>[];
+    final programs = [for (final p in all) if (p.start.isBefore(rangeEnd)) p];
+    // Past the last program shown, the grid looks empty.
+    final shownEnd = programs.length < all.length && programs.isNotEmpty ? programs.last.end : null;
     double x(DateTime t) =>
         gridWidth *
         (t.difference(windowStart).inMilliseconds / window.inMilliseconds).clamp(0.0, 1.0);
@@ -1051,6 +1081,14 @@ class _GuideRow extends StatelessWidget {
                       alignment: Alignment.centerLeft,
                       child: Text('No programming', style: g.display(28, color: g.textDim)),
                     ),
+                  ),
+                if (shownEnd != null && shownEnd.isBefore(windowEnd))
+                  Positioned(
+                    left: x(shownEnd),
+                    right: 0,
+                    top: 0,
+                    bottom: 0,
+                    child: Container(margin: const EdgeInsets.only(bottom: 3, left: 3), color: g.cellAlt),
                   ),
                 for (final (i, p) in programs.indexed)
                   Positioned(

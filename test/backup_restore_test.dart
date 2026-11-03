@@ -316,6 +316,22 @@ void main() {
       DeviceEffects.instance.reset();
     });
 
+    test('the Guide range comes back', () async {
+      await writeHousehold(dir, momAndKids(), fakeLibrary(), logos: 0);
+      final h = await open(dir);
+      await h.select(mom);
+      await h.app!.setGuideRange(5);
+      await h.root.flush();
+      final backup = (await h.backups!.backUp(BackupReason.manual))!;
+      final bytes = await h.backups!.store.read(backup);
+
+      await h.app!.setGuideRange(3);
+      await BackupRestorer(h).restore(bytes);
+      await h.select(h.profiles.first);
+
+      expect(h.app!.settings.guideRangeHours, 5);
+    });
+
     test('on the same device: everyone stays signed in, the backup\'s channels are back', () async {
       await writeHousehold(dir, momAndKids(), fakeLibrary(), logos: 1);
       final h = await open(dir);
