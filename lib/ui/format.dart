@@ -70,5 +70,12 @@ String describeBlock(ProgramBlock b) => [
       if (!b.hasLineup && b.source.ratingFloor != null) b.source.ratingFloor!.label,
     ].join('  ·  ');
 
+/// What the Blocks screens call a block the lineup made (cable-dayparts).
+const fromTheLineupLabel = 'From the lineup';
+
+/// …and what they say of editing one.
+const fromTheLineupNote = 'Made from this channel\'s shows and movies, and updated with the library. '
+    'Change anything and it becomes yours.';
+
 /// What the banner and info say of a program Truncate cuts (slot-duration).
 const endsEarlyLabel = 'Ends early';

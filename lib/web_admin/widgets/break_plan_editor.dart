@@ -140,18 +140,14 @@ class _BreakPlanEditorState extends State<_BreakPlanEditor> {
             _choices('Length', CustomRoles.postRollChoices, _roles.postRoll, _length, (v) => _roles.copyWith(postRoll: v)),
             _pool(BreakRole.post, _roles.postRoll > Duration.zero),
             _heading('Tail', 'Pads each slot to the clock, so programs start on time'),
-            _choices<Duration?>(
+            _choices<Duration>(
               'Pad',
               CustomRoles.tailGridChoices,
               _roles.tailGrid,
-              (v) => switch (v?.inMinutes) {
-                null => 'None',
-                60 => 'To the hour',
-                final m => 'To :$m',
-              },
-              (v) => _roles.copyWith(tailGrid: () => v),
+              (v) => v.inMinutes == 60 ? 'To the hour' : 'To the half hour',
+              (v) => _roles.copyWith(tailGrid: v),
             ),
-            _pool(BreakRole.tail, _roles.tailGrid != null),
+            _pool(BreakRole.tail, true),
             _heading('Bumpers', 'Open and close breaks, from pools set to Bumpers'),
             _bumpers(),
           ]),

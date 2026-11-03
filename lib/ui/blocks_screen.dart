@@ -204,7 +204,11 @@ class _BlockRow extends StatelessWidget {
                       style: g.display(38,
                           weight: FontWeight.w800, color: block.enabled ? g.text : g.textDim)),
                   Text(
-                    [describeBlock(block), if (ch != null && ch.name != block.title) ch.name].join('  ·  '),
+                    [
+                      if (block.generated != null) fromTheLineupLabel,
+                      describeBlock(block),
+                      if (ch != null && ch.name != block.title) ch.name,
+                    ].join('  ·  '),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: g.body(24, color: g.textDim),
@@ -564,6 +568,10 @@ class _BlockEditorScreenState extends State<BlockEditorScreen> {
           const SizedBox(height: 20),
           Text(describeBlock(_draft), style: g.display(30, weight: FontWeight.w600)),
           const SizedBox(height: 8),
+          if (_draft.generated != null) ...[
+            Text('$fromTheLineupLabel. $fromTheLineupNote', style: g.body(24, color: g.accent)),
+            const SizedBox(height: 8),
+          ],
           Text(
             _newChannel
                 ? 'On a new channel (off the air at other times)'

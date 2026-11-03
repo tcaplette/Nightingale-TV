@@ -917,6 +917,20 @@ test('rapid surfing over five transcoding channels leaves at most one job runnin
       expect(tuner.program?.item?.id, onAir);
       expect(player.opens.last.url.path, contains(tuner.segment!.item!.sourceId));
     });
+
+    test('a plan change no screen reported (clips from a scan) is followed too', () async {
+      final ch = app.channels.first;
+      final found = await findTime(ch, same: false);
+      now = found.at;
+      await tuner.tune(ch);
+      await settle();
+      final before = tuner.program!.item!.id;
+      await app.setGlobalPlan(BreakPlan.automatic, now: found.change);
+      await settle();
+      final onAir = scheduleOf(ch).programAt(now).item!.id;
+      expect(onAir, isNot(before));
+      expect(tuner.program?.item?.id, onAir);
+    });
   });
 
   group('preloaded hand-overs (segment-handover spec)', () {

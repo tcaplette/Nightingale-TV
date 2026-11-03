@@ -70,7 +70,25 @@ void main() {
       final saved = plan.toJson()['roles'] as Map<String, Object?>;
       expect(saved.containsKey('fallback'), isFalse);
       expect((saved['pools'] as Map).containsKey('fallback'), isFalse);
-      expect(BreakPlan.fromJson({'mode': 'custom', 'roles': {'fallback': 'pool'}}).poolsUsed, isEmpty);
+      // Only the tail is left, from all pools.
+      expect(BreakPlan.fromJson({'mode': 'custom', 'roles': {'fallback': 'pool'}}).poolsUsed, {null});
+    });
+
+    test('saved plans with no padding or quarter-hour padding load padding to the half hour', () {
+      Map<String, Object?> saved(int? tailMs) => {
+            'mode': 'custom',
+            'roles': {'preMs': 30000, 'midIntervalMs': 600000, 'midMs': 120000, 'postMs': 60000, 'tailMs': ?tailMs},
+          };
+      for (final tail in [null, 15 * 60000, 30 * 60000]) {
+        final plan = BreakPlan.fromJson(saved(tail));
+        expect(plan.roles.tailGrid, _min(30), reason: '$tail');
+        expect((plan.roles.preRoll, plan.roles.midInterval, plan.roles.midLength, plan.roles.postRoll),
+            (const Duration(seconds: 30), _min(10), _min(2), _min(1)),
+            reason: 'every other setting is kept');
+        expect(resolve(plan, _min(22)).slotLength, _min(30));
+      }
+      expect(BreakPlan.fromJson(saved(60 * 60000)).roles.tailGrid, _min(60));
+      expect(CustomRoles.tailGridChoices, [_min(30), _min(60)]);
     });
 
     test('unknown or missing values fall back to defaults', () {
@@ -112,10 +130,11 @@ void main() {
       expect(s.postRoll, const Duration(seconds: 33));
     });
 
-    test('a show just over the half hour gets the quarter hour, not the hour', () {
+    test('a show just over the half hour gets the hour, with more mid-rolls', () {
       final s = resolve(BreakPlan.automatic, _min(31));
-      expect(s.slotLength, _min(45));
-      expect(s.adTime, _min(14));
+      expect(s.slotLength, _min(60));
+      expect(s.adTime, _min(29));
+      expect(s.midCount, greaterThan(midRollCount(_min(31), BreakPlan.automaticInterval)));
       expect(breaks(s), everyElement(lessThanOrEqualTo(_min(5))));
     });
 
@@ -139,22 +158,20 @@ void main() {
       expect(s.postRoll, _min(3.75));
     });
 
-    test('short programs: the quarter hour, then the 5-minute grid', () {
+    test('short programs: the quarter hour; 12 minutes and up, the half hour', () {
       final s = resolve(BreakPlan.automatic, _min(11));
       expect(s.midCount, 1);
       expect(s.slotLength, _min(15));
-      expect(resolve(BreakPlan.automatic, _min(12)).slotLength, _min(15));
-      // 15 minutes would mean an 8-minute post-roll.
-      expect(resolve(BreakPlan.automatic, _min(7)).slotLength, _min(10));
-      // 16 minutes: the half hour and the quarter hour both break the limit.
-      expect(resolve(BreakPlan.automatic, _min(16)).slotLength, _min(20));
+      expect(resolve(BreakPlan.automatic, _min(12)).slotLength, _min(30));
+      expect(resolve(BreakPlan.automatic, _min(7)).slotLength, _min(15));
+      expect(resolve(BreakPlan.automatic, _min(16)).slotLength, _min(30));
     });
 
-    test('no grid keeps the limit: mid-rolls are added on the 5-minute grid', () {
-      // 4:40 + 30 s rounds up to 10 minutes: 5:20 of ads, and no mid-roll.
+    test('the limit is kept by adding mid-rolls, never a finer grid', () {
+      // 4:40 + 30 s rounds up to 15 minutes: 10:20 of ads.
       final s = resolve(BreakPlan.automatic, _min(4) + const Duration(seconds: 40));
-      expect(s.slotLength, _min(10));
-      expect(s.midCount, 1);
+      expect(s.slotLength, _min(15));
+      expect(s.midCount, greaterThanOrEqualTo(2));
       expect(breaks(s), everyElement(lessThanOrEqualTo(_min(5))));
     });
 
@@ -168,7 +185,8 @@ void main() {
         if (s.midCount > 0) expect(s.midLength, greaterThanOrEqualTo(const Duration(seconds: 30)), reason: why);
         expect(s.midLength.inMilliseconds % 15000, 0, reason: why);
         expect(s.slotLength, greaterThanOrEqualTo(runtime + const Duration(seconds: 30)), reason: why);
-        expect(s.slotLength.inMilliseconds % (5 * 60000), 0, reason: why);
+        final grid = runtime >= BreakPlan.automaticShortUnder ? 30 : 15;
+        expect(s.slotLength.inMilliseconds % (grid * 60000), 0, reason: why);
         expect(s.slotLength, s.runtime + s.preRoll + s.midLength * s.midCount + s.postRoll, reason: why);
         expect(resolve(BreakPlan.automatic, runtime).slotLength, s.slotLength, reason: why);
       }
@@ -192,8 +210,9 @@ void main() {
       final s = resolve(const BreakPlan(mode: BreakMode.custom, roles: roles), _min(44));
       expect(s.midCount, 4);
       expect(s.midLength, _min(2));
-      expect(s.tail, Duration.zero);
-      expect(s.slotLength, _min(52) + roles.preRoll + roles.postRoll);
+      // 53.5 minutes, padded to the half hour.
+      expect(s.tail, _min(6.5));
+      expect(s.slotLength, _min(60));
     });
 
     test('tail pads to the clock boundary', () {
@@ -218,8 +237,8 @@ void main() {
       expect(midRollCount(Duration.zero, _min(10)), 0);
     });
 
-    test('the legacy plan pads to the quarter hour like before', () {
-      for (final (m, slot) in [(22, 30), (30, 30), (31, 45), (95, 105)]) {
+    test('the legacy plan pads to the half hour', () {
+      for (final (m, slot) in [(22, 30), (30, 30), (31, 60), (95, 120)]) {
         final s = resolve(BreakPlan.legacy, _min(m));
         expect(s.slotLength, _min(slot));
         expect(s.preRoll + s.postRoll + s.midLength * s.midCount, Duration.zero);
@@ -240,9 +259,10 @@ void main() {
     expect(
         const BreakPlan(mode: BreakMode.custom, roles: CustomRoles(preRoll: Duration(seconds: 15), prePool: 'b'))
             .poolsUsed,
-        {'b'});
+        {'b', null},
+        reason: 'the tail pads from all pools');
     expect(BreakPlan.automatic.alignment, _min(30));
-    expect(BreakPlan.legacy.alignment, _min(15));
+    expect(BreakPlan.legacy.alignment, _min(30));
     expect(BreakPlan.off.alignment, isNull);
   });
 

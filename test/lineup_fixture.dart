@@ -47,7 +47,7 @@ List<(int?, int?)> seasons(int from, int to, int perSeason) => [
     ];
 
 class FixtureLibrary {
-  const FixtureLibrary({required this.items, this.unnamed = 0, this.movies = const {}});
+  const FixtureLibrary({required this.items, this.unnamed = 0, this.movies = const {}, this.namedMovies = const []});
 
   final List<FixtureItem> items;
 
@@ -57,8 +57,11 @@ class FixtureLibrary {
   /// Movie count by genre; each movie has one genre.
   final Map<String, int> movies;
 
-  FixtureLibrary copyWith({List<FixtureItem>? items, int? unnamed, Map<String, int>? movies}) =>
-      FixtureLibrary(items: items ?? this.items, unnamed: unnamed ?? this.unnamed, movies: movies ?? this.movies);
+  /// Movies by name, with their genres in the server's order.
+  final List<(String name, List<String> genres)> namedMovies;
+
+  FixtureLibrary copyWith({List<FixtureItem>? items, int? unnamed, Map<String, int>? movies}) => FixtureLibrary(
+      items: items ?? this.items, unnamed: unnamed ?? this.unnamed, movies: movies ?? this.movies, namedMovies: namedMovies);
 
   /// The library the lineup-dedup tests start from.
   static FixtureLibrary standard() => FixtureLibrary(
@@ -86,6 +89,10 @@ class FixtureLibrary {
           FixtureItem('g1', 'Show G', year: 2012, genres: ['Drama', 'Crime'], episodes: seasons(1, 3, 12)),
           FixtureItem('h1', 'Show H & Friends', year: 2015, genres: ['Animation'], episodes: seasons(1, 2, 13)),
           FixtureItem('h2', 'Show H and Friends', episodes: seasons(3, 3, 10)),
+          // Small shows, so the library has room for two show channels (one
+          // per 8 named shows, cable-lineup D2).
+          for (var i = 1; i <= 6; i++)
+            FixtureItem('p$i', 'Show P$i', year: 1990 + i, genres: ['Documentary'], episodes: seasons(1, 1, 6)),
         ],
         unnamed: 70,
         movies: {'Comedy': 14, 'Action': 13, 'Drama': 12, 'Horror': 4},
@@ -96,7 +103,9 @@ class FixtureLibrary {
 
   List<Map<String, Object?>> get _movieList => [
         for (final MapEntry(key: g, value: n) in movies.entries)
-          for (var i = 1; i <= n; i++) {'id': 'movie-$g-$i', 'name': '$g Film $i', 'genre': g, 'year': 1990 + i},
+          for (var i = 1; i <= n; i++) {'id': 'movie-$g-$i', 'name': '$g Film $i', 'genres': [g], 'year': 1990 + i},
+        for (final (i, (name, genres)) in namedMovies.indexed)
+          {'id': 'movie-n$i', 'name': name, 'genres': genres, 'year': 1980 + i % 40},
       ];
 
   /// As Jellyfin lists it.
@@ -139,7 +148,7 @@ class FixtureLibrary {
                   'Name': m['name'],
                   'Type': 'Movie',
                   'ProductionYear': m['year'],
-                  'Genres': [m['genre']],
+                  'Genres': m['genres'],
                   'RunTimeTicks': _movieTicks,
                 },
             ],
@@ -180,7 +189,7 @@ class FixtureLibrary {
                   'ratingKey': m['id'],
                   'title': m['name'],
                   'year': m['year'],
-                  'Genre': [{'tag': m['genre']}],
+                  'Genre': [for (final g in m['genres']! as List<String>) {'tag': g}],
                   'duration': _movieTicks ~/ 10000,
                 },
             ],

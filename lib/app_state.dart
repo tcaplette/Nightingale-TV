@@ -274,10 +274,12 @@ class AppSettings {
     this.premieres = const PremiereSettings(),
     this.lineupVersion = 0,
     this.guideRangeHours = GuideRange.defaultHours,
+    Set<String>? removedLineupBlocks,
   })  : commercialPools = commercialPools ?? [],
         groups = groups ?? [],
         guideTabs = guideTabs ?? [...GuideTabs.defaultOrder],
-        hiddenTabs = hiddenTabs ?? {};
+        hiddenTabs = hiddenTabs ?? {},
+        removedLineupBlocks = removedLineupBlocks ?? {};
 
   /// Random per-install id; Jellyfin's DeviceId.
   final String installId;
@@ -314,10 +316,15 @@ class AppSettings {
   PremiereSettings premieres;
 
   /// Which one-time lineup cleanups have run: 0 for a lineup made before
-  /// show identity, [currentLineupVersion] once cleaned up (lineup-dedup D7).
+  /// show identity, 1 once cleaned up (lineup-dedup D7), 2 once rebuilt for
+  /// cable rules (cable-lineup D8).
   int lineupVersion;
 
-  static const currentLineupVersion = 1;
+  static const currentLineupVersion = 2;
+
+  /// Generated blocks (cable-dayparts) the user deleted, by id: refreshes
+  /// don't make them again, until Reset channel lineup.
+  Set<String> removedLineupBlocks;
 
   /// How far ahead the guide goes, one of [GuideRange.choices].
   int guideRangeHours;
@@ -351,6 +358,7 @@ class AppSettings {
         'premieres': premieres.toJson(),
         'lineupVersion': lineupVersion,
         'guideRangeHours': guideRangeHours,
+        if (removedLineupBlocks.isNotEmpty) 'removedLineupBlocks': removedLineupBlocks.toList(),
       };
 
   /// Jellyfin device IDs start with this.
@@ -380,7 +388,8 @@ class AppSettings {
       ..guideTab = j['guideTab'] as String?
       ..premieres = PremiereSettings.fromJson(j['premieres'])
       ..lineupVersion = j['lineupVersion'] as int? ?? 0
-      ..guideRangeHours = GuideRange.parse(j['guideRangeHours']);
+      ..guideRangeHours = GuideRange.parse(j['guideRangeHours'])
+      ..removedLineupBlocks = {...?(j['removedLineupBlocks'] as List?)?.whereType<String>()};
     if (j['commercialPlan'] case final Map<String, Object?> plan) {
       return withExtras(AppSettings(
         installId: installId,
@@ -813,17 +822,51 @@ class AppState extends ChangeNotifier {
   /// with an M3U source and no library scan yet still needs its lineup).
   bool get _hasGenerated => _channels.any((c) => !c.isLive);
 
-  /// A fresh generated lineup, numbered around the live channels' numbers.
+  /// A fresh generated lineup, numbered around the live channels' numbers,
+  /// with its generated blocks replacing the old ones.
   List<Channel> _generated() {
-    final fresh = ChannelGenerator(library).generate();
+    final generator = ChannelGenerator(library, planOf: configuredPlanFor);
+    final fresh = generator.generate();
     final held = {
       if (liveEnabled)
         for (final s in live.sources)
           for (final c in s.chosen.values) c.number,
     };
     if (fresh.isNotEmpty && held.isNotEmpty) ChannelNumbers.numberSkipping(fresh, held, start: fresh.first.number);
+    settings.removedLineupBlocks.clear();
+    _applyDayparts(generator.blocks);
     return fresh;
   }
+
+  /// Makes [wanted] the generated blocks (cable-dayparts): one the user
+  /// hasn't edited takes its new lineup or movies, starting over only when
+  /// they changed; generated blocks not in [wanted] go. The user's blocks
+  /// stay, and no generated block is made over one of them on its channel,
+  /// nor again once the user deleted it.
+  void _applyDayparts(List<ProgramBlock> wanted) {
+    final old = {for (final b in _blocks) b.id: b};
+    final user = [for (final b in _blocks) if (b.generated == null) b];
+    final made = <ProgramBlock>[];
+    for (final w in wanted) {
+      final before = old[w.id];
+      if (before != null && before.generated == null) continue;
+      if (settings.removedLineupBlocks.contains(w.id) || user.any((u) => blocksOverlap(u, w))) continue;
+      if (before != null && !_contentChanged(before, w)) {
+        before.title = w.title;
+        made.add(before);
+      } else {
+        made.add(w);
+      }
+    }
+    _blocks = [...user, ...made];
+    _autoGroups = null;
+  }
+
+  /// Whether [b] plays something other than [old] does.
+  static bool _contentChanged(ProgramBlock old, ProgramBlock b) =>
+      old.order != b.order ||
+      !_sameJson(old.source.toJson(), b.source.toJson()) ||
+      !_sameJson([for (final s in old.lineup) s.toJson()], [for (final s in b.lineup) s.toJson()]);
 
   /// Every number in the lineup.
   Set<int> get _takenNumbers => {for (final c in _channels) c.number};
@@ -1425,12 +1468,17 @@ class AppState extends ChangeNotifier {
     _armLaunchGate();
   }
 
-  /// Once per profile, a lineup made before show identity is cleaned up
-  /// (lineup-dedup D7), without a scan: the saved library re-keyed, saved
-  /// show keys rewritten, duplicate and thin generated channels retired and
-  /// merged as a refresh does, then generated channels numbered from 1 in
-  /// their order, around the numbers live and user-built channels hold. A
-  /// safety backup comes first; without one, it waits for the next launch.
+  /// Once per profile, an older lineup is cleaned up without a scan. One
+  /// made before show identity (lineup-dedup D7) has the saved library
+  /// re-keyed and saved show keys rewritten. Then (cable-lineup D8) show
+  /// channels beyond the cap retire (favorites and channels carrying the
+  /// user's blocks stay), titles are placed by primary genre with the genre
+  /// channels that now qualify added, movie genre channels left without
+  /// movies retire, genre channels get their dayparts, and retired channels
+  /// hand their settings to the channel that took their titles, as a
+  /// refresh does. Generated channels are then numbered from 1 in their
+  /// order, around the numbers live and user-built channels hold. A safety
+  /// backup comes first; without one, it waits for the next launch.
   Future<void> _cleanUpLineup() async {
     if (settings.lineupVersion >= AppSettings.currentLineupVersion) return;
     if (_channels.any((c) => c.auto && !c.isLive)) {
@@ -1442,8 +1490,13 @@ class AppState extends ChangeNotifier {
       }
       final previous = library;
       final plansBefore = _plans();
-      library = previous.rekeyed();
-      _mergeLibraryIntoChannels(previous, plansBefore);
+      if (settings.lineupVersion < 1) library = previous.rekeyed();
+      final capped = _showChannelsOverCap();
+      _channels.removeWhere(capped.contains);
+      final retired = [...capped, ..._mergeLibraryIntoChannels(previous, plansBefore)];
+      for (final ch in retired) {
+        if (_takerOf(ch) case final taker?) _retireInto(ch, taker, nameEdited: false);
+      }
       final held = {for (final c in _channels) if (!c.auto || c.isLive) c.number};
       ChannelNumbers.numberSkipping([for (final c in _channels) if (c.auto && !c.isLive) c], held);
       _setChannels(_channels);
@@ -2308,7 +2361,8 @@ class AppState extends ChangeNotifier {
     await _saveSettings();
   }
 
-  void _mergeLibraryIntoChannels(LibraryIndex previous, Map<String, BreakPlan> plansBefore) {
+  /// Returns the channels retired.
+  List<Channel> _mergeLibraryIntoChannels(LibraryIndex previous, Map<String, BreakPlan> plansBefore) {
     final now = DateTime.now();
     // Saved show keys follow the shows the scan merged; a show's second
     // channel merges into its first (lineup-dedup D3, D6).
@@ -2319,15 +2373,15 @@ class AppState extends ChangeNotifier {
     // Show channels up to the generator's limit: a kept channel a growing
     // show would outrank isn't joined by one more (D5).
     const options = GeneratorOptions();
-    var showRoom = options.maxShowChannels -
+    var showRoom = options.showChannelCap(library) -
         _channels.where((c) => c.id.startsWith(_showPrefix) && !_showTooSmall(c)).length;
     final added = [
       for (final c in ChannelGenerator(library, options: options).generate())
         if (!existingIds.contains(c.id) && (!c.id.startsWith(_showPrefix) || showRoom-- > 0)) c..number = 1 << 30,
     ];
-    // Each show and movie airs on one genre channel; a genre channel left
-    // under its minimums is thin: retired, or not added.
-    final thin = ChannelGenerator.spreadTitles(library, [..._channels, ...added]);
+    // Each show and movie has one home; a genre channel left under its
+    // minimums is thin: retired, or not added.
+    final (:thin, :evenings) = ChannelGenerator.spreadTitles(library, [..._channels, ...added]);
     final retired = <Channel>[];
     for (final ch in _channels) {
       if (ch.isLive) continue;
@@ -2377,7 +2431,47 @@ class AppState extends ChangeNotifier {
     }
     ChannelGenerator.nameApart(library, [for (final c in _channels) if (c.auto && !c.isLive) c],
         keep: existingIds.difference(renamed));
+    // The genre channels' dayparts follow their titles (cable-dayparts D6).
+    final today = DateTime(now.year, now.month, now.day);
+    _applyDayparts(ChannelGenerator.dayparts(library, _channels, evenings, anchor: today, planOf: configuredPlanFor));
     _setChannels(_channels);
+    return retired;
+  }
+
+  /// The show channels beyond [GeneratorOptions.showChannelCap], the
+  /// fewest episodes first, other than favorites and channels carrying the
+  /// user's blocks (cable-lineup D8).
+  List<Channel> _showChannelsOverCap() {
+    int episodes(Channel c) => library.episodesBySeries[c.source.seriesKeys.firstOrNull]?.length ?? 0;
+    final shows = [
+      for (final c in _channels)
+        if (c.auto && !c.isLive && c.id.startsWith(_showPrefix) && !_showTooSmall(c)) c,
+    ]..sort((a, b) => episodes(b).compareTo(episodes(a)));
+    return [
+      for (final c in shows.skip(const GeneratorOptions().showChannelCap(library)))
+        if (!c.favorite && !_blocks.any((b) => b.channelId == c.id && b.generated == null)) c,
+    ];
+  }
+
+  /// The generated channel that took most of retired [ch]'s titles, in its
+  /// regular loop or its blocks: a home channel before All Shows or Movie
+  /// Channel; null when none did.
+  Channel? _takerOf(Channel ch) {
+    final mine = ch.playlist.toSet();
+    Channel? best;
+    var most = 0;
+    bool catchAll(Channel c) => c.id == 'auto:all-shows' || c.id == 'auto:movies';
+    for (final c in [..._channels.where((c) => !catchAll(c)), ..._channels.where(catchAll)]) {
+      if (!c.auto || c.isLive) continue;
+      final airs = {
+        ...c.playlist,
+        for (final b in _blocks)
+          if (b.channelId == c.id) ...b.playlist,
+      };
+      final shared = mine.where(airs.contains).length;
+      if (shared > most) (best, most) = (c, shared);
+    }
+    return best;
   }
 
   /// Whether a refresh retires generated [ch] (lineup-dedup D5): it plays
@@ -2387,7 +2481,7 @@ class AppState extends ChangeNotifier {
   /// goes when the scan found nothing at all.
   bool _retires(Channel ch, List<String> fresh, Set<String> thin) {
     if (!ch.auto || ch.isLive || ch.blockOnly || library.isEmpty) return false;
-    if (_blocks.any((b) => b.channelId == ch.id)) return false;
+    if (_blocks.any((b) => b.channelId == ch.id && b.generated == null)) return false;
     return fresh.isEmpty || thin.contains(ch.id) || (ch.id.startsWith(_showPrefix) && _showTooSmall(ch));
   }
 
@@ -2782,10 +2876,9 @@ class AppState extends ChangeNotifier {
     }
     _setChannels(fresh);
     await _saveChannels();
-    if (settings.lineupVersion != AppSettings.currentLineupVersion) {
-      settings.lineupVersion = AppSettings.currentLineupVersion;
-      await _saveSettings();
-    }
+    await _saveBlocks();
+    settings.lineupVersion = AppSettings.currentLineupVersion;
+    await _saveSettings();
   }
 
   // ---- Channel logo (channel-logo) -------------------------------------------
@@ -3238,10 +3331,7 @@ class AppState extends ChangeNotifier {
   /// whose content changed.
   bool blockRestarts(ProgramBlock block) {
     final old = _blocks.where((b) => b.id == block.id).firstOrNull;
-    return old == null ||
-        old.order != block.order ||
-        !_sameJson(old.source.toJson(), block.source.toJson()) ||
-        !_sameJson([for (final s in old.lineup) s.toJson()], [for (final s in block.lineup) s.toJson()]);
+    return old == null || _contentChanged(old, block);
   }
 
   /// What [block]'s next airing (or the one on now) would play once saved,
@@ -3281,6 +3371,10 @@ class AppState extends ChangeNotifier {
     // New roots are fetched first, so the block fills now.
     await resolveRoots(block.source.roots);
     final existing = _blocks.indexWhere((b) => b.id == block.id);
+    // Any edit makes a generated block the user's (cable-dayparts D6).
+    if (existing >= 0 && block.generated != null && !_sameJson(_blocks[existing].toJson(), block.toJson())) {
+      block.generated = null;
+    }
     if (blockRestarts(block)) {
       final today = DateTime.now();
       block.playlist = blockPlaylist(block);
@@ -3298,11 +3392,16 @@ class AppState extends ChangeNotifier {
   }
 
   Future<void> deleteBlock(ProgramBlock block) async {
+    final generated = _blocks.any((b) => b.id == block.id && b.generated != null);
     _blocks = _blocks.where((b) => b.id != block.id).toList();
     _autoGroups = null;
     _schedules.clear();
     notifyListeners();
     await _saveBlocks();
+    if (generated) {
+      settings.removedLineupBlocks.add(block.id);
+      await _saveSettings();
+    }
   }
 
   /// A new channel that only airs programming blocks, with the next free

@@ -47,12 +47,12 @@ void main() {
   );
   final playlist = [for (var i = 1; i <= 10; i++) 'Alpha-e$i'];
 
-  test('slots are padded to the next quarter hour', () {
+  test('slots are padded to the next half hour', () {
     Duration pad(int minutes) => resolve(BreakPlan.legacy, Duration(minutes: minutes)).slotLength;
     expect(pad(22), const Duration(minutes: 30));
     expect(pad(30), const Duration(minutes: 30));
-    expect(pad(31), const Duration(minutes: 45));
-    expect(pad(95), const Duration(minutes: 105));
+    expect(pad(31), const Duration(minutes: 60));
+    expect(pad(95), const Duration(minutes: 120));
     expect(resolve(BreakPlan.off, const Duration(minutes: 22)).slotLength, const Duration(minutes: 22));
   });
 

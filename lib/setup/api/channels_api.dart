@@ -387,7 +387,7 @@ extension _ChannelsApi on SetupServer {
   static Map<String, Object?>? _breaksOf(ProgramSchedule schedule, ScheduledProgram p) {
     final item = p.item;
     if (schedule is! ChannelSchedule || item == null || p.isMusicHour || p.isLive) return null;
-    final plan = schedule.slotPlanFor(item, ruled: p.blockTitle == null && !p.isPremiere);
+    final plan = schedule.slotPlanOf(p);
     final total = plan.preRoll + plan.midLength * plan.midCount + plan.postRoll + plan.tail;
     if (total == Duration.zero) return null;
     return {

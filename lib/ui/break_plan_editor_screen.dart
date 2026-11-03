@@ -262,18 +262,13 @@ class _BreakPlanEditorScreenState extends State<BreakPlanEditorScreen> {
               poolEnabled: _roles.postRoll > Duration.zero,
             ),
             _section(g, 'TAIL', 'Pads each slot to the clock, so programs start on time'),
-            choices<Duration?>(
+            choices<Duration>(
               'tail',
               CustomRoles.tailGridChoices,
               _roles.tailGrid,
-              (v) => switch (v?.inMinutes) {
-                null => 'None',
-                60 => 'To the hour',
-                final m => 'To :$m',
-              },
-              (v) => _roles.copyWith(tailGrid: () => v),
+              (v) => v.inMinutes == 60 ? 'To the hour' : 'To the half hour',
+              (v) => _roles.copyWith(tailGrid: v),
               pool: BreakRole.tail,
-              poolEnabled: _roles.tailGrid != null,
             ),
             _section(g, 'BUMPERS', 'Open and close breaks, from pools set to Bumpers'),
             bumpers(),

@@ -66,6 +66,18 @@ class LineupSlot {
       LineupSlot(seriesKey: j['series'] as String, count: j['count'] as int? ?? 1);
 }
 
+/// The part of a genre channel's day a generated block fills
+/// (cable-dayparts).
+enum Daypart {
+  /// 6 AM–6 PM: two-episode stacks of the channel's shows.
+  daytime,
+
+  /// 6 PM–midnight: the channel's movies.
+  evening;
+
+  static Daypart? parse(Object? name) => values.asNameMap()[name];
+}
+
 /// A titled stretch of programming ("Saturday Morning Cartoons") that takes
 /// over a channel on chosen days within a time window, optionally only
 /// during a yearly date range ("Christmas Specials", Dec 1–25).
@@ -89,6 +101,7 @@ class ProgramBlock {
     this.seasonEnd,
     this.enabled = true,
     List<LineupSlot>? lineup,
+    this.generated,
   }) : lineup = lineup ?? [];
 
   final String id;
@@ -125,6 +138,10 @@ class ProgramBlock {
   /// content changes, so the new lineup starts from its first episode.
   DateTime anchor;
   bool enabled;
+
+  /// Made by the lineup ("From the lineup"), which rebuilds it at every
+  /// refresh; null once the user edits it, or for the user's own blocks.
+  Daypart? generated;
 
   bool get hasSeason => seasonStart != null && seasonEnd != null;
 
@@ -175,6 +192,7 @@ class ProgramBlock {
         'playlist': playlist,
         'anchor': anchor.toIso8601String(),
         'enabled': enabled,
+        if (generated != null) 'generated': generated!.name,
       };
 
   factory ProgramBlock.fromJson(Map<String, Object?> j) => ProgramBlock(
@@ -195,6 +213,7 @@ class ProgramBlock {
         playlist: (j['playlist'] as List).cast<String>(),
         anchor: DateTime.parse(j['anchor'] as String).toLocal(),
         enabled: j['enabled'] as bool? ?? true,
+        generated: Daypart.parse(j['generated']),
       );
 }
 

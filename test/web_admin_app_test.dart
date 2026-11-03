@@ -147,6 +147,36 @@ void main() {
   });
 
   group('block editor', () {
+    testWidgets('a block the lineup made says so, in the list and in its editor', (tester) async {
+      api
+        ..signedIn = true
+        ..blocks = [
+          {
+            ...ProgramBlock(
+              id: 'lineup:daytime:c1',
+              title: 'Daytime',
+              channelId: 'c1',
+              days: {1, 2, 3, 4, 5, 6, 7},
+              startMinute: 360,
+              endMinute: 1080,
+              source: const ChannelSource(),
+              order: PlaybackOrder.cyclic,
+              playlist: const [],
+              anchor: DateTime(2026, 11, 3),
+              generated: Daypart.daytime,
+            ).toJson(),
+            'view': {'describe': 'Every day  ·  6:00 AM – 6:00 PM', 'channel': 'Laugh Track', 'playlistLength': 0},
+          },
+        ];
+      await start(tester);
+      go(tester, '/profiles/p1/blocks');
+      await tester.pumpAndSettle();
+      expect(find.textContaining('From the lineup · Every day'), findsOneWidget);
+      await tester.tap(find.text('Daytime'));
+      await tester.pumpAndSettle();
+      expect(find.textContaining('Change anything and it becomes yours.'), findsOneWidget);
+    });
+
     testWidgets('a new block is sent as the model, and the server\'s rule shows beside it', (tester) async {
       api.signedIn = true;
       await start(tester);
@@ -251,6 +281,9 @@ class FakeApi {
   bool signedIn = false;
   String role = 'admin';
   bool kidProfile = false;
+
+  /// The profile's blocks, as the server lists them.
+  List<Map<String, Object?>> blocks = [];
   int revision = 1;
   final calls = <String>[];
   final lastBody = <String, Object?>{};
@@ -316,7 +349,7 @@ class FakeApi {
         return json({'plan': {'mode': 'off'}, 'pools': [], 'clips': 0, 'channels': []});
       case 'GET profiles/p1/blocks':
         return json({
-          'blocks': [],
+          'blocks': blocks,
           'kidProfile': kidProfile,
           'newBlock': ProgramBlock(
             id: 'block:new',

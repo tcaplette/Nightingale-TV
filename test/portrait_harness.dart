@@ -116,9 +116,13 @@ class PortraitHarness {
     sleep?.dispose();
     tuner.dispose();
     await tester.runAsync(() async {
+      final app = household.app;
       household.leave();
       household.backups!.dispose();
+      // Writes still under way finish before the folder goes.
       await Future<void>.delayed(const Duration(milliseconds: 100));
+      // Bounded: a save waiting on the test's fake clock never finishes.
+      await app?.storage.flush().timeout(const Duration(seconds: 2), onTimeout: () {});
       await _dir.delete(recursive: true);
     });
   }

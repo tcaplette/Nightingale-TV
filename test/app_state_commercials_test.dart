@@ -261,18 +261,15 @@ void main() {
       expect(onBoundary(reloaded.allChannels.first.anchor, 30), isTrue);
     });
 
-    test('with no tail, the anchor stays put', () async {
+    test('a Custom plan always pads, so its slots line up on the half hour', () async {
       final app = await signedInApp(dir, library);
       final ch = app.channels.first;
+      const custom = BreakPlan(mode: BreakMode.custom, roles: CustomRoles(midInterval: Duration(minutes: 10)));
+      await app.setGlobalPlan(custom);
+      expect(onBoundary(ch.anchor, 30), isTrue);
       final now = DateTime.now();
-      final before = app.scheduleFor(ch)!.playbackAt(now);
-      const noTail = BreakPlan(mode: BreakMode.custom, roles: CustomRoles(midInterval: Duration(minutes: 10)));
-      await app.setGlobalPlan(noTail);
-      final after = app.scheduleFor(ch)!.playbackAt(now);
-      if (!after.isBreak) {
-        expect(after.item!.id, before.item!.id);
-        expect((after.positionAt(now) - before.positionAt(now)).abs(), lessThan(const Duration(seconds: 1)),
-            reason: 'nothing to line up on, so the show keeps its exact position');
+      for (final p in app.scheduleFor(ch)!.programsBetween(now, now.add(const Duration(hours: 4))).skip(1)) {
+        expect(onBoundary(p.start, 30), isTrue, reason: '${p.title} starts ${p.start}');
       }
     });
 
@@ -322,7 +319,9 @@ void main() {
       final empty = await app.createPool();
       final plan = BreakPlan(
           mode: BreakMode.custom,
-          roles: const CustomRoles(midInterval: Duration(minutes: 10)).withPool(BreakRole.mid, empty.id));
+          roles: const CustomRoles(midInterval: Duration(minutes: 10))
+              .withPool(BreakRole.mid, empty.id)
+              .withPool(BreakRole.tail, empty.id));
       await app.setGlobalPlan(plan);
       expect(app.breaksFor(app.channels.first), isFalse);
       expect(app.hasClipsFor(plan), isFalse);

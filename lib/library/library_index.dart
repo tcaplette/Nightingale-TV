@@ -601,7 +601,8 @@ class ShowIndexer {
         id: (logo ?? best).artworkId,
         name: best.isUnknown ? SeriesEntry.unknownName : best.identity.name,
         year: year,
-        genres: {for (final s in group) ...s.genres}.toList(),
+        // The best match's order first: a show goes to its first genre.
+        genres: {...best.genres, for (final s in group) ...s.genres}.toList(),
         officialRating: best.officialRating ?? group.map((s) => s.officialRating).nonNulls.firstOrNull,
         hasLogo: logo != null,
         providerIds: {for (final s in group) ...s.providerIds}.toList(),

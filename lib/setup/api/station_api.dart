@@ -157,6 +157,9 @@ extension _StationApi on SetupServer {
         'id': id,
         'playlist': existing?.playlist ?? const <String>[],
         'anchor': (existing?.anchor ?? DateTime.now()).toIso8601String(),
+        // Only the lineup makes generated blocks; saving one edited makes
+        // it the user's (cable-dayparts D6).
+        'generated': existing?.generated?.name,
       });
     } on ApiError {
       rethrow;

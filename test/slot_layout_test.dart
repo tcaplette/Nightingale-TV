@@ -79,6 +79,16 @@ List<String> _outline(List<ScheduledProgram> segments) {
   return [for (final (r, a, b) in out) r == 'show' ? 'show $a-$b' : '$r ${b}s'];
 }
 
+/// [p] with no tail: a Custom plan's breaks alone.
+SlotPlan _withoutTail(SlotPlan p) => SlotPlan(
+    runtime: p.runtime,
+    preRoll: p.preRoll,
+    midCount: p.midCount,
+    midLength: p.midLength,
+    postRoll: p.postRoll,
+    tail: Duration.zero,
+    roles: p.roles);
+
 void main() {
   final library = fakeLibrary(shows: {'Archer': 10}); // 22-minute episodes
   final playlist = [for (var i = 1; i <= 10; i++) 'Archer-e$i'];
@@ -148,7 +158,8 @@ void main() {
     final shows = [for (final p in _segments(s, _at(18, 0), _at(18, 52))) if (!p.isBreak) p.itemTo.inMinutes];
     // Ideal points at 8:48, 17:36, 26:24, 35:12.
     expect(shows, [8, 17, 27, 35, 44]);
-    expect(s.programAt(_at(18, 1)).end, _at(18, 52));
+    // 52 minutes, padded to the half hour.
+    expect(s.programAt(_at(18, 1)).end, _at(19, 0));
   });
 
   test('tuning away and back shows the same clips at the same positions', () {
@@ -176,11 +187,14 @@ void main() {
     final varied = [for (var i = 0; i < 242; i++) _clip('v$i', Duration(milliseconds: 10000 + (i * 7919) % 25000))];
     final pool = FixedClips(varied, byPool: {'ads': varied});
     final show = MediaEntry(id: 'show', kind: MediaKind.episode, title: 'Show', runtime: _m(22));
-    SlotLayout layout(BreakPlan plan, {MediaEntry? item, ClipSource? source, DateTime? at}) {
+    // Custom plans always pad to the clock; these tests are about the
+    // breaks, so they lay the slot out without its tail unless [tail].
+    SlotLayout layout(BreakPlan plan, {MediaEntry? item, ClipSource? source, DateTime? at, bool tail = false}) {
       final program = item ?? show;
+      final slot = resolve(plan, program.runtime);
       return SlotLayout.build(
         item: program,
-        plan: resolve(plan, program.runtime),
+        plan: tail ? slot : _withoutTail(slot),
         layoutStart: at ?? _at(18, 0),
         info: ProgramBreakInfo.unknown,
         clips: source ?? pool,
@@ -214,7 +228,7 @@ void main() {
       final carried = _s(93) - first;
       expect(second, lessThanOrEqualTo(_s(93) + carried));
       expect(second, greaterThan(_s(92) + carried));
-      expect(l.length, resolve(plan, show.runtime).slotLength, reason: 'the post-roll makes up the rest');
+      expect(l.length, _withoutTail(resolve(plan, show.runtime)).slotLength, reason: 'the post-roll makes up the rest');
     });
 
     test('the show resumes early by the shortfall; the next break makes it up', () {
@@ -271,7 +285,7 @@ void main() {
       for (var seconds = 60; seconds <= 150 * 60; seconds += 397) {
         final item = MediaEntry(id: 'p$seconds', kind: MediaKind.episode, title: 'P', runtime: _s(seconds));
         for (final plan in [BreakPlan.automatic, BreakPlan.legacy]) {
-          final l = layout(plan, item: item, at: _at(18, 0).add(Duration(minutes: seconds)));
+          final l = layout(plan, item: item, at: _at(18, 0).add(Duration(minutes: seconds)), tail: true);
           final why = '$plan ${item.runtime}';
           expect(l.segments.first.from, Duration.zero, reason: why);
           for (var i = 1; i < l.segments.length; i++) {
@@ -332,7 +346,7 @@ void main() {
       });
 
       test('a tail holds only commercials', () {
-        final l = layout(custom(const CustomRoles(tailGrid: Duration(minutes: 30))), source: framed(idents));
+        final l = layout(custom(const CustomRoles()), source: framed(idents), tail: true);
         expect(l.segments.where((s) => s.role == BreakRole.tail), isNotEmpty);
         expect(l.segments.where(isBumper), isEmpty);
       });
@@ -433,7 +447,7 @@ void main() {
         expect(last.last.item!.id, 'ident');
         expect(last.last.length, _s(10));
         expect(total(last), greaterThan(Duration.zero));
-        expect(l.length, resolve(custom(plan), show.runtime).slotLength);
+        expect(l.length, _withoutTail(resolve(custom(plan), show.runtime)).slotLength);
       });
 
       test('a post-roll that ends the slot still ends it exactly', () {
@@ -489,7 +503,8 @@ void main() {
       roles: const CustomRoles(preRoll: Duration(seconds: 15), midInterval: Duration(minutes: 10), postRoll: Duration(minutes: 1))
           .withPool(BreakRole.pre, 'bumpers')
           .withPool(BreakRole.mid, 'ads')
-          .withPool(BreakRole.post, 'ads'),
+          .withPool(BreakRole.post, 'ads')
+          .withPool(BreakRole.tail, 'ads'),
     );
     final s = schedule(plan, source: FixedClips([...ads, ...bumpers], byPool: {'ads': ads, 'bumpers': bumpers}));
     final segments = _segments(s, _at(18, 0), s.programAt(_at(18, 0)).end);
@@ -510,9 +525,10 @@ void main() {
             ProgramBreakInfo(source: PointSource.segments, candidates: [_m(8)], skips: [Span(_m(8), _m(10))]),
           )
         ]));
-    expect(_outline(_segments(s, _at(18, 0), _at(18, 24))),
-        ['show 0-480', 'mid 180s', 'show 600-880', 'mid 60s', 'show 880-1320']);
-    expect(s.programAt(_at(18, 1)).end, _at(18, 24), reason: 'the skipped 2 minutes are break time instead');
+    expect(_outline(_segments(s, _at(18, 0), _at(18, 30))),
+        ['show 0-480', 'mid 180s', 'show 600-880', 'mid 60s', 'show 880-1320', 'tail 360s'],
+        reason: 'the skipped 2 minutes are break time instead');
+    expect(s.programAt(_at(18, 1)).end, _at(18, 30));
   });
 
   test('clips from a reel play only their range, joining partway through', () {
@@ -574,9 +590,10 @@ void main() {
     }
   });
 
-  test('a program resumed after a block continues in its slot, its break not repeated', () {
-    // Automatic: Archer-e1 at 18:00–18:30 with its first break 7:35–10:35
-    // into the slot. A block from 17:00 to 18:12 cuts it.
+  test('with a slot length, a program resumed after a block continues in its slot, its break not repeated', () {
+    // Automatic in 30-minute slots: Archer-e1 at 18:00–18:30 with its first
+    // break 7:35–10:35 into the slot. A block from 17:00 to 18:12 cuts it.
+    // (Without a slot length, the loop meets blocks on whole programs.)
     final block = ProgramBlock(
       id: 'b',
       title: 'Cartoons',
@@ -589,7 +606,8 @@ void main() {
       playlist: const ['Archer-e5'],
       anchor: DateTime(2026, 10, 10),
     );
-    final s = schedule(BreakPlan.automatic, blocks: [block]);
+    final s = ChannelSchedule.build(_channel(playlist), library, [block],
+        BreakContext(plan: BreakPlan.automatic, clips: clips, slotRule: const SlotRule(length: Duration(minutes: 30))))!;
     final resumed = s.programAt(_at(18, 12));
     expect(resumed.item!.id, 'Archer-e1');
     expect(resumed.start, _at(18, 12));

@@ -16,22 +16,36 @@ import 'package:nightingale_tv/live/live_source.dart';
 import 'fixtures.dart';
 import 'lineup_fixture.dart';
 
-/// What breaks the lineup rules (lineup-dedup D8): a show or movie on two
-/// generated channels other than All Shows and Movie Channel, an empty
-/// generated channel, a genre channel under its minimum, two generated
-/// channels with one name.
-List<String> lineupProblems(LibraryIndex library, List<Channel> channels) {
+/// What breaks the lineup rules (lineup-dedup D8, cable-lineup): a show or
+/// movie on two generated channels other than All Shows and Movie Channel
+/// (a genre channel's generated [blocks] count as its), a show with its own
+/// channel on All Shows, an empty generated channel, a genre channel under
+/// its minimum, two generated channels with one name.
+List<String> lineupProblems(LibraryIndex library, List<Channel> channels, [List<ProgramBlock> blocks = const []]) {
   const options = GeneratorOptions();
   final problems = <String>[];
   final showOn = <String, String>{}, movieOn = <String, String>{}, names = <String, String>{};
+  final ownChannel = {
+    for (final c in channels)
+      if (c.auto && c.id.startsWith('auto:show:')) ...c.source.seriesKeys,
+  };
   for (final c in channels.where((c) => c.auto && !c.isLive)) {
     if (names[c.name.toLowerCase()] case final other?) problems.add('"${c.name}" is ${c.id} and $other');
     names[c.name.toLowerCase()] = c.id;
     if (c.playlist.isEmpty) problems.add('${c.name} (${c.id}) is empty');
+    if (c.id == 'auto:all-shows') {
+      for (final s in {for (final id in c.playlist) ?library[id]?.seriesKey}.where(ownChannel.contains)) {
+        problems.add('$s has its own channel and is on All Shows');
+      }
+    }
     if (c.id == 'auto:all-shows' || c.id == 'auto:movies') continue;
+    final generated = [for (final b in blocks) if (b.channelId == c.id && b.generated != null) ...b.playlist];
     final items = [for (final id in c.playlist) ?library[id]];
     final shows = {for (final e in items) ?e.seriesKey};
-    final movies = {for (final e in items) if (e.kind == MediaKind.movie) e.id};
+    final movies = {
+      for (final e in [...items, for (final id in generated) ?library[id]])
+        if (e.kind == MediaKind.movie) e.id,
+    };
     for (final s in shows) {
       if (showOn[s] case final other?) problems.add('$s is on $other and ${c.name}');
       showOn[s] = c.name;
@@ -81,7 +95,11 @@ void main() {
         FixtureItem('x', 'Comedy Movies', year: 2000, genres: ['Drama'], episodes: seasons(1, 3, 25)),
         FixtureItem('y', 'Other', year: 2001, genres: ['Drama'], episodes: seasons(1, 1, 10)),
       ], movies: {'Comedy': 14, 'Action': 13}).index(ServerShape.jellyfin);
-      final names = ChannelGenerator(library, anchor: DateTime(2026)).generate().map((c) => c.name).toList();
+      final names = ChannelGenerator(library,
+              anchor: DateTime(2026), options: const GeneratorOptions(showsPerShowChannel: 1))
+          .generate()
+          .map((c) => c.name)
+          .toList();
       expect(names, containsAll(['Comedy Movies (Show)', 'Comedy Movies']));
     });
   });
@@ -97,7 +115,7 @@ void main() {
     final shows = {for (final id in first) before[id]!.seriesId};
     final left = shows.skip(1).toSet();
     final after = standard.copyWith(items: [for (final s in standard.items) if (!left.contains(s.id)) s]).index(ServerShape.jellyfin);
-    final thin = ChannelGenerator.spreadTitles(after, channels);
+    final thin = ChannelGenerator.spreadTitles(after, channels).thin;
     expect(thin, contains(genre.first.id));
     for (final c in channels) {
       c.playlist = buildPlaylist(after, c.source, c.order, seed: 1);
@@ -218,7 +236,7 @@ void main() {
       for (final MapEntry(key: what, value: change) in steps.entries) {
         library = change(library);
         await refresh(library);
-        expect(lineupProblems(app.library, app.allChannels), isEmpty, reason: what);
+        expect(lineupProblems(app.library, app.allChannels, app.blocks), isEmpty, reason: what);
         expect((custom().number, custom().name, custom().auto, custom().playlist.isNotEmpty), (30, 'Mine', false, true),
             reason: what);
         expect(live().number, 100, reason: what);
@@ -237,18 +255,21 @@ void main() {
       expect(app.channelById(id), isNull);
       final genre = [for (final c in app.allChannels) if (c.id.startsWith('auto:genre:')) ...c.playlist];
       expect(genre.any((e) => app.library[e]?.seriesKey == 'show d|2004'), isTrue);
-      expect(lineupProblems(app.library, app.allChannels), isEmpty);
+      expect(lineupProblems(app.library, app.allChannels, app.blocks), isEmpty);
     });
 
     test('a healthy show channel outranked by a growing show stays', () async {
+      // 16 named shows: room for two show channels.
       final library = FixtureLibrary(items: [
-        for (var i = 1; i <= 6; i++)
+        for (var i = 1; i <= 2; i++)
           FixtureItem('s$i', 'Big $i', year: 2000 + i, genres: ['Drama'], episodes: seasons(1, 3, 20 + i)),
         FixtureItem('s7', 'Big 7', year: 2010, genres: ['Drama'], episodes: seasons(1, 2, 20)),
+        for (var i = 1; i <= 13; i++)
+          FixtureItem('q$i', 'Small $i', year: 1980 + i, genres: ['History'], episodes: seasons(1, 1, 4)),
       ]);
       app = await signedInApp(dir, library.index(ServerShape.jellyfin));
       final ids = {for (final c in app.allChannels) c.id};
-      expect(ids.where((id) => id.startsWith('auto:show:')), hasLength(6));
+      expect(ids.where((id) => id.startsWith('auto:show:')), hasLength(2));
       await refresh(withItem(library, 's7', (s) => s.withEpisodes(seasons(1, 5, 20))));
       expect({for (final c in app.allChannels) c.id}, ids, reason: '${[for (final c in app.allChannels) c.id]}');
     });
@@ -260,6 +281,9 @@ void main() {
         FixtureItem('a1', 'Show A', year: 2001, genres: ['Comedy'], logo: true, episodes: seasons(1, 4, 20)),
         FixtureItem('a2', 'Show A', episodes: seasons(4, 9, 20)),
         FixtureItem('f1', 'Show F', year: 2010, genres: ['Drama'], episodes: seasons(1, 3, 12)),
+        // Room for two show channels (one per 8 named shows).
+        for (var i = 1; i <= 13; i++)
+          FixtureItem('q$i', 'Small $i', year: 1980 + i, genres: ['History'], episodes: seasons(1, 1, 4)),
       ]);
       app = await signedInApp(dir, library.legacyIndex());
       final first = app.channelById('auto:show:show a|2001')!;
@@ -290,7 +314,7 @@ void main() {
       expect(app.currentChannelId('auto:show:show a|'), a.id);
       expect(a.playlist.toSet(), {for (final e in app.library.episodesBySeries['show a|2001']!) e.id});
       expect(app.scheduleFor(a)!.programAt(DateTime.now()).item, isNotNull);
-      expect(lineupProblems(app.library, app.allChannels), isEmpty);
+      expect(lineupProblems(app.library, app.allChannels, app.blocks), isEmpty);
     });
   });
 
@@ -307,6 +331,9 @@ void main() {
             _ => s,
           }),
       FixtureItem('k1', 'Show K', year: 2011, genres: ['Western'], episodes: seasons(1, 2, 20)),
+      // Room for four show channels before show identity, three after.
+      for (var i = 1; i <= 11; i++)
+        FixtureItem('q$i', 'Show Q$i', year: 1980 + i, genres: ['History'], episodes: seasons(1, 1, 4)),
     ]);
 
     /// A profile saved like the test server's: generated 2 and up, two
@@ -365,7 +392,7 @@ void main() {
       final app = await launch(storage, backups);
       expect(backups, ['before-lineup-cleanup']);
       expect(app.settings.lineupVersion, AppSettings.currentLineupVersion);
-      expect(lineupProblems(app.library, app.allChannels), isEmpty);
+      expect(lineupProblems(app.library, app.allChannels, app.blocks), isEmpty);
       final generated = [for (final c in app.allChannels) if (c.auto && !c.isLive) c.number];
       final expected = <int>[];
       for (var n = 1; expected.length < generated.length; n++) {

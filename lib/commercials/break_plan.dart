@@ -43,7 +43,7 @@ class CustomRoles {
     this.midInterval,
     this.midLength = const Duration(minutes: 2),
     this.postRoll = Duration.zero,
-    this.tailGrid,
+    this.tailGrid = const Duration(minutes: 30),
     this.prePool,
     this.midPool,
     this.postPool,
@@ -59,8 +59,9 @@ class CustomRoles {
   final Duration midLength;
   final Duration postRoll;
 
-  /// Pads each slot to the next multiple of this; null for no tail.
-  final Duration? tailGrid;
+  /// Pads each slot to the next multiple of this (one of
+  /// [tailGridChoices]), so programs start on the hour or half hour.
+  final Duration tailGrid;
 
   /// Pool ids per role; null means all pools.
   final String? prePool;
@@ -111,13 +112,15 @@ class CustomRoles {
     Duration(minutes: 5),
   ];
 
-  /// Null is "none".
-  static const tailGridChoices = <Duration?>[
-    null,
-    Duration(minutes: 15),
+  static const tailGridChoices = [
     Duration(minutes: 30),
     Duration(minutes: 60),
   ];
+
+  /// [grid] as one of [tailGridChoices]: saved plans with no padding, or
+  /// the quarter hour, pad to the half hour (clock-aligned-slots).
+  static Duration tailGridOf(Duration? grid) =>
+      grid != null && grid >= const Duration(minutes: 60) ? const Duration(minutes: 60) : const Duration(minutes: 30);
 
   String? poolFor(BreakRole role) => switch (role) {
         BreakRole.pre => prePool,
@@ -131,14 +134,14 @@ class CustomRoles {
     Duration? Function()? midInterval,
     Duration? midLength,
     Duration? postRoll,
-    Duration? Function()? tailGrid,
+    Duration? tailGrid,
   }) =>
       CustomRoles(
         preRoll: preRoll ?? this.preRoll,
         midInterval: midInterval != null ? midInterval() : this.midInterval,
         midLength: midLength ?? this.midLength,
         postRoll: postRoll ?? this.postRoll,
-        tailGrid: tailGrid != null ? tailGrid() : this.tailGrid,
+        tailGrid: tailGrid ?? this.tailGrid,
         prePool: prePool,
         midPool: midPool,
         postPool: postPool,
@@ -193,7 +196,7 @@ class CustomRoles {
         if (midInterval != null) 'midIntervalMs': midInterval!.inMilliseconds,
         'midMs': midLength.inMilliseconds,
         'postMs': postRoll.inMilliseconds,
-        if (tailGrid != null) 'tailMs': tailGrid!.inMilliseconds,
+        'tailMs': tailGrid.inMilliseconds,
         'pools': {
           for (final role in BreakRole.values)
             if (poolFor(role) != null) role.name: poolFor(role),
@@ -213,7 +216,7 @@ class CustomRoles {
       midInterval: ms('midIntervalMs'),
       midLength: ms('midMs') ?? const Duration(minutes: 2),
       postRoll: ms('postMs') ?? Duration.zero,
-      tailGrid: ms('tailMs'),
+      tailGrid: tailGridOf(ms('tailMs')),
       prePool: pool(BreakRole.pre),
       midPool: pool(BreakRole.mid),
       postPool: pool(BreakRole.post),
@@ -252,11 +255,8 @@ class BreakPlan {
   static const automatic = BreakPlan(mode: BreakMode.automatic);
 
   /// Breaks as they worked before break plans: nothing before, during or
-  /// after the program, padded to the quarter hour from all pools.
-  static const legacy = BreakPlan(
-    mode: BreakMode.custom,
-    roles: CustomRoles(tailGrid: Duration(minutes: 15)),
-  );
+  /// after the program, padded from all pools, now to the half hour.
+  static const legacy = BreakPlan(mode: BreakMode.custom, roles: CustomRoles());
 
   final BreakMode mode;
   final CustomRoles roles;
@@ -288,17 +288,16 @@ class BreakPlan {
       if (r.preRoll > Duration.zero) r.prePool,
       if (r.midInterval != null) r.midPool,
       if (r.postRoll > Duration.zero) r.postPool,
-      if (r.tailGrid != null) r.tailPool,
+      r.tailPool,
     };
   }
 
   // ---- Automatic -----------------------------------------------------------
 
-  /// Slots round up to the first of these grids whose ad time keeps every
-  /// break within [automaticMaxBreak].
+  /// Slots round up to the half hour, shorts to the quarter hour; more
+  /// mid-rolls keep every break within [automaticMaxBreak].
   static const automaticGrid = Duration(minutes: 30);
   static const automaticShortGrid = Duration(minutes: 15);
-  static const automaticFineGrid = Duration(minutes: 5);
 
   /// Programs shorter than this start from [automaticShortGrid].
   static const automaticShortUnder = Duration(minutes: 12);
@@ -421,6 +420,20 @@ class SlotPlan {
     );
   }
 
+  /// This slot with [extra] more tail (clock-aligned-slots).
+  SlotPlan padded(Duration extra) => SlotPlan(
+        runtime: runtime,
+        preRoll: preRoll,
+        midCount: midCount,
+        midLength: midLength,
+        postRoll: postRoll,
+        tail: tail + extra,
+        roles: roles,
+        offlineTail: offlineTail,
+        cutAt: cutAt == null ? null : cutAt! + extra,
+        ruled: ruled,
+      );
+
   /// The same slot with no break inside the program: the mid-roll time
   /// goes to the post-roll (songs and music videos break only between them).
   SlotPlan withoutMidRolls() => midCount == 0
@@ -453,19 +466,10 @@ SlotPlan resolve(BreakPlan plan, Duration runtime) {
       final interval =
           runtime > BreakPlan.automaticLongOver ? BreakPlan.automaticLongInterval : BreakPlan.automaticInterval;
       final mids = midRollCount(runtime, interval);
-      final grids = [
-        if (runtime >= BreakPlan.automaticShortUnder) BreakPlan.automaticGrid,
-        BreakPlan.automaticShortGrid,
-        BreakPlan.automaticFineGrid,
-      ];
-      // Ads shrink to fit: the first grid whose ad time keeps the limit.
-      for (final grid in grids) {
-        final split = _automaticSplit(plan, runtime, _roundUp(runtime + BreakPlan.automaticMinAdTime, grid), mids);
-        if (split != null) return split;
-      }
-      // Only a short program on the 5-minute grid gets here: more mid-rolls.
-      final slot = _roundUp(runtime + BreakPlan.automaticMinAdTime, BreakPlan.automaticFineGrid);
-      for (var more = mids + 1;; more++) {
+      final grid = runtime >= BreakPlan.automaticShortUnder ? BreakPlan.automaticGrid : BreakPlan.automaticShortGrid;
+      final slot = _roundUp(runtime + BreakPlan.automaticMinAdTime, grid);
+      // The slot stays on the clock; more mid-rolls keep breaks short.
+      for (var more = mids;; more++) {
         final split = _automaticSplit(plan, runtime, slot, more);
         if (split != null) return split;
       }
@@ -473,14 +477,13 @@ SlotPlan resolve(BreakPlan plan, Duration runtime) {
       final r = plan.roles;
       final mids = r.midInterval == null ? 0 : midRollCount(runtime, r.midInterval!);
       final filled = runtime + r.preRoll + r.midLength * mids + r.postRoll;
-      final grid = r.tailGrid;
       return SlotPlan(
         runtime: runtime,
         preRoll: r.preRoll,
         midCount: mids,
         midLength: mids == 0 ? Duration.zero : r.midLength,
         postRoll: r.postRoll,
-        tail: grid == null ? Duration.zero : _roundUp(filled, grid) - filled,
+        tail: _roundUp(filled, r.tailGrid) - filled,
         roles: r,
       );
   }

@@ -7,6 +7,7 @@ import '../app_state.dart';
 import '../channels/break_notices.dart';
 import '../channels/channel.dart';
 import '../channels/schedule.dart';
+import '../commercials/break_plan.dart';
 import '../library/library_index.dart';
 import '../live/live_source.dart';
 import '../live/live_source_client.dart';
@@ -114,6 +115,25 @@ class Tuner extends ChangeNotifier {
   /// Pause and rewind turned off: a viewer behind goes live at once.
   void _onSettingsChanged() {
     if (shifted && !app.settings.playback.pauseAndRewind) unawaited(goLive());
+    _followPlan();
+  }
+
+  /// The channel on and the break plan it aired with when last looked at.
+  ({String channelId, BreakPlan plan})? _planSeen;
+
+  /// The channel's plan as aired changed (clips came or went in a scan, or
+  /// it was edited from the web admin): a block's lineup may have moved, so
+  /// the tuner follows the new schedule (see [reschedule]).
+  void _followPlan() {
+    final ch = channel;
+    if (ch == null || ch.isLive) {
+      _planSeen = null;
+      return;
+    }
+    final plan = app.planFor(ch);
+    final seen = _planSeen;
+    _planSeen = (channelId: ch.id, plan: plan);
+    if (seen != null && seen.channelId == ch.id && seen.plan != plan) unawaited(reschedule());
   }
 
   static const _progressInterval = Duration(seconds: 10);
@@ -636,6 +656,7 @@ class Tuner extends ChangeNotifier {
     _noteReached(atSegmentEnd: atSegmentEnd);
     final ch = channel;
     if (ch == null || app.client == null || generation != _generation) return;
+    _planSeen = ch.isLive ? null : (channelId: ch.id, plan: app.planFor(ch));
     _diagnostics?.tuneStarted(trigger ?? (atSegmentEnd ? 'segment' : 'retune'), 'ch=${ch.number}');
     // Whatever was preloaded goes before anything else opens.
     await _dropPreload();

@@ -44,8 +44,14 @@ void main() {
   setUp(() async => dir = await Directory.systemTemp.createTemp('multi_backup'));
   tearDown(() async {
     for (final h in households) {
+      final app = h.app;
       h.leave();
       h.backups?.dispose();
+      // Writes the launch started finish before the folder goes.
+      if (app != null) {
+        await app.close();
+        await app.storage.flush();
+      }
     }
     households.clear();
     await Future<void>.delayed(const Duration(milliseconds: 50));

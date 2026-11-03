@@ -12,6 +12,40 @@ typedef SlotLength = Duration Function(MediaEntry item);
 
 Duration _runtimeOnly(MediaEntry item) => item.runtime;
 
+/// Under breaks, programs this long or longer start on the hour or half
+/// hour; shorter ones on the quarter hour (clock-aligned-slots).
+bool _fullLength(MediaEntry item) => item.runtime >= BreakPlan.automaticShortUnder;
+
+const _halfHour = Duration(minutes: 30);
+
+bool _onHalfHour(DateTime t) =>
+    t.minute % 30 == 0 && t.second == 0 && t.millisecond == 0 && t.microsecond == 0;
+
+/// The first half hour at or after [t].
+DateTime _nextHalfHour(DateTime t) =>
+    _onHalfHour(t) ? t : DateTime(t.year, t.month, t.day, t.hour, (t.minute ~/ 30 + 1) * 30);
+
+/// Each of [slots]' padding (clock-aligned-slots): a short (under 12
+/// minutes) whose slot would end off the half hour before a full-length
+/// program pads to the half hour. Offsets count from a start on the half
+/// hour. With [wrap], the list loops, and its last short pads whenever the
+/// list has a full-length program, so every loop is whole half hours.
+List<Duration> _shortPads(List<MediaEntry> items, List<Duration> slots, {required bool wrap}) {
+  final anyLong = items.any(_fullLength);
+  final pads = List.filled(items.length, Duration.zero);
+  var end = 0;
+  final grid = _halfHour.inMicroseconds;
+  for (var i = 0; i < items.length; i++) {
+    end += slots[i].inMicroseconds;
+    final nextLong = i + 1 < items.length ? _fullLength(items[i + 1]) : wrap && anyLong;
+    if (_fullLength(items[i]) || !nextLong || end % grid == 0) continue;
+    final padded = (end + grid - 1) ~/ grid * grid;
+    pads[i] = Duration(microseconds: padded - end);
+    end = padded;
+  }
+  return pads;
+}
+
 /// One slot in a channel's timeline, or (from [ChannelSchedule.playbackAt])
 /// one segment of it: a part of the show or a commercial.
 class ScheduledProgram {
@@ -30,6 +64,7 @@ class ScheduledProgram {
     this.isLive = false,
     this.offline = false,
     this.endsEarly = false,
+    this.pad = Duration.zero,
   })  : layoutStart = layoutStart ?? start,
         itemFrom = itemFrom ?? start.difference(layoutStart ?? start);
 
@@ -78,6 +113,23 @@ class ScheduledProgram {
   /// Truncate cuts this program at its slot's end.
   final bool endsEarly;
 
+  /// Time added to the slot's tail beyond its plan, so the next program
+  /// starts on the half hour (clock-aligned-slots).
+  final Duration pad;
+
+  /// This slot ending at [end], its tail grown by the difference.
+  ScheduledProgram paddedTo(DateTime end) => ScheduledProgram(
+        item: item,
+        start: start,
+        end: end,
+        layoutStart: layoutStart,
+        itemFrom: itemFrom,
+        blockTitle: blockTitle,
+        isPremiere: isPremiere,
+        endsEarly: endsEarly,
+        pad: pad + end.difference(this.end),
+      );
+
   bool get isOffAir => item == null && !offline;
 
   /// A music channel's hour in the guide, rather than one program.
@@ -125,36 +177,51 @@ class ScheduledProgram {
 /// A channel's regular programming: the playlist loops forever starting at
 /// [Channel.anchor], so "what's on" is pure arithmetic on the clock.
 class LoopSchedule {
-  LoopSchedule._(this._items, this._offsets, this._anchor, this._cycle);
+  LoopSchedule._(this._items, this._offsets, this._pads, this._anchor, this._cycle);
 
   /// Items from the playlist that still exist in the library.
   final List<MediaEntry> _items;
 
   /// _offsets[i] = start of item i within one loop, in microseconds.
   final List<int> _offsets;
+
+  /// Each slot's padding to the half hour.
+  final List<Duration> _pads;
   final DateTime _anchor;
 
   /// Length of one loop in microseconds.
   final int _cycle;
 
-  /// [slotOf] gives each program's slot (its runtime plus its breaks).
-  static LoopSchedule? build(Channel channel, LibraryIndex library, {SlotLength slotOf = _runtimeOnly}) {
+  /// [slotOf] gives each program's slot (its runtime plus its breaks); with
+  /// [align], shorts pad to the half hour before full-length programs.
+  static LoopSchedule? build(Channel channel, LibraryIndex library,
+      {SlotLength slotOf = _runtimeOnly, bool align = false}) {
     final items = <MediaEntry>[];
     for (final id in channel.playlist) {
       final item = library[id];
       if (item != null && item.kind != MediaKind.commercial) items.add(item);
     }
     if (items.isEmpty) return null;
+    final slots = [for (final item in items) slotOf(item)];
+    final pads = align ? _shortPads(items, slots, wrap: true) : List.filled(items.length, Duration.zero);
     final offsets = <int>[];
     var total = 0;
-    for (final item in items) {
+    for (var i = 0; i < items.length; i++) {
       offsets.add(total);
-      total += slotOf(item).inMicroseconds;
+      total += (slots[i] + pads[i]).inMicroseconds;
     }
-    return LoopSchedule._(items, offsets, channel.anchor, total);
+    return LoopSchedule._(items, offsets, pads, channel.anchor, total);
   }
 
   Duration get loopLength => Duration(microseconds: _cycle);
+
+  int get length => _items.length;
+
+  /// The [index]th program.
+  MediaEntry itemAt(int index) => _items[index];
+
+  /// The loop's episodes, in order.
+  Iterable<MediaEntry> get episodes => _items.where((e) => e.kind == MediaKind.episode);
 
   /// Where in the loop the [index]th program's slot starts.
   Duration offsetOf(int index) => Duration(microseconds: _offsets[index]);
@@ -166,11 +233,15 @@ class LoopSchedule {
   }
 
   /// The program airing at [t].
-  ScheduledProgram programAt(DateTime t) {
+  ScheduledProgram programAt(DateTime t) => slotAt(t).program;
+
+  /// The program airing at [t], and its place in the loop.
+  ({ScheduledProgram program, int index}) slotAt(DateTime t) {
     final elapsed = t.difference(_anchor).inMicroseconds;
     final loop = elapsed ~/ _cycle - (elapsed < 0 && elapsed % _cycle != 0 ? 1 : 0);
     final within = elapsed - loop * _cycle;
-    return _program(loop, _indexAt(within));
+    final index = _indexAt(within);
+    return (program: _program(loop, index), index: index);
   }
 
   ScheduledProgram _program(int loop, int index) {
@@ -180,6 +251,7 @@ class LoopSchedule {
       item: _items[index],
       start: start,
       end: start.add(Duration(microseconds: next - _offsets[index])),
+      pad: _pads[index],
     );
   }
 
@@ -204,7 +276,7 @@ typedef Airing = ({DateTime start, DateTime end});
 /// stopped; programs are worked out by replaying airings from the block's
 /// anchor (cached, so this stays cheap).
 class BlockSchedule {
-  BlockSchedule._(this.block, this._items, this._slots, this._showCount, this._slotOf);
+  BlockSchedule._(this.block, this._items, this._slots, this._showCount, this._slotOf, this._align, this._extras);
 
   final ProgramBlock block;
 
@@ -218,6 +290,13 @@ class BlockSchedule {
   final int _showCount;
   final SlotLength _slotOf;
 
+  /// Shorts pad to the half hour before full-length programs.
+  final bool _align;
+
+  /// What fills a mix's last stretch when none of its programs fit (an
+  /// Evening's: its channel's episodes).
+  final List<MediaEntry> _extras;
+
   /// Airings replayed so far (from the anchor), and where each starts: the
   /// playlist position for a mix, each show's next episode for a lineup.
   final _airings = <Airing>[];
@@ -225,8 +304,11 @@ class BlockSchedule {
   DateTime? _scannedThrough;
   final _filled = <DateTime, (List<ScheduledProgram>, List<int>)>{};
 
-  /// [slotOf] gives each program's slot (its runtime plus its breaks).
-  static BlockSchedule? build(ProgramBlock block, LibraryIndex library, {SlotLength slotOf = _runtimeOnly}) {
+  /// [slotOf] gives each program's slot (its runtime plus its breaks); with
+  /// [align], shorts pad to the half hour before full-length programs.
+  /// [extras] fill a mix's time no program of its own fits.
+  static BlockSchedule? build(ProgramBlock block, LibraryIndex library,
+      {SlotLength slotOf = _runtimeOnly, bool align = false, List<MediaEntry> extras = const []}) {
     if (!block.enabled || block.days.isEmpty) return null;
     final items = [
       for (final id in block.playlist)
@@ -235,7 +317,7 @@ class BlockSchedule {
           item,
     ];
     if (items.isEmpty) return null;
-    if (!block.hasLineup) return BlockSchedule._(block, items, const [], 1, slotOf);
+    if (!block.hasLineup) return BlockSchedule._(block, items, const [], 1, slotOf, align, extras);
     // The playlist keeps each show's episodes in airing order, with new
     // ones appended, so a show's episode numbers stay put.
     final bySeries = <String, List<MediaEntry>>{};
@@ -248,7 +330,7 @@ class BlockSchedule {
         if (bySeries[s.seriesKey] case final episodes? when s.count > 0)
           (episodes: episodes, count: s.count, show: shows.putIfAbsent(s.seriesKey, () => shows.length)),
     ];
-    return slots.isEmpty ? null : BlockSchedule._(block, const [], slots, shows.length, slotOf);
+    return slots.isEmpty ? null : BlockSchedule._(block, const [], slots, shows.length, slotOf, align, const []);
   }
 
   /// Airings overlapping [from, to), in order.
@@ -320,8 +402,12 @@ class BlockSchedule {
     }
 
     while (t.isBefore(airing.end)) {
-      final remaining = airing.end.difference(t);
       final next = _items[cursor % n];
+      if (_padBefore(next, programs, t, airing.end) case final padded?) {
+        t = padded;
+        continue;
+      }
+      final remaining = airing.end.difference(t);
       if (_slotOf(next) <= remaining) {
         add(next);
         cursor++;
@@ -340,6 +426,22 @@ class BlockSchedule {
       if (filler != null) {
         add(filler);
         continue;
+      }
+      // Then something else that fits, such as an episode after the
+      // Evening's movies (cable-dayparts).
+      if (_extras.isNotEmpty) {
+        final from = t.millisecondsSinceEpoch ~/ Duration.millisecondsPerMinute;
+        for (var i = 0; i < _extras.length; i++) {
+          final candidate = _extras[(from + i) % _extras.length];
+          if (_slotOf(candidate) <= remaining) {
+            filler = candidate;
+            break;
+          }
+        }
+        if (filler != null) {
+          add(filler);
+          continue;
+        }
       }
       // Nothing fits: the block ends on time, cutting this program short.
       add(next);
@@ -361,6 +463,8 @@ class BlockSchedule {
       for (final slot in _slots) {
         for (var k = 0; k < slot.count && t.isBefore(airing.end); k++) {
           final item = slot.episodes[next[slot.show] % slot.episodes.length];
+          if (_padBefore(item, programs, t, airing.end) case final padded?) t = padded;
+          if (!t.isBefore(airing.end)) break;
           final slotEnd = t.add(_slotOf(item));
           final cut = slotEnd.isAfter(airing.end);
           programs.add(ScheduledProgram(item: item, start: t, end: cut ? airing.end : slotEnd, blockTitle: block.title));
@@ -372,6 +476,19 @@ class BlockSchedule {
       }
     }
     return (programs, next);
+  }
+
+  /// When [item] is full length and would start off the half hour right
+  /// after a short in [programs], pads that short's slot to the half hour
+  /// (or [end]) and returns where [item] starts now.
+  DateTime? _padBefore(MediaEntry item, List<ScheduledProgram> programs, DateTime t, DateTime end) {
+    if (!_align || !_fullLength(item) || _onHalfHour(t) || programs.isEmpty) return null;
+    final last = programs.last;
+    if (last.end != t || last.item == null || _fullLength(last.item!)) return null;
+    final half = _nextHalfHour(t);
+    final to = half.isAfter(end) ? end : half;
+    programs[programs.length - 1] = last.paddedTo(to);
+    return to;
   }
 }
 
@@ -451,7 +568,11 @@ class ChannelSchedule implements ProgramSchedule {
   final BreakContext breaks;
   final int _seed;
   final Map<(Duration, bool, bool), SlotPlan> _slotPlans;
-  final _layouts = <(String, DateTime, bool), SlotLayout>{};
+  final _layouts = <(String, DateTime, bool, Duration), SlotLayout>{};
+
+  /// With breaks and no slot length, the regular loop meets blocks on whole
+  /// programs (clock-aligned-slots).
+  bool get _meetsBlocks => hasBreaks && breaks.slotRule == null;
 
   @override
   bool get hasBreaks => !breaks.plan.isOff;
@@ -464,10 +585,15 @@ class ChannelSchedule implements ProgramSchedule {
     final plans = <(Duration, bool, bool), SlotPlan>{};
     Duration slotOf(MediaEntry item) => _planOf(plans, breaks, item, ruled: false).slotLength;
     Duration loopSlotOf(MediaEntry item) => _planOf(plans, breaks, item, ruled: true).slotLength;
-    final loop = LoopSchedule.build(channel, library, slotOf: loopSlotOf);
+    final aligned = !breaks.plan.isOff;
+    final loop = LoopSchedule.build(channel, library, slotOf: loopSlotOf, align: aligned && breaks.slotRule == null);
     final blocks = [
       for (final b in allBlocks)
-        if (b.channelId == channel.id) ?BlockSchedule.build(b, library, slotOf: slotOf),
+        if (b.channelId == channel.id)
+          ?BlockSchedule.build(b, library,
+              slotOf: slotOf,
+              align: aligned,
+              extras: b.generated == Daypart.evening ? [...?loop?.episodes] : const []),
     ];
     if (loop == null && blocks.isEmpty) return null;
     final carryItem = breaks.slotRule == null || loop == null ? null : library[channel.slotCarry?.itemId ?? ''];
@@ -512,8 +638,9 @@ class ChannelSchedule implements ProgramSchedule {
   }
 
   /// [slot]'s plan: under the slot rule in the regular loop, and exactly to
-  /// its end for a program finishing its slot ([carry]).
-  SlotPlan _planOfSlot(MediaEntry item, DateTime layoutStart, {required bool ruled}) {
+  /// its end for a program finishing its slot ([carry]); [pad] adds to its
+  /// tail.
+  SlotPlan _planOfSlot(MediaEntry item, DateTime layoutStart, {required bool ruled, Duration pad = Duration.zero}) {
     final c = carry, rule = breaks.slotRule;
     if (ruled && c != null && rule != null && c.itemId == item.id && c.start == layoutStart) {
       return slotPlanFor(item).withRule(
@@ -522,8 +649,13 @@ class ChannelSchedule implements ProgramSchedule {
           truncate: true,
           poolId: rule.poolId);
     }
-    return slotPlanFor(item, ruled: ruled);
+    final plan = slotPlanFor(item, ruled: ruled);
+    return pad > Duration.zero ? plan.padded(pad) : plan;
   }
+
+  /// The plan of [slot] (from [programAt]).
+  SlotPlan slotPlanOf(ScheduledProgram slot) =>
+      _planOfSlot(slot.item!, slot.layoutStart, ruled: _ruled(slot), pad: slot.pad);
 
   /// Whether [slot] (from [programAt]) is in the regular loop, under the
   /// slot rule.
@@ -576,15 +708,40 @@ class ChannelSchedule implements ProgramSchedule {
         end: nextHour.isBefore(before) ? nextHour : before,
       );
     }
-    final p = loop.programAt(t);
+    final (program: p, :index) = loop.slotAt(t);
+    final start = p.start.isAfter(after) ? p.start : after;
+    final end = p.end.isBefore(before) ? p.end : before;
+    if (_meetsBlocks && (start != p.start || end != p.end)) return _edgeFill(loop, index, start, end, t);
     return ScheduledProgram(
       item: p.item,
-      start: p.start.isAfter(after) ? p.start : after,
-      end: p.end.isBefore(before) ? p.end : before,
+      start: start,
+      end: end,
       // A program resuming after a block carries on in the same slot.
       layoutStart: p.start,
       endsEarly: breaks.slotRule != null && slotPlanFor(p.item!, ruled: true).endsEarly,
+      pad: p.pad,
     );
+  }
+
+  /// What airs at [t] in [from, to): the part of loop program [index]'s
+  /// slot a block's edge leaves (clock-aligned-slots). The most recent
+  /// earlier loop programs whose slots fit play instead, full-length ones
+  /// on the half hour; time none fits pads the last one's tail, or is a
+  /// slot tail of its own.
+  ScheduledProgram _edgeFill(LoopSchedule loop, int index, DateTime from, DateTime to, DateTime t) {
+    final n = loop.length;
+    final fills = <ScheduledProgram>[];
+    var at = from;
+    for (var k = 1; k < n && k <= 500 && at.isBefore(to); k++) {
+      final item = loop.itemAt((index - k) % n);
+      final end = at.add(slotPlanFor(item).slotLength);
+      if (end.isAfter(to) || (_fullLength(item) && !_onHalfHour(at))) continue;
+      fills.add(ScheduledProgram(item: item, start: at, end: end));
+      at = end;
+    }
+    if (fills.isEmpty) return ScheduledProgram(item: null, start: from, end: to, offline: true);
+    if (at.isBefore(to)) fills.last = fills.last.paddedTo(to);
+    return fills.lastWhere((f) => !f.start.isAfter(t), orElse: () => fills.first);
   }
 
   /// The premiere on during [airing] at [t].
@@ -603,13 +760,13 @@ class ChannelSchedule implements ProgramSchedule {
   /// [item]'s layout in the slot starting at [layoutStart], using what was
   /// known about its break points and clips by then, so new analysis or
   /// clips never change a slot already under way.
-  SlotLayout layoutFor(MediaEntry item, DateTime layoutStart, {bool ruled = false}) {
+  SlotLayout layoutFor(MediaEntry item, DateTime layoutStart, {bool ruled = false, Duration pad = Duration.zero}) {
     if (_layouts.length > 64) _layouts.clear();
     return _layouts.putIfAbsent(
-      (item.id, layoutStart, ruled),
+      (item.id, layoutStart, ruled, pad),
       () => SlotLayout.build(
         item: item,
-        plan: _planOfSlot(item, layoutStart, ruled: ruled),
+        plan: _planOfSlot(item, layoutStart, ruled: ruled, pad: pad),
         layoutStart: layoutStart,
         info: breaks.points.pointsFor(item, layoutStart),
         clips: breaks.clips,
@@ -627,7 +784,7 @@ class ChannelSchedule implements ProgramSchedule {
     final item = slot.item;
     if (item == null) return slot;
     final ruled = _ruled(slot);
-    if (!_planOfSlot(item, slot.layoutStart, ruled: ruled).hasBreaks) {
+    if (!_planOfSlot(item, slot.layoutStart, ruled: ruled, pad: slot.pad).hasBreaks) {
       return ScheduledProgram(
         item: item,
         start: slot.start,
@@ -638,7 +795,7 @@ class ChannelSchedule implements ProgramSchedule {
         endsEarly: slot.endsEarly,
       );
     }
-    final layout = layoutFor(item, slot.layoutStart, ruled: ruled);
+    final layout = layoutFor(item, slot.layoutStart, ruled: ruled, pad: slot.pad);
     final segment = layout.at(t.difference(slot.layoutStart));
     final segmentStart = slot.layoutStart.add(segment.from);
     final segmentEnd = slot.layoutStart.add(segment.to);
@@ -667,10 +824,10 @@ class ChannelSchedule implements ProgramSchedule {
     final item = slot.item;
     if (item == null || segment.isBreak) return false;
     final ruled = _ruled(slot);
-    if (!_planOfSlot(item, slot.layoutStart, ruled: ruled).hasBreaks) return true;
+    if (!_planOfSlot(item, slot.layoutStart, ruled: ruled, pad: slot.pad).hasBreaks) return true;
     final after = segment.end.difference(slot.layoutStart);
     final until = slot.end.difference(slot.layoutStart);
-    return !layoutFor(item, slot.layoutStart, ruled: ruled)
+    return !layoutFor(item, slot.layoutStart, ruled: ruled, pad: slot.pad)
         .segments
         .any((s) => s.isShow && s.from >= after && s.from < until);
   }
@@ -686,10 +843,10 @@ class ChannelSchedule implements ProgramSchedule {
     final item = slot.item;
     if (item == null) return null;
     final ruled = _ruled(slot);
-    if (!_planOfSlot(item, slot.layoutStart, ruled: ruled).hasBreaks) return slot.end;
+    if (!_planOfSlot(item, slot.layoutStart, ruled: ruled, pad: slot.pad).hasBreaks) return slot.end;
     final until = slot.end.difference(slot.layoutStart);
     Duration? end;
-    for (final s in layoutFor(item, slot.layoutStart, ruled: ruled).segments) {
+    for (final s in layoutFor(item, slot.layoutStart, ruled: ruled, pad: slot.pad).segments) {
       if (s.isShow && !s.offline && s.item != null && s.from < until) end = s.to < until ? s.to : until;
     }
     return end == null ? null : slot.layoutStart.add(end);
@@ -701,8 +858,8 @@ class ChannelSchedule implements ProgramSchedule {
     final item = slot.item;
     if (item == null || slot.start.isAfter(slot.layoutStart)) return slot.start;
     final ruled = _ruled(slot);
-    if (!_planOfSlot(item, slot.layoutStart, ruled: ruled).hasBreaks) return slot.start;
-    return slot.layoutStart.add(layoutFor(item, slot.layoutStart, ruled: ruled).offsetOf(Duration.zero));
+    if (!_planOfSlot(item, slot.layoutStart, ruled: ruled, pad: slot.pad).hasBreaks) return slot.start;
+    return slot.layoutStart.add(layoutFor(item, slot.layoutStart, ruled: ruled, pad: slot.pad).offsetOf(Duration.zero));
   }
 
   /// Where [item]'s slot in the regular loop starting at [layoutStart]

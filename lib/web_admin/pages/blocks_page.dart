@@ -45,6 +45,7 @@ class BlocksPage extends StatelessWidget {
                   child: ListTile(
                     title: Text((b['title'] as String).isEmpty ? 'Untitled block' : b['title'] as String),
                     subtitle: Text([
+                      if (b['generated'] != null) fromTheLineupLabel,
                       (b['view'] as Map)['describe'],
                       'on ${(b['view'] as Map)['channel'] ?? 'a channel that is gone'}',
                       if (b['enabled'] == false) 'Off',
@@ -231,6 +232,11 @@ class _BlockEditorPageState extends State<BlockEditorPage> {
         ),
       ],
       children: [
+        if (b.generated != null)
+          const Padding(
+            padding: EdgeInsets.only(bottom: 12),
+            child: Text('$fromTheLineupLabel. $fromTheLineupNote'),
+          ),
         Section(children: [
           TextField(
             controller: _title,
