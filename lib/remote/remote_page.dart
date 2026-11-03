@@ -71,11 +71,35 @@ const remotePageHtml = r'''<!doctype html>
   .list .nm { font-weight: 800; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .list .on { grid-column: 2; color: var(--dim); font-weight: 500; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .list .cur { border-color: var(--accent); }
+  .pair { background: var(--panel); border: 2px solid var(--line); border-radius: 16px; padding: 22px 18px; text-align: center; margin-top: 24px; }
+  .pair svg { width: 72px; height: auto; }
+  .pair h1 { font-size: 22px; margin: 12px 0 8px; }
+  .pair p { color: var(--dim); margin: 0 0 18px; }
+  .pair form { display: grid; grid-template-columns: 1fr auto; gap: 10px; }
+  .pair input {
+    font: inherit; font-size: 26px; font-weight: 800; letter-spacing: .2em; text-align: center; min-width: 0;
+    color: var(--text); background: var(--cell); border: 2px solid var(--line); border-radius: 14px; padding: 10px;
+  }
+  .pair input:focus { outline: none; border-color: var(--accent); }
+  .pair button { padding: 12px 20px; background: var(--accent); color: var(--on-accent); border-color: var(--accent); }
+  .pair .msg { color: var(--red); min-height: 1.3em; margin: 14px 0 0; }
   [hidden] { display: none !important; }
 </style>
 </head>
 <body>
 <div class="wrap">
+  <section class="pair" id="pair" hidden>
+    ''' + nightingaleMarkSvg + r'''
+    <h1>Pair with the TV</h1>
+    <p>Scan the code on the TV (Menu → Phone remote), or enter the 6-digit code shown there.</p>
+    <form id="pairform">
+      <input id="code" inputmode="numeric" autocomplete="one-time-code" maxlength="7" placeholder="000 000" aria-label="Pairing code">
+      <button type="submit">Pair</button>
+    </form>
+    <p class="msg" id="pairmsg" role="alert"></p>
+  </section>
+
+  <div id="app" hidden>
   <section class="now" aria-live="polite">
     <div class="num" id="num">''' + nightingaleMarkSvg + r'''</div>
     <div class="chname" id="chname">Nightingale TV</div>
@@ -123,17 +147,95 @@ const remotePageHtml = r'''<!doctype html>
   <section id="channels" hidden>
     <div class="list" id="list"></div>
   </section>
+  </div>
 </div>
 <script>
-  const headers = { 'Content-Type': 'application/json', 'X-Nightingale-Remote': '1' };
   const $ = (id) => document.getElementById(id);
   // The bird fills the number box until a profile is watching.
   const mark = $('num').firstElementChild;
   let state = null;
 
-  async function post(path, body) {
+  // This phone's key for this TV. localStorage is per address and port, so
+  // per TV. Blocked storage keeps the key for this visit only.
+  const KEY = 'nightingale-remote-key';
+  const store = {
+    get() { try { return localStorage.getItem(KEY); } catch (e) { return null; } },
+    set(v) { try { localStorage.setItem(KEY, v); } catch (e) {} },
+    clear() { try { localStorage.removeItem(KEY); } catch (e) {} },
+  };
+  let key = store.get();
+
+  function headers() {
+    const h = { 'Content-Type': 'application/json', 'X-Nightingale-Remote': '1' };
+    if (key) h['X-Nightingale-Remote-Key'] = key;
+    return h;
+  }
+
+  function showPairing(message) {
+    $('app').hidden = true;
+    $('pair').hidden = false;
+    $('pairmsg').textContent = message || '';
+  }
+
+  function showRemote() {
+    $('pair').hidden = true;
+    $('app').hidden = false;
+  }
+
+  // The TV no longer knows this phone's key.
+  function unpaired() {
+    key = null;
+    store.clear();
+    showPairing('This phone was removed from the TV. Scan the code to pair again.');
+  }
+
+  // A short name for the TV's paired-phones list, like "iPhone · Safari".
+  function phoneName() {
+    const ua = navigator.userAgent;
+    const device = /iPad/.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1) ? 'iPad'
+      : /iPhone/.test(ua) ? 'iPhone'
+      : /Android/.test(ua) ? (/Mobile/.test(ua) ? 'Android phone' : 'Android tablet')
+      : /CrOS/.test(ua) ? 'Chromebook'
+      : /Macintosh/.test(ua) ? 'Mac'
+      : /Windows/.test(ua) ? 'Windows PC'
+      : /Linux/.test(ua) ? 'Linux PC' : 'Phone';
+    const browser = /EdgA?\/|EdgiOS/.test(ua) ? 'Edge'
+      : /SamsungBrowser/.test(ua) ? 'Samsung Internet'
+      : /Firefox|FxiOS/.test(ua) ? 'Firefox'
+      : /OPR\//.test(ua) ? 'Opera'
+      : /CriOS|Chrome/.test(ua) ? 'Chrome'
+      : /Safari/.test(ua) ? 'Safari' : '';
+    return browser && device !== 'iPad' ? device + ' · ' + browser : device;
+  }
+
+  async function pair(code) {
+    $('pairmsg').textContent = '';
     try {
-      const r = await fetch(path, { method: 'POST', headers, body: JSON.stringify(body) });
+      const r = await fetch('/api/pair', { method: 'POST', headers: headers(), body: JSON.stringify({ code, name: phoneName() }) });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok || !j.key) { showPairing(j.error || 'Couldn\'t pair. Try again.'); return; }
+      key = j.key;
+      store.set(key);
+      $('code').value = '';
+      showRemote();
+      refresh();
+    } catch (e) {
+      showPairing('Can\'t reach the TV. Is this phone on the same Wi-Fi?');
+    }
+  }
+
+  $('pairform').addEventListener('submit', (e) => {
+    e.preventDefault();
+    const code = $('code').value.replace(/\D/g, '');
+    if (code.length !== 6) { $('pairmsg').textContent = 'Enter the 6 digits shown on the TV.'; return; }
+    pair(code);
+  });
+
+  async function post(path, body) {
+    if (!key) { showPairing(); return; }
+    try {
+      const r = await fetch(path, { method: 'POST', headers: headers(), body: JSON.stringify(body) });
+      if (r.status === 401) { unpaired(); return; }
       if (!r.ok) throw new Error(r.status);
       setOnline(true);
     } catch (e) { setOnline(false); }
@@ -220,14 +322,27 @@ const remotePageHtml = r'''<!doctype html>
   }
 
   async function refresh() {
+    if (!key) return;
     try {
-      const r = await fetch('/api/state', { cache: 'no-store' });
+      const r = await fetch('/api/state', { cache: 'no-store', headers: headers() });
+      if (r.status === 401) { unpaired(); return; }
       render(await r.json());
       setOnline(true);
     } catch (e) { setOnline(false); }
   }
 
-  refresh();
+  // The QR code carries a one-time code in the fragment, which never
+  // reaches the server or its logs. It's cleared once read.
+  const fromQr = /(?:^#|&)pair=(\d{6})/.exec(location.hash);
+  if (fromQr) {
+    history.replaceState(null, '', location.pathname + location.search);
+    pair(fromQr[1]);
+  } else if (key) {
+    showRemote();
+    refresh();
+  } else {
+    showPairing();
+  }
   setInterval(() => { if (!document.hidden) refresh(); }, 3000);
   document.addEventListener('visibilitychange', () => { if (!document.hidden) refresh(); });
 </script>

@@ -176,6 +176,7 @@ class TvButton extends StatelessWidget {
     this.focusNode,
     this.expand = false,
     this.danger = false,
+    this.maxLines = 1,
   });
 
   final String label;
@@ -185,6 +186,10 @@ class TvButton extends StatelessWidget {
   final FocusNode? focusNode;
   final bool expand;
   final bool danger;
+
+  /// Lines a long label may wrap to before it's cut short (a phone held
+  /// upright).
+  final int maxLines;
 
   @override
   Widget build(BuildContext context) {
@@ -220,6 +225,7 @@ class TvButton extends StatelessWidget {
                 ],
                 Flexible(
                   child: Text(label,
+                      maxLines: maxLines,
                       overflow: TextOverflow.ellipsis,
                       style: g.display(30, weight: FontWeight.w600, color: fg)),
                 ),

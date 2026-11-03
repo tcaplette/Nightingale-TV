@@ -43,6 +43,38 @@ mkdir -p "$STAGE/usr/share/doc/nightingale-tv"
 cp LICENSE "$STAGE/usr/share/doc/nightingale-tv/copyright"
 cp assets/fonts/OFL.txt "$STAGE/usr/share/doc/nightingale-tv/barlow-fonts-OFL.txt"
 
+# Firewall profiles for the phone remote's ports (8642, or up to 8651 when
+# that's taken). They only name the ports: installing opens nothing, and
+# the Phone remote screen shows the one command that does.
+mkdir -p "$STAGE/etc/ufw/applications.d" "$STAGE/usr/lib/firewalld/services"
+cat > "$STAGE/etc/ufw/applications.d/nightingale-tv" <<'UFW_PROFILE'
+[Nightingale TV Remote]
+title=Nightingale TV phone remote
+description=Phones on the home network using Nightingale TV's phone remote
+ports=8642:8651/tcp
+UFW_PROFILE
+cat > "$STAGE/usr/lib/firewalld/services/nightingale-tv-remote.xml" <<'FIREWALLD_SERVICE'
+<?xml version="1.0" encoding="utf-8"?>
+<service>
+  <short>Nightingale TV Remote</short>
+  <description>Phones on the home network using Nightingale TV's phone remote.</description>
+  <port protocol="tcp" port="8642-8651"/>
+</service>
+FIREWALLD_SERVICE
+chmod 0644 "$STAGE/etc/ufw/applications.d/nightingale-tv" "$STAGE/usr/lib/firewalld/services/nightingale-tv-remote.xml"
+# The ufw profile is a conffile, so purge removes it.
+echo /etc/ufw/applications.d/nightingale-tv > "$STAGE/DEBIAN/conffiles"
+# firewalld forgets the removed service on reload. Nothing else changes.
+cat > "$STAGE/DEBIAN/postrm" <<'POSTRM'
+#!/bin/sh
+set -e
+if command -v firewall-cmd >/dev/null 2>&1 && firewall-cmd --state >/dev/null 2>&1; then
+  firewall-cmd --reload >/dev/null 2>&1 || true
+fi
+exit 0
+POSTRM
+chmod 0755 "$STAGE/DEBIAN/postrm"
+
 cat > "$STAGE/usr/share/applications/$APP_ID.desktop" <<DESKTOP_ENTRY
 [Desktop Entry]
 Type=Application

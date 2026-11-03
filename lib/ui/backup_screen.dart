@@ -11,9 +11,11 @@ import '../backup/backup_scheduler.dart';
 import '../backup/backup_store.dart';
 import '../backup/transfer_server.dart';
 import '../platform/backup_files.dart';
+import '../platform/install_info.dart';
 import '../profiles/household.dart';
 import '../theme/tv_theme.dart';
 import 'format.dart';
+import 'install_switching.dart';
 import 'menu_screen.dart' show confirm, showMessage;
 import 'widgets/screen_layout.dart';
 import 'widgets/tv_focus.dart';
@@ -36,6 +38,9 @@ class _BackupScreenState extends State<BackupScreen> {
 
   List<StoredBackup>? _list;
   bool _files = false;
+
+  /// Android: About this install.
+  InstallInfo? _install;
   bool _busy = false;
   String? _error;
 
@@ -49,6 +54,12 @@ class _BackupScreenState extends State<BackupScreen> {
     unawaited(BackupFiles.available().then((on) {
       if (mounted) setState(() => _files = on);
     }));
+    unawaited(_loadInstall());
+  }
+
+  Future<void> _loadInstall() async {
+    final info = await InstallSwitching.info();
+    if (mounted) setState(() => _install = info);
   }
 
   @override
@@ -102,6 +113,10 @@ class _BackupScreenState extends State<BackupScreen> {
         _backups.changed();
         if (mounted) await _restore(stored);
       });
+
+  void _moveSetup(InstallInfo info) => _run(() => moveSetupTo(_household, info));
+
+  void _bringSetup(InstallInfo info) => _run(() => bringSetupFrom(info));
 
   Future<void> _useOtherDevice() async {
     if (_busy) return;
@@ -159,7 +174,10 @@ class _BackupScreenState extends State<BackupScreen> {
           child: _BackupRow(backup: b, onPressed: () => _pick(b)),
         ),
     ];
+    final install = _install;
     final top = [
+              if (install != null)
+                AboutThisInstall(info: install, onMove: () => _moveSetup(install), onBring: () => _bringSetup(install)),
               Text(
                 last == null
                     ? (list == null ? ' ' : 'No backups yet.')
@@ -200,10 +218,14 @@ class _BackupScreenState extends State<BackupScreen> {
       title: 'Backup & restore',
       hints: '▲▼◀▶ Move    OK Select    ESC Back',
       onBack: () => Navigator.of(context).pop(),
-      // Upright, everything scrolls together.
-      child: layout.isPortrait
+      // Upright, and below About this install, everything scrolls together.
+      child: layout.isPortrait || install != null
           ? FocusTraversalGroup(
-              child: ListView(padding: layout.pagePadding(EdgeInsets.zero), children: [...top, ...rows]),
+              child: ListView(
+                  padding: layout.isPortrait
+                      ? layout.pagePadding(EdgeInsets.zero)
+                      : const EdgeInsets.fromLTRB(120, 40, 120, 32),
+                  children: [...top, ...rows]),
             )
           : Padding(
         padding: const EdgeInsets.fromLTRB(120, 40, 120, 32),

@@ -1,6 +1,6 @@
 # Nightingale TV
 
-Nightingale TV turns your Jellyfin, Emby or Plex library into always-on cable TV channels, plus music video and radio channels, with a program guide. It's an Android app first, made for Android TV (Google TV, Fire TV and other Android TV boxes) and also at home on Android phones and tablets. There's a desktop version for Linux too, and Windows and macOS versions are planned. Like real TV, every channel is always mid-broadcast. You tune in to whatever is on, flip channels, and check the guide to see what's coming up.
+Nightingale TV turns your Jellyfin, Emby or Plex library into always-on cable TV channels, plus music video and radio channels, with a program guide. It's an Android app first, made for Android TV (Google TV and other Android TV boxes) and also at home on Android phones and tablets. There's a desktop version for Linux too, and Windows and macOS versions are planned. Like real TV, every channel is always mid-broadcast. You tune in to whatever is on, flip channels, and check the guide to see what's coming up.
 
 It's inspired by NostalgiaTV for Android. It's built for the couch, so everything works with a TV remote, an air mouse, a touchscreen, your phone, or a keyboard and mouse.
 
@@ -54,7 +54,7 @@ Make TV feel like TV again, with ads between and during shows. Being experimenta
 - **Jellyfin, Emby and Plex.** Sign in to any of them. Every feature works on all three. The one exception: a Plex server that doesn't list its artists' music videos gets no music video channels.
 - **Several servers in one lineup.** Add more servers to a profile in Menu → **Servers**, in any mix (Jellyfin at home and a friend's Plex, say). Their libraries become one, and something on two servers appears once and plays from the first in your **Play from** order that answers. Give a slow remote server its own **Quality limit**. If one server is down, the others keep playing.
 - **Profiles.** Everyone gets their own channels, blocks and settings. Kid profiles only see content rated for their age. Grown-up profiles and settings can be locked with a PIN.
-- **Phone remote.** Turn it on in the menu, scan the QR code, and your phone's browser becomes the remote. There's nothing to install.
+- **Phone remote.** Turn it on in the menu, scan the QR code, and your phone's browser becomes the remote. There's nothing to install. See [Phone remote](#phone-remote).
 - **Backup and restore.** Your whole setup is backed up every day something changes, and before anything that replaces a lot at once. Restore a backup, save it to a file, or move it to another device through your phone or computer. See [Backup and restore](#backup-and-restore).
 
 ### Watch on your other screens
@@ -70,7 +70,7 @@ Make TV feel like TV again, with ads between and during shows. Being experimenta
 
 Nightingale TV is free and open source. There are two ways to get it on Android:
 
-- **Buy it from the store** (coming soon). The app will be sold on **Google Play** for Android TV, Google TV, phones and tablets, and on the **Amazon Appstore** for Fire TV. You install it like any other app, and it updates by itself. Buying it is the easy way to get Nightingale TV, and it supports the project.
+- **Buy it from the store** (coming soon). The app will be sold on **Google Play** for Android TV, Google TV, phones and tablets. You install it like any other app, and it updates by itself. Buying it is the easy way to get Nightingale TV, and it supports the project.
 - **Build it yourself, for free.** Everything is in this repository. See [Building from source](#building-from-source).
 
 Both are built from the same source code and work the same.
@@ -79,9 +79,14 @@ The desktop version (Linux) isn't sold in a store. Build it from this repository
 
 ### On Android
 
-There is one app for Android TVs, phones and tablets (Android 7.0 or newer). The store version installs from Google Play or the Amazon Appstore.
+There is one app for Android TVs, phones and tablets (Android 7.0 or newer). The store version installs from Google Play.
 
-**Switching between the store version and your own build:** the store version and an APK you build yourself are signed with different keys, so neither installs over the other. To switch, make a backup with **Save to file** or **Use your phone or computer** (see [Moving to a new device](#moving-to-a-new-device)), uninstall the old app, install the new one and restore the backup.
+#### Switching between the store version and your own build
+
+- **The store version updates itself.** Google Play updates install over the Play version and over official Nightingale TV APKs, and official APKs install over the Play version, keeping every profile, channel and setting.
+- **Your own build is a separate app.** An APK you build yourself is called **Nightingale TV (own build)** and installs *beside* the store version, not over it. Each has its own profiles, channels and settings, and installing one never changes the other's. When both are on a device, each app tells you once, and **Backup & restore → About this install** says what kind of install you're in.
+- **Moving your setup across.** In **Backup & restore**, pick **Move my setup to …** to send this app's setup to the other one, which opens and asks before restoring it. **Bring my setup here from …** does the same the other way round. It works with a remote on a TV with no file manager. A backup file (**Save to file**, or **Use your phone or computer**, see [Moving to a new device](#moving-to-a-new-device)) works too.
+- **Don't uninstall first.** Uninstalling either app deletes its profiles, channels and settings, unless you move them or back them up to a file first.
 
 #### Installing an APK you built
 
@@ -89,14 +94,14 @@ There is one app for Android TVs, phones and tablets (Android 7.0 or newer). The
 
 | APK | For |
 | --- | --- |
-| `nightingale-tv_<version>_arm64-v8a.apk` | Most TVs, TV boxes and phones from the last several years (Google TV, NVIDIA Shield, Fire TV Stick 4K and newer, Pixel, Galaxy…) |
-| `nightingale-tv_<version>_armeabi-v7a.apk` | Older or cheaper TV sticks and boxes (Fire TV Stick Lite and older, many no-name boxes) |
+| `nightingale-tv_<version>_arm64-v8a.apk` | Most TVs, TV boxes and phones from the last several years (Google TV, NVIDIA Shield, Pixel, Galaxy…) |
+| `nightingale-tv_<version>_armeabi-v7a.apk` | Older or cheaper TV sticks and boxes (many no-name boxes) |
 | `nightingale-tv_<version>_universal.apk` | Any of them, if you're not sure. It's several times larger. |
 | `nightingale-tv_<version>_x86_64.apk` | Android Studio emulators on a PC |
 
 The simplest way is from your computer: turn on *Developer options* and *USB debugging* (or *Network debugging*) on the device, then run `adb install nightingale-tv_<version>_arm64-v8a.apk`. You can also copy the APK to the device and open it, allowing *Install unknown apps* when asked. Updates you build install over it, keeping your profiles, as long as you sign them with the same release key.
 
-It shows up in the TV's apps row and the phone's app drawer as **Nightingale TV**.
+It shows up in the TV's apps row and the phone's app drawer as **Nightingale TV (own build)**, separate from the store version (see [Switching between the store version and your own build](#switching-between-the-store-version-and-your-own-build)).
 
 On Android the app fills the screen and keeps it from turning off while it's in front. On a phone held upright it uses the [phone layout](#the-guide), and turns sideways for full screen. Going to the home screen stops playback, and coming back tunes in to the same channel live.
 
@@ -123,9 +128,9 @@ To uninstall it: `tool/install.sh --uninstall`, or `sudo apt remove nightingale-
 
 ### What you need
 
-- An Android TV, Google TV or Fire TV device, or an Android phone or tablet, running Android 7.0 or newer. Or, for the desktop version, a 64-bit PC running Ubuntu 22.04 or newer, or a similar Debian-based Linux.
+- An Android TV or Google TV device, or an Android phone or tablet, running Android 7.0 or newer. Or, for the desktop version, a 64-bit PC running Ubuntu 22.04 or newer, or a similar Debian-based Linux.
 - A [Jellyfin](https://jellyfin.org) server (10.11 or newer), an [Emby](https://emby.media) server (4.8 or newer) or a [Plex Media Server](https://www.plex.tv) with your shows and movies, and music or music videos if you want music channels. You can add more than one.
-- For the phone remote, a phone on the same Wi-Fi as the TV. On Linux, if the firewall blocks it, allow the remote's port once: `sudo ufw allow 8642/tcp`.
+- For the phone remote, a phone on the same Wi-Fi as the TV. See [Phone remote](#phone-remote) if the computer's firewall is on.
 - On Linux, ffmpeg, which `apt` installs with the app. It splits long commercial compilations into individual ads and converts Live TV export's streams.
 
 ## First start
@@ -165,6 +170,24 @@ Moving from another device? Choose **Restore from a backup** on the sign-in scre
 
 **On a phone or tablet:** tap where you'd click and long-press where you'd right-click (the TV picture or the guide opens the menu). Tapping the picture shows the pause and rewind controls, with the guide among them. Drag to scroll the guide and lists. The back gesture works as the Back button does.
 
+## Phone remote
+
+Menu → **Phone remote** turns it on. The screen shows the remote's address, a 6-digit pairing code and a QR code. It's on Android TV and the desktop version; on an Android phone or tablet the app is already in your hand, so there's none.
+
+**Nothing to set up on an Android TV, or on a computer with no firewall running.** Android TV has no firewall that blocks the remote, so you never need to open a port there. The phone only has to be on the same Wi-Fi as the TV. On Android TV the remote answers while Nightingale TV is open, not while it's in the background.
+
+- **Pairing.** Scan the QR code with the phone's camera, or open the address and type the code. A phone can pair only while the Phone remote screen is open on that TV, and the code changes after every pairing. A paired phone works with that TV only: a second TV, even on the same PC, needs its own pairing.
+- **Phones that used the remote before this update** see "Scan the code on the TV to pair" and need to scan once.
+- **Paired phones.** The screen lists each phone with when it paired and when it was last used. **Remove** stops that phone at once, and **Remove all** stops every phone. Up to 20 phones stay paired; pairing another removes the one used longest ago. Turning the remote off keeps them.
+- **Is it working?** The screen says **Working** once a phone has reached the remote, **Not confirmed yet** until then, and **Blocked** when this computer's firewall is known to stop phones (firewalld only; ufw's rules can't be read without root). It shows the exact command to fix it, with **Check again**.
+- **If the phone can't connect:** make sure it's on the same Wi-Fi as the TV, not a guest network or mobile data. Some Wi-Fi networks keep devices apart ("AP isolation" or "client isolation"); turn that off for your Wi-Fi.
+- **Firewall on Linux (only if ufw or firewalld is on).** The `.deb` installs firewall profiles for the remote's ports (8642 to 8651) but never opens the firewall itself. Allow the remote once with one of these:
+  - ufw: `sudo ufw allow "Nightingale TV Remote"`
+  - firewalld: `sudo firewall-cmd --permanent --add-service=nightingale-tv-remote && sudo firewall-cmd --reload`
+
+  With the `.tar.gz` build, allow the port instead: `sudo ufw allow 8642/tcp`, or `sudo firewall-cmd --permanent --add-port=8642/tcp && sudo firewall-cmd --reload`. The screen shows the port it is actually using.
+- The remote only works on your home network. Don't open a port for it on your router.
+
 ## Backup and restore
 
 Menu → **Backup & restore** (grown-ups only, when there are kid profiles) shows when the last backup was made, and every backup, newest first. Pick one to **Restore** it, **Save to file**, or **Delete** it. **Back up now** makes one yourself.
@@ -174,6 +197,7 @@ Menu → **Backup & restore** (grown-ups only, when there are kid profiles) show
 **What isn't, and why:**
 
 - **Server sign-ins.** A backup never holds a sign-in token, a Plex account token or this device's device ID, so a backup file can't be used to get into your server, and restoring it on another TV never signs this one out. A profile restored on the same TV, still signed in to the same server, stays signed in. Any other profile asks you to sign in once: for Jellyfin and Emby with its password, with the server and user name filled in, and for Plex with a new link code, after which the same server is picked for you.
+- **Paired phones.** Pairing keys stay on the device, like sign-ins. A restore keeps this TV's paired phones; phones pair again with a new TV.
 - **What the app rebuilds by itself:** the library index, which one library scan brings back, the media analysis results and caches. On a new device, commercial breaks inside shows may sit at slightly different moments until media analysis catches up.
 
 **Restoring** replaces everything on this TV with the backup, after backing up the current setup first, so you can always go back ("Before restore"). Channels come back on the same schedule, so after signing in the same show is on the air as on the device the backup came from. If you sign a restored profile in to a different server, its settings are kept and its channels are built fresh from that server's library.
@@ -185,7 +209,7 @@ The 14 newest daily backups and the 10 newest "Before…" backups are kept. Back
 - **A computer:** on the old one, pick a backup and **Save to file**. On the new one, choose **Restore from a backup** → **Open a backup file** on the first sign-in screen. (Later, it's Menu → Backup & restore → **Open a backup file**.)
 - **Any device, Android TVs included:** on the old device, Menu → Backup & restore → **Use your phone or computer**, scan the code with your phone and tap **Download backup**. Then on the new device, choose **Restore from a backup** → **Use your phone or computer** on the first sign-in screen (or the same button in Backup & restore), scan its code and tap **Restore from a file**. The new TV asks you to confirm before anything changes. Both devices need to be on the same Wi-Fi as the phone, and the page only works while its window is open on the TV.
 - **Android phones and tablets** can also **Save to file** and **Open a backup file** with the system's file picker. Most Android TVs don't have one, so those buttons only show where they work.
-- **Android's own backup:** with Google backup on, Android keeps a copy of your newest Nightingale TV backup in your Google account, and nothing else from the app. After a reinstall or on a new Android device, the first screen offers to **Restore it**. Fire TV doesn't have Google backup; use your phone instead.
+- **Android's own backup:** with Google backup on, Android keeps a copy of your newest Nightingale TV backup in your Google account, and nothing else from the app. After a reinstall or on a new Android device, the first screen offers to **Restore it**.
 - **Live TV export moves with the backup.** A restored computer answers as the same tuners on the same ports, so Plex and Jellyfin find their existing setup. Turn export off on the old one.
 
 ## Live TV export
@@ -250,6 +274,16 @@ tool/build_apk.sh           # build the four APKs in dist/ and print their sizes
 
 Release builds stop with these instructions if there's no key. They never fall back to a debug key, because Android won't install a properly signed update over a debug-signed app without uninstalling it, and that loses your profiles.
 
+**Your build is a separate app from the store version.** Only builds signed with the official Nightingale TV key, whose certificate fingerprint is listed in `android/official_signing_cert.txt`, get the store's app id and the name **Nightingale TV**. Every other build, and every `flutter run` debug build, is **Nightingale TV (own build)** (`com.coffeehauslabs.nightingale_tv.selfbuilt`): it installs beside the store version with its own profiles, channels and settings, and `tool/build_apk.sh` says so when it finishes. To use one app's setup in the other, pick **Backup & restore → Move my setup to …** before uninstalling either; uninstalling deletes that app's setup.
+
+Every APK has the build number from `pubspec.yaml` (`version: x.y.z+<build>`) as its version code, with nothing added per architecture, so official APKs and the store bundle of the same version line up.
+
+```bash
+tool/build_bundle.sh        # official key only: the Google Play bundle, dist/nightingale-tv_<version>.aab
+```
+
+`tool/build_bundle.sh` refuses to run with any key not in `official_signing_cert.txt`.
+
 ### Building for Linux
 
 On Ubuntu:
@@ -270,7 +304,7 @@ Nightingale TV is **free and open source software**, licensed under the [GNU Gen
 
 You're free to use, study, copy, modify and redistribute it, and even sell it. If you distribute it, modified or not, you must pass on the same freedoms: share the source code under the GPL and keep the copyright and license notices. Nightingale TV comes with no warranty; see the license for details.
 
-The versions sold on Google Play and the Amazon Appstore are built from this same source code under the same license. Buying one pays for the convenience of a store install and supports the project.
+The version sold on Google Play is built from this same source code under the same license. Buying it pays for the convenience of a store install and supports the project.
 
 "Nightingale TV" and its logo identify this project. If you publish your own modified version, please give it a different name and icon so people can tell the two apart.
 

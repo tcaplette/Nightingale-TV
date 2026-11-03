@@ -1,0 +1,10 @@
+# SHA-256 fingerprints of the official Nightingale TV signing certificates,
+# one per line (install-switching D2). A fingerprint is public: it can't be
+# used to sign anything. Release builds signed with a key listed here get
+# the id com.coffeehauslabs.nightingale_tv and the name "Nightingale TV";
+# every other build is "Nightingale TV (own build)",
+# com.coffeehauslabs.nightingale_tv.selfbuilt, a separate app.
+#
+# Either form works (keytool's colon-separated or apksigner's plain hex):
+#   keytool -list -v -keystore ~/nightingale-tv-release.jks -alias nightingale-tv
+#   apksigner verify --print-certs dist/nightingale-tv_<version>_universal.apk

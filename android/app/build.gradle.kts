@@ -1,3 +1,6 @@
+import java.io.File
+import java.security.KeyStore
+import java.security.MessageDigest
 import java.util.Properties
 
 plugins {
@@ -13,6 +16,35 @@ plugins {
 val keyPropertiesFile = rootProject.file("key.properties")
 val keyProperties = Properties().apply {
     if (keyPropertiesFile.exists()) keyPropertiesFile.inputStream().use { load(it) }
+}
+val storePasswordValue: String? = keyProperties.getProperty("storePassword")
+    ?: System.getenv("NIGHTINGALE_TV_STORE_PASSWORD")
+val keyPasswordValue: String? = keyProperties.getProperty("keyPassword")
+    ?: System.getenv("NIGHTINGALE_TV_KEY_PASSWORD")
+
+// Official builds (install-switching D2): release builds signed with a key
+// whose certificate is listed in android/official_signing_cert.txt. They are
+// "Nightingale TV" and replace the store version in place. Every other build,
+// including every debug build, is "Nightingale TV (own build)" with its own
+// id, so it installs beside the store version instead of blocking it.
+fun fingerprints(file: File): Set<String> =
+    if (!file.exists()) emptySet()
+    else file.readLines()
+        .map { it.substringBefore('#').replace(":", "").replace(" ", "").trim().lowercase() }
+        .filter { it.isNotEmpty() }
+        .toSet()
+
+val releaseKeyIsOfficial: Boolean = run {
+    if (!keyPropertiesFile.exists()) return@run false
+    val store = try {
+        KeyStore.getInstance(file(keyProperties.getProperty("storeFile")), storePasswordValue?.toCharArray())
+    } catch (e: Exception) {
+        throw GradleException("Couldn't open the keystore named in android/key.properties: ${e.message}", e)
+    }
+    val cert = store.getCertificate(keyProperties.getProperty("keyAlias"))
+        ?: throw GradleException("android/key.properties names the key alias \"${keyProperties.getProperty("keyAlias")}\", which isn't in its keystore.")
+    val sha256 = MessageDigest.getInstance("SHA-256").digest(cert.encoded).joinToString("") { "%02x".format(it) }
+    sha256 in fingerprints(rootProject.file("official_signing_cert.txt"))
 }
 
 android {
@@ -31,8 +63,8 @@ android {
         // every Fire TV OS.
         minSdk = 24
         targetSdk = flutter.targetSdkVersion
-        // From pubspec.yaml's version. Split APKs get 1000 * ABI added, so
-        // Android prefers the matching one on upgrade.
+        // From pubspec.yaml's version, the same on every APK and bundle
+        // (force-version-code-ignoring-abi in gradle.properties).
         versionCode = flutter.versionCode
         versionName = flutter.versionName
     }
@@ -43,11 +75,9 @@ android {
                 storeFile = file(keyProperties.getProperty("storeFile"))
                 // The passwords may come from the environment instead, so
                 // they needn't be written down anywhere.
-                storePassword = keyProperties.getProperty("storePassword")
-                    ?: System.getenv("NIGHTINGALE_TV_STORE_PASSWORD")
+                storePassword = storePasswordValue
                 keyAlias = keyProperties.getProperty("keyAlias")
-                keyPassword = keyProperties.getProperty("keyPassword")
-                    ?: System.getenv("NIGHTINGALE_TV_KEY_PASSWORD")
+                keyPassword = keyPasswordValue
             }
         }
     }
@@ -56,6 +86,19 @@ android {
         release {
             signingConfig = signingConfigs.findByName("release")
         }
+        // Debug, profile (debug-signed) and unofficially signed release builds.
+        configureEach {
+            if (name == "release" && releaseKeyIsOfficial) {
+                resValue("string", "app_name", "Nightingale TV")
+            } else {
+                applicationIdSuffix = ".selfbuilt"
+                resValue("string", "app_name", "Nightingale TV (own build)")
+            }
+        }
+    }
+
+    buildFeatures {
+        resValues = true
     }
 
     // JVM tests (android/app/src/test) run Media3's audio classes, which
@@ -76,6 +119,8 @@ dependencies {
     implementation("androidx.media3:media3-exoplayer-rtsp:1.11.1")
     implementation("androidx.media3:media3-datasource-okhttp:1.11.1")
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
+    // FileProvider, for handing a setup to the other app (InstallSwitching.kt).
+    implementation("androidx.core:core:1.16.0")
     // LevelingAudioProcessorTest.
     testImplementation("junit:junit:4.13.2")
 }

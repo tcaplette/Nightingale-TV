@@ -5,7 +5,9 @@
 #   dist/nightingale-tv_<version>_armeabi-v7a.apk  older or cheaper TV boxes
 #   dist/nightingale-tv_<version>_x86_64.apk       Android Studio emulators
 #   dist/nightingale-tv_<version>_universal.apk    any of these (much larger)
-# Signed with the release key named in android/key.properties.
+# Signed with the release key named in android/key.properties. Only a key
+# listed in android/official_signing_cert.txt makes "Nightingale TV"; any
+# other key makes "Nightingale TV (own build)", a separate app.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -71,3 +73,19 @@ echo "Built and verified:"
 for apk in "${OUT[@]}"; do
   echo "  $apk ($(du -h "$apk" | cut -f1))"
 done
+
+# The certificate the APKs were signed with, against the official ones
+# (install-switching D5). Gradle made the same check when choosing the id.
+cert="$("$APKSIGNER" verify --print-certs "${OUT[-1]}" | sed -n 's/.*certificate SHA-256 digest: *//p' | head -1)"
+if ! tool/official_cert.sh "$cert"; then
+  cat <<'WARNING'
+
+These APKs aren't signed with the official Nightingale TV key, so they
+install as "Nightingale TV (own build)": a separate app from the Google Play
+version, with its own profiles, channels and settings.
+Both can be installed on one device. To use the store version's setup here,
+or this setup in the store version, open Backup & restore and pick
+"Move my setup to …" before uninstalling either; uninstalling deletes that
+app's setup.
+WARNING
+fi

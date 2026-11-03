@@ -39,6 +39,10 @@ class StoredBackup {
         BackupReason.beforeUpgrade => 'Before update',
         BackupReason.beforeLineupCleanup => 'Before lineup cleanup',
         BackupReason.file => 'From a file',
+        BackupReason.movingToOfficial => 'Moving to Nightingale TV',
+        BackupReason.movingToOwnBuild => 'Moving to Nightingale TV (own build)',
+        BackupReason.fromOfficial => 'From Nightingale TV',
+        BackupReason.fromOwnBuild => 'From Nightingale TV (own build)',
         _ => 'Made by you',
       };
 }
@@ -154,10 +158,10 @@ class BackupStore {
     return made != 0 ? made : b.savedAt.compareTo(a.savedAt);
   }
 
-  /// The newest backup of this device's own setup: not a file opened or
-  /// uploaded, which may not be what's here.
+  /// The newest backup of this device's own setup: not a file opened,
+  /// uploaded or handed over, which may not be what's here.
   static StoredBackup? newestOwn(List<StoredBackup> list) =>
-      list.where((b) => b.kind != BackupReason.file).firstOrNull;
+      list.where((b) => !BackupReason.isReceived(b.kind)).firstOrNull;
 
   /// The cloud copy, saved as a backup of its own when no backup in the
   /// store is the same one (Android restored only the copy).
@@ -235,7 +239,7 @@ class BackupStore {
       if (f is! File) continue;
       final m = _name.firstMatch(f.uri.pathSegments.last);
       final savedAt = m == null ? null : _parseStamp(m.group(1)!);
-      if (savedAt == null || !BackupReason.all.contains(m!.group(2)) || m.group(2) == BackupReason.file) continue;
+      if (savedAt == null || !BackupReason.all.contains(m!.group(2)) || BackupReason.isReceived(m.group(2)!)) continue;
       final size = await f.length();
       var stored = _cache[_key(f.uri.pathSegments.last, size)];
       if (stored == null) {

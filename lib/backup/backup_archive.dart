@@ -45,7 +45,23 @@ abstract final class BackupReason {
   /// Before the one-time lineup cleanup (lineup-dedup D7).
   static const beforeLineupCleanup = 'before-lineup-cleanup';
 
-  static const all = [daily, manual, file, beforeRestore, beforeReset, beforeDelete, beforeUpgrade, beforeLineupCleanup];
+  /// Made to move this setup to the other Nightingale TV app on the device,
+  /// the official one or the own build (install-switching D6).
+  static const movingToOfficial = 'moving-official';
+  static const movingToOwnBuild = 'moving-own-build';
+
+  /// Handed over by that other app (the store's kind only, like [file]).
+  static const fromOfficial = 'from-official';
+  static const fromOwnBuild = 'from-own-build';
+
+  static const all = [
+    daily, manual, file, beforeRestore, beforeReset, beforeDelete, beforeUpgrade, beforeLineupCleanup,
+    movingToOfficial, movingToOwnBuild, fromOfficial, fromOwnBuild,
+  ];
+
+  /// From elsewhere (a file, a phone, the other app), so not necessarily
+  /// what's set up here.
+  static bool isReceived(String reason) => reason == file || reason.startsWith('from-');
 
   /// Safety backups, taken right before a big change.
   static bool isSafety(String reason) => reason.startsWith('before-');

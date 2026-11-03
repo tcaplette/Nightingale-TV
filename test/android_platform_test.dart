@@ -209,10 +209,12 @@ void main() {
       final listener = watchRemoteLifecycle(remote)!;
       addTearDown(listener.dispose);
       expect(remote.port, isNotNull);
+      remote.openPairing();
 
       await hide();
       expect(remote.port, isNull, reason: 'closed in the background');
       expect(remote.enabled, isTrue, reason: 'still turned on');
+      expect(remote.pairingCode, isNull, reason: 'no pairing in the background');
 
       await show();
       expect(remote.port, isNotNull, reason: 'open again in front');

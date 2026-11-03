@@ -137,6 +137,16 @@ class Household extends ChangeNotifier {
     return await storage.readRaw('session.json') == null && await storage.readRaw('channels.json') == null;
   }
 
+  /// Nothing anyone set up: no profiles, or one that never signed in and
+  /// has no channels, whether or not this is the first run (moving a setup
+  /// to the other app, install-switching).
+  Future<bool> hasNoSetup() async {
+    if (!await File('${root.root.path}/$_profilesFile').exists()) return true;
+    if (_profiles.length != 1) return false;
+    final storage = AppStorage.existing(Directory('${root.root.path}/profiles/${_profiles.single.id}'));
+    return await storage.readRaw('session.json') == null && await storage.readRaw('channels.json') == null;
+  }
+
   Future<bool> _hasLegacySetup() async {
     for (final f in _legacyFiles) {
       if (await File('${root.root.path}/$f').exists()) return true;

@@ -26,6 +26,14 @@ class MainActivity : FlutterActivity() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             splashScreen.setOnExitAnimationListener { it.remove() }
         }
+        // A setup handed over by the other Nightingale TV app (not again
+        // when the activity is recreated).
+        if (savedInstanceState == null) installSwitching.onIntent(intent)
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        installSwitching.onIntent(intent)
     }
 
     override fun onDestroy() {
@@ -43,6 +51,8 @@ class MainActivity : FlutterActivity() {
     private val deviceImages = DeviceImages(this)
 
     private val backupFiles = BackupFiles(this)
+
+    private val installSwitching = InstallSwitching(this)
 
     // Lazy: its sensor listener needs the activity attached.
     private val fullScreen by lazy { FullScreenOrientation(this) }
@@ -108,6 +118,10 @@ class MainActivity : FlutterActivity() {
         // Saving backup files with the document picker, where there is one.
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "nightingale_tv/files")
             .setMethodCallHandler(backupFiles)
+        // The official app and the own build: which this is, and moving a
+        // setup between them.
+        installSwitching.channel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "nightingale_tv/install")
+            .also { it.setMethodCallHandler(installSwitching) }
         // Full screen from the portrait watch screen (phones and tablets).
         fullScreen.channel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "nightingale_tv/orientation")
             .also { it.setMethodCallHandler(fullScreen) }

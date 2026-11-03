@@ -24,6 +24,8 @@ import 'package:nightingale_tv/playback/device_effects.dart';
 import 'package:nightingale_tv/platform/platform_info.dart';
 import 'package:nightingale_tv/profiles/household.dart';
 import 'package:nightingale_tv/profiles/profile.dart';
+import 'package:nightingale_tv/remote/firewall_check.dart';
+import 'package:nightingale_tv/remote/remote_control.dart';
 
 import 'backup_fixtures.dart';
 import 'fixtures.dart';
@@ -490,6 +492,52 @@ void main() {
         oldInstallIds = {for (final p in momAndKids()) p.id: await installIdOf(oldTv, p.id)};
         final h = await open(oldTv);
         bytes = (await h.backups!.build(BackupReason.manual)).bytes;
+      });
+
+      test('paired phones stay on the device: never in a backup, kept by a restore', () async {
+        final h = await open(newTv);
+        final http = HttpClient();
+        addTearDown(http.close);
+        final remote = RemoteControl(h, firewallCheck: FirewallCheck(linux: false));
+        addTearDown(remote.stop);
+        await remote.setEnabled(true, port: 0);
+
+        Future<HttpClientResponse> post(RemoteControl r, String path, Object body, {String? key}) async {
+          final request = await http.postUrl(Uri.parse('http://127.0.0.1:${r.port}$path'));
+          request.headers.contentType = ContentType.json;
+          request.headers.set(RemoteControl.actionHeader, '1');
+          if (key != null) request.headers.set(RemoteControl.keyHeader, key);
+          request.write(jsonEncode(body));
+          return request.close();
+        }
+
+        final keys = <String>[];
+        for (final name in ['Kitchen Pixel · Chrome', 'Den iPhone · Safari']) {
+          remote.openPairing();
+          final response = await post(remote, '/api/pair', {'code': remote.pairingCode, 'name': name});
+          keys.add((jsonDecode(await utf8.decodeStream(response)) as Map)['key'] as String);
+        }
+        remote.closePairing();
+        await h.root.flush();
+        final hashes = [for (final p in remote.pairings) p.keyHash];
+
+        final backup = (await h.backups!.build(BackupReason.manual)).bytes;
+        final text = utf8.decode(gzip.decode(backup), allowMalformed: true);
+        for (final secret in [...hashes, ...keys, 'Kitchen Pixel', 'Den iPhone', RemoteControl.pairingsFile]) {
+          expect(text, isNot(contains(secret)));
+        }
+        expect(BackupArchive.check(backup).remote, {'enabled': true}, reason: 'the on/off setting travels');
+
+        // Another device's backup, restored here: this TV's phones still work.
+        await BackupRestorer(h).restore(bytes);
+        final after = RemoteControl(h, firewallCheck: FirewallCheck(linux: false), dispatch: (_, _) => true);
+        addTearDown(after.stop);
+        await after.load();
+        expect(after.pairings.map((p) => p.name), containsAll(['Kitchen Pixel · Chrome', 'Den iPhone · Safari']));
+        await after.setEnabled(true, port: 0);
+        final pressed = await post(after, '/api/key', {'key': 'up'}, key: keys.first);
+        await pressed.drain<void>();
+        expect(pressed.statusCode, 200);
       });
 
       test('sign-ins are left out, hints written, and device ids are new', () async {

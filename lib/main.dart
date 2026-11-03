@@ -34,6 +34,7 @@ import 'setup/setup_server.dart';
 import 'setup/web_files.dart';
 import 'theme/tv_theme.dart';
 import 'ui/backup_screen.dart';
+import 'ui/install_switching.dart';
 import 'ui/login_screen.dart';
 import 'ui/profiles_screen.dart';
 import 'ui/sleep_overlay.dart';
@@ -188,10 +189,17 @@ bool get hasPhoneRemote => !PlatformInfo.isAndroid || PlatformInfo.isTelevision;
 
 /// Android: the phone remote's port is closed while the app is in the
 /// background, and opens again (if it's on) when the app is back in front.
-/// Null elsewhere.
+/// Pairing closes too; the Phone remote screen reopens it on show. Null
+/// elsewhere.
 @visibleForTesting
-AppLifecycleListener? watchRemoteLifecycle(RemoteControl remote) =>
-    PlatformInfo.isAndroid ? AppLifecycleListener(onHide: remote.stop, onShow: remote.resume) : null;
+AppLifecycleListener? watchRemoteLifecycle(RemoteControl remote) => PlatformInfo.isAndroid
+    ? AppLifecycleListener(
+        onHide: () {
+          remote.closePairing();
+          remote.stop();
+        },
+        onShow: remote.resume)
+    : null;
 
 /// Full screen (or a window), and closing it through [quitApp].
 Future<void> _setUpWindow() async {
@@ -259,23 +267,47 @@ class NightingaleTvApp extends StatelessWidget {
     );
   }
 
-  Widget _shell(Widget home) => MaterialApp(
+  Widget _shell(Widget home) => _Shell(household: household, home: home);
+}
+
+/// The app's [MaterialApp], with a navigator of its own per screen stack
+/// (a new one per profile), which the setup handover's dialogs go on.
+class _Shell extends StatefulWidget {
+  const _Shell({required this.household, required this.home});
+
+  final Household household;
+  final Widget home;
+
+  @override
+  State<_Shell> createState() => _ShellState();
+}
+
+class _ShellState extends State<_Shell> {
+  final _navigator = GlobalKey<NavigatorState>();
+
+  @override
+  Widget build(BuildContext context) => MaterialApp(
         title: 'Nightingale TV',
+        navigatorKey: _navigator,
         debugShowCheckedModeBanner: false,
         theme: GuideTheme.cableGuide.toThemeData(),
         onNavigationNotification: PlatformInfo.isAndroid ? AndroidBackBridge.alwaysHandleBack : null,
         builder: (context, child) => TvCanvas(
             child: AutoHidePointer(
                 child: HouseholdNotice(
-                    household: household,
-                    // The sleep timer's warning and sleep screen, over every
-                    // screen (none before a profile is watching).
-                    child: SleepOverlay(
-                        child: switch (androidBack) {
-                      final back? => BackKeyWatcher(bridge: back, child: child!),
-                      null => child!,
-                    })))),
-        home: home,
+                    household: widget.household,
+                    // The other Nightingale TV app on this device (Android).
+                    child: InstallSwitchingHost(
+                        household: widget.household,
+                        navigator: _navigator,
+                        // The sleep timer's warning and sleep screen, over
+                        // every screen (none before a profile is watching).
+                        child: SleepOverlay(
+                            child: switch (androidBack) {
+                          final back? => BackKeyWatcher(bridge: back, child: child!),
+                          null => child!,
+                        }))))),
+        home: widget.home,
       );
 }
 
