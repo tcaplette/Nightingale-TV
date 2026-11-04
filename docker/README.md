@@ -65,7 +65,9 @@ docker compose pull && docker compose up -d
 
 ## Making a new image (maintainers)
 
-1. In Nightingale-TV, push a version tag (`git tag v1.2.0 && git push origin v1.2.0`). Its "Linux release" workflow attaches `nightingale-tv-linux-x64-1.2.0.tar.gz` and its `.sha256` to that release.
-2. Here, set `NTV_VERSION` in the [`Dockerfile`](Dockerfile) to `1.2.0`, commit, and push the same tag (`git tag v1.2.0 && git push origin v1.2.0`). The "Publish image" workflow builds it and publishes `ghcr.io/tcaplette/nightingale-tv-server:1.2.0` and `:latest`.
+1. Set `NTV_VERSION` in the [`Dockerfile`](Dockerfile) to the new version (for example `1.2.0`), so a local `docker build` gets the same one.
+2. Publish the release with tag `v1.2.0` (pushing the tag, or creating the release on GitHub with a new tag). The "Linux release" workflow attaches `nightingale-tv-linux-x64-1.2.0.tar.gz` and its `.sha256` to it, then builds this folder's image from that file and publishes `ghcr.io/tcaplette/nightingale-tv-server:1.2.0` and `:latest`.
+
+To build the image for a release that already exists: Actions → Linux release → Run workflow, with its tag (`v1.1.0`).
 
 The first time, make the package public: GitHub → your profile → Packages → nightingale-tv-server → Package settings → Change visibility → Public.
