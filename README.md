@@ -2,7 +2,11 @@
 
 Nightingale TV turns your Jellyfin, Emby or Plex library into always-on cable TV channels, plus music video and radio channels, with a program guide. It's an Android app first, made for Android TV (Google TV and other Android TV boxes) and also at home on Android phones and tablets. There's a desktop version for Linux too, and a macOS version is planned. Like real TV, every channel is always mid-broadcast. You tune in to whatever is on, flip channels, and check the guide to see what's coming up.
 
-It's inspired by NostalgiaTV for Android. It's built for the couch, so everything works with a TV remote, an air mouse, a touchscreen, your phone, or a keyboard and mouse.
+It's inspired by NostalgiaTV for Android, which I found through Switch and Click's video [This Free App Singlehandedly Fixes Modern TV](https://www.youtube.com/watch?v=mMmeXUnyFZ0):
+
+[![This Free App Singlehandedly Fixes Modern TV, by Switch and Click](https://img.youtube.com/vi/mMmeXUnyFZ0/hqdefault.jpg)](https://www.youtube.com/watch?v=mMmeXUnyFZ0)
+
+It's built for the couch, so everything works with a TV remote, an air mouse, a touchscreen, your phone, or a keyboard and mouse.
 
 ![The program guide, with a programming block on channel 2](docs/screenshots/guide.png)
 
