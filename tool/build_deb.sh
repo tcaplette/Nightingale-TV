@@ -9,6 +9,7 @@ set -euo pipefail
 APP_ID=com.coffeehauslabs.nightingale_tv
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
+tool/check_version.sh
 
 # pubspec "1.0.0+1" is already a valid Debian version. The UTC build time
 # after it makes every build newer than the last, so apt always upgrades
@@ -89,13 +90,15 @@ DESKTOP_ENTRY
 
 # Ubuntu 24.04+ renamed GTK's package (t64); older releases use the old name.
 # ffmpeg splits long commercial videos into ads and finds scene breaks.
+# Flutter draws with EGL and OpenGL ES; without libgles2 the app aborts at
+# start (desktops usually have it, minimal installs don't).
 # The app was called Retro TV before; installing it removes that package.
 cat > "$STAGE/DEBIAN/control" <<CONTROL
 Package: nightingale-tv
 Version: $VERSION
 Architecture: $ARCH
 Maintainer: Nightingale TV <noreply@localhost>
-Depends: libgtk-3-0t64 | libgtk-3-0, $MPV_PKG, ffmpeg, libc6, libstdc++6
+Depends: libgtk-3-0t64 | libgtk-3-0, $MPV_PKG, libegl1, libgles2, ffmpeg, libc6, libstdc++6
 Replaces: retro-tv
 Conflicts: retro-tv
 Provides: retro-tv

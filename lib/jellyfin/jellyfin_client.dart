@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart' show protected, visibleForTesting;
 import 'package:http/http.dart' as http;
 
+import '../app_version.dart';
 import '../commercials/commercial_pool.dart';
 import '../library/library_index.dart';
 import '../playback/playback_diagnostics.dart';
@@ -45,7 +46,7 @@ class JellyfinClient implements MediaServer {
   ServerKind get kind => ServerKind.jellyfin;
 
   static const clientName = 'Nightingale TV';
-  static const clientVersion = '0.1.0';
+  static const clientVersion = appVersion;
   static const _timeout = Duration(seconds: 30);
 
   @override

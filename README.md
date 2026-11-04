@@ -119,7 +119,7 @@ The desktop version runs on Linux today. A macOS version is planned. Each releas
 
 **The .deb:** install it with `sudo apt install ./nightingale-tv_<version>_amd64.deb`, run from the folder it's in (the `./` matters: without it apt looks for a package of that name online). apt asks for your password and also installs the libraries Nightingale TV needs. Afterward, open **Nightingale TV** from your app menu, or run `nightingale-tv`. To update, install the next release's `.deb` the same way; it replaces the installed app and your profiles and settings stay.
 
-**The .tar.gz:** the ready-to-run app in a folder. First install GTK 3, libmpv (version 2, `libmpv.so.2`) and ffmpeg from your distribution's packages; on Arch that's `sudo pacman -S gtk3 mpv ffmpeg`. Then unpack it anywhere and start `./nightingale_tv` in that folder. To update, unpack the next release over it.
+**The .tar.gz:** the ready-to-run app in a folder. First install GTK 3, libmpv (version 2, `libmpv.so.2`), OpenGL ES (Mesa) and ffmpeg from your distribution's packages; on Arch that's `sudo pacman -S gtk3 mpv mesa ffmpeg`. Then unpack it anywhere and start `./nightingale_tv` in that folder. To update, unpack the next release over it.
 
 **Why the .deb needs Ubuntu 24.04 or newer:** it's built on Ubuntu 24.04 and uses that release's libmpv, version 2. Ubuntu 22.04 only has the older libmpv 1, which programs built for version 2 can't use, so on 22.04 build it yourself (below).
 

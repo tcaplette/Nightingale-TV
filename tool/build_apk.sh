@@ -12,6 +12,7 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
+tool/check_version.sh
 
 if [[ ! -f android/key.properties ]]; then
   cat >&2 <<'HELP'

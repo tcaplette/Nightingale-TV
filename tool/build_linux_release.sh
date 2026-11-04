@@ -9,6 +9,7 @@
 # The "Linux release" workflow runs this for a version tag.
 set -euo pipefail
 cd "$(dirname "$0")/.."
+tool/check_version.sh
 
 VERSION="${1:-$(sed -n 's/^version: *\([^+]*\).*/\1/p' pubspec.yaml)}"
 FILE="nightingale-tv-linux-x64-${VERSION}.tar.gz"

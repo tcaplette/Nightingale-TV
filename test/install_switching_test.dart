@@ -141,7 +141,7 @@ void main() {
   }
 
   /// [screen] inside the host, as the app's shell has it.
-  Future<void> show(WidgetTester tester, Widget screen) async {
+  Future<void> show(WidgetTester tester, Widget screen, {bool notice = false}) async {
     final navigator = GlobalKey<NavigatorState>();
     await tester.pumpWidget(HouseholdScope(
       household: h,
@@ -157,6 +157,8 @@ void main() {
       ),
     ));
     await settle(tester);
+    // The notice opens after real file reads: on a busy machine, later.
+    if (notice) await settleUntil(tester, () => find.text('Not now').evaluate().isNotEmpty);
   }
 
   String? focused() => FocusManager.instance.primaryFocus?.context?.findAncestorWidgetOfExactType<TvButton>()?.label;
@@ -251,7 +253,7 @@ void main() {
     testWidgets('in an own build: thanks, the warning, the move buttons, Not now focused', (tester) async {
       await setUpHousehold(tester);
       InstallSwitching.debugInfo = ownBuildBeside;
-      await show(tester, const Scaffold());
+      await show(tester, const Scaffold(), notice: true);
       expect(find.text('Nightingale TV is also on this device'), findsOneWidget);
       expect(find.text('Thank you for supporting Nightingale TV!'), findsOneWidget);
       expect(find.textContaining('before moving the setup you want to keep deletes that setup'), findsOneWidget);
@@ -273,7 +275,8 @@ void main() {
           ValueListenableBuilder(
             valueListenable: arrived,
             builder: (context, on, _) => on ? const Focus(autofocus: true, child: SizedBox()) : const SizedBox(),
-          ));
+          ),
+          notice: true);
       expect(focused(), 'Not now');
       arrived.value = true;
       await settle(tester);
@@ -296,7 +299,8 @@ void main() {
                   ? const SizedBox()
                   : const FocusScope(child: TextField(autofocus: true)),
             ),
-          ));
+          ),
+          notice: true);
       expect(find.byType(TextField), findsOneWidget);
       expect(focused(), 'Not now');
       expect(tester.testTextInput.isVisible, isFalse);
@@ -305,7 +309,7 @@ void main() {
     testWidgets('a sign-in field under the notice doesn\'t take its focus', (tester) async {
       await setUpHousehold(tester);
       InstallSwitching.debugInfo = ownBuildBeside;
-      await show(tester, const Scaffold(body: FocusScope(child: TextField(autofocus: true))));
+      await show(tester, const Scaffold(body: FocusScope(child: TextField(autofocus: true))), notice: true);
       expect(focused(), 'Not now');
       expect(tester.testTextInput.isVisible, isFalse);
     });

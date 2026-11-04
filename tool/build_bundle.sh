@@ -8,6 +8,7 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
+tool/check_version.sh
 
 if [[ ! -f android/key.properties ]]; then
   echo "android/key.properties is missing, so there's no key to sign the store bundle with." >&2
