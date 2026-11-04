@@ -312,6 +312,10 @@ tool/build_deb.sh           # only build dist/nightingale-tv_<version>_amd64.deb
 
 macOS builds aren't set up yet.
 
+## Reporting a problem
+
+Found a bug or have an idea? Open an issue on [GitHub Issues](https://github.com/tcaplette/Nightingale-TV/issues/new/choose) and pick **Bug report** or **Feature request**. The form asks for the version, how you installed it, your device and your media server, which is what's needed to track a problem down.
+
 ## License
 
 Nightingale TV is **free and open source software**, licensed under the [GNU General Public License, version 3](LICENSE) or (at your option) any later version.

@@ -1,0 +1,30 @@
+name: Feature request
+description: An idea for something Nightingale TV could do.
+labels: [enhancement]
+body:
+  - type: textarea
+    id: idea
+    attributes:
+      label: What would you like it to do?
+      placeholder: Let a programming block repeat every other week.
+    validations:
+      required: true
+
+  - type: textarea
+    id: why
+    attributes:
+      label: Why would it help?
+      description: What you're trying to do, and how you do it today, if you can.
+    validations:
+      required: true
+
+  - type: dropdown
+    id: where
+    attributes:
+      label: Where would you use it?
+      multiple: true
+      options:
+        - Android TV / Google TV
+        - Android phone or tablet
+        - Linux desktop
+        - Docker server / web admin

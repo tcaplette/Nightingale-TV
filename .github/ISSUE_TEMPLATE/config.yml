@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: How to install and set it up
+    url: https://github.com/tcaplette/Nightingale-TV#install
+    about: Install steps for Android, Linux and the Docker server.

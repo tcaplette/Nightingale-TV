@@ -1,0 +1,111 @@
+name: Bug report
+description: Something in Nightingale TV doesn't work as it should.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report this. The more of this you fill in, the faster it can be fixed.
+        Please don't include passwords, server addresses you want kept private, or API keys.
+
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: What went wrong, and what you expected to happen instead.
+      placeholder: Channel 4 shows a black screen after a commercial break; I expected the show to come back.
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: How to make it happen again, step by step. Say if it happens every time or only sometimes.
+      placeholder: |
+        1. Tune to channel 4
+        2. Wait for the mid-show break
+        3. ...
+    validations:
+      required: true
+
+  - type: dropdown
+    id: install
+    attributes:
+      label: How did you install it?
+      options:
+        - Android APK from Releases
+        - Google Play
+        - Android, my own build
+        - Linux .deb from Releases
+        - Linux .tar.gz from Releases
+        - Linux, my own build
+        - Docker server (ghcr.io/tcaplette/nightingale-tv-server)
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: Nightingale TV version
+      description: |
+        Android: Settings → Apps → Nightingale TV (Backup & restore → About this install also says where it came from).
+        Linux: `dpkg -s nightingale-tv | grep Version`, or the release file's name. Docker: the image tag.
+      placeholder: "1.1.0"
+    validations:
+      required: true
+
+  - type: input
+    id: device
+    attributes:
+      label: Device
+      description: The TV, box, phone or computer it's running on, and its Android version or Linux distribution.
+      placeholder: Chromecast with Google TV (Android 14) / Ubuntu 24.04 / Synology DS920+
+    validations:
+      required: true
+
+  - type: dropdown
+    id: server
+    attributes:
+      label: Media server
+      multiple: true
+      options:
+        - Jellyfin
+        - Emby
+        - Plex
+    validations:
+      required: true
+
+  - type: input
+    id: server-version
+    attributes:
+      label: Media server version
+      placeholder: Jellyfin 10.11.0
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Which part of the app?
+      options:
+        - Playback
+        - Program guide
+        - Channels or lineup
+        - Programming blocks
+        - Commercial breaks
+        - Music channels
+        - Live TV sources
+        - Live TV export
+        - Docker server / web admin
+        - Phone remote
+        - Profiles, backup or restore
+        - Sign-in
+        - Something else
+
+  - type: textarea
+    id: extra
+    attributes:
+      label: Screenshots, logs or anything else
+      description: |
+        A photo or screenshot of the problem helps a lot.
+        Linux: run `nightingale-tv` from a terminal and paste what it prints. Docker: `docker compose logs`.
+      render: text
