@@ -215,7 +215,7 @@ void main() {
       await settleUntil(tester, () => sent.isNotEmpty);
       final archive = BackupArchive.check(sent.single!);
       expect(archive.summary.profiles, ['Mom', 'Kids']);
-      await settle(tester);
+      await settleUntil(tester, () => find.text('Moving to Nightingale TV').evaluate().isNotEmpty);
       expect(find.text('Moving to Nightingale TV'), findsOneWidget);
       expect(focused(), 'Move my setup to Nightingale TV');
     });
@@ -281,6 +281,25 @@ void main() {
       // The remote moves between the notice's buttons, not the screen's.
       await press(tester, LogicalKeyboardKey.arrowUp);
       expect(focused(), isIn(['Move my setup to Nightingale TV', 'Bring my setup here from Nightingale TV']));
+    });
+
+    testWidgets('a field autofocused in the same frame as the notice doesn\'t take its focus', (tester) async {
+      await setUpHousehold(tester);
+      InstallSwitching.debugInfo = ownBuildBeside;
+      // Built as the notice opens (the screen under it stops being current),
+      // so both autofocus in one frame and the field's goes last.
+      await show(
+          tester,
+          Builder(
+            builder: (context) => Scaffold(
+              body: ModalRoute.of(context)!.isCurrent
+                  ? const SizedBox()
+                  : const FocusScope(child: TextField(autofocus: true)),
+            ),
+          ));
+      expect(find.byType(TextField), findsOneWidget);
+      expect(focused(), 'Not now');
+      expect(tester.testTextInput.isVisible, isFalse);
     });
 
     testWidgets('a sign-in field under the notice doesn\'t take its focus', (tester) async {

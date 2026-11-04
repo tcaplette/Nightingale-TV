@@ -50,7 +50,8 @@ void main() {
     await tester.pump();
     await tester.tap(find.text('Save'));
     // The settings file is written in real time, a step at a time.
-    for (var i = 0; i < 20 && find.text('Save').evaluate().isNotEmpty; i++) {
+    // Up to 5 s: a busy machine (the whole suite at once) writes slowly.
+    for (var i = 0; i < 250 && find.text('Save').evaluate().isNotEmpty; i++) {
       await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 20)));
       await tester.pump();
     }

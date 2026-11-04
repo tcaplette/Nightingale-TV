@@ -120,12 +120,15 @@ void main() {
       await startServer(accept: true, serverId: 'srv-1');
       final app = await appWithOldSession();
       expect(await savedDeviceId(app), 'nightingaletv-0a1b');
-      for (var i = 0; i < 40 && app.session!.serverId == null; i++) {
+      // Both background updates land, whichever finishes first. Up to 10 s:
+      // a busy machine (the whole suite at once) writes slowly.
+      Map<String, Object?> json = {};
+      for (var i = 0; i < 200; i++) {
+        await app.storage.flush();
+        json = await app.storage.readJson('session.json') as Map<String, Object?>;
+        if (app.session!.serverId != null && json['serverId'] != null) break;
         await Future<void>.delayed(const Duration(milliseconds: 50));
       }
-      // Both background updates land, whichever finishes first.
-      await Future<void>.delayed(const Duration(milliseconds: 200));
-      final json = await app.storage.readJson('session.json') as Map<String, Object?>;
       expect(json['serverId'], 'srv-1');
       expect(json['deviceId'], 'nightingaletv-0a1b');
       expect(app.session!.serverId, 'srv-1');

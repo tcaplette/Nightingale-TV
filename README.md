@@ -1,6 +1,6 @@
 # Nightingale TV
 
-Nightingale TV turns your Jellyfin, Emby or Plex library into always-on cable TV channels, plus music video and radio channels, with a program guide. It's an Android app first, made for Android TV (Google TV and other Android TV boxes) and also at home on Android phones and tablets. There's a desktop version for Linux too, and Windows and macOS versions are planned. Like real TV, every channel is always mid-broadcast. You tune in to whatever is on, flip channels, and check the guide to see what's coming up.
+Nightingale TV turns your Jellyfin, Emby or Plex library into always-on cable TV channels, plus music video and radio channels, with a program guide. It's an Android app first, made for Android TV (Google TV and other Android TV boxes) and also at home on Android phones and tablets. There's a desktop version for Linux too, and a macOS version is planned. Like real TV, every channel is always mid-broadcast. You tune in to whatever is on, flip channels, and check the guide to see what's coming up.
 
 It's inspired by NostalgiaTV for Android. It's built for the couch, so everything works with a TV remote, an air mouse, a touchscreen, your phone, or a keyboard and mouse.
 
@@ -68,56 +68,70 @@ Make TV feel like TV again, with ads between and during shows. Being experimenta
 
 ## Install
 
-Nightingale TV is free and open source. There are two ways to get it on Android:
+Nightingale TV is free and open source. There are three ways to get it on Android:
 
 - **Buy it from the store** (coming soon). The app will be sold on **Google Play** for Android TV, Google TV, phones and tablets. You install it like any other app, and it updates by itself. Buying it is the easy way to get Nightingale TV, and it supports the project.
+- **Download it for free** from [Releases](https://github.com/tcaplette/Nightingale-TV/releases). Each release has ready-made APKs for Android TVs, phones and tablets. They're the same app as the store version, signed with the same key, but they don't update by themselves: install each new release's APK over the old one. See [Installing an APK](#installing-an-apk).
 - **Build it yourself, for free.** Everything is in this repository. See [Building from source](#building-from-source).
 
-Both are built from the same source code and work the same.
+All three are built from the same source code and work the same.
 
-The desktop version (Linux) isn't sold in a store. Build it from this repository, as described in [On a computer](#on-a-computer).
+The desktop version (Linux) isn't sold in a store. Download it for free from [Releases](https://github.com/tcaplette/Nightingale-TV/releases), or build it from this repository, as described in [On a computer](#on-a-computer).
 
 ### On Android
 
-There is one app for Android TVs, phones and tablets (Android 7.0 or newer). The store version installs from Google Play.
+There is one app for Android TVs, phones and tablets (Android 7.0 or newer). The store version installs from Google Play, and the official APKs download from [Releases](https://github.com/tcaplette/Nightingale-TV/releases).
 
-#### Switching between the store version and your own build
+#### Switching between the store version, official APKs and your own build
 
-- **The store version updates itself.** Google Play updates install over the Play version and over official Nightingale TV APKs, and official APKs install over the Play version, keeping every profile, channel and setting.
+- **The store version and the official APKs are the same app.** Google Play updates install over an official APK from Releases, and an official APK installs over the Play version, keeping every profile, channel and setting. Only the Play version updates itself; with an official APK, download and install each new release yourself.
 - **Your own build is a separate app.** An APK you build yourself is called **Nightingale TV (own build)** and installs *beside* the store version, not over it. Each has its own profiles, channels and settings, and installing one never changes the other's. When both are on a device, each app tells you once, and **Backup & restore → About this install** says what kind of install you're in.
 - **Moving your setup across.** In **Backup & restore**, pick **Move my setup to …** to send this app's setup to the other one, which opens and asks before restoring it. **Bring my setup here from …** does the same the other way round. It works with a remote on a TV with no file manager. A backup file (**Save to file**, or **Use your phone or computer**, see [Moving to a new device](#moving-to-a-new-device)) works too.
 - **Don't uninstall first.** Uninstalling either app deletes its profiles, channels and settings, unless you move them or back them up to a file first.
 
-#### Installing an APK you built
+#### Installing an APK
 
-[Building for Android](#building-for-android) makes four APKs. Install the one for the device:
+Each release on [Releases](https://github.com/tcaplette/Nightingale-TV/releases) has three APKs, and [Building for Android](#building-for-android) makes the same three plus one for emulators. Install the one for the device:
 
 | APK | For |
 | --- | --- |
 | `nightingale-tv_<version>_arm64-v8a.apk` | Most TVs, TV boxes and phones from the last several years (Google TV, NVIDIA Shield, Pixel, Galaxy…) |
 | `nightingale-tv_<version>_armeabi-v7a.apk` | Older or cheaper TV sticks and boxes (many no-name boxes) |
 | `nightingale-tv_<version>_universal.apk` | Any of them, if you're not sure. It's several times larger. |
-| `nightingale-tv_<version>_x86_64.apk` | Android Studio emulators on a PC |
+| `nightingale-tv_<version>_x86_64.apk` | Android Studio emulators on a PC (only from your own build) |
 
-The simplest way is from your computer: turn on *Developer options* and *USB debugging* (or *Network debugging*) on the device, then run `adb install nightingale-tv_<version>_arm64-v8a.apk`. You can also copy the APK to the device and open it, allowing *Install unknown apps* when asked. Updates you build install over it, keeping your profiles, as long as you sign them with the same release key.
+On a phone or tablet, open the APK on the device and allow *Install unknown apps* when asked. On a TV, the simplest way is from your computer: turn on *Developer options* and *USB debugging* (or *Network debugging*) on the TV, then run `adb install nightingale-tv_<version>_arm64-v8a.apk`. You can also copy the APK to the TV with a file manager app and open it there.
 
-It shows up in the TV's apps row and the phone's app drawer as **Nightingale TV (own build)**, separate from the store version (see [Switching between the store version and your own build](#switching-between-the-store-version-and-your-own-build)).
+An official APK from Releases is **Nightingale TV**, the same app as the store version. Install a newer release's APK over it to update; your profiles stay.
+
+An APK you build yourself shows up in the TV's apps row and the phone's app drawer as **Nightingale TV (own build)**, separate from the store version (see [Switching between the store version, official APKs and your own build](#switching-between-the-store-version-official-apks-and-your-own-build)). Updates you build install over it, keeping your profiles, as long as you sign them with the same release key.
 
 On Android the app fills the screen and keeps it from turning off while it's in front. On a phone held upright it uses the [phone layout](#the-guide), and turns sideways for full screen. Going to the home screen stops playback, and coming back tunes in to the same channel live.
 
 ### On a computer
 
-The desktop version runs on Linux today. Windows and macOS versions are planned. To install it on Ubuntu or another Debian-based Linux, set up the tools in [Building for Linux](#building-for-linux), then run this from the project folder:
+The desktop version runs on Linux today. A macOS version is planned. Each release on [Releases](https://github.com/tcaplette/Nightingale-TV/releases) has two downloads for 64-bit (x86-64) PCs:
+
+| Download | For |
+| --- | --- |
+| `nightingale-tv_<version>_amd64.deb` | Ubuntu 24.04 or newer, Debian 13 or newer, and distributions based on them (Linux Mint 22, Pop!_OS 24.04…) |
+| `nightingale-tv-linux-x64-<version>.tar.gz` | Other distributions (Arch, Fedora, openSUSE…) from 2024 or newer |
+
+**The .deb:** install it with `sudo apt install ./nightingale-tv_<version>_amd64.deb`, run from the folder it's in (the `./` matters: without it apt looks for a package of that name online). apt asks for your password and also installs the libraries Nightingale TV needs. Afterward, open **Nightingale TV** from your app menu, or run `nightingale-tv`. To update, install the next release's `.deb` the same way; it replaces the installed app and your profiles and settings stay.
+
+**The .tar.gz:** the ready-to-run app in a folder. First install GTK 3, libmpv (version 2, `libmpv.so.2`) and ffmpeg from your distribution's packages; on Arch that's `sudo pacman -S gtk3 mpv ffmpeg`. Then unpack it anywhere and start `./nightingale_tv` in that folder. To update, unpack the next release over it.
+
+**Why the .deb needs Ubuntu 24.04 or newer:** it's built on Ubuntu 24.04 and uses that release's libmpv, version 2. Ubuntu 22.04 only has the older libmpv 1, which programs built for version 2 can't use, so on 22.04 build it yourself (below).
+
+**Building it yourself** on Ubuntu or another Debian-based Linux: set up the tools in [Building for Linux](#building-for-linux), then run this from the project folder:
 
 ```bash
 tool/install.sh
 ```
 
-It builds the app as a package and installs it with `apt`, which asks for your password and also installs the libraries Nightingale TV needs. Afterward, open **Nightingale TV** from your app menu, or run `nightingale-tv`.
+It builds the app as a package and installs it with `apt`, the same way as the release `.deb`. To update, pull the latest code and run `tool/install.sh` again. Every build is a newer version, so it replaces the installed app; you never end up with two copies. Your profiles and settings stay.
 
-**Updating:** pull the latest code and run `tool/install.sh` again. Every build is a newer version, so it replaces the installed app; you never end up with two copies. Your profiles and settings stay.
-
-**Another computer:** `tool/build_deb.sh` makes the package without installing it, as `dist/nightingale-tv_<version>_amd64.deb`. Copy it over and install it there with `sudo apt install ./nightingale-tv_<version>_amd64.deb`, run from the folder it's in (the `./` matters: without it apt looks for a package of that name online). The package only installs on a Linux release with the same libmpv version as the computer that built it (Ubuntu 22.04 and 24.04 differ), so build it on the same release as the computer it's for.
+`tool/build_deb.sh` makes the package without installing it, as `dist/nightingale-tv_<version>_amd64.deb`, to copy to another computer. It installs on systems with the same libmpv version as the computer that built it, so build it on the same or an older release than the computer it's for.
 
 To uninstall it: `tool/install.sh --uninstall`, or `sudo apt remove nightingale-tv`. Your settings in `~/.local/share/com.coffeehauslabs.nightingale_tv` are kept.
 
@@ -240,7 +254,7 @@ Live TV export on a desktop needs that computer to stay on with the app open. Th
 
 Everything is set up in its **web admin**, in a browser on a computer or phone at `http://<server>:8484`: profiles, channels and icons, programming blocks, channel groups, commercials, Live TV sources, servers, export and backups. It works with no internet connection. Each person signs in with their own account: **admins** can do everything, and **users** see only the profiles an admin gives them.
 
-To start, restore a backup from the Nightingale TV app, or start fresh and sign in to your Jellyfin, Emby or Plex server. Setup, settings and updating are in [docker/README.md](docker/README.md). The Linux release archive (`nightingale-tv-linux-x64-<version>.tar.gz`, which includes the web admin) also runs as a server without Docker: start it with `--server`.
+To start, restore a backup from the Nightingale TV app, or start fresh and sign in to your Jellyfin, Emby or Plex server. Setup, settings and updating are in [docker/README.md](docker/README.md). The Linux `.tar.gz` on [Releases](https://github.com/tcaplette/Nightingale-TV/releases) (`nightingale-tv-linux-x64-<version>.tar.gz`, which includes the web admin) also runs as a server without Docker: start it with `./nightingale_tv --server`, or `xvfb-run -a ./nightingale_tv --server` on a machine with no screen.
 
 ## Building from source
 
@@ -296,7 +310,7 @@ tool/install.sh             # build the package and install or update it with ap
 tool/build_deb.sh           # only build dist/nightingale-tv_<version>_amd64.deb
 ```
 
-Windows and macOS builds aren't set up yet.
+macOS builds aren't set up yet.
 
 ## License
 
