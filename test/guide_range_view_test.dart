@@ -146,6 +146,13 @@ void main() {
 
   testWidgets('live guide asks never pass the end of the range', (tester) async {
     await show(tester, hours: 3, live: true);
+    // The lineup comes from the real date, so its programs fall anywhere. The
+    // range ends a minute into one: the window showing that program's start
+    // always reaches past the end, and the ask stops there.
+    final schedule = app.scheduleFor(first())!;
+    final last = schedule.guideProgramAt(now.add(const Duration(hours: 4)));
+    now = last.start.add(const Duration(minutes: 1)).subtract(const Duration(hours: 3));
+    await tester.pump(const Duration(seconds: 6));
     await press(tester, LogicalKeyboardKey.arrowRight, times: 60);
     await tester.pump();
     final end = now.add(const Duration(hours: 3));

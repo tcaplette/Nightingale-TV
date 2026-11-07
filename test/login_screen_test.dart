@@ -11,6 +11,7 @@ import 'package:nightingale_tv/server/media_server.dart';
 import 'package:nightingale_tv/server/plex/plex_account.dart';
 import 'package:nightingale_tv/server/plex/plex_connections.dart';
 import 'package:nightingale_tv/ui/login_screen.dart';
+import 'package:nightingale_tv/ui/widgets/tv_focus.dart';
 
 import 'portrait_harness.dart';
 
@@ -198,6 +199,24 @@ void main() {
     await tick(tester);
     expect(signedIn.single.serverId, 'm1');
     expect(find.text("Who's signing in?"), findsNothing);
+  });
+
+  testWidgets('the Plex code step: Up from Cancel reaches the back button, which goes back a step', (tester) async {
+    await open(tester, account: FakePlexAccount(serverList: [server('Basement', 'm1')], linkAfter: 1000));
+    await tester.tap(find.text('Sign in with Plex'));
+    await tester.pump();
+    await tester.pump();
+    expect(find.text('Cancel'), findsOneWidget);
+    final focused = FocusManager.instance.primaryFocus?.context?.findAncestorWidgetOfExactType<TvButton>();
+    expect(focused?.label, 'Cancel');
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowUp);
+    await tester.pump();
+    await tester.pump();
+    expect(FocusManager.instance.primaryFocus?.debugLabel, 'back button');
+    await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+    await tester.pump();
+    await tester.pump();
+    expect(find.text('Connect to your server'), findsOneWidget);
   });
 
   testWidgets('servers, owned and shared, are listed when there are several', (tester) async {

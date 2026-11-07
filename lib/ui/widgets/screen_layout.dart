@@ -61,6 +61,15 @@ class ScreenLayout {
   static ScreenLayout of(BuildContext context) =>
       context.dependOnInheritedWidgetOfExactType<ScreenLayoutScope>()?.layout ?? tv;
 
+  /// On a phone or tablet in the TV layout, the keyboard leaves too little
+  /// of the canvas for the field being edited: content pinned around the
+  /// lists gives way until it closes. (Upright the canvas has room, and a TV
+  /// keeps its layout.)
+  static bool keyboardTakesRoom(BuildContext context) {
+    final scope = context.dependOnInheritedWidgetOfExactType<ScreenLayoutScope>();
+    return scope != null && scope.keyboardUp && scope.layout.isTv && PlatformInfo.hasTouch;
+  }
+
   @override
   bool operator ==(Object other) => other is ScreenLayout && other.isPortrait == isPortrait && other.canvas == canvas;
 
@@ -70,10 +79,14 @@ class ScreenLayout {
 
 /// Provides the [ScreenLayout] below the canvas.
 class ScreenLayoutScope extends InheritedWidget {
-  const ScreenLayoutScope({super.key, required this.layout, required super.child});
+  const ScreenLayoutScope({super.key, required this.layout, this.keyboardUp = false, required super.child});
 
   final ScreenLayout layout;
 
+  /// The on-screen keyboard is taking room from the canvas.
+  final bool keyboardUp;
+
   @override
-  bool updateShouldNotify(ScreenLayoutScope oldWidget) => layout != oldWidget.layout;
+  bool updateShouldNotify(ScreenLayoutScope oldWidget) =>
+      layout != oldWidget.layout || keyboardUp != oldWidget.keyboardUp;
 }

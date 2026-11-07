@@ -90,6 +90,7 @@ class _TvCanvasState extends State<TvCanvas> {
       child: content,
     );
     var data = media.copyWith(size: size);
+    var keyboardUp = false;
     if (PlatformInfo.isAndroid) {
       // The on-screen keyboard and system insets arrive in screen units;
       // screens lay out on the canvas. Screens sit above the keyboard, so a
@@ -102,6 +103,7 @@ class _TvCanvasState extends State<TvCanvas> {
         viewPadding: media.viewPadding / scale,
         padding: media.padding / scale,
       );
+      keyboardUp = insets.bottom > 0;
       content = Padding(padding: EdgeInsets.only(bottom: insets.bottom), child: content);
     }
     return ColoredBox(
@@ -110,7 +112,7 @@ class _TvCanvasState extends State<TvCanvas> {
         child: FittedBox(
           child: SizedBox.fromSize(
             size: size,
-            child: MediaQuery(data: data, child: ScreenLayoutScope(layout: layout, child: content)),
+            child: MediaQuery(data: data, child: ScreenLayoutScope(layout: layout, keyboardUp: keyboardUp, child: content)),
           ),
         ),
       ),

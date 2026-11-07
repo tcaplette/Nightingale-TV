@@ -51,12 +51,12 @@ void main() {
       expect(find.byIcon(Icons.arrow_back), findsNothing);
     });
 
-    testWidgets('the TV layout is as before: hints, no arrow, 110-unit title bar', (tester) async {
-      runAs(TargetPlatform.android);
+    testWidgets('the TV layout on a TV: hints, the back button, 110-unit title bar', (tester) async {
+      runAs(TargetPlatform.android, television: true);
       setWindow(tester, sideways);
       await showBare(tester, page(() {}));
       expect(find.text('▲▼ Move    OK Edit    ESC Back'), findsOneWidget);
-      expect(find.byIcon(Icons.arrow_back), findsNothing);
+      expect(find.byIcon(Icons.arrow_back), findsOneWidget);
       final scale = TvCanvas.canvasScale(sideways);
       expect(tester.getRect(find.byKey(const Key('body'))).top, closeTo(110 * scale, 0.01));
     });
@@ -210,7 +210,7 @@ void main() {
       await tester.enterText(find.byType(TextField), 'My new name');
       await turn(tester, sideways);
       expect(find.byType(TvTextField), findsOneWidget, reason: 'one editor: the page closed');
-      expect(find.byIcon(Icons.arrow_back), findsNothing);
+      expect(find.byIcon(Icons.arrow_back), findsOneWidget, reason: "the list's page, not the channel's");
       expect(find.text('CHANNEL ${ch.number}'), findsOneWidget, reason: 'that channel is selected');
       expect(find.text('My new name'), findsOneWidget);
       // And back upright: the selected channel opens as its page again.
@@ -228,7 +228,6 @@ void main() {
       await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
       await tester.pump(const Duration(milliseconds: 300));
       expect(find.text('CHANNEL ${h.app.allChannels[1].number}'), findsOneWidget);
-      expect(find.byIcon(Icons.arrow_back), findsNothing);
     });
   });
 }

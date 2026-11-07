@@ -54,9 +54,12 @@ void main() {
     addTearDown(() async {
       tuner.dispose();
       await tester.runAsync(() async {
+        final app = h.app;
         h.leave();
         h.backups!.dispose();
+        // Writes still under way finish before the folder goes.
         await Future<void>.delayed(const Duration(milliseconds: 50));
+        await app?.storage.flush().timeout(const Duration(seconds: 2), onTimeout: () {});
         await dir.delete(recursive: true);
       });
     });
@@ -101,8 +104,12 @@ void main() {
       final again = await openHousehold(dir);
       await again.select(again.profiles.first);
       expect(again.app!.servers.order, ['s2', ServerSet.mainKey]);
+      final reopened = again.app;
       again.leave();
       again.backups!.dispose();
+      // Its writes finish before the folder goes.
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+      await reopened?.storage.flush().timeout(const Duration(seconds: 2), onTimeout: () {});
     });
   });
 

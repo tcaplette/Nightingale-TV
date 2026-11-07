@@ -351,7 +351,8 @@ void main() {
         await showPicker(tester);
         final m = await mouse(tester);
         await hover(tester, m, find.text('Library 0'));
-        await m.moveTo(const Offset(5, 5));
+        // Off to an empty corner of the title bar (the back button is at the other end).
+        await m.moveTo(const Offset(1900, 5));
         expect(libFocused(tester, 0), isTrue);
         await press(tester, LogicalKeyboardKey.arrowRight);
         await press(tester, LogicalKeyboardKey.arrowDown);

@@ -636,21 +636,27 @@ class _LiveChannelPickerScreenState extends State<LiveChannelPickerScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   TvTextField(controller: _search, label: 'Search', hint: 'Channel or group name'),
-                  const SizedBox(height: 14),
-                  Wrap(
-                    spacing: 20,
-                    runSpacing: 12,
-                    crossAxisAlignment: WrapCrossAlignment.center,
-                    children: [
-                      Text('${_checked.length} of $total chosen', style: g.display(32, weight: FontWeight.w800)),
-                      TvButton(
-                        label: _saving ? 'Saving…' : 'Done',
-                        icon: Icons.check,
-                        autofocus: true,
-                        onPressed: _saving ? null : _done,
+                  // Gives way to the results while typing, its state kept.
+                  Offstage(
+                    offstage: ScreenLayout.keyboardTakesRoom(context),
+                    child: Padding(
+                      padding: const EdgeInsets.only(top: 14),
+                      child: Wrap(
+                        spacing: 20,
+                        runSpacing: 12,
+                        crossAxisAlignment: WrapCrossAlignment.center,
+                        children: [
+                          Text('${_checked.length} of $total chosen', style: g.display(32, weight: FontWeight.w800)),
+                          TvButton(
+                            label: _saving ? 'Saving…' : 'Done',
+                            icon: Icons.check,
+                            autofocus: true,
+                            onPressed: _saving ? null : _done,
+                          ),
+                          TvButton(label: 'Cancel', onPressed: () => Navigator.of(context).pop()),
+                        ],
                       ),
-                      TvButton(label: 'Cancel', onPressed: () => Navigator.of(context).pop()),
-                    ],
+                    ),
                   ),
                 ],
               ),

@@ -7,6 +7,7 @@ import android.os.Build
 import android.os.Bundle
 import android.os.Process
 import android.provider.Settings
+import android.view.KeyEvent
 import android.view.WindowManager
 import androidx.annotation.OptIn
 import androidx.media3.common.util.UnstableApi
@@ -80,9 +81,25 @@ class MainActivity : FlutterActivity() {
         }
     }
 
+    private var platformChannel: MethodChannel? = null
+
+    /** An on-screen keyboard holds the D-pad while it's up, and its own caret
+     *  keys go straight to Flutter, past here. So a Left or Right here came
+     *  from the remote and the keyboard is closed, even one that reports no
+     *  inset (text-entry). Sent first: it arrives ahead of the key itself. */
+    override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        if (event.action == KeyEvent.ACTION_DOWN &&
+            (event.keyCode == KeyEvent.KEYCODE_DPAD_LEFT || event.keyCode == KeyEvent.KEYCODE_DPAD_RIGHT)
+        ) {
+            platformChannel?.invokeMethod("dpadArrow", null)
+        }
+        return super.dispatchKeyEvent(event)
+    }
+
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "nightingale_tv/platform")
+            .also { platformChannel = it }
             .setMethodCallHandler { call, result ->
                 when (call.method) {
                     "deviceName" -> result.success(deviceName())

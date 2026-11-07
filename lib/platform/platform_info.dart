@@ -54,9 +54,17 @@ abstract final class PlatformInfo {
   @visibleForTesting
   static set debugTelevision(bool? value) => _television = value;
 
+  /// Counts Left and Right presses from the remote that got past any
+  /// on-screen keyboard, which means it's closed. (The keyboard's own caret
+  /// keys aren't counted.)
+  static final dpadArrows = ValueNotifier<int>(0);
+
   /// Looks up the Android device name and kind once, before anything signs in.
   static Future<void> init() async {
     if (!isAndroid) return;
+    _channel.setMethodCallHandler((call) async {
+      if (call.method == 'dpadArrow') dpadArrows.value++;
+    });
     try {
       final name = (await _channel.invokeMethod<String>('deviceName'))?.trim();
       if (name != null && name.isNotEmpty) _androidName = name;

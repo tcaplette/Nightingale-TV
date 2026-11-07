@@ -197,7 +197,9 @@ void main() {
       await key(tester, LogicalKeyboardKey.arrowRight);
       expect(lit(tester), ['Sleep']);
       await key(tester, LogicalKeyboardKey.arrowRight);
-      expect(lit(tester), ['Sleep'], reason: 'the end of the header');
+      expect(lit(tester), ['Back'], reason: 'the end of the header');
+      await key(tester, LogicalKeyboardKey.arrowLeft);
+      expect(lit(tester), ['Sleep']);
       await key(tester, LogicalKeyboardKey.enter);
       expect(dialog, findsOneWidget);
       // Off, End of this program, 15, 30, 45.

@@ -51,7 +51,11 @@ class AdaptiveColumns extends StatelessWidget {
             child: ListView(controller: controller, padding: mainPadding, children: main),
           ),
         ),
-        SizedBox(width: sideWidth, child: side),
+        // Gives way to the field being edited, its state kept.
+        Offstage(
+          offstage: ScreenLayout.keyboardTakesRoom(context),
+          child: SizedBox(width: sideWidth, child: side),
+        ),
       ],
     );
   }

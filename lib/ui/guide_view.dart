@@ -95,12 +95,13 @@ class _GuideViewState extends State<GuideView> with SingleTickerProviderStateMix
   }
 
   /// The header button with the highlight: 0 is Menu (Up from the tab row
-  /// gets there), 1 Sleep. The pointer moves it too.
+  /// gets there), then Sleep, if it's there, and Back. The pointer moves it
+  /// too.
   int? _headerFocus;
   bool get _menuFocused => _headerFocus != null;
 
   /// The header's buttons, left to right.
-  List<VoidCallback> get _headerButtons => [widget.onMenu, ?widget.onSleep];
+  List<VoidCallback> get _headerButtons => [widget.onMenu, ?widget.onSleep, widget.onClose];
 
   /// The tab row has the keyboard highlight (Up from the first channel gets
   /// there), and the tab whose channels the grid shows.
@@ -400,6 +401,7 @@ class _GuideViewState extends State<GuideView> with SingleTickerProviderStateMix
                       headerFocus: _headerFocus,
                       onMenu: widget.onMenu,
                       onSleep: widget.onSleep,
+                      onBack: widget.onClose,
                       onHover: (i) => setState(() {
                         _headerFocus = i;
                         _tabsFocused = false;
@@ -564,6 +566,7 @@ class _InfoPanel extends StatelessWidget {
     required this.headerFocus,
     required this.onMenu,
     required this.onSleep,
+    required this.onBack,
     required this.onHover,
   });
 
@@ -571,10 +574,12 @@ class _InfoPanel extends StatelessWidget {
   final ScheduledProgram? program;
   final DateTime now;
 
-  /// The highlighted header button: 0 Menu, 1 Sleep.
+  /// The highlighted header button: 0 Menu, then Sleep, if it's there, and
+  /// Back.
   final int? headerFocus;
   final VoidCallback onMenu;
   final VoidCallback? onSleep;
+  final VoidCallback onBack;
   final ValueChanged<int> onHover;
 
   @override
@@ -582,6 +587,7 @@ class _InfoPanel extends StatelessWidget {
     final g = context.guide;
     final ch = channel;
     final p = program;
+    final back = onSleep == null ? 1 : 2;
     return Padding(
       padding: const EdgeInsets.fromLTRB(60, 28, 48, 16),
       child: Column(
@@ -591,17 +597,23 @@ class _InfoPanel extends StatelessWidget {
             children: [
               NightingaleMark(height: 28, color: g.accent),
               const SizedBox(width: 14),
+              // The buttons keep their size whatever the font; the title and
+              // the date share what's left, and shrink to fit it.
               Expanded(
-                child: Text(
-                  'NIGHTINGALE TV GUIDE',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: g.display(30, weight: FontWeight.w800, color: g.accent),
+                flex: 5,
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    'NIGHTINGALE TV GUIDE',
+                    maxLines: 1,
+                    style: g.display(30, weight: FontWeight.w800, color: g.accent),
+                  ),
                 ),
               ),
-              // Room for the header buttons whatever the font (about 240 wide).
-              ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 360),
+              const SizedBox(width: 14),
+              Flexible(
+                flex: 4,
                 child: FittedBox(
                   fit: BoxFit.scaleDown,
                   child: Text(
@@ -626,6 +638,13 @@ class _InfoPanel extends StatelessWidget {
                     onHover: () => onHover(1),
                     onPressed: onSleep!),
               ],
+              const SizedBox(width: 16),
+              TvPointerButton(
+                  label: 'Back',
+                  icon: Icons.arrow_back,
+                  highlighted: headerFocus == back,
+                  onHover: () => onHover(back),
+                  onPressed: onBack),
             ],
           ),
           const SizedBox(height: 10),

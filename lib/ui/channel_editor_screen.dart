@@ -1,5 +1,8 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
+import '../platform/platform_info.dart';
 import '../app_scope.dart';
 import '../app_state.dart';
 import '../channels/schedule.dart';
@@ -32,6 +35,10 @@ class _ChannelEditorScreenState extends State<ChannelEditorScreen> {
   final _name = TextEditingController();
   final _offlineNode = FocusNode(debugLabel: 'offline image');
 
+  /// The channel's settings: the keyboard scrolls them to the name box, and
+  /// a rename scrolls back to the heading showing the result.
+  final _detailScroll = ScrollController();
+
   /// Each row's focus, so a tapped row holds it too: the list comes back to
   /// it, and the side-by-side layout keeps it selected after turning.
   final _rows = <String, FocusNode>{};
@@ -41,6 +48,7 @@ class _ChannelEditorScreenState extends State<ChannelEditorScreen> {
   void dispose() {
     _name.dispose();
     _offlineNode.dispose();
+    _detailScroll.dispose();
     for (final node in _rows.values) {
       node.dispose();
     }
@@ -191,38 +199,45 @@ class _ChannelEditorScreenState extends State<ChannelEditorScreen> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           if (!portrait)
-            FocusTraversalGroup(
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(80, 24, 100, 0),
-                child: Column(
-                  children: [
-                    Row(
+            // Gives way to the field being edited, its state kept.
+            Offstage(
+              offstage: ScreenLayout.keyboardTakesRoom(context),
+              child: ExcludeFocus(
+                excluding: ScreenLayout.keyboardTakesRoom(context),
+                child: FocusTraversalGroup(
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(80, 24, 100, 0),
+                    child: Column(
                       children: [
-                        // One label width, so both rows' toggles line up.
-                        SizedBox(
-                          width: 250,
-                          child: Text('CHANNEL LOGO', style: g.display(24, weight: FontWeight.w800, color: g.accent)),
+                        Row(
+                          children: [
+                            // One label width, so both rows' toggles line up.
+                            SizedBox(
+                              width: 250,
+                              child: Text('CHANNEL LOGO', style: g.display(24, weight: FontWeight.w800, color: g.accent)),
+                            ),
+                            for (final toggle in logoModes) ...[toggle, const SizedBox(width: 16)],
+                            Expanded(
+                              child: Text(logoHelp, maxLines: 2, overflow: TextOverflow.ellipsis, style: g.body(22, color: g.textDim)),
+                            ),
+                          ],
                         ),
-                        for (final toggle in logoModes) ...[toggle, const SizedBox(width: 16)],
-                        Expanded(
-                          child: Text(logoHelp, maxLines: 2, overflow: TextOverflow.ellipsis, style: g.body(22, color: g.textDim)),
+                        const SizedBox(height: 16),
+                        Row(
+                          children: [
+                            SizedBox(
+                              width: 250,
+                              child: Text('GUIDE RANGE', style: g.display(24, weight: FontWeight.w800, color: g.accent)),
+                            ),
+                            for (final toggle in guideRanges) ...[toggle, const SizedBox(width: 16)],
+                            Expanded(
+                              child: Text(rangeHelp, maxLines: 2, overflow: TextOverflow.ellipsis, style: g.body(22, color: g.textDim)),
+                            ),
+                          ],
                         ),
                       ],
                     ),
-                    const SizedBox(height: 16),
-                    Row(
-                      children: [
-                        SizedBox(
-                          width: 250,
-                          child: Text('GUIDE RANGE', style: g.display(24, weight: FontWeight.w800, color: g.accent)),
-                        ),
-                        for (final toggle in guideRanges) ...[toggle, const SizedBox(width: 16)],
-                        Expanded(
-                          child: Text(rangeHelp, maxLines: 2, overflow: TextOverflow.ellipsis, style: g.body(22, color: g.textDim)),
-                        ),
-                      ],
-                    ),
-                  ],
+                  ),
                 ),
               ),
             ),
@@ -266,6 +281,7 @@ class _ChannelEditorScreenState extends State<ChannelEditorScreen> {
     final portrait = ScreenLayout.of(context).isPortrait;
 
     return ListView(
+      controller: _detailScroll,
       padding: ScreenLayout.of(context).pagePadding(const EdgeInsets.fromLTRB(40, 32, 100, 32)),
       children: [
         Row(
@@ -669,6 +685,16 @@ class _ChannelEditorScreenState extends State<ChannelEditorScreen> {
   }
 
   Future<void> _saveName(Channel ch) async {
+    if (PlatformInfo.hasTouch) {
+      for (final position in _detailScroll.positions) {
+        unawaited(position.animateTo(0, duration: const Duration(milliseconds: 150), curve: Curves.easeOut));
+      }
+    }
+    // A blank name isn't saved: the box goes back to the one that stands.
+    if (_name.text.trim().isEmpty) {
+      _name.text = ch.name;
+      return;
+    }
     await AppScope.read(context).updateChannel(ch, name: _name.text);
   }
 

@@ -234,7 +234,7 @@ class _LoginScreenState extends State<LoginScreen> {
   /// Each step is its own focus scope, so its autofocus takes focus even
   /// when the step changes on its own (a code linked on a phone) and the
   /// focused button goes with the old step.
-  Widget _formColumn(GuideTheme g) => FocusScope(
+  Widget _formColumn(GuideTheme g) => _StepScope(
         key: ValueKey(_s.stage),
         child: FocusTraversalGroup(
           child: Column(
@@ -484,6 +484,36 @@ class _LoginScreenState extends State<LoginScreen> {
         ];
     }
   }
+}
+
+/// One sign-in step's focus scope. The arrow keys can leave it for the back
+/// button above it.
+class _StepScope extends StatefulWidget {
+  const _StepScope({super.key, required this.child});
+
+  final Widget child;
+
+  @override
+  State<_StepScope> createState() => _StepScopeState();
+}
+
+class _StepScopeState extends State<_StepScope> {
+  final _node = FocusScopeNode(
+    debugLabel: 'sign-in step',
+    directionalTraversalEdgeBehavior: TraversalEdgeBehavior.parentScope,
+    // Only its controls are stops: Up from one low in the step would otherwise
+    // land on the step itself, and so back on that control.
+    skipTraversal: true,
+  );
+
+  @override
+  void dispose() {
+    _node.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => FocusScope(node: _node, child: widget.child);
 }
 
 class _UserTile extends StatelessWidget {
