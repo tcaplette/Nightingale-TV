@@ -1,13 +1,17 @@
 import 'dart:async';
 import 'dart:collection';
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
 import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
 
+import '../server/languages.dart';
 import 'exo_tuner_player.dart';
 import 'playback_diagnostics.dart';
+import 'subtitles.dart';
 
 /// Volume leveling (volume-leveling spec, design D1) as an FFmpeg filter
 /// graph: a slow RMS compressor with linked channels (threshold -40 dBFS,
@@ -57,8 +61,14 @@ abstract class TunerPlayer implements PlayerReadings {
   /// [start]; else at the keyframe before it, which shows a picture sooner.
   /// [live]: an endless live stream (live-playback D9): no start or end,
   /// played from the live point, interlaced video deinterlaced on desktop.
+  /// [subtitles]: what it shows as subtitles (see [setSubtitles]).
   Future<void> open(Uri url,
-      {required Map<String, String> headers, Duration? start, Duration? end, bool exact = true, bool live = false});
+      {required Map<String, String> headers,
+      Duration? start,
+      Duration? end,
+      bool exact = true,
+      bool live = false,
+      SubtitleChoice? subtitles});
   Future<void> stop();
 
   /// Holds the picture and silences the sound (timeshift); [resume] goes on
@@ -70,7 +80,10 @@ abstract class TunerPlayer implements PlayerReadings {
   /// own timeline, staying paused if it is. The item's end still stops it.
   Future<void> seek(Duration position);
 
-  Future<void> showCaptions(bool on);
+  /// What the item playing shows as subtitles (subtitles spec): a track
+  /// inside it, a text track loaded beside it, a live stream's own
+  /// captions, or none (null). Setting the choice it has changes nothing.
+  Future<void> setSubtitles(SubtitleChoice? choice);
   Future<void> dispose();
 
   /// The video, fitted in the space by [fit] with black around it, with the
@@ -88,10 +101,11 @@ abstract class TunerPlayer implements PlayerReadings {
   // ---- The next segment (segment-handover spec) -------------------------------
 
   /// Queues the segment after the one playing: [url] from exactly [start],
-  /// stopping at [end]. The player buffers it while the item playing plays
-  /// on, and moves on to it at that item's end. It replaces anything queued
-  /// before; [open] and [stop] drop it.
-  Future<void> enqueue(Uri url, {required Map<String, String> headers, Duration? start, Duration? end});
+  /// stopping at [end], showing [subtitles]. The player buffers it while
+  /// the item playing plays on, and moves on to it at that item's end. It
+  /// replaces anything queued before; [open] and [stop] drop it.
+  Future<void> enqueue(Uri url,
+      {required Map<String, String> headers, Duration? start, Duration? end, SubtitleChoice? subtitles});
 
   /// Moves on to the queued item now (the schedule's hand-over came first).
   /// True when the player is on it, moved now or by itself since it was
@@ -165,8 +179,6 @@ class MediaKitTunerPlayer implements TunerPlayer {
   /// Stops the deck that went off screen, once the new one is painted.
   Timer? _stopOffAir;
 
-  bool _captions = false;
-
   /// Volume leveling is on (design D2): on every deck, including decks made
   /// later.
   bool _leveling = false;
@@ -227,8 +239,10 @@ class MediaKitTunerPlayer implements TunerPlayer {
         _noteTick(v);
         _position.add(v);
       }),
+      // mpv picks subtitle tracks by itself on every new file (those flagged
+      // default): the choice goes back on once its tracks are listed.
       s.tracks.listen((_) {
-        unawaited(_applyCaptions(deck));
+        unawaited(_applySubtitles(deck));
         if (onAir()) _tracks.add(null);
       }),
       s.completed.listen((done) {
@@ -318,12 +332,14 @@ class MediaKitTunerPlayer implements TunerPlayer {
       Duration? start,
       Duration? end,
       bool exact = true,
-      bool live = false}) async {
+      bool live = false,
+      SubtitleChoice? subtitles}) async {
     await _dropQueue();
     _moved = false;
     _lastTick = null;
     await _onAir.setExact(exact);
     final fields = await _onAir.setLive(live, headers);
+    _onAir.newFile(subtitles);
     await _onAir.player.open(Media(url.toString(), httpHeaders: fields, start: live ? null : start, end: live ? null : end));
   }
 
@@ -356,7 +372,8 @@ class MediaKitTunerPlayer implements TunerPlayer {
   }
 
   @override
-  Future<void> enqueue(Uri url, {required Map<String, String> headers, Duration? start, Duration? end}) async {
+  Future<void> enqueue(Uri url,
+      {required Map<String, String> headers, Duration? start, Duration? end, SubtitleChoice? subtitles}) async {
     _stopOffAir?.cancel();
     _stopOffAir = null;
     var spare = _spare;
@@ -367,6 +384,7 @@ class MediaKitTunerPlayer implements TunerPlayer {
     _queued = true;
     _moved = false;
     await spare.setExact(true);
+    spare.newFile(subtitles);
     // Paused: it loads and shows its first picture, under the deck on air.
     await spare.player.open(Media(url.toString(), httpHeaders: headers, start: start, end: end), play: false);
   }
@@ -447,16 +465,86 @@ class MediaKitTunerPlayer implements TunerPlayer {
   @visibleForTesting
   List<Player> get debugDecks => [_onAir.player, ?_spare?.player];
 
-  /// mpv auto-selects "default" subtitle tracks on every new file.
   @override
-  Future<void> showCaptions(bool on) async {
-    _captions = on;
-    await _applyCaptions(_onAir);
+  Future<void> setSubtitles(SubtitleChoice? choice) async {
+    _onAir.subtitles = choice;
+    await _applySubtitles(_onAir);
   }
 
-  Future<void> _applyCaptions(_Deck deck) async {
-    final wanted = _captions ? SubtitleTrack.auto() : SubtitleTrack.no();
-    if (deck.player.state.track.subtitle != wanted) await deck.player.setSubtitleTrack(wanted);
+  /// Gets the text of a side-loaded track (tests replace it).
+  @visibleForTesting
+  static Future<String> Function(Uri uri, Map<String, String> headers) fetchSubtitle = _fetchSubtitle;
+
+  static Future<String> _fetchSubtitle(Uri uri, Map<String, String> headers) async {
+    // Diagnostics builds log it with the servers' other requests.
+    final client = PlaybackDiagnostics.enabled ? DiagnosticHttpClient(http.Client()) : http.Client();
+    try {
+      final response = await client.get(uri, headers: headers).timeout(const Duration(seconds: 30));
+      if (response.statusCode >= 400) throw HttpException('subtitles: HTTP ${response.statusCode}', uri: uri);
+      return utf8.decode(response.bodyBytes, allowMalformed: true);
+    } finally {
+      client.close();
+    }
+  }
+
+  /// The texts fetched last, by URL: setting a track again (a re-open, a
+  /// hand-over) doesn't fetch it again.
+  final _subtitleTexts = <Uri, String>{};
+
+  Future<String> _subtitleText(SideLoadedSubtitle s) async {
+    final cached = _subtitleTexts.remove(s.uri);
+    final text = cached ?? await fetchSubtitle(s.uri, s.headers);
+    _subtitleTexts[s.uri] = text;
+    while (_subtitleTexts.length > 4) {
+      _subtitleTexts.remove(_subtitleTexts.keys.first);
+    }
+    return text;
+  }
+
+  /// Puts [deck]'s choice on, one change at a time.
+  Future<void> _applySubtitles(_Deck deck) {
+    final work = deck.subtitleWork.then((_) => _applySubtitlesNow(deck)).catchError((Object e) {
+      _log.add('warn subtitles: ${deck.subtitles} not shown: $e');
+    });
+    deck.subtitleWork = work;
+    return work;
+  }
+
+  Future<void> _applySubtitlesNow(_Deck deck) async {
+    final want = deck.subtitles;
+    final player = deck.player;
+    final sid = await deck.property('sid');
+    switch (want) {
+      case null:
+        if (sid != 'no' && sid != '') await player.setSubtitleTrack(SubtitleTrack.no());
+      case StreamCaptions():
+        if (player.state.track.subtitle != SubtitleTrack.auto()) await player.setSubtitleTrack(SubtitleTrack.auto());
+      case EmbeddedSubtitle(:final position, :final language):
+        final tracks = await deck.subtitleTracks();
+        final inFile = [for (final t in tracks) if (!t.external) t];
+        // Listed in the file's order; a list that disagrees with the
+        // server's on the language is matched by language instead.
+        var pick = position < inFile.length ? inFile[position] : null;
+        if (language != null && pick != null && pick.language != null && pick.language != language) {
+          pick = inFile.where((t) => t.language == language).firstOrNull ?? pick;
+        }
+        // Not listed yet: the tracks' arrival puts it on.
+        if (pick == null) return;
+        if (sid != '${pick.id}') await player.setSubtitleTrack(SubtitleTrack('${pick.id}', null, null));
+      case final SideLoadedSubtitle side:
+        if (deck.sideLoaded == side && deck.sideLoadedId != null) {
+          if (sid != deck.sideLoadedId) await player.setSubtitleTrack(SubtitleTrack(deck.sideLoadedId!, null, null));
+          return;
+        }
+        // Only a loaded file takes a subtitle file: its tracks' arrival
+        // puts it on.
+        if ((await deck.subtitleTracks(any: true)).isEmpty) return;
+        final text = await _subtitleText(side);
+        if (deck.subtitles != side) return;
+        deck.sideLoaded = side;
+        await player.setSubtitleTrack(SubtitleTrack.data(text, title: side.label, language: side.language));
+        deck.sideLoadedId = await deck.property('sid');
+    }
   }
 
   @override
@@ -633,6 +721,39 @@ class _Deck {
 
   /// The `af` property as last set ("" for none).
   String af = '';
+
+  /// What the file opened last shows as subtitles, and the subtitle file
+  /// loaded beside it (with its mpv track id).
+  SubtitleChoice? subtitles;
+  SideLoadedSubtitle? sideLoaded;
+  String? sideLoadedId;
+  Future<void> subtitleWork = Future.value();
+
+  /// A new file opens, showing [choice].
+  void newFile(SubtitleChoice? choice) {
+    subtitles = choice;
+    sideLoaded = null;
+    sideLoadedId = null;
+  }
+
+  /// The subtitle tracks mpv lists for the file (only those of a track type
+  /// `sub`; with [any], tracks of every type).
+  Future<List<({int id, bool external, String? language})>> subtitleTracks({bool any = false}) async {
+    final raw = await property('track-list');
+    if (raw.isEmpty) return const [];
+    final Object? list;
+    try {
+      list = jsonDecode(raw);
+    } on FormatException {
+      return const [];
+    }
+    if (list is! List) return const [];
+    return [
+      for (final t in list.whereType<Map<String, Object?>>())
+        if ((any || t['type'] == 'sub') && t['id'] is num)
+          (id: (t['id'] as num).toInt(), external: t['external'] == true, language: normalizeLanguage(t['lang'] as String?)),
+    ];
+  }
 
   /// [exact]: mpv's own default (precise for a start position); else
   /// keyframes.

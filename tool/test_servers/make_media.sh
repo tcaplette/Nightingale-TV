@@ -2,7 +2,10 @@
 # Generates the test library the Docker Emby and Plex servers share:
 #   3 shows x 2 seasons x 4 episodes (6-8 min, chaptered, with black and
 #   silent act breaks), one show each in H.264/AAC, HEVC Main10/AC-3 and
-#   H.264/DTS; 2 movies; a Commercials folder of 40 clips and a chaptered
+#   H.264/DTS; 2 movies; 4 subtitle test movies (two embedded tracks neither
+#   flagged default, one embedded default track, an external .en.srt sidecar
+#   only, and HEVC Main10 with an embedded default track), every cue naming
+#   its track and time; a Commercials folder of 40 clips and a chaptered
 #   reel; 30 tagged songs; 6 music videos.
 # Output goes to $NIGHTINGALE_TEST_MEDIA (default ~/.cache/nightingale-test-media).
 # Re-running skips files that already exist.
@@ -98,6 +101,63 @@ fi
 # --- Movies ---------------------------------------------------------------
 spawn video "$OUT/Movies/The Long Hallway (1984)/The Long Hallway (1984).mp4" 900 "The Long Hallway" "$H264" "$AAC" 300 600
 spawn video "$OUT/Movies/Copper Moon (1991)/Copper Moon (1991).mkv" 840 "Copper Moon" "$HEVC10" "$AC3" 280 560
+
+# --- Subtitle movies ------------------------------------------------------
+# srt <file> <seconds> <track name>: a cue every 5 s reading "<TRACK> <n>s",
+# so a screenshot shows which track is on screen and where.
+srt() {
+  local file="$1" secs="$2" name="$3" t n=1
+  : > "$file"
+  for ((t = 0; t < secs; t += 5)); do
+    printf '%d\n%02d:%02d:%02d,000 --> %02d:%02d:%02d,000\n%s %ds\n\n' $n \
+      $((t / 3600)) $((t / 60 % 60)) $((t % 60)) $(((t + 5) / 3600)) $(((t + 5) / 60 % 60)) $(((t + 5) % 60)) \
+      "$name" "$t" >> "$file"
+    n=$((n + 1))
+  done
+}
+
+# subbed <out.mkv> <seconds> <label> <video args> <dispositions> <track:lang>...
+# A test movie with embedded SRT tracks. The dispositions (for example
+# "0 0" or "default") apply to the subtitle tracks in order; passthrough
+# keeps the muxer from flagging the first track default on its own.
+subbed() {
+  local out="$1" secs="$2" label="$3" vargs="$4" disp="$5"; shift 5
+  [[ -s "$out" ]] && return 0
+  local base="$TMP/$(basename "$out" .mkv).base.mkv"
+  video "$base" "$secs" "$label" "$vargs" "$AAC"
+  local inputs=() maps=() meta=() i=0
+  for spec in "$@"; do
+    local name="${spec%%:*}" lang="${spec##*:}" f="$TMP/$(basename "$out" .mkv).$i.srt"
+    srt "$f" "$secs" "$name"
+    inputs+=(-i "$f"); maps+=(-map $((i + 1)):0)
+    meta+=("-metadata:s:s:$i" "language=$lang")
+    i=$((i + 1))
+  done
+  local d=() j=0
+  for flag in $disp; do d+=("-disposition:s:$j" "$flag"); j=$((j + 1)); done
+  mkdir -p "$(dirname "$out")"
+  local tmp="${out%.mkv}.part.mkv"
+  ffmpeg -hide_banner -loglevel error -y -i "$base" "${inputs[@]}" -map 0:v -map 0:a "${maps[@]}" \
+    -c copy -c:s srt "${meta[@]}" "${d[@]}" -default_mode passthrough "$tmp"
+  mv "$tmp" "$out"
+  rm -f "$base"
+}
+
+SUB_SECS=600
+H264_SUB="-c:v libx264 -preset veryfast -b:v 1M -maxrate 1M -bufsize 2M -x264-params keyint=60 -pix_fmt yuv420p"
+HEVC10_SUB="-c:v libx265 -preset ultrafast -b:v 1M -pix_fmt yuv420p10le -profile:v main10 -x265-params log-level=error:keyint=60"
+sub="$OUT/Movies/Sub Test"
+spawn subbed "$sub Embedded (2026)/Sub Test Embedded (2026).mkv" $SUB_SECS "Sub Test Embedded" "$H264_SUB" "0 0" \
+  "EMBEDDED ENGLISH:eng" "EMBEDDED SPANISH:spa"
+spawn subbed "$sub Default (2026)/Sub Test Default (2026).mkv" $SUB_SECS "Sub Test Default" "$H264_SUB" "default" \
+  "EMBEDDED DEFAULT:eng"
+spawn subbed "$sub Transcode (2026)/Sub Test Transcode (2026).mkv" $SUB_SECS "Sub Test Transcode" "$HEVC10_SUB" "default" \
+  "EMBEDDED TRANSCODE:eng"
+ext="$sub External (2026)/Sub Test External (2026)"
+spawn subbed "$ext.mkv" $SUB_SECS "Sub Test External" "$H264_SUB" ""
+[[ -s "$ext.en.srt" ]] || { mkdir -p "$(dirname "$ext")"; srt "$ext.en.srt" $SUB_SECS "EXTERNAL SIDECAR"; }
+wait
+running=0
 
 # --- Commercials ----------------------------------------------------------
 brands=(Fizzo Crunchos Glimmer Zapp Toastee Brightway Kool Snappers Wavelength Mellow

@@ -7,6 +7,7 @@ import 'package:nightingale_tv/app_scope.dart';
 import 'package:nightingale_tv/app_state.dart';
 import 'package:nightingale_tv/platform/platform_info.dart';
 import 'package:nightingale_tv/playback/tuner.dart';
+import 'package:nightingale_tv/server/media_server.dart';
 import 'package:nightingale_tv/theme/tv_theme.dart';
 import 'package:nightingale_tv/ui/playback_screen.dart';
 import 'package:nightingale_tv/ui/widgets/tv_focus.dart';
@@ -38,6 +39,12 @@ void main() {
     await tester.pumpAndSettle();
     addTearDown(() async {
       tuner.dispose();
+      // A toggle's save may still be on its way: its file work runs for
+      // real, its steps between in the test's zone.
+      for (var i = 0; i < 5; i++) {
+        await tester.pump();
+        await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 20)));
+      }
       await tester.runAsync(() async {
         await app.close();
         await dir.delete(recursive: true);
@@ -255,5 +262,66 @@ void main() {
     await tester.runAsync(tuner.stop);
     await tester.pumpWidget(const SizedBox());
     await tester.pump(const Duration(minutes: 10));
+  });
+
+  String reportsLabel() => PlaybackScreen.reportsLabel([for (final s in app.servers.ordered) s.name]);
+
+  testWidgets('watch status: shown after Pause and rewind under WATCHING, on by default, named for the server, '
+      'with help text', (tester) async {
+    await show(tester, PlaybackSettings.off);
+    final label = reportsLabel();
+    expect(label, 'Update watch status on ${app.servers.main.name}');
+    final toggle = tester.widget<TvToggle>(find.widgetWithText(TvToggle, label));
+    expect(toggle.on, isTrue);
+    expect(find.text(PlaybackScreen.reportsHelp), findsOneWidget);
+    expect(tester.getTopLeft(find.text(PlaybackScreen.rewindLabel)).dy, lessThan(tester.getTopLeft(find.text(label)).dy));
+  });
+
+  test('watch status: Plex and Emby say Live TV still shows on the dashboard', () {
+    expect(PlaybackScreen.reportsHelpText([ServerKind.jellyfin]), PlaybackScreen.reportsHelp);
+    for (final kinds in [
+      [ServerKind.plex],
+      [ServerKind.emby],
+      [ServerKind.jellyfin, ServerKind.plex],
+    ]) {
+      expect(PlaybackScreen.reportsHelpText(kinds), '${PlaybackScreen.reportsHelp} ${PlaybackScreen.reportsLiveHelp}',
+          reason: '$kinds');
+    }
+  });
+
+  test('watch status: the label names one server, or all of them', () {
+    expect(PlaybackScreen.reportsLabel(['Den']), 'Update watch status on Den');
+    expect(PlaybackScreen.reportsLabel(['Den', 'Plex']), 'Update watch status on your servers');
+    expect(PlaybackScreen.reportsLabel([]), 'Update watch status on your server');
+  });
+
+  for (final transcode in [false, true]) {
+    testWidgets('watch status: the D-pad reaches it and OK saves it, with no re-tune or decisions cleared '
+        '(converting ${transcode ? 'on' : 'off'})', (tester) async {
+      await show(tester, PlaybackSettings.off.copyWith(transcodeIfNeeded: transcode));
+      app.saveDecision('src1', null, null, directStream: true);
+      final label = reportsLabel();
+      for (var i = 0; i < 20 && focusedLabel() != label; i++) {
+        await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+        await tester.pumpAndSettle();
+      }
+      expect(focusedLabel(), label, reason: 'transcode $transcode');
+      await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+      await tester.pumpAndSettle();
+      expect(app.settings.playback, PlaybackSettings(transcodeIfNeeded: transcode, reportPlayback: false));
+      expect(tester.widget<TvToggle>(find.widgetWithText(TvToggle, label)).on, isFalse);
+      expect(app.savedDecision('src1', null), isNotNull, reason: 'it changes no playback decision');
+      expect(player.opens, isEmpty, reason: 'no re-tune');
+      await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+      await tester.pumpAndSettle();
+      expect(app.settings.playback.reportPlayback, isTrue);
+    });
+  }
+
+  testWidgets('watch status: a tap saves it', (tester) async {
+    await show(tester, PlaybackSettings.off);
+    await tester.tap(find.text(reportsLabel()));
+    await tester.pumpAndSettle();
+    expect(app.settings.playback, const PlaybackSettings(reportPlayback: false));
   });
 }

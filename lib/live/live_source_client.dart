@@ -51,6 +51,13 @@ abstract interface class LiveSourceClient {
   Future<void> reportStart(LiveStream stream);
   Future<void> reportProgress(LiveStream stream, Duration position);
   Future<void> reportStopped(LiveStream stream, Duration position);
+
+  /// Keeps [stream] open without reporting it (reports off).
+  Future<void> keepAlive(LiveStream stream);
+
+  /// Its reports are needed to keep a stream open, so they're sent with
+  /// "Update watch status" off too (see [LiveTv.needsReports]).
+  bool get needsReports;
 }
 
 /// The profile's server's Live TV.
@@ -111,6 +118,10 @@ class ServerLiveSource implements LiveSourceClient {
   Future<void> reportProgress(LiveStream stream, Duration position) => tv.reportProgress(stream, position);
   @override
   Future<void> reportStopped(LiveStream stream, Duration position) => tv.reportStopped(stream, position);
+  @override
+  Future<void> keepAlive(LiveStream stream) => tv.keepAlive(stream);
+  @override
+  bool get needsReports => tv.needsReports;
 }
 
 /// An M3U playlist with an XMLTV guide.
@@ -245,4 +256,8 @@ class M3uSource implements LiveSourceClient {
   Future<void> reportProgress(LiveStream stream, Duration position) async {}
   @override
   Future<void> reportStopped(LiveStream stream, Duration position) async {}
+  @override
+  Future<void> keepAlive(LiveStream stream) async {}
+  @override
+  bool get needsReports => false;
 }

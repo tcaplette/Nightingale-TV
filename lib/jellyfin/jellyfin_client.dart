@@ -8,6 +8,7 @@ import '../app_version.dart';
 import '../commercials/commercial_pool.dart';
 import '../library/library_index.dart';
 import '../playback/playback_diagnostics.dart';
+import '../server/languages.dart';
 import '../server/live_tv.dart';
 import '../server/media_server.dart';
 import 'jellyfin_live_tv.dart';
@@ -612,15 +613,68 @@ class JellyfinClient implements MediaServer {
   static const _tokenParams = {'apikey', 'api_key'};
 
   /// One transcode job's URL: [template] (see [transcodeTemplate]) joined at
-  /// [startAt], under its own [playSessionId].
+  /// [startAt], under its own [playSessionId]. [burn]: the subtitle stream
+  /// drawn into the picture (`SubtitleStreamIndex` with the Encode method;
+  /// the server then re-encodes the video).
   @override
-  Future<Uri> transcodeUri(Uri template, {required String playSessionId, required Duration startAt}) async =>
+  Future<Uri> transcodeUri(Uri template,
+          {required String playSessionId, required Duration startAt, SubtitleTrack? burn}) async =>
       template.replace(queryParameters: {
         for (final e in template.queryParameters.entries)
-          if (e.key.toLowerCase() != 'starttimeticks' && e.key.toLowerCase() != 'playsessionid') e.key: e.value,
+          if (!_jobParams.contains(e.key.toLowerCase())) e.key: e.value,
         'PlaySessionId': playSessionId,
         'StartTimeTicks': '${startAt.inMicroseconds * 10}',
+        if (burn != null) ...{'SubtitleStreamIndex': burn.id, 'SubtitleMethod': 'Encode'},
       });
+
+  static const _jobParams = {'starttimeticks', 'playsessionid', 'subtitlestreamindex', 'subtitlemethod'};
+
+  /// The item's subtitle streams, from its own listing (not `PlaybackInfo`,
+  /// which the direct-play path never asks).
+  @override
+  Future<List<SubtitleTrack>> subtitleTracks(String itemId) async =>
+      parseSubtitleTracks(await getMap('/Users/$userId/Items/$itemId', {'Fields': 'MediaStreams,MediaSources'}));
+
+  /// [item]'s subtitle streams (its first media source's), external ones
+  /// as such, embedded ones numbered in the file's order.
+  @visibleForTesting
+  static List<SubtitleTrack> parseSubtitleTracks(Map<String, Object?> item) {
+    final source = (item['MediaSources'] as List? ?? const []).cast<Map<String, Object?>>().firstOrNull;
+    final streams = ((source?['MediaStreams'] ?? item['MediaStreams']) as List? ?? const [])
+        .cast<Map<String, Object?>>()
+        .where((m) => m['Type'] == 'Subtitle' && m['Index'] is num)
+        .toList();
+    final embedded = [for (final m in streams) if (m['IsExternal'] != true) m]
+      ..sort((a, b) => (a['Index'] as num).compareTo(b['Index'] as num));
+    return [
+      for (final m in streams)
+        if ('${m['Codec'] ?? ''}'.toLowerCase() case final codec)
+          SubtitleTrack(
+            id: '${(m['Index'] as num).toInt()}',
+            codec: codec,
+            language: normalizeLanguage(m['Language'] as String?),
+            title: switch ((m['Title'] as String?)?.trim()) { final t? when t.isNotEmpty => t, _ => null },
+            isDefault: m['IsDefault'] == true,
+            isForced: m['IsForced'] == true,
+            isExternal: m['IsExternal'] == true,
+            position: m['IsExternal'] == true ? null : embedded.indexOf(m),
+            source: source?['Id'] as String?,
+            burnsWhenConverting: SubtitleTrack.isImageCodec(codec),
+          ),
+    ];
+  }
+
+  /// The server's subtitle stream for [track]. Joined after the start, it's
+  /// asked as WebVTT: Jellyfin hands a track in its own format out as it is,
+  /// without moving its cues to the join.
+  @override
+  Uri? subtitleUri(String itemId, SubtitleTrack track, {Duration startAt = Duration.zero, String? format}) {
+    if (track.isImage) return null;
+    final ticks = startAt.inMicroseconds * 10;
+    final fmt = ticks > 0 ? 'vtt' : (format ?? track.textFormat);
+    final source = track.source ?? mediaSourceIdOf(itemId) ?? itemId;
+    return uri('/Videos/$itemId/$source/Subtitles/${track.id}/$ticks/Stream.$fmt');
+  }
 
   @override
   bool get transcodeKeepsSourceTime => false;
@@ -628,6 +682,23 @@ class JellyfinClient implements MediaServer {
   @override
   Future<void> stopTranscode(String playSessionId) => send('DELETE', '/Videos/ActiveEncodings',
       query: {'deviceId': deviceId, 'playSessionId': playSessionId});
+
+  /// The sessions ping: keeps the job's encoding alive and records no user
+  /// data (Jellyfin and Emby).
+  @override
+  Future<void> keepTranscodeAlive(String playSessionId) =>
+      send('POST', '/Sessions/Playing/Ping', query: {'playSessionId': playSessionId});
+
+  @override
+  Future<Duration> resumePoint(String itemId) async =>
+      parseResumePoint(await getMap('/Users/$userId/Items/$itemId', {'Fields': 'UserData'}));
+
+  /// [item]'s `UserData.PlaybackPositionTicks` (100 ns ticks); zero without.
+  @visibleForTesting
+  static Duration parseResumePoint(Map<String, Object?> item) => switch (item['UserData']) {
+        {'PlaybackPositionTicks': final num ticks} when ticks > 0 => Duration(microseconds: ticks ~/ 10),
+        _ => Duration.zero,
+      };
 
   @override
   Uri imageUri(String itemId, ImageKind kind, {int? maxHeight, String? tag}) =>

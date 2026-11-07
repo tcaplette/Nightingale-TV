@@ -54,6 +54,10 @@ const watchedShare = 0.9;
 
 /// The position to report when a viewing of [program] stops, having got
 /// to [reached]: where it got to when it was watched to the end (or nearly),
-/// otherwise 0, so channel surfing doesn't fill "Continue Watching".
-Duration stoppedPosition(MediaEntry program, Duration reached) =>
-    reached.inMilliseconds >= program.runtime.inMilliseconds * watchedShare ? reached : Duration.zero;
+/// otherwise the item's resume point from before the viewing ([resumePoint],
+/// 0 for none), so channel surfing neither fills "Continue Watching" nor
+/// wipes a resume point made elsewhere (play-reporting). [cut]: Truncate
+/// ended it at its slot's end, so it never counts as watched.
+Duration stoppedPosition(MediaEntry program, Duration reached,
+        {Duration resumePoint = Duration.zero, bool cut = false}) =>
+    !cut && reached.inMilliseconds >= program.runtime.inMilliseconds * watchedShare ? reached : resumePoint;

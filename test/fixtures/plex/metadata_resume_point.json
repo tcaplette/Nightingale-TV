@@ -1,0 +1,17 @@
+{
+  "MediaContainer": {
+    "size": 1,
+    "Metadata": [
+      {
+        "ratingKey": "129",
+        "key": "/library/metadata/129",
+        "type": "movie",
+        "title": "Sub Test Embedded (2026)",
+        "duration": 600053,
+        "viewOffset": 300100,
+        "lastViewedAt": 1794046313,
+        "addedAt": 1794041519
+      }
+    ]
+  }
+}

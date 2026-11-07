@@ -135,4 +135,15 @@ abstract interface class LiveTv {
   Future<void> reportStart(LiveStream stream);
   Future<void> reportProgress(LiveStream stream, Duration position);
   Future<void> reportStopped(LiveStream stream, Duration position);
+
+  /// Keeps [stream] open on the server without a playback report, in
+  /// place of the progress reports while "Update watch status" is off
+  /// (play-reporting).
+  Future<void> keepAlive(LiveStream stream);
+
+  /// The server ends a live stream that gets no progress reports, so it
+  /// keeps them with "Update watch status" off (play-reporting D4): Plex
+  /// ends the tuned session within 3 minutes, and Emby's can't be checked
+  /// without Emby Premiere. Jellyfin holds it on [keepAlive] alone.
+  bool get needsReports;
 }

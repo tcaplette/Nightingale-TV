@@ -13,6 +13,7 @@ import '../live/live_source.dart';
 import '../live/live_source_client.dart';
 import '../live/url_privacy.dart';
 import '../platform/platform_info.dart';
+import '../server/languages.dart';
 import '../server/live_tv.dart';
 import '../server/server_set.dart';
 import 'android_device_profile.dart';
@@ -20,6 +21,7 @@ import 'index_cache.dart';
 import 'playback_diagnostics.dart';
 import 'playback_proxy.dart';
 import 'report_plan.dart';
+import 'subtitles.dart';
 import 'tuner_player.dart';
 import '../server/media_server.dart';
 
@@ -56,9 +58,6 @@ class Tuner extends ChangeNotifier {
       // Tuned in once the picture moves: mpv reports "playing" (and not
       // "buffering") right after an open, seconds before the first frame.
       media.positionStream.listen(_onPosition),
-      // mpv auto-selects "default" subtitle tracks on every new file; keep
-      // them off unless captions are on.
-      media.tracksStream.listen((_) => _applyCaptions()),
       media.completedStream.listen((completed) {
         if (!completed || status != TunerStatus.playing) return;
         // A stream given up while paused opens again at the resume.
@@ -138,6 +137,11 @@ class Tuner extends ChangeNotifier {
 
   static const _progressInterval = Duration(seconds: 10);
 
+  /// Progress reports (or, with reports off, a conversion's pings) go this
+  /// often.
+  @visibleForTesting
+  Duration progressEvery = _progressInterval;
+
   /// How long a transcoded part may take to start playing.
   @visibleForTesting
   Duration transcodeStartup = const Duration(seconds: 10);
@@ -171,8 +175,8 @@ class Tuner extends ChangeNotifier {
   Channel? channel;
   Channel? previousChannel;
 
-  /// Closed captions (subtitles). Off by default, like a TV.
-  bool captions = false;
+  /// Captions (subtitles) on: the profile's saved choice (subtitles spec).
+  bool get captions => app.settings.playback.captions;
   /// The guide slot on air (the program and its breaks).
   ScheduledProgram? program;
 
@@ -606,13 +610,214 @@ class Tuner extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> toggleCaptions() async {
-    captions = !captions;
+  // ---- Captions (subtitles spec) ------------------------------------------------
+
+  /// Each item's subtitle tracks, asked once per session (captions on, or
+  /// the picker open), by source id; and those that have arrived.
+  final _subtitleLists = <String, Future<List<SubtitleTrack>>>{};
+  final _subtitlesKnown = <String, List<SubtitleTrack>>{};
+
+  /// The track the viewer picked in the picker for the item it belongs to:
+  /// it shows while that item plays, whatever the language rule says.
+  ({String source, SubtitleTrack track})? _picked;
+
+  /// A conversion plays now (tests and diagnostics).
+  @visibleForTesting
+  bool get converting => _active != null;
+
+  /// The track showing now (captions on, a program with tracks); null
+  /// otherwise, and on a live channel.
+  SubtitleTrack? shownSubtitle;
+
+  /// The subtitle tracks of the program on now: null while they aren't
+  /// known (or nothing plays, or a live channel is on).
+  List<SubtitleTrack>? get subtitleTracks {
+    final playing = _playing;
+    if (isLive || playing == null) return null;
+    return _subtitlesKnown[playing.item.sourceId];
+  }
+
+  /// The device's language, for the choice when nothing else decides it.
+  @visibleForTesting
+  String Function() deviceLanguage = () => PlatformDispatcher.instance.locale.languageCode;
+
+  /// [item]'s tracks, asked of [client] once this session (shared with a
+  /// request in flight). None when the server can't say; asked again later.
+  Future<List<SubtitleTrack>> _subtitleTracksOf(MediaEntry item, MediaServer client) {
+    final key = item.sourceId;
+    return _subtitleLists[key] ??= () async {
+      try {
+        final list = await client.subtitleTracks(key);
+        _subtitlesKnown[key] = list;
+        _diagnostics?.event('subtitle tracks of $key: ${list.isEmpty ? 'none' : list.join(', ')}');
+        return list;
+      } on Object catch (e) {
+        _subtitleLists.remove(key);
+        _diagnostics?.event('subtitle tracks of $key failed: $e');
+        return const <SubtitleTrack>[];
+      }
+    }();
+  }
+
+  /// Asks for the tracks of what's on now, captions on or off (the picker
+  /// opens): null on a live channel or with nothing playing.
+  Future<List<SubtitleTrack>?> loadSubtitleTracks() async {
+    final playing = _playing;
+    if (isLive || playing == null) return null;
+    final list = await _subtitleTracksOf(playing.item, playing.client);
+    notifyListeners();
+    return list;
+  }
+
+  /// The track [item] shows with captions on, from its [tracks].
+  SubtitleTrack? _trackFor(MediaEntry item, List<SubtitleTrack> tracks) {
+    final picked = _picked;
+    if (picked != null && picked.source == item.sourceId && tracks.contains(picked.track)) return picked.track;
+    return chooseSubtitle(tracks, preferred: app.settings.playback.captionLanguage, device: deviceLanguage());
+  }
+
+  /// Whether a conversion of [item] opening now draws [track] in.
+  static SubtitleTrack? _burnOf(SubtitleTrack? track) => track != null && track.burnsWhenConverting ? track : null;
+
+  /// What the player shows for [track] of [pick]'s item: a track inside a
+  /// file playing directly by its place, anything else loaded beside it
+  /// from the server, timed to [job]'s stream when converting.
+  SubtitleChoice? _choiceFor(SubtitleTrack? track, ({MediaEntry item, MediaServer client, String key}) pick, _Transcode? job) {
+    if (track == null) return null;
+    if (job == null && !track.isExternal) return EmbeddedSubtitle(track.position ?? 0, language: track.language);
+    // A burned track is in the picture.
+    if (job != null && _burnOf(track) != null) return null;
+    final offset = job == null || job.sourceTime ? Duration.zero : job.joinedAt;
+    final uri = pick.client.subtitleUri(pick.item.sourceId, track, startAt: offset);
+    if (uri == null) return null;
+    return SideLoadedSubtitle(uri,
+        headers: pick.client.authHeaders,
+        format: uri.path.endsWith('.vtt') ? 'vtt' : track.textFormat,
+        language: track.language,
+        label: subtitleLabel(track));
+  }
+
+  /// What an open of [pick]'s item (converted by [job]) shows, from what's
+  /// known now: an open never waits for the tracks.
+  SubtitleChoice? _openChoice(({MediaEntry item, MediaServer client, String key})? pick, _Transcode? job) {
+    if (!captions || pick == null) return null;
+    final known = _subtitlesKnown[pick.item.sourceId];
+    if (known == null) return null;
+    return _choiceFor(_trackFor(pick.item, known), pick, job);
+  }
+
+  /// Puts the choice on what plays now: the tracks asked first when they
+  /// aren't known (the picture never waits; the track goes on when they
+  /// arrive). A conversion that has to draw in a different track, or none,
+  /// opens again where it is.
+  Future<void> _applyCaptions() async {
+    if (isLive || _live != null) {
+      shownSubtitle = null;
+      await media.setSubtitles(captions ? const StreamCaptions() : null);
+      return;
+    }
+    final playing = _playing;
+    final job = _active != null && playing != null && _active!.item.sourceId == playing.item.sourceId ? _active : null;
+    if (!captions || playing == null) {
+      shownSubtitle = null;
+      if (job?.burn != null) {
+        _reopenForSubtitles();
+        return;
+      }
+      await media.setSubtitles(null);
+      return;
+    }
+    final known = _subtitlesKnown[playing.item.sourceId];
+    if (known == null) {
+      final generation = _generation;
+      unawaited(_subtitleTracksOf(playing.item, playing.client).then((_) {
+        if (generation != _generation || !identical(_playing, playing) || !captions) return;
+        unawaited(_applyCaptions());
+        notifyListeners();
+      }));
+      return;
+    }
+    final track = _trackFor(playing.item, known);
+    shownSubtitle = track;
+    if (job != null && _burnOf(track) != job.burn) {
+      _reopenForSubtitles();
+      return;
+    }
+    await media.setSubtitles(_choiceFor(track, playing, job));
+  }
+
+  /// A burned conversion's subtitles changed: it opens again at the same
+  /// place, drawing in the new choice (subtitles D4).
+  void _reopenForSubtitles() {
+    if (paused || status != TunerStatus.playing && status != TunerStatus.tuning) return;
+    // Still opening: the player may not have asked for the stream yet, and
+    // a job stopped before it's asked for starts all the same (Plex). It
+    // opens again once its picture is up.
+    if (status == TunerStatus.tuning) {
+      _subtitleReopenPending = true;
+      return;
+    }
+    _diagnostics?.event('subtitles changed during a burned conversion; reopening');
+    unawaited(_playCurrent(++_generation, trigger: 'subtitles', quiet: true, exact: true));
+  }
+
+  /// A burn change came while the conversion was still opening.
+  bool _subtitleReopenPending = false;
+
+  /// Saves captions [on] (and [language], when given) for the profile.
+  Future<void> _saveCaptions({required bool on, String? language}) => app.setPlayback(app.settings.playback
+      .copyWith(captions: on, captionLanguage: language == null ? null : () => language));
+
+  /// C, CC or the phone remote's `cc`: captions on (by the saved choice) or
+  /// off. Returns what the toast says.
+  Future<String> toggleCaptions() async {
+    final on = !captions;
+    _picked = null;
+    await _saveCaptions(on: on);
+    if (!on) {
+      await _applyCaptions();
+      notifyListeners();
+      return 'Captions off';
+    }
+    final playing = _playing;
+    List<SubtitleTrack>? tracks;
+    if (!isLive && playing != null) {
+      // The toast names the track: it waits a moment for the list, the
+      // picture doesn't.
+      tracks = await _subtitleTracksOf(playing.item, playing.client)
+          .timeout(const Duration(seconds: 3), onTimeout: () => const <SubtitleTrack>[]);
+    }
+    await _applyCaptions();
+    notifyListeners();
+    if (tracks == null) return 'Captions on';
+    final shown = shownSubtitle;
+    if (shown == null) return tracks.isEmpty ? 'Captions on: no subtitles for this program' : 'Captions on';
+    return 'Captions on: ${languageName(shown.language) ?? subtitleLabel(shown)}';
+  }
+
+  /// The captions picker's choice: [track] on, its language saved as the
+  /// profile's preferred one; null for Off, keeping the language.
+  Future<void> pickSubtitle(SubtitleTrack? track) async {
+    final playing = _playing;
+    if (track == null) {
+      _picked = null;
+      await _saveCaptions(on: false);
+    } else {
+      _picked = playing == null ? null : (source: playing.item.sourceId, track: track);
+      await _saveCaptions(on: true, language: track.language);
+    }
     await _applyCaptions();
     notifyListeners();
   }
 
-  Future<void> _applyCaptions() => media.showCaptions(captions);
+  /// A live channel's picker: its own captions on or off.
+  Future<void> setCaptions(bool on) async {
+    if (on == captions) return;
+    _picked = null;
+    await _saveCaptions(on: on);
+    await _applyCaptions();
+    notifyListeners();
+  }
 
   Future<void> channelUp() => _step(1);
   Future<void> channelDown() => _step(-1);
@@ -648,6 +853,7 @@ class Tuner extends ChangeNotifier {
   /// shown. [exact]: landing exactly on the viewing time, not on a keyframe.
   Future<void> _playCurrent(int generation,
       {bool atSegmentEnd = false, String? trigger, bool quiet = false, bool exact = false}) async {
+    _subtitleReopenPending = false;
     _programEnd?.cancel();
     _cancelPrefetch();
     _awaitingFirstFrame = false;
@@ -702,6 +908,8 @@ class Tuner extends ChangeNotifier {
     _stopTranscode();
     final item = pick?.item;
     final client = pick?.client;
+    // Asked alongside the open, which never waits for it.
+    if (captions && item != null && client != null) unawaited(_subtitleTracksOf(item, client));
     if (item == null || client == null) {
       _diagnostics?.tuneFailed('off air (nothing to open)');
       final handover = _handover;
@@ -785,7 +993,8 @@ class Tuner extends ChangeNotifier {
             await _route(url, client, cache: (source: item.sourceId, etag: item.etag, size: item.size), start: startAt);
         if (generation != _generation) return;
         _readingFrom(routed);
-        await media.open(routed, headers: headers, start: startAt, end: current.itemTo, exact: !keyframe);
+        await media.open(routed,
+            headers: headers, start: startAt, end: current.itemTo, exact: !keyframe, subtitles: _openChoice(pick, null));
         _diagnostics?.openReturned();
       } on Object catch (e) {
         if (generation != _generation) return;
@@ -819,7 +1028,8 @@ class Tuner extends ChangeNotifier {
     // moved to another server's copy is reported there (multi-server).
     final moved = step == ReportStep.keep && _report != null && _report!.key != key;
     if (step == ReportStep.start || step == ReportStep.finishAndStart || moved) {
-      _report = _Report(client, item, _newSessionId().substring(0, 16), viewingOf(ch.id, current)!, key: key)
+      _report = _Report(client, item, _newSessionId().substring(0, 16), viewingOf(ch.id, current)!,
+          key: key, reports: app.settings.playback.reportPlayback)
         ..reached = startAt
         ..cut = current.endsEarly;
     } else if (step == ReportStep.keep && !current.isBreak) {
@@ -949,7 +1159,11 @@ class Tuner extends ChangeNotifier {
 
     _decideTimer = Timer(before(_decideLead), () {
       final next = _nextSegment();
-      if (next != null && next.segment.item != null) unawaited(_playsDirect(next.segment));
+      if (next == null || next.segment.item == null) return;
+      unawaited(_playsDirect(next.segment));
+      // Its subtitle tracks too, while captions are on.
+      final pick = _pick(next.segment.item!);
+      if (captions && pick != null) unawaited(_subtitleTracksOf(pick.item, pick.client));
     });
     _preloadTimer = Timer(before(preloadLead), () => unawaited(_preloadNext(generation, serial)));
   }
@@ -1036,7 +1250,8 @@ class Tuner extends ChangeNotifier {
     final (routed, headers) = await _route(url, client,
         cache: (source: item.sourceId, etag: item.etag, size: item.size), start: next.start, preload: true);
     if (stale()) return;
-    final enqueueing = _enqueueing = media.enqueue(routed, headers: headers, start: next.start, end: segment.itemTo);
+    final enqueueing = _enqueueing =
+        media.enqueue(routed, headers: headers, start: next.start, end: segment.itemTo, subtitles: _openChoice(pick, null));
     try {
       await enqueueing;
     } on Object catch (e) {
@@ -1152,6 +1367,13 @@ class Tuner extends ChangeNotifier {
     }
     _diagnostics?.firstPicture();
     _setStatus(TunerStatus.playing);
+    // A conversion that has to draw in other subtitles opens again now
+    // that its job surely runs (so stopping it can't miss).
+    if (_subtitleReopenPending) {
+      _subtitleReopenPending = false;
+      _reopenForSubtitles();
+      return;
+    }
     // The stream is up: the app's own requests may go now.
     unawaited(flushReports());
     _beginReport();
@@ -1224,19 +1446,46 @@ class Tuner extends ChangeNotifier {
 
   // ---- Jellyfin playback reporting ---------------------------------------
   // Shows the stream on the server dashboard. Programs stopped partway are
-  // reported at position 0 so channel surfing doesn't fill the user's
-  // "Continue Watching" row; programs watched to the end count as watched.
+  // reported at the resume point they had before, so channel surfing neither
+  // fills the user's "Continue Watching" row nor wipes a resume point;
+  // programs watched to the end count as watched. With "Update watch
+  // status" off, nothing is reported (play-reporting).
 
-  /// Reports the viewing being opened, at its first picture: the start, then
-  /// progress every [_progressInterval].
+  /// How long a viewing's resume point read may take before 0 is used.
+  static const resumeReadTimeout = Duration(seconds: 5);
+
+  /// Reports the viewing being opened, at its first picture: its resume
+  /// point is read, then the start is sent, then progress every
+  /// [progressEvery]. With reports off, nothing is sent: a conversion
+  /// is kept alive with the server's ping instead.
   void _beginReport() {
     final report = _report;
     if (report == null || report.started) return;
     report.started = true;
     final client = report.client;
-    _quietly(() => client.reportPlaybackStart(_reportAt(report, report.reached)));
     _progress?.cancel();
-    _progress = Timer.periodic(_progressInterval, (_) {
+    if (!report.reports) {
+      _progress = Timer.periodic(progressEvery, (_) {
+        final job = _active;
+        if (job != null) _quietly(() => job.client.keepTranscodeAlive(job.playSessionId));
+      });
+      return;
+    }
+    // Read before the start report, so it's the point from before this
+    // viewing; it never holds the picture. A viewing that ends before the
+    // read does is never reported.
+    unawaited(client.resumePoint(report.item.id).timeout(resumeReadTimeout).then<Duration>((d) => d,
+        onError: (Object e) {
+      debugPrint('Resume point of ${report.item.id} unread: $e');
+      return Duration.zero;
+    }).then((resume) async {
+      if (report.ended) return;
+      report.resumePoint = resume;
+      report.startSent = true;
+      await _quietly(() => client.reportPlaybackStart(_reportAt(report, report.reached)));
+    }));
+    _progress = Timer.periodic(progressEvery, (_) {
+      if (!report.startSent) return;
       final current = segment;
       if (current != null && !current.isBreak && current.item?.id == report.item.id) {
         final position = _itemPosition;
@@ -1250,17 +1499,19 @@ class Tuner extends ChangeNotifier {
   }
 
   /// Ends the viewing being reported: as watched when it got to the end,
-  /// otherwise (or when Truncate cut it) at position 0 (see
-  /// [stoppedPosition]). The report is queued
-  /// (see [flushReports]); a viewing that never started sends nothing.
+  /// otherwise (or when Truncate cut it) at its earlier resume point (see
+  /// [stoppedPosition]). The report is queued (see [flushReports]); a
+  /// viewing that never started, or was opened with reports off, sends
+  /// nothing.
   void _queueFinish() {
     _progress?.cancel();
     _progress = null;
     final report = _report;
     _report = null;
-    if (report == null || !report.started) return;
-    // A program Truncate cut never reached its end: never watched.
-    final position = report.cut ? Duration.zero : stoppedPosition(report.item, report.reached);
+    if (report == null) return;
+    report.ended = true;
+    if (!report.started || !report.reports || !report.startSent) return;
+    final position = stoppedPosition(report.item, report.reached, resumePoint: report.resumePoint, cut: report.cut);
     _stoppedQueue.add((report.client, _reportAt(report, position)));
     _stoppedTimer ??= Timer(stoppedReportDelay, () => unawaited(flushReports()));
   }
@@ -1333,6 +1584,8 @@ class Tuner extends ChangeNotifier {
   Future<bool> _openTranscode(int generation, ScheduledProgram current, MediaEntry item, Uri template,
       Duration startAt, MediaServer client,
       {required int? capKbps, bool fallback = false, bool directStream = false}) async {
+    // A track the server has to draw in, when it's the one captions show.
+    final known = captions ? _subtitlesKnown[item.sourceId] : null;
     final job = _active = _Transcode(
         playSessionId: _newSessionId(),
         client: client,
@@ -1342,11 +1595,12 @@ class Tuner extends ChangeNotifier {
         sourceTime: client.transcodeKeepsSourceTime,
         capKbps: capKbps,
         fallback: fallback,
-        directStream: directStream);
+        directStream: directStream,
+        burn: known == null ? null : _burnOf(_trackFor(item, known)));
     _mayFallBack = false;
     _armStartup(generation, restart: false);
     try {
-      final url = await client.transcodeUri(template, playSessionId: job.playSessionId, startAt: startAt);
+      final url = await client.transcodeUri(template, playSessionId: job.playSessionId, startAt: startAt, burn: job.burn);
       // A stream in the source's own times plays from the join point to the
       // part's end; one that starts where it joined, from 0.
       final start = job.sourceTime ? startAt : null;
@@ -1358,7 +1612,12 @@ class Tuner extends ChangeNotifier {
       final (routed, headers) = await _route(url, client);
       if (generation != _generation) return false;
       _readingFrom(routed);
-      await media.open(routed, headers: headers, start: start, end: end);
+      final pick = _playing;
+      await media.open(routed,
+          headers: headers,
+          start: start,
+          end: end,
+          subtitles: pick == null || pick.item.sourceId != item.sourceId ? null : _openChoice(pick, job));
       _diagnostics?.openReturned();
     } on Object catch (e) {
       if (generation != _generation) return false;
@@ -1739,10 +1998,11 @@ class Tuner extends ChangeNotifier {
     });
   }
 
-  /// A progress report at once: the dashboard shows a pause or resume now.
+  /// A progress report at once: the dashboard shows a pause or resume now
+  /// (none with reports off, or before the start is sent).
   void _reportNow() {
     final report = _report;
-    if (report == null || !report.started) return;
+    if (report == null || !report.started || !report.reports || !report.startSent) return;
     final current = segment;
     final position = current != null && !current.isBreak && current.item?.id == report.item.id ? _itemPosition : report.reached;
     final client = report.client;
@@ -2085,7 +2345,7 @@ class Tuner extends ChangeNotifier {
     _diagnostics?.opened('live-${source.kind.name}-${stream.method.json}', Uri.parse(scrubUrl(stream.uri.toString())));
     _expectFirstFrame(Duration.zero);
     try {
-      await media.open(stream.uri, headers: stream.headers, live: true);
+      await media.open(stream.uri, headers: stream.headers, live: true, subtitles: captions ? const StreamCaptions() : null);
       _diagnostics?.openReturned();
     } on Object catch (e) {
       if (identical(_live, session)) _onLiveError('$e');
@@ -2106,11 +2366,16 @@ class Tuner extends ChangeNotifier {
     _setStatus(TunerStatus.playing);
     unawaited(flushReports());
     final stream = s.stream;
-    if (stream != null && s.client.reports) {
+    if (stream != null && s.client.reports && (app.settings.playback.reportPlayback || s.client.needsReports)) {
       s.reportedAt = DateTime.now();
       _quietly(() => s.client.reportStart(stream));
       s.reportTimer = Timer.periodic(liveReportEvery, (_) {
         if (identical(_live, s)) _quietly(() => s.client.reportProgress(stream, s.watched));
+      });
+    } else if (stream != null && s.client.reports) {
+      // "Update watch status" off: only what keeps the stream open.
+      s.reportTimer = Timer.periodic(liveReportEvery, (_) {
+        if (identical(_live, s)) _quietly(() => s.client.keepAlive(stream));
       });
     }
     // A picture that stands still is a stall.
@@ -2446,7 +2711,8 @@ class ViewingPlace {
 
 /// One viewing being reported to Jellyfin, across the program's parts.
 class _Report {
-  _Report(this.client, this.item, this.sessionId, this.viewing, {this.key = ServerSet.mainKey});
+  _Report(this.client, this.item, this.sessionId, this.viewing,
+      {this.key = ServerSet.mainKey, this.reports = true});
 
   final MediaServer client;
 
@@ -2456,8 +2722,24 @@ class _Report {
   final String sessionId;
   Viewing viewing;
 
-  /// The start was sent (at the viewing's first picture).
+  /// "Update watch status" was on when the viewing opened: it's reported
+  /// to its end, whatever the setting does meanwhile (play-reporting).
+  final bool reports;
+
+  /// It began reporting (at the viewing's first picture).
   bool started = false;
+
+  /// The item's resume point from before the viewing (0 when there was
+  /// none or it couldn't be read); read at [started], before the start
+  /// report.
+  Duration resumePoint = Duration.zero;
+
+  /// The start report went (after the resume read): progress and the
+  /// stopped report may follow.
+  bool startSent = false;
+
+  /// The viewing finished: a resume read still out sends no start.
+  bool ended = false;
 
   /// The furthest position played.
   Duration reached = Duration.zero;
@@ -2505,7 +2787,8 @@ class _Transcode {
       required this.capKbps,
       this.sourceTime = false,
       this.fallback = false,
-      this.directStream = false});
+      this.directStream = false,
+      this.burn});
 
   /// A new id per job, so stopping the last part's job can never stop the
   /// next one.
@@ -2532,6 +2815,9 @@ class _Transcode {
 
   /// The conversion copies the video (reported as DirectStream).
   final bool directStream;
+
+  /// The subtitle track the server draws into its picture (subtitles D4).
+  final SubtitleTrack? burn;
 
   String get itemId => item.id;
 }

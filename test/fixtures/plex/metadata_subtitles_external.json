@@ -1,0 +1,135 @@
+{
+ "MediaContainer": {
+  "size": 1,
+  "allowSync": true,
+  "identifier": "com.plexapp.plugins.library",
+  "librarySectionID": 2,
+  "librarySectionTitle": "Movies",
+  "librarySectionUUID": "3877c012-e5c8-47aa-a2c7-1b387edfabe8",
+  "mediaTagPrefix": "/system/bundle/media/flags/",
+  "mediaTagVersion": 1791214582,
+  "Metadata": [
+   {
+    "ratingKey": "130",
+    "key": "/library/metadata/130",
+    "guid": "tv.plex.agents.none://130",
+    "type": "movie",
+    "title": "Sub Test External (2026)",
+    "librarySectionTitle": "Movies",
+    "librarySectionID": 2,
+    "librarySectionKey": "/library/sections/2",
+    "subtype": "clip",
+    "summary": "",
+    "thumb": "/library/metadata/130/thumb/1794041523",
+    "art": "/library/metadata/130/art/1794041523",
+    "duration": 600053,
+    "addedAt": 1794041519,
+    "updatedAt": 1794041523,
+    "createdAtAccuracy": "epoch",
+    "createdAtTZOffset": "0",
+    "Media": [
+     {
+      "id": 105,
+      "duration": 600053,
+      "bitrate": 1089,
+      "width": 1280,
+      "height": 720,
+      "aspectRatio": 1.78,
+      "audioChannels": 2,
+      "audioCodec": "aac",
+      "videoCodec": "h264",
+      "videoResolution": "720",
+      "container": "mkv",
+      "videoFrameRate": "NTSC",
+      "videoProfile": "constrained baseline",
+      "Part": [
+       {
+        "id": 105,
+        "key": "/library/parts/105/1794040516/file.mkv",
+        "duration": 600053,
+        "file": "/media/Movies/Sub Test External (2026)/Sub Test External (2026).mkv",
+        "size": 81703913,
+        "container": "mkv",
+        "videoProfile": "constrained baseline",
+        "Stream": [
+         {
+          "id": 181,
+          "streamType": 1,
+          "default": true,
+          "codec": "h264",
+          "index": 0,
+          "bitrate": 1089,
+          "language": "English",
+          "languageTag": "en",
+          "languageCode": "eng",
+          "bitDepth": 8,
+          "chromaLocation": "left",
+          "chromaSubsampling": "4:2:0",
+          "codedHeight": 720,
+          "codedWidth": 1280,
+          "frameRate": 29.97,
+          "hasScalingMatrix": false,
+          "height": 720,
+          "level": 31,
+          "profile": "constrained baseline",
+          "refFrames": 1,
+          "scanType": "progressive",
+          "width": 1280,
+          "displayTitle": "720p",
+          "extendedDisplayTitle": "720p (H.264 Constrained Baseline)"
+         },
+         {
+          "id": 182,
+          "streamType": 2,
+          "selected": true,
+          "default": true,
+          "codec": "aac",
+          "index": 1,
+          "channels": 2,
+          "language": "English",
+          "languageTag": "en",
+          "languageCode": "eng",
+          "samplingRate": 48000,
+          "displayTitle": "English (AAC Stereo)",
+          "extendedDisplayTitle": "English (AAC Stereo)"
+         },
+         {
+          "id": 183,
+          "key": "/library/streams/183",
+          "streamType": 3,
+          "file": "/media/Movies/Sub Test External (2026)/Sub Test External (2026).en.srt",
+          "codec": "srt",
+          "language": "English",
+          "languageTag": "en",
+          "languageCode": "eng",
+          "format": "srt",
+          "displayTitle": "English",
+          "extendedDisplayTitle": "English (SRT External)"
+         }
+        ]
+       }
+      ]
+     }
+    ],
+    "Image": [
+     {
+      "alt": "Sub Test External (2026)",
+      "type": "coverPoster",
+      "url": "/library/metadata/130/thumb/1794041523"
+     },
+     {
+      "alt": "Sub Test External (2026)",
+      "type": "background",
+      "url": "/library/metadata/130/art/1794041523"
+     }
+    ],
+    "UltraBlurColors": {
+     "topLeft": "5d0000",
+     "topRight": "0504ef",
+     "bottomRight": "0504f6",
+     "bottomLeft": "ae0140"
+    }
+   }
+  ]
+ }
+}

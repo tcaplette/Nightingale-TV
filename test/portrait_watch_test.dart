@@ -519,6 +519,20 @@ void main() {
       await h.end(tester);
     });
 
+    testWidgets('a tap on the player, then Captions beside Menu, opens the captions picker', (tester) async {
+      final h = await start(tester);
+      await tester.tapAt(tester.getCenter(find.byType(TvPicture)), kind: PointerDeviceKind.touch);
+      await tester.pump(const Duration(milliseconds: 300));
+      final captions = find.bySemanticsLabel('Captions');
+      expect(captions, findsOneWidget);
+      expect(tester.getCenter(captions).dx, greaterThan(tester.getCenter(find.bySemanticsLabel('Menu')).dx));
+      await tester.tap(captions, kind: PointerDeviceKind.touch);
+      await tester.pump(const Duration(milliseconds: 400));
+      expect(find.byType(Dialog), findsOneWidget);
+      expect(find.descendant(of: find.byType(Dialog), matching: find.text('Off')), findsOneWidget);
+      await h.end(tester);
+    });
+
     testWidgets('the last-minute warning shows over the portrait screen, and a tap turns it off', (tester) async {
       final h = await start(tester);
       h.sleep!.choose(const SleepChoice.after(15));

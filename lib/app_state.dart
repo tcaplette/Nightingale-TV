@@ -72,7 +72,10 @@ class PlaybackSettings {
       this.volumeLeveling = false,
       this.breakNotices = true,
       this.pauseAndRewind = true,
-      this.onScreenClock = false});
+      this.onScreenClock = false,
+      this.captions = false,
+      this.captionLanguage,
+      this.reportPlayback = true});
 
   /// A setting never saved: transcoding and leveling off, with Original
   /// chosen; break notices on.
@@ -97,6 +100,18 @@ class PlaybackSettings {
   /// Show the time of day in the corner of the picture.
   final bool onScreenClock;
 
+  /// Captions (subtitles) on, on every program that has them.
+  final bool captions;
+
+  /// The language of the caption track picked last (ISO 639-2, `eng`), kept
+  /// while captions are off; null until one is picked.
+  final String? captionLanguage;
+
+  /// Tell the server what's watched: start, progress and stopped reports,
+  /// which change its play counts, watched marks and dashboard. Off sends
+  /// none (play-reporting).
+  final bool reportPlayback;
+
   /// In this order, Original first.
   static const presets = <BitratePreset>[
     (label: 'Original (no limit)', kbps: null),
@@ -120,13 +135,16 @@ class PlaybackSettings {
   int? capKbps() => transcodeIfNeeded ? maxKbps : null;
 
   /// Whether playback decisions made under [other] still hold: everything
-  /// but [breakNotices], [pauseAndRewind] and [onScreenClock], which change no
-  /// decision, is the same.
+  /// but [breakNotices], [pauseAndRewind], [onScreenClock], the captions and
+  /// [reportPlayback], which change no decision, is the same.
   bool decidesLike(PlaybackSettings other) =>
       copyWith(
           breakNotices: other.breakNotices,
           pauseAndRewind: other.pauseAndRewind,
-          onScreenClock: other.onScreenClock) ==
+          onScreenClock: other.onScreenClock,
+          captions: other.captions,
+          captionLanguage: () => other.captionLanguage,
+          reportPlayback: other.reportPlayback) ==
       other;
 
   PlaybackSettings copyWith(
@@ -135,7 +153,10 @@ class PlaybackSettings {
           bool? volumeLeveling,
           bool? breakNotices,
           bool? pauseAndRewind,
-          bool? onScreenClock}) =>
+          bool? onScreenClock,
+          bool? captions,
+          String? Function()? captionLanguage,
+          bool? reportPlayback}) =>
       PlaybackSettings(
         transcodeIfNeeded: transcodeIfNeeded ?? this.transcodeIfNeeded,
         maxKbps: bitrate == null ? maxKbps : bitrate.kbps,
@@ -143,6 +164,9 @@ class PlaybackSettings {
         breakNotices: breakNotices ?? this.breakNotices,
         pauseAndRewind: pauseAndRewind ?? this.pauseAndRewind,
         onScreenClock: onScreenClock ?? this.onScreenClock,
+        captions: captions ?? this.captions,
+        captionLanguage: captionLanguage == null ? this.captionLanguage : captionLanguage(),
+        reportPlayback: reportPlayback ?? this.reportPlayback,
       );
 
   Map<String, Object?> toJson() => {
@@ -152,6 +176,9 @@ class PlaybackSettings {
         'breakNotices': breakNotices,
         'pauseAndRewind': pauseAndRewind,
         'onScreenClock': onScreenClock,
+        'captions': captions,
+        'captionLanguage': ?captionLanguage,
+        'reportPlayback': reportPlayback,
       };
 
   /// A missing or unreadable setting is off with Original chosen. A saved
@@ -159,15 +186,19 @@ class PlaybackSettings {
   /// snaps to the preset at or below it (4 Mbps for anything lower). Saved
   /// before Auto (as `maxBitrateMbps`), the same rules apply. Volume
   /// leveling is off unless saved as on; break notices and pause and rewind
-  /// are on unless saved as off; the on-screen clock is off unless saved as
-  /// on.
+  /// are on unless saved as off; the on-screen clock and captions are off
+  /// unless saved as on, with no caption language unless one was saved;
+  /// playback reports are on unless saved as off.
   factory PlaybackSettings.fromJson(Object? json) {
     if (json is! Map<String, Object?>) return off;
+    final captions = json['captions'] == true;
+    final language = json['captionLanguage'] is String ? json['captionLanguage'] as String : null;
     final on = json['transcodeIfNeeded'] == true;
     final leveling = json['volumeLeveling'] == true;
     final notices = json['breakNotices'] != false;
     final rewind = json['pauseAndRewind'] != false;
     final clock = json['onScreenClock'] == true;
+    final reports = json['reportPlayback'] != false;
     final bitrate = json['bitrate'];
     if (bitrate is num) {
       return PlaybackSettings(
@@ -176,7 +207,10 @@ class PlaybackSettings {
           volumeLeveling: leveling,
           breakNotices: notices,
           pauseAndRewind: rewind,
-          onScreenClock: clock);
+          onScreenClock: clock,
+          captions: captions,
+          captionLanguage: language,
+          reportPlayback: reports);
     }
     if (!json.containsKey('bitrate')) {
       if (json['maxBitrateMbps'] case final num mbps) {
@@ -186,7 +220,10 @@ class PlaybackSettings {
             volumeLeveling: leveling,
             breakNotices: notices,
             pauseAndRewind: rewind,
-            onScreenClock: clock);
+            onScreenClock: clock,
+            captions: captions,
+            captionLanguage: language,
+            reportPlayback: reports);
       }
     }
     return PlaybackSettings(
@@ -194,7 +231,10 @@ class PlaybackSettings {
         volumeLeveling: leveling,
         breakNotices: notices,
         pauseAndRewind: rewind,
-        onScreenClock: clock);
+        onScreenClock: clock,
+        captions: captions,
+        captionLanguage: language,
+        reportPlayback: reports);
   }
 
   @override
@@ -205,16 +245,21 @@ class PlaybackSettings {
       other.volumeLeveling == volumeLeveling &&
       other.breakNotices == breakNotices &&
       other.pauseAndRewind == pauseAndRewind &&
-      other.onScreenClock == onScreenClock;
+      other.onScreenClock == onScreenClock &&
+      other.captions == captions &&
+      other.captionLanguage == captionLanguage &&
+      other.reportPlayback == reportPlayback;
 
   @override
-  int get hashCode =>
-      Object.hash(transcodeIfNeeded, maxKbps, volumeLeveling, breakNotices, pauseAndRewind, onScreenClock);
+  int get hashCode => Object.hash(
+      transcodeIfNeeded, maxKbps, volumeLeveling, breakNotices, pauseAndRewind, onScreenClock, captions, captionLanguage,
+      reportPlayback);
 
   @override
   String toString() => 'PlaybackSettings(${transcodeIfNeeded ? 'on' : 'off'}, ${preset.label}, '
       'leveling ${volumeLeveling ? 'on' : 'off'}, notices ${breakNotices ? 'on' : 'off'}, rewind ${pauseAndRewind ? 'on' : 'off'}, '
-      'clock ${onScreenClock ? 'on' : 'off'})';
+      'clock ${onScreenClock ? 'on' : 'off'}, captions ${captions ? 'on' : 'off'} ${captionLanguage ?? '-'}, '
+      'reports ${reportPlayback ? 'on' : 'off'})';
 }
 
 /// What the TV is doing, as far as bandwidth goes.

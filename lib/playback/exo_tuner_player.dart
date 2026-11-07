@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import 'playback_diagnostics.dart';
+import 'subtitles.dart';
 import 'tuner_player.dart';
 
 /// ExoPlayer on Android (android/app/src/main/kotlin/…/ExoTunerHost.kt):
@@ -150,7 +151,8 @@ class ExoTunerPlayer implements TunerPlayer {
       Duration? start,
       Duration? end,
       bool exact = true,
-      bool live = false}) async {
+      bool live = false,
+      SubtitleChoice? subtitles}) async {
     _at = live ? Duration.zero : start ?? Duration.zero;
     _isPlaying = false;
     cues.value = ExoCues.none;
@@ -163,19 +165,46 @@ class ExoTunerPlayer implements TunerPlayer {
       'endMs': live ? null : end?.inMilliseconds,
       'exact': exact,
       'live': live,
+      'subtitles': subtitlesArgument(subtitles),
     });
   }
+
+  /// [choice] as ExoTunerHost takes it.
+  @visibleForTesting
+  static Map<String, Object?> subtitlesArgument(SubtitleChoice? choice) => switch (choice) {
+        null => {'kind': 'off'},
+        StreamCaptions() => {'kind': 'stream'},
+        EmbeddedSubtitle(:final position, :final language) => {
+            'kind': 'embedded',
+            'position': position,
+            'language': ?language,
+          },
+        SideLoadedSubtitle(:final uri, :final headers, :final format, :final language, :final label) => {
+            'kind': 'side',
+            'url': uri.toString(),
+            'headers': headers,
+            'mime': switch (format) {
+              'vtt' => 'text/vtt',
+              'ass' || 'ssa' => 'text/x-ssa',
+              _ => 'application/x-subrip',
+            },
+            'language': ?language,
+            'label': ?label,
+          },
+      };
 
   /// An item added to ExoPlayer's playlist after the one playing: it starts
   /// at [start] on the file's own timeline (no clipping start), and is
   /// clipped at [end].
   @override
-  Future<void> enqueue(Uri url, {required Map<String, String> headers, Duration? start, Duration? end}) =>
+  Future<void> enqueue(Uri url,
+          {required Map<String, String> headers, Duration? start, Duration? end, SubtitleChoice? subtitles}) =>
       _call<void>('enqueue', {
         'url': url.toString(),
         'headers': headers,
         'startMs': start?.inMilliseconds,
         'endMs': end?.inMilliseconds,
+        'subtitles': subtitlesArgument(subtitles),
       });
 
   @override
@@ -203,10 +232,13 @@ class ExoTunerPlayer implements TunerPlayer {
     await _call<void>('seek', {'ms': position.inMilliseconds});
   }
 
+  /// A track inside the stream is an override of ExoPlayer's text tracks;
+  /// a text track loaded beside it re-prepares the item where it is, with
+  /// the track added.
   @override
-  Future<void> showCaptions(bool on) async {
-    if (!on) cues.value = ExoCues.none;
-    await _call<void>('captions', {'on': on});
+  Future<void> setSubtitles(SubtitleChoice? choice) async {
+    if (choice == null) cues.value = ExoCues.none;
+    await _call<void>('subtitles', {'subtitles': subtitlesArgument(choice)});
   }
 
   /// A change rebuilds ExoPlayer with the new audio output (design D4),

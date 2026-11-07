@@ -84,6 +84,13 @@ class FakeLiveTv implements LiveTv {
   Future<void> reportProgress(LiveStream s, Duration p) async => reports.add('progress:${s.liveStreamId}');
   @override
   Future<void> reportStopped(LiveStream s, Duration p) async => reports.add('stopped:${s.liveStreamId}');
+  @override
+  Future<void> keepAlive(LiveStream s) async => reports.add('ping:${s.playSessionId}');
+
+  /// As Plex: the stream ends without reports.
+  bool needs = false;
+  @override
+  bool get needsReports => needs;
 }
 
 class LiveClient extends FakeClient {
@@ -185,6 +192,34 @@ void main() {
     expect(client.tv.reports, contains('stopped:ls1'));
     expect(tuner.status, TunerStatus.playing);
     expect(tuner.isLive, isFalse);
+  });
+
+  test('with watch status off, a live channel sends only keep-alive pings, and still closes', () async {
+    await app.setPlayback(const PlaybackSettings(reportPlayback: false));
+    await tuner.tune(liveCh(0));
+    await settle();
+    expect(tuner.status, TunerStatus.playing);
+    await settle(const Duration(milliseconds: 120));
+    expect(client.tv.reports, isNotEmpty);
+    expect(client.tv.reports.toSet(), {'ping:psls1'}, reason: 'no start, progress or stopped report');
+    await tuner.tune(generated());
+    await settle();
+    expect(log, contains('live-close:ls1'));
+    expect(client.tv.reports.where((r) => !r.startsWith('ping')), isEmpty);
+    expect(client.reports, isEmpty, reason: 'nor for the generated channel');
+  });
+
+  test('with watch status off, a server that needs its live reports (Plex) still gets them', () async {
+    await app.setPlayback(const PlaybackSettings(reportPlayback: false));
+    client.tv.needs = true;
+    await tuner.tune(liveCh(0));
+    await settle(const Duration(milliseconds: 120));
+    expect(client.tv.reports.first, 'start:ls1');
+    expect(client.tv.reports.where((r) => r.startsWith('progress')), isNotEmpty);
+    expect(client.tv.reports.where((r) => r.startsWith('ping')), isEmpty);
+    await tuner.tune(generated());
+    await settle();
+    expect(client.tv.reports, contains('stopped:ls1'));
   });
 
   test('the open stream closes before the next one opens', () async {

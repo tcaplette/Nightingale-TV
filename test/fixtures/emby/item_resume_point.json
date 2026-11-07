@@ -1,0 +1,17 @@
+{
+  "Name": "Copper Moon",
+  "ServerId": "bfdc9a3e4d8a46b883b607bfcc9d7101",
+  "Id": "59",
+  "RunTimeTicks": 8400100000,
+  "IsFolder": false,
+  "Type": "Movie",
+  "UserData": {
+    "PlayedPercentage": 35.713860549279175,
+    "PlaybackPositionTicks": 3000000000,
+    "PlayCount": 2,
+    "IsFavorite": false,
+    "LastPlayedDate": "2026-11-07T17:30:47.0000000Z",
+    "Played": true
+  },
+  "MediaType": "Video"
+}

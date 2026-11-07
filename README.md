@@ -177,12 +177,14 @@ Moving from another device? Choose **Restore from a backup** on the sign-in scre
 | Back (Esc) | See below | Back to TV |
 | 0–9 | Go to a channel number | |
 | Last or Recall (Backspace, L) | Last channel | |
-| Captions (C) | Captions on/off | |
+| Captions (C) | Captions on/off, in the language picked last | |
 | (S) | Sleep timer | |
 | Menu (M, right-click) | Menu | Menu |
 | (F11) | Full screen on/off, on a computer | |
 
 **Back** works as Esc does on every screen, except on the TV picture itself on Android: there it shows "Press Back again to exit", and a second Back within 3 seconds closes the app. On a computer, Esc on the TV picture opens the guide.
+
+**Captions button.** Press ◀ or ▶ to bring up the buttons, ▲ to reach them, then move to **Captions** (after **Sleep**) and press OK. It opens a list: **Off**, then every subtitle track of the program on screen, inside the file or beside it (`Movie.en.srt`), such as "English", "English (SDH)" or "Spanish · External". The button reads **Captions: English** while captions are on. Your pick is saved for the profile: each program after it, on any channel and after a restart, shows a track in that language. **Off** keeps the language for next time. A program without subtitles shows "No subtitles for this program". On a live TV channel the list is just **Off** and **On** (the channel's own captions). On a phone the **Captions** button sits beside **Menu** over the player; with an air mouse or touch, click or tap it.
 
 **With an air mouse:** move the pointer while watching, and **Guide** and **Menu** buttons appear in the top-left corner. In the guide, click a channel to watch it, click a tab to filter the channels, or click **Menu** at the top.
 

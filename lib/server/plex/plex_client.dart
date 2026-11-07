@@ -8,6 +8,7 @@ import '../../commercials/commercial_pool.dart';
 import '../../jellyfin/jellyfin_client.dart';
 import '../../library/library_index.dart';
 import '../../playback/playback_diagnostics.dart';
+import '../languages.dart';
 import '../live_tv.dart';
 import '../media_server.dart';
 import 'plex_account.dart';
@@ -602,17 +603,90 @@ class PlexClient implements MediaServer {
 
   /// Plex starts a transcode only for a session it has made a decision for,
   /// so each job asks its own first, with the job's query.
+  ///
+  /// [burn]: Plex burns the part's selected subtitle stream (it ignores a
+  /// stream named in the request), so the part selects [burn] for the job's
+  /// decision, and the selection it had is put back right after; the job
+  /// keeps the burn.
   @override
-  Future<Uri> transcodeUri(Uri template, {required String playSessionId, required Duration startAt}) async {
+  Future<Uri> transcodeUri(Uri template,
+      {required String playSessionId, required Duration startAt, SubtitleTrack? burn}) async {
     final query = {
       for (final e in template.queryParameters.entries)
-        if (e.key != 'session' && e.key != 'offset') e.key: e.value,
+        if (e.key != 'session' && e.key != 'offset' && e.key != 'subtitles') e.key: e.value,
       'session': playSessionId,
       'offset': '${startAt.inMilliseconds / 1000}',
+      'subtitles': burn == null ? 'none' : 'burn',
     };
-    await _send('GET', '$_universal/decision', query: query, headers: {'X-Plex-Session-Identifier': playSessionId});
+    Future<void> decide() =>
+        _send('GET', '$_universal/decision', query: query, headers: {'X-Plex-Session-Identifier': playSessionId});
+    final part = burn?.source;
+    if (burn == null || part == null) {
+      await decide();
+    } else {
+      await _selectSubtitle(part, burn.id);
+      try {
+        await decide();
+      } finally {
+        await _selectSubtitle(part, _selectedSubtitle[part] ?? '0');
+      }
+    }
     return template.replace(queryParameters: {...query, 'X-Plex-Session-Identifier': playSessionId});
   }
+
+  /// The subtitle stream each part had selected on the server when its
+  /// tracks were listed ('0': none), to put back after a burn.
+  final _selectedSubtitle = <String, String>{};
+
+  Future<void> _selectSubtitle(String part, String streamId) =>
+      _send('PUT', '/library/parts/$part', query: {'subtitleStreamID': streamId, 'allParts': 1});
+
+  @override
+  Future<List<SubtitleTrack>> subtitleTracks(String itemId) async {
+    final c = await _container('/library/metadata/$itemId');
+    final part = _list(_list(_list(c, 'Metadata').firstOrNull ?? const {}, 'Media').firstOrNull ?? const {}, 'Part')
+        .firstOrNull;
+    if (part == null) return const [];
+    final streams = [for (final s in _list(part, 'Stream')) if ((s['streamType'] as num?)?.toInt() == 3) s];
+    final partId = part['id'] == null ? null : '${part['id']}';
+    if (partId != null) {
+      _selectedSubtitle[partId] = '${streams.where((s) => s['selected'] == true).firstOrNull?['id'] ?? 0}';
+    }
+    return parseSubtitleTracks(part);
+  }
+
+  /// [part]'s subtitle streams: external ones (with a `key`) as such,
+  /// embedded ones numbered in the file's order.
+  @visibleForTesting
+  static List<SubtitleTrack> parseSubtitleTracks(Map<String, Object?> part) {
+    final streams = [for (final s in _list(part, 'Stream')) if ((s['streamType'] as num?)?.toInt() == 3) s];
+    bool external(Map<String, Object?> s) => s['key'] != null;
+    final embedded = [for (final s in streams) if (!external(s)) s]
+      ..sort((a, b) => ((a['index'] as num?) ?? 0).compareTo((b['index'] as num?) ?? 0));
+    return [
+      for (final s in streams)
+        if ('${s['codec'] ?? ''}'.toLowerCase() case final codec)
+          SubtitleTrack(
+            id: '${s['id']}',
+            codec: codec,
+            language: normalizeLanguage((s['languageCode'] ?? s['languageTag']) as String?),
+            title: switch ((s['title'] as String?)?.trim()) { final t? when t.isNotEmpty => t, _ => null },
+            isDefault: s['default'] == true,
+            isForced: s['forced'] == true,
+            isExternal: external(s),
+            position: external(s) ? null : embedded.indexOf(s),
+            source: part['id'] == null ? null : '${part['id']}',
+            // Plex hands out only the files beside the video.
+            burnsWhenConverting: !external(s) || SubtitleTrack.isImageCodec(codec),
+          ),
+    ];
+  }
+
+  /// An external text track's own file. Plex conversions keep the source's
+  /// times (copyts), so its cues fit at any join.
+  @override
+  Uri? subtitleUri(String itemId, SubtitleTrack track, {Duration startAt = Duration.zero, String? format}) =>
+      track.isExternal && !track.isImage ? uri('/library/streams/${track.id}') : null;
 
   @override
   bool get transcodeKeepsSourceTime => true;
@@ -620,6 +694,24 @@ class PlexClient implements MediaServer {
   @override
   Future<void> stopTranscode(String playSessionId) =>
       _send('GET', '$_universal/stop', query: {'session': playSessionId});
+
+  /// The universal transcoder's ping: keeps the session's job alive without
+  /// a timeline report.
+  @override
+  Future<void> keepTranscodeAlive(String playSessionId) =>
+      _send('GET', '$_universal/ping', query: {'session': playSessionId});
+
+  @override
+  Future<Duration> resumePoint(String itemId) async => parseResumePoint(await _container('/library/metadata/$itemId'));
+
+  /// The item's `viewOffset` (milliseconds) in a metadata container; zero
+  /// without.
+  @visibleForTesting
+  static Duration parseResumePoint(Map<String, Object?> container) =>
+      switch (_list(container, 'Metadata').firstOrNull?['viewOffset']) {
+        final num ms when ms > 0 => Duration(milliseconds: ms.toInt()),
+        _ => Duration.zero,
+      };
 
   /// Posters and logos through Plex's photo transcoder. An item without a
   /// clear logo answers 404, which the app treats as no logo.

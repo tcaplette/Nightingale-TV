@@ -44,6 +44,7 @@ import androidx.media3.exoplayer.source.ClippingMediaSource
 import androidx.media3.exoplayer.source.ForwardingTimeline
 import androidx.media3.exoplayer.source.MediaPeriod
 import androidx.media3.exoplayer.source.MediaSource
+import androidx.media3.exoplayer.source.MergingMediaSource
 import androidx.media3.exoplayer.source.ProgressiveMediaSource
 import androidx.media3.exoplayer.hls.DefaultHlsExtractorFactory
 import androidx.media3.exoplayer.hls.HlsMediaSource
@@ -57,6 +58,10 @@ import androidx.media3.exoplayer.video.MediaCodecVideoRenderer
 import androidx.media3.exoplayer.video.VideoFrameMetadataListener
 import androidx.media3.exoplayer.video.VideoRendererEventListener
 import androidx.media3.extractor.DefaultExtractorsFactory
+import androidx.media3.extractor.Extractor
+import androidx.media3.extractor.ExtractorsFactory
+import androidx.media3.extractor.text.DefaultSubtitleParserFactory
+import androidx.media3.extractor.text.SubtitleExtractor
 import androidx.media3.extractor.ts.DefaultTsPayloadReaderFactory
 import io.flutter.plugin.common.BinaryMessenger
 import io.flutter.plugin.common.EventChannel
@@ -117,12 +122,14 @@ class ExoTunerHost(
                     endMs = call.argument<Number>("endMs")?.toLong(),
                     exact = call.argument<Boolean>("exact") ?: true,
                     live = call.argument<Boolean>("live") ?: false,
+                    subs = Subs.from(call.argument<Map<String, Any?>>("subtitles")),
                 )
                 "enqueue" -> player.enqueue(
                     url = call.argument<String>("url")!!,
                     headers = call.argument<Map<String, String>>("headers") ?: emptyMap(),
                     startMs = call.argument<Number>("startMs")?.toLong(),
                     endMs = call.argument<Number>("endMs")?.toLong(),
+                    subs = Subs.from(call.argument<Map<String, Any?>>("subtitles")),
                 )
                 "advance" -> {
                     result.success(player.advance())
@@ -137,7 +144,7 @@ class ExoTunerHost(
                 "pause" -> player.pause()
                 "resume" -> player.resume()
                 "seek" -> player.seek(call.argument<Number>("ms")?.toLong() ?: 0L)
-                "captions" -> player.setCaptions(call.argument<Boolean>("on") ?: false)
+                "subtitles" -> player.setSubtitles(Subs.from(call.argument<Map<String, Any?>>("subtitles")))
                 "setLeveling" -> player.setLeveling(call.argument<Boolean>("on") ?: false)
                 "setVolume" -> player.setVolume(call.argument<Number>("volume")?.toFloat() ?: 1f)
                 "stats" -> {
@@ -212,7 +219,15 @@ class ExoTunerHost(
             .build()
             .also { attach(it) }
 
-        private var captions = false
+        /** The subtitles the item playing shows (subtitles spec), and the
+         *  queued item's, which take over with it. */
+        private var subs: Subs = Subs.Off
+        private var queuedSubs: Subs = Subs.Off
+
+        /** The item playing and the one queued, as opened, to re-prepare the
+         *  item playing with a side-loaded track added. */
+        private var current: Item? = null
+        private var queuedItem: Item? = null
 
         /** The sleep timer's fade (sleep-timer spec), 0–1. One ExoPlayer plays
          *  the item on screen and the next one queued, so it covers both;
@@ -280,7 +295,7 @@ class ExoTunerHost(
             player.setVideoFrameMetadataListener(frames)
             player.volume = volume
             player.trackSelectionParameters = player.trackSelectionParameters.buildUpon()
-                .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, !captions)
+                .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, subs == Subs.Off)
                 .build()
         }
 
@@ -307,8 +322,9 @@ class ExoTunerHost(
 
         // ---- Methods ----------------------------------------------------------
 
-        /** [url], read through OkHttp with [headers], clipped at [endMs]. */
-        private fun source(url: String, headers: Map<String, String>, endMs: Long?): MediaSource {
+        /** [url], read through OkHttp with [headers], clipped at [endMs], with
+         *  [subs]'s text track beside it when it's side-loaded. */
+        private fun source(url: String, headers: Map<String, String>, endMs: Long?, subs: Subs = Subs.Off): MediaSource {
             val data = OkHttpDataSource.Factory(http)
                 .setUserAgent("Nightingale TV")
                 .setDefaultRequestProperties(headers)
@@ -330,12 +346,32 @@ class ExoTunerHost(
                 ProgressiveMediaSource.Factory(data, extractors)
                     .createMediaSource(MediaItem.fromUri(url))
             }
+            if (subs is Subs.Side) source = MergingMediaSource(source, sideLoaded(subs))
             if (endMs != null && endMs > 0L) {
                 source = ClippingMediaSource.Builder(source)
                     .setEndPositionMs(endMs)
                     .build()
             }
             return source
+        }
+
+        /** A text track loaded beside the stream, through OkHttp with the
+         *  server's headers, parsed into cues as it loads (as ExoPlayer's own
+         *  side-loaded subtitles are). */
+        private fun sideLoaded(side: Subs.Side): MediaSource {
+            val data = OkHttpDataSource.Factory(http)
+                .setUserAgent("Nightingale TV")
+                .setDefaultRequestProperties(side.headers)
+            val format = Format.Builder()
+                .setId(SIDE_LOADED_ID)
+                .setSampleMimeType(side.mime)
+                .setLanguage(side.language)
+                .setLabel(side.label)
+                .setSelectionFlags(C.SELECTION_FLAG_DEFAULT)
+                .build()
+            val parsers = DefaultSubtitleParserFactory()
+            val extractors = ExtractorsFactory { arrayOf<Extractor>(SubtitleExtractor(parsers.create(format), format)) }
+            return ProgressiveMediaSource.Factory(data, extractors).createMediaSource(MediaItem.fromUri(side.url))
         }
 
         /** A Live TV source's stream (live-playback D9): no clipping and no
@@ -377,7 +413,15 @@ class ExoTunerHost(
             }
         }
 
-        fun open(url: String, headers: Map<String, String>, startMs: Long?, endMs: Long?, exact: Boolean, live: Boolean = false) {
+        fun open(
+            url: String,
+            headers: Map<String, String>,
+            startMs: Long?,
+            endMs: Long?,
+            exact: Boolean,
+            live: Boolean = false,
+            subs: Subs = Subs.Off,
+        ) {
             undecodable = false
             completed = false
             hadPicture = false
@@ -385,6 +429,9 @@ class ExoTunerHost(
             queued = false
             moved = false
             startsPaused = false
+            queuedItem = null
+            current = Item(url, headers, endMs, subs, live)
+            useSubtitles(subs)
             if (live) {
                 player.setSeekParameters(SeekParameters.DEFAULT)
                 player.setMediaSource(liveSource(url, headers))
@@ -392,7 +439,7 @@ class ExoTunerHost(
                 player.playWhenReady = true
                 return
             }
-            var source = source(url, headers, endMs)
+            var source = source(url, headers, endMs, subs)
             // Design D5: a keyframe start, not a clipping start, so the
             // position stays on the file's own timeline. Outside the clipping,
             // which never starts a period before the position asked for.
@@ -407,10 +454,14 @@ class ExoTunerHost(
          *  that item is loaded to its clipped end, and plays on into it. It
          *  starts exactly at [startMs] on its file's own timeline (its window's
          *  default position, not a clipping start). */
-        fun enqueue(url: String, headers: Map<String, String>, startMs: Long?, endMs: Long?) {
+        fun enqueue(url: String, headers: Map<String, String>, startMs: Long?, endMs: Long?, subs: Subs = Subs.Off) {
             clearQueue()
-            val source = StartAtSource(source(url, headers, endMs), (startMs ?: 0L) * 1000)
+            val source = StartAtSource(source(url, headers, endMs, subs), (startMs ?: 0L) * 1000)
+            queuedItem = Item(url, headers, endMs, subs, false, startMs)
+            queuedSubs = subs
             if (player.mediaItemCount == 0) {
+                current = queuedItem
+                useSubtitles(subs)
                 completed = false
                 hadPicture = false
                 rebufferSince = 0L
@@ -447,9 +498,11 @@ class ExoTunerHost(
         }
 
         fun clearQueue() {
+            queuedItem = null
             if (startsPaused) {
                 startsPaused = false
                 queued = false
+                current = null
                 player.stop()
                 player.clearMediaItems()
                 return
@@ -483,6 +536,8 @@ class ExoTunerHost(
             queued = false
             moved = false
             startsPaused = false
+            current = null
+            queuedItem = null
             main.removeCallbacks(ticker)
             player.stop()
             player.clearMediaItems()
@@ -513,26 +568,74 @@ class ExoTunerHost(
             send(mapOf("e" to "position", "ms" to player.currentPosition))
         }
 
-        fun setCaptions(on: Boolean) {
-            captions = on
-            val params = player.trackSelectionParameters.buildUpon()
-                .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, !on)
-            if (!on) params.clearOverridesOfType(C.TRACK_TYPE_TEXT)
-            player.trackSelectionParameters = params.build()
-            if (on) selectSubtitles(player.currentTracks)
+        /** What the item playing shows as subtitles. A side-loaded track it
+         *  wasn't opened with re-prepares it where it is, with the track
+         *  added (and what's queued after it). */
+        fun setSubtitles(next: Subs) {
+            val item = current
+            if (next is Subs.Side && item != null && !item.live && item.subs != next) {
+                val position = player.currentPosition
+                val playing = player.playWhenReady
+                val updated = item.copy(subs = next)
+                current = updated
+                useSubtitles(next)
+                player.setSeekParameters(SeekParameters.EXACT)
+                player.setMediaSource(source(updated.url, updated.headers, updated.endMs, next), position)
+                queuedItem?.let { q ->
+                    player.addMediaSource(StartAtSource(source(q.url, q.headers, q.endMs, q.subs), (q.startMs ?: 0L) * 1000))
+                }
+                player.prepare()
+                player.playWhenReady = playing
+                log("info exo: re-prepared at ${position} ms with a side-loaded ${next.mime} track")
+                return
+            }
+            if (item != null) current = item.copy(subs = next)
+            useSubtitles(next)
         }
 
-        /** Captions on: a subtitle track even when none is marked default
-         *  (as mpv's "auto"): the default one, else one in the device's
+        /** Text tracks on or off for [next], and its track picked. */
+        private fun useSubtitles(next: Subs) {
+            subs = next
+            val params = player.trackSelectionParameters.buildUpon()
+                .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, next == Subs.Off)
+            if (next == Subs.Off) params.clearOverridesOfType(C.TRACK_TYPE_TEXT)
+            player.trackSelectionParameters = params.build()
+            if (next != Subs.Off) selectSubtitles(player.currentTracks)
+        }
+
+        /** The text track [subs] names: the side-loaded one; the one at its
+         *  position among the stream's own (by language when the stream
+         *  lists them differently); for a live stream's own captions (as
+         *  mpv's "auto"), the default one, else one in the device's
          *  language, else the first. */
         private fun selectSubtitles(tracks: Tracks) {
-            if (!captions) return
+            val wanted = subs
+            if (wanted == Subs.Off) return
             val text = tracks.groups.filter { it.type == C.TRACK_TYPE_TEXT && it.isSupported }
-            if (text.isEmpty() || text.any { it.isSelected }) return
-            val language = Locale.getDefault().language
-            val pick = text.firstOrNull { (it.getTrackFormat(0).selectionFlags and C.SELECTION_FLAG_DEFAULT) != 0 }
-                ?: text.firstOrNull { it.getTrackFormat(0).language?.startsWith(language) == true }
-                ?: text.first()
+            if (text.isEmpty()) return
+            fun sideLoaded(g: Tracks.Group) = g.getTrackFormat(0).id?.endsWith(SIDE_LOADED_ID) == true
+            val own = text.filter { !sideLoaded(it) }
+            val pick = when (wanted) {
+                is Subs.Side -> text.firstOrNull { sideLoaded(it) }
+                is Subs.Embedded -> {
+                    val at = own.getOrNull(wanted.position)
+                    val lang = wanted.language
+                    if (at != null && lang != null && !sameLanguage(at.getTrackFormat(0).language, lang)) {
+                        own.firstOrNull { sameLanguage(it.getTrackFormat(0).language, lang) } ?: at
+                    } else {
+                        at
+                    }
+                }
+                Subs.Stream -> {
+                    if (text.any { it.isSelected }) return
+                    val language = Locale.getDefault().language
+                    text.firstOrNull { (it.getTrackFormat(0).selectionFlags and C.SELECTION_FLAG_DEFAULT) != 0 }
+                        ?: text.firstOrNull { it.getTrackFormat(0).language?.startsWith(language) == true }
+                        ?: text.first()
+                }
+                Subs.Off -> null
+            } ?: return
+            if (pick.isSelected && text.count { it.isSelected } == 1) return
             player.trackSelectionParameters = player.trackSelectionParameters.buildUpon()
                 .clearOverridesOfType(C.TRACK_TYPE_TEXT)
                 .addOverride(TrackSelectionOverride(pick.mediaTrackGroup, 0))
@@ -642,6 +745,10 @@ class ExoTunerHost(
             if (reason != Player.MEDIA_ITEM_TRANSITION_REASON_AUTO && reason != Player.MEDIA_ITEM_TRANSITION_REASON_SEEK) return
             queued = false
             moved = true
+            // The queued item's subtitles go on with it.
+            current = queuedItem
+            queuedItem = null
+            useSubtitles(queuedSubs)
             // Only the item playing stays in the playlist.
             main.post {
                 val index = player.currentMediaItemIndex
@@ -976,4 +1083,68 @@ private class KeyframeStartPeriod(val inner: MediaPeriod) : MediaPeriod, MediaPe
     override fun reevaluateBuffer(positionUs: Long) = inner.reevaluateBuffer(positionUs)
     override fun setEndPositionUs(endPositionUs: Long): Long = inner.setEndPositionUs(endPositionUs)
     override fun setUsesStreamPrerollFlags() = inner.setUsesStreamPrerollFlags()
+}
+
+/** The id of a side-loaded text track's format (ExoPlayer prefixes it with
+ *  the merged source's index). */
+private const val SIDE_LOADED_ID = "nightingale-side-loaded"
+
+/** ISO 639 codes of either length (`en`, `eng`, `en-US`) for one language. */
+private fun sameLanguage(a: String?, b: String): Boolean {
+    if (a == null) return false
+    fun three(code: String): String {
+        val base = code.lowercase(Locale.ROOT).split('-', '_').first()
+        if (base.length != 2) return base
+        return try {
+            Locale(base).isO3Language
+        } catch (_: Exception) {
+            base
+        }
+    }
+    val x = three(a)
+    val y = three(b)
+    if (x == y) return true
+    // 639-2/B and /T codes of the same language (ger/deu, fre/fra…).
+    val pairs = mapOf(
+        "ger" to "deu", "fre" to "fra", "dut" to "nld", "chi" to "zho", "cze" to "ces", "gre" to "ell",
+        "per" to "fas", "rum" to "ron", "slo" to "slk", "alb" to "sqi", "arm" to "hye", "baq" to "eus",
+        "bur" to "mya", "geo" to "kat", "ice" to "isl", "mac" to "mkd", "mao" to "mri", "may" to "msa",
+        "tib" to "bod", "wel" to "cym",
+    )
+    return pairs[x] == y || pairs[y] == x
+}
+
+/** One item as opened, to build it again. */
+private data class Item(
+    val url: String,
+    val headers: Map<String, String>,
+    val endMs: Long?,
+    val subs: Subs,
+    val live: Boolean,
+    val startMs: Long? = null,
+)
+
+/** What an item shows as subtitles (the Dart `SubtitleChoice`). */
+private sealed class Subs {
+    object Off : Subs()
+    /** A live stream's own captions. */
+    object Stream : Subs()
+    data class Embedded(val position: Int, val language: String?) : Subs()
+    data class Side(val url: String, val headers: Map<String, String>, val mime: String, val language: String?, val label: String?) : Subs()
+
+    companion object {
+        @Suppress("UNCHECKED_CAST")
+        fun from(m: Map<String, Any?>?): Subs = when (m?.get("kind")) {
+            "stream" -> Stream
+            "embedded" -> Embedded((m["position"] as? Number)?.toInt() ?: 0, m["language"] as? String)
+            "side" -> Side(
+                url = m["url"] as String,
+                headers = (m["headers"] as? Map<String, String>) ?: emptyMap(),
+                mime = (m["mime"] as? String) ?: MimeTypes.APPLICATION_SUBRIP,
+                language = m["language"] as? String,
+                label = m["label"] as? String,
+            )
+            else -> Off
+        }
+    }
 }

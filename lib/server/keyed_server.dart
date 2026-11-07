@@ -96,11 +96,25 @@ class KeyedServer implements MediaServer {
           maxBitrate: maxBitrate, forceTranscode: forceTranscode, startAt: startAt, profile: profile);
 
   @override
-  Future<Uri> transcodeUri(Uri template, {required String playSessionId, required Duration startAt}) =>
-      inner.transcodeUri(template, playSessionId: playSessionId, startAt: startAt);
+  Future<Uri> transcodeUri(Uri template,
+          {required String playSessionId, required Duration startAt, SubtitleTrack? burn}) =>
+      inner.transcodeUri(template, playSessionId: playSessionId, startAt: startAt, burn: burn);
+
+  @override
+  Future<List<SubtitleTrack>> subtitleTracks(String itemId) => inner.subtitleTracks(_raw(itemId));
+
+  @override
+  Uri? subtitleUri(String itemId, SubtitleTrack track, {Duration startAt = Duration.zero, String? format}) =>
+      inner.subtitleUri(_raw(itemId), track, startAt: startAt, format: format);
 
   @override
   Future<void> stopTranscode(String playSessionId) => inner.stopTranscode(playSessionId);
+
+  @override
+  Future<void> keepTranscodeAlive(String playSessionId) => inner.keepTranscodeAlive(playSessionId);
+
+  @override
+  Future<Duration> resumePoint(String itemId) => inner.resumePoint(_raw(itemId));
 
   @override
   bool get transcodeKeepsSourceTime => inner.transcodeKeepsSourceTime;

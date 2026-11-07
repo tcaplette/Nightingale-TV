@@ -211,4 +211,16 @@ class JellyfinLiveTv implements LiveTv {
   @override
   Future<void> reportStopped(LiveStream stream, Duration position) =>
       client.request('POST', '/Sessions/Playing/Stopped', body: _report(stream, position));
+
+  @override
+  bool get needsReports => client.kind != ServerKind.jellyfin;
+
+  /// The sessions ping with the stream's play session: no user data, no
+  /// dashboard entry.
+  @override
+  Future<void> keepAlive(LiveStream stream) async {
+    final session = stream.playSessionId;
+    if (session == null) return;
+    await client.request('POST', '/Sessions/Playing/Ping', query: {'playSessionId': session});
+  }
 }

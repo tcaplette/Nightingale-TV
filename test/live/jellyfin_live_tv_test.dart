@@ -220,4 +220,23 @@ void main() {
     expect(progress['PlayMethod'], 'DirectPlay');
     expect(requests.where((r) => r.url.path.contains('PlayedItems')), isEmpty);
   });
+
+  test("with watch status off, Jellyfin holds live on pings; Emby keeps its live reports", () async {
+    final c = jellyfin(serving({'POST /Sessions/Playing/Ping': (_) => null}));
+    expect(c.liveTv.needsReports, isFalse);
+    await c.liveTv.keepAlive(LiveStream(channelId: 'ch', uri: Uri.parse('http://jf.local/s'), playSessionId: 'live1'));
+    expect('${requests.single.method} ${requests.single.url.path}', 'POST /Sessions/Playing/Ping');
+    expect(requests.single.url.queryParameters, {'playSessionId': 'live1'});
+    await c.liveTv.keepAlive(LiveStream(channelId: 'ch', uri: Uri.parse('http://jf.local/s')));
+    expect(requests, hasLength(1), reason: 'nothing to ping without a play session');
+    final emby = EmbyClient(
+      serverUrl: 'http://emby.local:8096',
+      deviceId: 'dev1',
+      deviceName: 'Test',
+      accessToken: 'tok',
+      userId: 'u1',
+      httpClient: MockClient((_) async => http.Response('', 204)),
+    );
+    expect(emby.liveTv.needsReports, isTrue, reason: 'unverified on Emby (Premiere), so live reports stay as before');
+  });
 }

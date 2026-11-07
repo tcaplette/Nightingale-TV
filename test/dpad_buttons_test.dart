@@ -129,17 +129,29 @@ void main() {
       await h.end(tester);
     });
 
-    testWidgets('Right, Up, Right, Right, OK opens the sleep picker; Right stops at the end', (tester) async {
+    testWidgets('Right, Up, Right, Right, OK opens the sleep picker; Captions comes after; Right stops at the end',
+        (tester) async {
       await start(tester);
       await keys(tester, [right, up, right, right]);
       expect(lit(tester), ['Sleep']);
       await key(tester, right);
-      expect(lit(tester), ['Sleep']);
-      await keys(tester, [left, left, left]);
+      expect(lit(tester), ['Captions']);
+      await key(tester, right);
+      expect(lit(tester), ['Captions']);
+      await keys(tester, [left, left, left, left]);
       expect(lit(tester), ['Guide']);
       await keys(tester, [right, right, ok]);
       expect(dialog, findsOneWidget);
       expect(find.text('Sleep timer'), findsOneWidget);
+      await h.end(tester);
+    });
+
+    testWidgets('Right, Up, Right, Right, Right, OK opens the captions picker, Off first', (tester) async {
+      await start(tester);
+      await keys(tester, [right, up, right, right, right, ok]);
+      expect(dialog, findsOneWidget);
+      expect(find.descendant(of: dialog, matching: find.text('Captions')), findsOneWidget);
+      expect(find.descendant(of: dialog, matching: find.text('Off')), findsOneWidget);
       await h.end(tester);
     });
 

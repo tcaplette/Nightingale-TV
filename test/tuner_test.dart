@@ -1390,4 +1390,81 @@ test('rapid surfing over five transcoding channels leaves at most one job runnin
       expect(tuner.error, 'Nothing to play on this channel');
     });
   });
+
+  group('watch status (play-reporting)', () {
+    Future<void> watchStatus(bool on, {int? mbps}) => app.setPlayback(
+        PlaybackSettings(transcodeIfNeeded: mbps != null, maxKbps: mbps == null ? null : mbps * 1000, reportPlayback: on));
+
+    /// Tunes into a part on the first channel, then to the second, with the
+    /// queued reports sent.
+    Future<MediaEntry> watchAndSurf() async {
+      await tuneIntoPart(app.channels.first);
+      final item = tuner.segment!.item!;
+      await tuner.tune(app.channels[1]);
+      await settle();
+      await tuner.flushReports();
+      return item;
+    }
+
+    test('off: no start, progress or stopped report, and no resume read', () async {
+      await watchStatus(false);
+      tuner.progressEvery = const Duration(milliseconds: 20);
+      await tuneIntoPart(app.channels.first);
+      await Future<void>.delayed(const Duration(milliseconds: 70));
+      await tuner.pause();
+      await tuner.resume();
+      await tuner.tune(app.channels[1]);
+      await settle();
+      await tuner.stop();
+      await tuner.flushReports();
+      expect(client.reports, isEmpty);
+      expect(client.resumeReads, isEmpty);
+      expect(client.pings, isEmpty, reason: 'nothing converts');
+    });
+
+    test('off: a conversion is kept alive with pings of its job, not reports', () async {
+      await watchStatus(false, mbps: 8);
+      tuner.progressEvery = const Duration(milliseconds: 20);
+      await tuneIntoPart(app.channels.first);
+      final job = player.opens.single.url.queryParameters['PlaySessionId']!;
+      await Future<void>.delayed(const Duration(milliseconds: 70));
+      expect(client.pings, isNotEmpty);
+      expect(client.pings.toSet(), {job});
+      expect(client.reports, isEmpty);
+      await tuner.stop();
+    });
+
+    test('on: a partial viewing keeps the resume point from before it, read before the start', () async {
+      client.resumeFor = (_) => const Duration(minutes: 5);
+      final item = await watchAndSurf();
+      expect(client.resumeReads.first, item.id);
+      expect(log.indexOf('resume:${item.id}'), lessThan(log.indexOf('report:start')));
+      final stopped = client.reports.firstWhere((r) => r.$1 == 'stopped').$2;
+      expect(stopped.itemId, item.id);
+      expect(stopped.position, const Duration(minutes: 5));
+    });
+
+    test('on: an unreadable resume point reports 0, as before', () async {
+      client.resumeFails = true;
+      await watchAndSurf();
+      expect(client.reports.map((r) => r.$1), containsAllInOrder(['start', 'stopped']));
+      expect(client.reports.firstWhere((r) => r.$1 == 'stopped').$2.position, Duration.zero);
+    });
+
+    test('turned off mid-viewing: that viewing still sends its stopped report; the next sends none', () async {
+      await tuneIntoPart(app.channels.first);
+      final first = tuner.segment!.item!;
+      expect(client.reports.map((r) => r.$1), ['start']);
+      await watchStatus(false);
+      await tuner.tune(app.channels[1]);
+      await settle();
+      await tuner.flushReports();
+      expect(client.reports.map((r) => (r.$1, r.$2.itemId)), [('start', first.id), ('stopped', first.id)]);
+      await tuner.tune(app.channels.first);
+      await settle();
+      await tuner.stop();
+      await tuner.flushReports();
+      expect(client.reports, hasLength(2), reason: 'the next viewing sends nothing');
+    });
+  });
 }

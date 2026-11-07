@@ -8,6 +8,7 @@ import '../channels/channel.dart';
 import '../channels/channel_groups.dart';
 import '../channels/schedule.dart';
 import '../theme/tv_theme.dart';
+import 'captions_picker.dart';
 import 'format.dart';
 import 'guide_view.dart';
 import 'tv_screen.dart';
@@ -29,6 +30,7 @@ class PortraitWatchScreen extends StatefulWidget {
     required this.onMenu,
     required this.onFullScreen,
     this.onSleep,
+    this.onCaptions,
     this.onTouch,
     this.numberEntry,
     this.toast,
@@ -42,6 +44,9 @@ class PortraitWatchScreen extends StatefulWidget {
 
   /// Opens the sleep timer picker (a Sleep button before Menu).
   final VoidCallback? onSleep;
+
+  /// Opens the captions picker (a Captions button beside Menu).
+  final VoidCallback? onCaptions;
 
   /// Any tap or press on the screen (cancels the exit prompt).
   final VoidCallback? onTouch;
@@ -297,10 +302,20 @@ class PortraitWatchScreenState extends State<PortraitWatchScreen> {
                             onInteract: _showControls,
                           ),
                         ),
+                      // Sleep, Menu and Captions fit the player's width on the
+                      // narrowest phones: the row scales down rather than
+                      // running off the left edge.
                       Positioned(
                         top: 12,
                         right: 12,
-                        child: Row(
+                        left: 12,
+                        child: Align(
+                          alignment: Alignment.topRight,
+                          child: FittedBox(
+                          fit: BoxFit.scaleDown,
+                          alignment: Alignment.topRight,
+                          child: Row(
+                          mainAxisSize: MainAxisSize.min,
                           children: [
                             if (widget.onSleep case final onSleep?) ...[
                               _PlayerButton(label: 'Sleep', icon: Icons.bedtime, onPressed: () {
@@ -313,7 +328,16 @@ class PortraitWatchScreenState extends State<PortraitWatchScreen> {
                               widget.onTouch?.call();
                               widget.onMenu();
                             }),
+                            if (widget.onCaptions case final onCaptions?) ...[
+                              const SizedBox(width: 12),
+                              _PlayerButton(label: captionsButtonLabel(tuner), icon: Icons.closed_caption, onPressed: () {
+                                widget.onTouch?.call();
+                                onCaptions();
+                              }),
+                            ],
                           ],
+                        ),
+                        ),
                         ),
                       ),
                       Positioned(

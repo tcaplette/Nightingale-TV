@@ -24,6 +24,7 @@ import 'format.dart';
 import 'guide_view.dart';
 import 'menu_screen.dart';
 import 'portrait_watch_screen.dart';
+import 'captions_picker.dart';
 import 'sleep_picker.dart';
 import 'widgets/broadcast_cards.dart';
 import 'widgets/channel_logo.dart';
@@ -234,6 +235,13 @@ class _TvScreenState extends State<TvScreen> {
     final id = _sleep?.sleptOn?.id ?? app.settings.lastChannelId;
     await tuner.tune(app.channels.where((c) => c.id == id).firstOrNull ?? app.channels.first);
     if (mounted && !_guideOpen) _showChannel();
+  }
+
+  /// The captions picker (the Captions button).
+  Future<void> _openCaptions() async {
+    _cancelExit();
+    await showCaptionsPicker(context, AppScope.tunerOf(context));
+    if (mounted && !_focus.hasFocus && (!_guideOpen || ScreenLayout.of(context).isPortrait)) _focus.requestFocus();
   }
 
   /// The sleep timer picker (S, the Sleep button).
@@ -543,7 +551,7 @@ class _TvScreenState extends State<TvScreen> {
       _buttons = true;
       _showBanner();
     } else if (key == LogicalKeyboardKey.keyC || key == LogicalKeyboardKey.closedCaptionToggle) {
-      tuner.toggleCaptions().then((_) => _showToast(tuner.captions ? 'Captions on' : 'Captions off'));
+      tuner.toggleCaptions().then(_showToast);
     } else if (key == LogicalKeyboardKey.keyM || key == LogicalKeyboardKey.contextMenu) {
       _openMenu();
     } else {
@@ -557,6 +565,8 @@ class _TvScreenState extends State<TvScreen> {
         (label: 'Guide', icon: Icons.grid_view, onPressed: _openGuide),
         (label: 'Menu', icon: Icons.settings, onPressed: _openMenu),
         if (_sleep != null) (label: 'Sleep', icon: Icons.bedtime, onPressed: _openSleep),
+        // After Sleep, so the D-pad paths to Menu and Sleep stay as they were.
+        (label: captionsButtonLabel(AppScope.tunerOf(context)), icon: Icons.closed_caption, onPressed: _openCaptions),
         if (FullScreen.instance.isOn && !PlatformInfo.isTelevision)
           (label: 'Exit full screen', icon: Icons.fullscreen_exit, onPressed: _exitFullScreen),
       ];
@@ -724,7 +734,7 @@ class _TvScreenState extends State<TvScreen> {
     } else if (key == LogicalKeyboardKey.mediaLast || key == LogicalKeyboardKey.keyL) {
       _surf(tuner.lastChannel);
     } else if (key == LogicalKeyboardKey.keyC || key == LogicalKeyboardKey.closedCaptionToggle) {
-      tuner.toggleCaptions().then((_) => _showToast(tuner.captions ? 'Captions on' : 'Captions off'));
+      tuner.toggleCaptions().then(_showToast);
     } else if (key == LogicalKeyboardKey.keyM || key == LogicalKeyboardKey.contextMenu) {
       _openMenu();
     } else if (key == LogicalKeyboardKey.escape) {
@@ -766,6 +776,7 @@ class _TvScreenState extends State<TvScreen> {
               toast: _toast,
               onTune: _tuneFromList,
               onMenu: _openMenu,
+              onCaptions: _openCaptions,
               onSleep: _sleep == null ? null : _openSleep,
               onFullScreen: () {
                 _cancelExit();

@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/widgets.dart';
 import 'package:nightingale_tv/jellyfin/jellyfin_client.dart';
 import 'package:nightingale_tv/playback/playback_diagnostics.dart';
+import 'package:nightingale_tv/playback/subtitles.dart';
 import 'package:nightingale_tv/playback/tuner_player.dart';
 import 'package:nightingale_tv/server/media_server.dart';
 
@@ -51,6 +52,20 @@ class FakeClient extends JellyfinClient {
     return PlaybackDecision.transcode(template, directStream: converted, sourceBitrate: source, sourceCodec: 'hevc');
   }
 
+  /// Each item's subtitle tracks (none unless set), every request for
+  /// them, and a hold on the answers (when set).
+  List<SubtitleTrack> Function(String itemId) subtitlesFor = (_) => const [];
+  final subtitleRequests = <String>[];
+  Completer<void>? holdSubtitles;
+
+  @override
+  Future<List<SubtitleTrack>> subtitleTracks(String itemId) async {
+    subtitleRequests.add(itemId);
+    log.add('subtitles:$itemId');
+    await holdSubtitles?.future;
+    return subtitlesFor(itemId);
+  }
+
   /// Transcodes in the source's own times, as Plex's are.
   bool sourceTime = false;
 
@@ -61,6 +76,30 @@ class FakeClient extends JellyfinClient {
   Future<void> stopTranscode(String playSessionId) async {
     stopped.add(playSessionId);
     log.add('stop:$playSessionId');
+  }
+
+  /// Every ping for a transcode job, by its play session.
+  final pings = <String>[];
+
+  @override
+  Future<void> keepTranscodeAlive(String playSessionId) async {
+    pings.add(playSessionId);
+    log.add('ping:$playSessionId');
+  }
+
+  /// Each item's resume point (none unless set), and every read of one.
+  Duration Function(String itemId) resumeFor = (_) => Duration.zero;
+  final resumeReads = <String>[];
+
+  /// Fails the resume point reads (when set).
+  bool resumeFails = false;
+
+  @override
+  Future<Duration> resumePoint(String itemId) async {
+    resumeReads.add(itemId);
+    log.add('resume:$itemId');
+    if (resumeFails) throw ServerException('unreachable');
+    return resumeFor(itemId);
   }
 
   @override
@@ -135,8 +174,11 @@ class FakePlayer implements TunerPlayer {
       Duration? start,
       Duration? end,
       bool exact = true,
-      bool live = false}) async {
+      bool live = false,
+      SubtitleChoice? subtitles}) async {
     opens.add((url: url, headers: headers, start: start, end: end, exact: exact));
+    this.subtitles = subtitles;
+    openSubtitles.add(subtitles);
     if (live) liveOpens.add(url);
     log.add('open:${url.path}');
     queued = null;
@@ -228,7 +270,9 @@ class FakePlayer implements TunerPlayer {
   Stream<void> get advanced => _advanced.stream;
 
   @override
-  Future<void> enqueue(Uri url, {required Map<String, String> headers, Duration? start, Duration? end}) async {
+  Future<void> enqueue(Uri url,
+      {required Map<String, String> headers, Duration? start, Duration? end, SubtitleChoice? subtitles}) async {
+    queuedSubtitles = subtitles;
     final item = (url: url, headers: headers, start: start, end: end);
     enqueued.add(item);
     queued = item;
@@ -262,14 +306,25 @@ class FakePlayer implements TunerPlayer {
   void _moveOn() {
     final item = queued!;
     queued = null;
+    subtitles = queuedSubtitles;
     _moved = true;
     position = item.start ?? Duration.zero;
     _advanced.add(null);
     scheduleMicrotask(() => showPicture(item.start ?? Duration.zero));
   }
 
+  /// The subtitles on screen now, what each open started with, every
+  /// [setSubtitles], and what the queued item shows.
+  SubtitleChoice? subtitles;
+  final openSubtitles = <SubtitleChoice?>[];
+  final subtitleChanges = <SubtitleChoice?>[];
+  SubtitleChoice? queuedSubtitles;
+
   @override
-  Future<void> showCaptions(bool on) async {}
+  Future<void> setSubtitles(SubtitleChoice? choice) async {
+    if (choice != subtitles) subtitleChanges.add(choice);
+    subtitles = choice;
+  }
 
   /// Every [setVolumeLeveling], in order.
   final leveling = <bool>[];

@@ -23,7 +23,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:integration_test/integration_test.dart';
-import 'package:media_kit/media_kit.dart';
+import 'package:media_kit/media_kit.dart' hide SubtitleTrack;
 import 'package:nightingale_tv/app_scope.dart';
 import 'package:nightingale_tv/app_state.dart';
 import 'package:nightingale_tv/channels/channel.dart';
@@ -105,10 +105,21 @@ class Recording implements MediaServer {
   }
 
   @override
-  Future<Uri> transcodeUri(Uri template, {required String playSessionId, required Duration startAt}) {
-    log.add('transcode:$playSessionId');
-    return inner.transcodeUri(template, playSessionId: playSessionId, startAt: startAt);
+  Future<Uri> transcodeUri(Uri template,
+      {required String playSessionId, required Duration startAt, SubtitleTrack? burn}) {
+    log.add('transcode:$playSessionId${burn == null ? '' : ' burn:${burn.id}'}');
+    return inner.transcodeUri(template, playSessionId: playSessionId, startAt: startAt, burn: burn);
   }
+
+  @override
+  Future<List<SubtitleTrack>> subtitleTracks(String itemId) {
+    log.add('subtitles:$itemId');
+    return inner.subtitleTracks(itemId);
+  }
+
+  @override
+  Uri? subtitleUri(String itemId, SubtitleTrack track, {Duration startAt = Duration.zero, String? format}) =>
+      inner.subtitleUri(itemId, track, startAt: startAt, format: format);
 
   @override
   bool get transcodeKeepsSourceTime => inner.transcodeKeepsSourceTime;
@@ -118,6 +129,15 @@ class Recording implements MediaServer {
     log.add('stop:$playSessionId');
     return inner.stopTranscode(playSessionId);
   }
+
+  @override
+  Future<void> keepTranscodeAlive(String playSessionId) {
+    log.add('ping:$playSessionId');
+    return inner.keepTranscodeAlive(playSessionId);
+  }
+
+  @override
+  Future<Duration> resumePoint(String itemId) => inner.resumePoint(itemId);
 
   @override
   Uri imageUri(String itemId, ImageKind kind, {int? maxHeight, String? tag}) =>
@@ -224,7 +244,7 @@ void main() {
         '${lib.songs.length} songs, ${lib.musicVideos.length} music videos; ${app.channels.length} channels');
     expect(lib.episodes, hasLength(24));
     expect(lib.series.map((s) => s.name).toSet(), {'Maple Street', 'Signal Hill', 'Night Desk'});
-    expect(lib.movies, hasLength(2));
+    expect(lib.movies, hasLength(6), reason: '2 movies and 4 subtitle test movies');
     expect(lib.songs, hasLength(30));
     expect(lib.musicVideos, hasLength(6));
     expect(lib.episodes.where((e) => e.chapters.length >= 3), hasLength(24), reason: 'every episode has its acts');
@@ -317,7 +337,7 @@ void main() {
       await wait(const Duration(milliseconds: 500));
     }
     expect(app.library.commercials, hasLength(41), reason: '40 clips and a reel');
-    expect(app.library.movies, hasLength(2), reason: 'the pool\'s videos are no longer programs');
+    expect(app.library.movies, hasLength(6), reason: 'the pool\'s videos are no longer programs');
     if (kind == 'plex') {
       final trailers = tree.firstWhere((n) => n.type == 'BoxSet' && n.name == 'Trailers');
       final second = await io(app.createPool);

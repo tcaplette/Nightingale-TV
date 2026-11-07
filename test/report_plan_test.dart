@@ -67,10 +67,20 @@ void main() {
         reason: 'off the air');
   });
 
-  test('watched to the end counts as watched; a partial viewing reports position 0', () {
+  test('watched to the end counts as watched; a partial viewing reports the resume point from before it', () {
     expect(stoppedPosition(episode, const Duration(minutes: 22)), const Duration(minutes: 22));
     expect(stoppedPosition(episode, const Duration(minutes: 20)), const Duration(minutes: 20),
         reason: 'missing only the end credits');
-    expect(stoppedPosition(episode, const Duration(minutes: 14)), Duration.zero);
+    expect(stoppedPosition(episode, const Duration(minutes: 14)), Duration.zero, reason: 'no resume point');
+    const five = Duration(minutes: 5);
+    expect(stoppedPosition(episode, const Duration(seconds: 30), resumePoint: five), five,
+        reason: 'a glimpse keeps the resume point made elsewhere');
+    expect(stoppedPosition(episode, const Duration(minutes: 14), resumePoint: five), five,
+        reason: 'even past it, a partial viewing never moves it');
+    expect(stoppedPosition(episode, const Duration(minutes: 21), resumePoint: five), const Duration(minutes: 21),
+        reason: 'watched: reported where it got to');
+    expect(stoppedPosition(episode, const Duration(minutes: 21), resumePoint: five, cut: true), five,
+        reason: 'Truncate cut it: never watched');
+    expect(stoppedPosition(episode, const Duration(minutes: 21), cut: true), Duration.zero);
   });
 }

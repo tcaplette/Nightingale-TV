@@ -264,6 +264,87 @@ class PlaybackDecision {
   bool get transcode => transcodeTemplate != null;
 }
 
+/// One subtitle track of an item, as its server lists it (subtitles spec).
+class SubtitleTrack {
+  const SubtitleTrack({
+    required this.id,
+    required this.codec,
+    this.language,
+    this.title,
+    this.isDefault = false,
+    this.isForced = false,
+    this.isExternal = false,
+    this.position,
+    this.source,
+    this.burnsWhenConverting = false,
+  });
+
+  /// The server's id for it: the stream index on Jellyfin and Emby, the
+  /// stream id on Plex.
+  final String id;
+
+  /// Lower case, in the server's words (`subrip`, `srt`, `ass`, `pgssub`…).
+  final String codec;
+
+  /// ISO 639-2 (`eng`), null when the server doesn't know it.
+  final String? language;
+  final String? title;
+  final bool isDefault;
+  final bool isForced;
+
+  /// A file beside the video (`Movie.en.srt`), not inside it.
+  final bool isExternal;
+
+  /// Inside the file: its place among the file's subtitle tracks (0 for the
+  /// first), which is the order players list them in. Null when external.
+  final int? position;
+
+  /// What the server's subtitle requests name besides the item: the media
+  /// source on Jellyfin and Emby, the part on Plex.
+  final String? source;
+
+  /// Converting, the server has to draw it into the picture: image tracks
+  /// (PGS, VobSub, DVB), and on Plex any track inside the file, which Plex
+  /// can't hand out on its own.
+  final bool burnsWhenConverting;
+
+  static const _imageCodecs = {
+    'pgs', 'pgssub', 'hdmv_pgs_subtitle', 'dvdsub', 'dvd_subtitle', 'vobsub', 'dvbsub', 'dvb_subtitle', 'xsub'
+  };
+
+  /// A picture track (PGS, VobSub, DVB), which can't be loaded on its own.
+  bool get isImage => isImageCodec(codec);
+
+  static bool isImageCodec(String codec) => _imageCodecs.contains(codec);
+
+  /// The file format a text track loads as: `ass`, `vtt` or `srt`.
+  String get textFormat => switch (codec) {
+        'ass' || 'ssa' => 'ass',
+        'vtt' || 'webvtt' => 'vtt',
+        _ => 'srt',
+      };
+
+  @override
+  bool operator ==(Object other) =>
+      other is SubtitleTrack &&
+      other.id == id &&
+      other.codec == codec &&
+      other.language == language &&
+      other.title == title &&
+      other.isDefault == isDefault &&
+      other.isForced == isForced &&
+      other.isExternal == isExternal &&
+      other.position == position &&
+      other.source == source;
+
+  @override
+  int get hashCode => Object.hash(id, codec, language, title, isDefault, isForced, isExternal, position, source);
+
+  @override
+  String toString() => 'SubtitleTrack($id $codec ${language ?? '-'}${title == null ? '' : ' "$title"'}'
+      '${isDefault ? ' default' : ''}${isForced ? ' forced' : ''}${isExternal ? ' external' : ' #$position'})';
+}
+
 enum PlayMethod {
   directPlay('DirectPlay'),
   directStream('DirectStream'),
@@ -374,11 +455,35 @@ abstract interface class MediaServer {
       {int? maxBitrate, bool forceTranscode = false, Duration startAt = Duration.zero, Map<String, Object?>? profile});
 
   /// One transcode job's URL: [template] joined at [startAt], under its own
-  /// [playSessionId]. Plex asks for the job's decision first.
-  Future<Uri> transcodeUri(Uri template, {required String playSessionId, required Duration startAt});
+  /// [playSessionId]. Plex asks for the job's decision first. [burn]: a
+  /// subtitle track the server draws into the picture (one whose
+  /// [SubtitleTrack.burnsWhenConverting]); none asks for no subtitles.
+  Future<Uri> transcodeUri(Uri template,
+      {required String playSessionId, required Duration startAt, SubtitleTrack? burn});
+
+  /// The subtitle tracks of [itemId], embedded and external, in the
+  /// server's order (one item request).
+  Future<List<SubtitleTrack>> subtitleTracks(String itemId);
+
+  /// Where text track [track] of [itemId] loads from on its own, as
+  /// [format] (`srt`, `vtt` or `ass`; null for the track's own), its cues
+  /// timed from [startAt] in the item (a conversion that restarts its
+  /// timeline where it joined). Null when the server can't serve it on its
+  /// own (an image track, or a Plex track inside the file). Auth goes in
+  /// [authHeaders], never in the URL.
+  Uri? subtitleUri(String itemId, SubtitleTrack track, {Duration startAt = Duration.zero, String? format});
 
   /// Stops the transcode job [playSessionId] started by this device.
   Future<void> stopTranscode(String playSessionId);
+
+  /// Keeps the transcode job [playSessionId] running without reporting
+  /// playback: nothing is recorded for the user, and the dashboard isn't
+  /// told (play-reporting, sent while reports are off).
+  Future<void> keepTranscodeAlive(String playSessionId);
+
+  /// Where [itemId] resumes for the signed-in user (its resume point, from
+  /// any client); zero when it has none.
+  Future<Duration> resumePoint(String itemId);
 
   /// Whether a transcode's stream keeps the source's own times (Plex's HLS
   /// playlists cover the whole item, and the player starts at the join

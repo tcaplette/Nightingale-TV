@@ -264,4 +264,18 @@ class PlexLiveTv implements LiveTv {
   @override
   Future<void> reportStopped(LiveStream stream, Duration position) =>
       _timeline(stream.playSessionId!, stream.extra, 'stopped', position);
+
+  /// Plex ends a tuned session that gets no timeline for about 3 minutes,
+  /// pings or not.
+  @override
+  bool get needsReports => true;
+
+  /// The universal transcoder's ping for the stream's job. Closing still
+  /// sends the tuned session's `stopped`, which frees the tuner.
+  @override
+  Future<void> keepAlive(LiveStream stream) async {
+    final transcode = stream.transcodeSession;
+    if (transcode == null) return;
+    await client.container('$_universal/ping', query: {'session': transcode});
+  }
 }

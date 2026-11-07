@@ -110,7 +110,9 @@ void main() {
       await show(tester, hours: hours);
       await press(tester, LogicalKeyboardKey.arrowRight, times: 60);
       final end = now.add(Duration(hours: hours));
-      final last = app.scheduleFor(first())!.guideProgramAt(end);
+      // The one airing as the range ends: a program starting exactly at the
+      // end doesn't show (guide-range spec).
+      final last = app.scheduleFor(first())!.guideProgramAt(end.subtract(const Duration(milliseconds: 1)));
       expect(find.textContaining(formatRange(last.start, last.end)), findsOneWidget);
       // The window doesn't pass the half hour holding the end of the range.
       final start = windowStartShown(tester);
@@ -127,7 +129,7 @@ void main() {
     await show(tester, hours: 3);
     await press(tester, LogicalKeyboardKey.arrowRight, times: 40);
     final schedule = app.scheduleFor(first())!;
-    final last = schedule.guideProgramAt(now.add(const Duration(hours: 3)));
+    final last = schedule.guideProgramAt(now.add(const Duration(hours: 3)).subtract(const Duration(milliseconds: 1)));
     expect(find.textContaining(formatRange(last.start, last.end)), findsOneWidget);
 
     // Left goes back to the program before.
@@ -139,7 +141,7 @@ void main() {
     now = now.add(const Duration(minutes: 30));
     await tester.pump(const Duration(seconds: 6));
     await press(tester, LogicalKeyboardKey.arrowRight, times: 40);
-    final later = schedule.guideProgramAt(now.add(const Duration(hours: 3)));
+    final later = schedule.guideProgramAt(now.add(const Duration(hours: 3)).subtract(const Duration(milliseconds: 1)));
     expect(later.end.isAfter(last.end), isTrue);
     expect(find.textContaining(formatRange(later.start, later.end)), findsOneWidget);
   });
@@ -150,7 +152,7 @@ void main() {
     // range ends a minute into one: the window showing that program's start
     // always reaches past the end, and the ask stops there.
     final schedule = app.scheduleFor(first())!;
-    final last = schedule.guideProgramAt(now.add(const Duration(hours: 4)));
+    final last = schedule.guideProgramAt(now.add(const Duration(hours: 4)).subtract(const Duration(milliseconds: 1)));
     now = last.start.add(const Duration(minutes: 1)).subtract(const Duration(hours: 3));
     await tester.pump(const Duration(seconds: 6));
     await press(tester, LogicalKeyboardKey.arrowRight, times: 60);

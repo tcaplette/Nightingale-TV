@@ -42,6 +42,33 @@ void main() {
     expect(clock.decidesLike(PlaybackSettings.off), isFalse);
   });
 
+  test('watch status reports are on by default, also for older and unreadable settings, and saved', () {
+    expect(PlaybackSettings.off.reportPlayback, isTrue);
+    expect(AppSettings.fresh().playback.reportPlayback, isTrue);
+    expect(PlaybackSettings.fromJson({'transcodeIfNeeded': true, 'bitrate': 8000}).reportPlayback, isTrue);
+    expect(PlaybackSettings.fromJson({'maxBitrateMbps': 8}).reportPlayback, isTrue);
+    expect(PlaybackSettings.fromJson({'reportPlayback': 'nonsense'}).reportPlayback, isTrue);
+    expect(PlaybackSettings.fromJson('nonsense').reportPlayback, isTrue);
+    for (final json in [
+      {'reportPlayback': false},
+      {'bitrate': 8000, 'reportPlayback': false},
+      {'maxBitrateMbps': 8, 'reportPlayback': false},
+    ]) {
+      expect(PlaybackSettings.fromJson(json).reportPlayback, isFalse, reason: '$json');
+    }
+    const quiet = PlaybackSettings(reportPlayback: false, captions: true);
+    expect(quiet.toJson()['reportPlayback'], false);
+    expect(PlaybackSettings.fromJson(quiet.toJson()), quiet);
+    final s = AppSettings.fresh()..playback = quiet;
+    expect(AppSettings.fromJson(s.toJson()).playback, quiet);
+    expect(quiet, isNot(const PlaybackSettings(captions: true)));
+    expect(quiet.hashCode, isNot(const PlaybackSettings(captions: true).hashCode));
+    expect(PlaybackSettings.off.copyWith(reportPlayback: false), const PlaybackSettings(reportPlayback: false));
+    expect(quiet.copyWith(breakNotices: false).reportPlayback, isFalse, reason: 'other changes keep it');
+    expect(quiet.toString(), contains('reports off'));
+    expect(quiet.decidesLike(PlaybackSettings.off), isTrue, reason: 'it changes no decision');
+  });
+
   test('fresh settings are off, with Original chosen', () {
     final s = AppSettings.fresh();
     expect(s.playback, PlaybackSettings.off);
@@ -120,12 +147,12 @@ void main() {
     }
     const eight = PlaybackSettings(transcodeIfNeeded: true, maxKbps: 8000);
     expect(eight.toJson(),
-        {'transcodeIfNeeded': true, 'bitrate': 8000, 'volumeLeveling': false, 'breakNotices': true, 'pauseAndRewind': true, 'onScreenClock': false});
+        {'transcodeIfNeeded': true, 'bitrate': 8000, 'volumeLeveling': false, 'breakNotices': true, 'pauseAndRewind': true, 'onScreenClock': false, 'captions': false, 'reportPlayback': true});
     expect(eight.capKbps(), 8000);
     expect(PlaybackSettings.off.toJson(),
-        {'transcodeIfNeeded': false, 'bitrate': 'original', 'volumeLeveling': false, 'breakNotices': true, 'pauseAndRewind': true, 'onScreenClock': false});
+        {'transcodeIfNeeded': false, 'bitrate': 'original', 'volumeLeveling': false, 'breakNotices': true, 'pauseAndRewind': true, 'onScreenClock': false, 'captions': false, 'reportPlayback': true});
     expect(const PlaybackSettings(transcodeIfNeeded: true).toJson(),
-        {'transcodeIfNeeded': true, 'bitrate': 'original', 'volumeLeveling': false, 'breakNotices': true, 'pauseAndRewind': true, 'onScreenClock': false});
+        {'transcodeIfNeeded': true, 'bitrate': 'original', 'volumeLeveling': false, 'breakNotices': true, 'pauseAndRewind': true, 'onScreenClock': false, 'captions': false, 'reportPlayback': true});
   });
 
   test('volume leveling is off by default and round-trips through JSON', () {

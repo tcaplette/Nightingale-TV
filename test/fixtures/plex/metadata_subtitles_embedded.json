@@ -1,0 +1,144 @@
+{
+ "MediaContainer": {
+  "size": 1,
+  "allowSync": true,
+  "identifier": "com.plexapp.plugins.library",
+  "librarySectionID": 2,
+  "librarySectionTitle": "Movies",
+  "librarySectionUUID": "3877c012-e5c8-47aa-a2c7-1b387edfabe8",
+  "mediaTagPrefix": "/system/bundle/media/flags/",
+  "mediaTagVersion": 1791214582,
+  "Metadata": [
+   {
+    "ratingKey": "129",
+    "key": "/library/metadata/129",
+    "guid": "tv.plex.agents.none://129",
+    "type": "movie",
+    "title": "Sub Test Embedded (2026)",
+    "librarySectionTitle": "Movies",
+    "librarySectionID": 2,
+    "librarySectionKey": "/library/sections/2",
+    "subtype": "clip",
+    "summary": "",
+    "thumb": "/library/metadata/129/thumb/1794041521",
+    "art": "/library/metadata/129/art/1794041521",
+    "duration": 600053,
+    "addedAt": 1794041519,
+    "updatedAt": 1794041521,
+    "createdAtAccuracy": "epoch",
+    "createdAtTZOffset": "0",
+    "Media": [
+     {
+      "id": 104,
+      "duration": 600053,
+      "bitrate": 1089,
+      "width": 1280,
+      "height": 720,
+      "aspectRatio": 1.78,
+      "audioChannels": 2,
+      "audioCodec": "aac",
+      "videoCodec": "h264",
+      "videoResolution": "720",
+      "container": "mkv",
+      "videoFrameRate": "NTSC",
+      "videoProfile": "constrained baseline",
+      "Part": [
+       {
+        "id": 104,
+        "key": "/library/parts/104/1794040612/file.mkv",
+        "duration": 600053,
+        "file": "/media/Movies/Sub Test Embedded (2026)/Sub Test Embedded (2026).mkv",
+        "size": 81708086,
+        "container": "mkv",
+        "videoProfile": "constrained baseline",
+        "Stream": [
+         {
+          "id": 177,
+          "streamType": 1,
+          "default": true,
+          "codec": "h264",
+          "index": 0,
+          "bitrate": 1089,
+          "language": "English",
+          "languageTag": "en",
+          "languageCode": "eng",
+          "bitDepth": 8,
+          "chromaLocation": "left",
+          "chromaSubsampling": "4:2:0",
+          "codedHeight": 720,
+          "codedWidth": 1280,
+          "frameRate": 29.97,
+          "hasScalingMatrix": false,
+          "height": 720,
+          "level": 31,
+          "profile": "constrained baseline",
+          "refFrames": 1,
+          "scanType": "progressive",
+          "width": 1280,
+          "displayTitle": "720p",
+          "extendedDisplayTitle": "720p (H.264 Constrained Baseline)"
+         },
+         {
+          "id": 178,
+          "streamType": 2,
+          "selected": true,
+          "default": true,
+          "codec": "aac",
+          "index": 1,
+          "channels": 2,
+          "language": "English",
+          "languageTag": "en",
+          "languageCode": "eng",
+          "samplingRate": 48000,
+          "displayTitle": "English (AAC Stereo)",
+          "extendedDisplayTitle": "English (AAC Stereo)"
+         },
+         {
+          "id": 179,
+          "streamType": 3,
+          "codec": "srt",
+          "index": 2,
+          "language": "English",
+          "languageTag": "en",
+          "languageCode": "eng",
+          "displayTitle": "English",
+          "extendedDisplayTitle": "English (SRT)"
+         },
+         {
+          "id": 180,
+          "streamType": 3,
+          "codec": "srt",
+          "index": 3,
+          "language": "Español",
+          "languageTag": "es",
+          "languageCode": "spa",
+          "displayTitle": "Español",
+          "extendedDisplayTitle": "Español (SRT)"
+         }
+        ]
+       }
+      ]
+     }
+    ],
+    "Image": [
+     {
+      "alt": "Sub Test Embedded (2026)",
+      "type": "coverPoster",
+      "url": "/library/metadata/129/thumb/1794041521"
+     },
+     {
+      "alt": "Sub Test Embedded (2026)",
+      "type": "background",
+      "url": "/library/metadata/129/art/1794041521"
+     }
+    ],
+    "UltraBlurColors": {
+     "topLeft": "5d0000",
+     "topRight": "0404ef",
+     "bottomRight": "0404f6",
+     "bottomLeft": "9e3239"
+    }
+   }
+  ]
+ }
+}
