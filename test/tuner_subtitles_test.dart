@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:nightingale_tv/app_state.dart';
 import 'package:nightingale_tv/channels/channel.dart';
 import 'package:nightingale_tv/channels/schedule.dart';
+import 'package:nightingale_tv/playback/caption_size.dart';
 import 'package:nightingale_tv/playback/subtitles.dart';
 import 'package:nightingale_tv/playback/tuner.dart';
 import 'package:nightingale_tv/server/media_server.dart';
@@ -156,6 +157,35 @@ void main() {
     await settle();
     expect(player.opens.length, opens + 1);
     expect(player.opens.last.url.queryParameters.containsKey('SubtitleStreamIndex'), isFalse);
+  });
+
+  test('captionsBurnedIn: while a conversion draws the track in', () async {
+    await app.setPlayback(const PlaybackSettings(transcodeIfNeeded: true, maxKbps: 4000, captions: true));
+    client.subtitlesFor = (_) => const [pgs];
+    await tuneIntoPart(app.channels.first);
+    expect(tuner.captionsBurnedIn, isTrue);
+    await tuner.toggleCaptions();
+    await settle();
+    expect(tuner.captionsBurnedIn, isFalse);
+  });
+
+  test('not burned in: direct play, or a text track while converting', () async {
+    client.subtitlesFor = (_) => const [pgs];
+    await captionsOn();
+    await tuneIntoPart(app.channels.first);
+    expect(tuner.captionsBurnedIn, isFalse);
+    await app.setPlayback(const PlaybackSettings(transcodeIfNeeded: true, maxKbps: 4000, captions: true));
+    client.subtitlesFor = (_) => const [english];
+    await tuner.channelUp();
+    await settle();
+    expect(tuner.converting, isTrue);
+    expect(tuner.captionsBurnedIn, isFalse);
+  });
+
+  test('the size in force reaches the player, at the start and on a change', () async {
+    expect(player.captionSizes, [CaptionSize.medium]);
+    await app.setPlayback(app.settings.playback.copyWith(captionSize: () => CaptionSize.large));
+    expect(player.captionSizes, [CaptionSize.medium, CaptionSize.large]);
   });
 
   test('C / CC: on by the saved language, with the toast naming it; off', () async {

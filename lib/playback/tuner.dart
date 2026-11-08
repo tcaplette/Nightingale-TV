@@ -92,6 +92,8 @@ class Tuner extends ChangeNotifier {
     _leveling = app.volumeLeveling.value;
     unawaited(media.setVolumeLeveling(_leveling));
     app.volumeLeveling.addListener(_onLevelingChanged);
+    unawaited(media.setCaptionSize(app.captionSize.value));
+    app.captionSize.addListener(_onCaptionSizeChanged);
     app.addListener(_onSettingsChanged);
     _startProxy();
   }
@@ -111,6 +113,9 @@ class Tuner extends ChangeNotifier {
     await media.setVolumeLeveling(on);
     if (PlatformInfo.isAndroid) await _retuneInPlace();
   }
+
+  /// The player draws captions at the size in force, on what's showing too.
+  void _onCaptionSizeChanged() => unawaited(media.setCaptionSize(app.captionSize.value));
 
   /// Pause and rewind turned off: a viewer behind goes live at once.
   void _onSettingsChanged() {
@@ -629,6 +634,13 @@ class Tuner extends ChangeNotifier {
   /// A conversion plays now (tests and diagnostics).
   @visibleForTesting
   bool get converting => _active != null;
+
+  /// The server is drawing the captions into the picture of what's playing,
+  /// so their size can't change here.
+  bool get captionsBurnedIn {
+    final job = _active;
+    return job?.burn != null && job!.item.sourceId == _playing?.item.sourceId;
+  }
 
   /// The track showing now (captions on, a program with tracks); null
   /// otherwise, and on a live channel.
@@ -2691,6 +2703,7 @@ class Tuner extends ChangeNotifier {
     _stopTranscode();
     unawaited(_diagnostics?.close());
     app.volumeLeveling.removeListener(_onLevelingChanged);
+    app.captionSize.removeListener(_onCaptionSizeChanged);
     app.removeListener(_onSettingsChanged);
     _seekTimer?.cancel();
     _pausedJobTimer?.cancel();

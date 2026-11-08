@@ -40,6 +40,7 @@ import 'live/live_source_client.dart';
 import 'live/live_tv_manager.dart';
 import 'platform/platform_info.dart';
 import 'playback/android_device_profile.dart';
+import 'playback/caption_size.dart';
 import 'playback/playback_diagnostics.dart';
 import 'server/live_tv.dart';
 import 'server/media_server.dart';
@@ -75,6 +76,7 @@ class PlaybackSettings {
       this.onScreenClock = false,
       this.captions = false,
       this.captionLanguage,
+      this.captionSize,
       this.reportPlayback = true,
       this.stillWatchingAfter = defaultStillWatching});
 
@@ -107,6 +109,10 @@ class PlaybackSettings {
   /// The language of the caption track picked last (ISO 639-2, `eng`), kept
   /// while captions are off; null until one is picked.
   final String? captionLanguage;
+
+  /// The caption size this profile chose, for everything it watches; null
+  /// until it chooses one (see [AppState.captionSize]).
+  final CaptionSize? captionSize;
 
   /// Tell the server what's watched: start, progress and stopped reports,
   /// which change its play counts, watched marks and dashboard. Off sends
@@ -160,6 +166,7 @@ class PlaybackSettings {
           onScreenClock: other.onScreenClock,
           captions: other.captions,
           captionLanguage: () => other.captionLanguage,
+          captionSize: () => other.captionSize,
           reportPlayback: other.reportPlayback,
           stillWatchingAfter: () => other.stillWatchingAfter) ==
       other;
@@ -173,6 +180,7 @@ class PlaybackSettings {
           bool? onScreenClock,
           bool? captions,
           String? Function()? captionLanguage,
+          CaptionSize? Function()? captionSize,
           bool? reportPlayback,
           Duration? Function()? stillWatchingAfter}) =>
       PlaybackSettings(
@@ -184,6 +192,7 @@ class PlaybackSettings {
         onScreenClock: onScreenClock ?? this.onScreenClock,
         captions: captions ?? this.captions,
         captionLanguage: captionLanguage == null ? this.captionLanguage : captionLanguage(),
+        captionSize: captionSize == null ? this.captionSize : captionSize(),
         reportPlayback: reportPlayback ?? this.reportPlayback,
         stillWatchingAfter: stillWatchingAfter == null ? this.stillWatchingAfter : stillWatchingAfter(),
       );
@@ -197,6 +206,7 @@ class PlaybackSettings {
         'onScreenClock': onScreenClock,
         'captions': captions,
         'captionLanguage': ?captionLanguage,
+        'captionSize': ?captionSize?.name,
         'reportPlayback': reportPlayback,
         'stillWatchingAfterMinutes': stillWatchingAfter?.inMinutes ?? 'off',
       };
@@ -207,13 +217,15 @@ class PlaybackSettings {
   /// before Auto (as `maxBitrateMbps`), the same rules apply. Volume
   /// leveling is off unless saved as on; break notices and pause and rewind
   /// are on unless saved as off; the on-screen clock and captions are off
-  /// unless saved as on, with no caption language unless one was saved;
+  /// unless saved as on, with no caption language unless one was saved and
+  /// no caption size unless a known one was;
   /// playback reports are on unless saved as off. The still-watching time
   /// is 4 hours unless saved as Off or as one of the other choices.
   factory PlaybackSettings.fromJson(Object? json) {
     if (json is! Map<String, Object?>) return off;
     final captions = json['captions'] == true;
     final language = json['captionLanguage'] is String ? json['captionLanguage'] as String : null;
+    final size = CaptionSize.fromName(json['captionSize']);
     final on = json['transcodeIfNeeded'] == true;
     final leveling = json['volumeLeveling'] == true;
     final notices = json['breakNotices'] != false;
@@ -238,6 +250,7 @@ class PlaybackSettings {
           onScreenClock: clock,
           captions: captions,
           captionLanguage: language,
+          captionSize: size,
           reportPlayback: reports,
           stillWatchingAfter: still);
     }
@@ -252,6 +265,7 @@ class PlaybackSettings {
             onScreenClock: clock,
             captions: captions,
             captionLanguage: language,
+            captionSize: size,
             reportPlayback: reports,
             stillWatchingAfter: still);
       }
@@ -264,6 +278,7 @@ class PlaybackSettings {
         onScreenClock: clock,
         captions: captions,
         captionLanguage: language,
+        captionSize: size,
         reportPlayback: reports,
         stillWatchingAfter: still);
   }
@@ -279,18 +294,19 @@ class PlaybackSettings {
       other.onScreenClock == onScreenClock &&
       other.captions == captions &&
       other.captionLanguage == captionLanguage &&
+      other.captionSize == captionSize &&
       other.reportPlayback == reportPlayback &&
       other.stillWatchingAfter == stillWatchingAfter;
 
   @override
   int get hashCode => Object.hash(
       transcodeIfNeeded, maxKbps, volumeLeveling, breakNotices, pauseAndRewind, onScreenClock, captions, captionLanguage,
-      reportPlayback, stillWatchingAfter);
+      captionSize, reportPlayback, stillWatchingAfter);
 
   @override
   String toString() => 'PlaybackSettings(${transcodeIfNeeded ? 'on' : 'off'}, ${preset.label}, '
       'leveling ${volumeLeveling ? 'on' : 'off'}, notices ${breakNotices ? 'on' : 'off'}, rewind ${pauseAndRewind ? 'on' : 'off'}, '
-      'clock ${onScreenClock ? 'on' : 'off'}, captions ${captions ? 'on' : 'off'} ${captionLanguage ?? '-'}, '
+      'clock ${onScreenClock ? 'on' : 'off'}, captions ${captions ? 'on' : 'off'} ${captionLanguage ?? '-'} ${captionSize?.name ?? '-'}, '
       'reports ${reportPlayback ? 'on' : 'off'}, still watching ${stillWatchingAfter?.inHours ?? 'off'})';
 }
 
@@ -1244,6 +1260,23 @@ class AppState extends ChangeNotifier {
   /// follows it.
   final volumeLeveling = ValueNotifier(false);
 
+  /// The caption size in force: the one this profile saved, else the nearest
+  /// to the system's caption size, else Medium (caption-size D3).
+  final captionSize = ValueNotifier(CaptionSize.medium);
+
+  /// The system's caption font scale as last read; null where there's none.
+  double? _systemCaptionScale;
+
+  void _updateCaptionSize() =>
+      captionSize.value = settings.playback.captionSize ?? CaptionSize.nearestToScale(_systemCaptionScale);
+
+  /// Reads the system's caption size again: at launch, and on returning to
+  /// the foreground, since it's changed outside the app.
+  Future<void> readSystemCaptionSize() async {
+    _systemCaptionScale = await PlatformInfo.captionFontScale();
+    _updateCaptionSize();
+  }
+
   /// The playing file's average bitrate in bits per second, once the tuner
   /// knows it (null while it doesn't): with no cap, it sets the analyzer's
   /// budget.
@@ -1456,6 +1489,7 @@ class AppState extends ChangeNotifier {
         ? AppSettings.fromJson(settingsJson)
         : AppSettings.fresh();
     volumeLeveling.value = settings.playback.volumeLeveling;
+    await readSystemCaptionSize();
     final renamed = settingsJson is Map<String, Object?> && settingsJson['installId'] != settings.installId;
     if (settings.migrated) {
       // The old format is kept in a backup first; the upgrade goes ahead
@@ -3031,6 +3065,7 @@ class AppState extends ChangeNotifier {
     if (!playback.decidesLike(settings.playback)) _decisions.clear();
     settings.playback = playback;
     volumeLeveling.value = playback.volumeLeveling;
+    _updateCaptionSize();
     _pushBudget();
     notifyListeners();
     await _saveSettings();

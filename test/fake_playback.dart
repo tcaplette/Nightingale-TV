@@ -4,6 +4,7 @@ import 'package:flutter/widgets.dart';
 import 'package:nightingale_tv/jellyfin/jellyfin_client.dart';
 import 'package:nightingale_tv/playback/playback_diagnostics.dart';
 import 'package:nightingale_tv/playback/subtitles.dart';
+import 'package:nightingale_tv/playback/caption_size.dart';
 import 'package:nightingale_tv/playback/tuner_player.dart';
 import 'package:nightingale_tv/server/media_server.dart';
 
@@ -331,6 +332,12 @@ class FakePlayer implements TunerPlayer {
 
   @override
   Future<void> setVolumeLeveling(bool on) async => leveling.add(on);
+
+  /// Every [setCaptionSize], in order.
+  final captionSizes = <CaptionSize>[];
+
+  @override
+  Future<void> setCaptionSize(CaptionSize size) async => captionSizes.add(size);
 
   /// Every [setVolume], in order.
   final volumes = <double>[];

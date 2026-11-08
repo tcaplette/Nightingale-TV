@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../app_scope.dart';
 import '../app_state.dart';
 import '../platform/platform_info.dart';
+import '../playback/caption_size.dart';
 import '../server/media_server.dart';
 import '../theme/tv_theme.dart';
 import 'widgets/screen_layout.dart';
@@ -35,6 +36,8 @@ class PlaybackScreen extends StatelessWidget {
   /// Added to [levelingHelp] on Android, where leveling turns passthrough off.
   static const levelingAndroidHelp = 'While it\'s on, surround audio (Dolby, DTS) is decoded by this device '
       'instead of being passed through to a receiver.';
+
+  static const captionSizeHelp = 'The size of captions on every program and channel.';
 
   static const noticesLabel = 'Break notices';
 
@@ -142,6 +145,29 @@ class PlaybackScreen extends StatelessWidget {
             ),
             const SizedBox(height: 12),
             ConstrainedBox(constraints: const BoxConstraints(maxWidth: 1100), child: Text(levelingHelpText(), style: g.body(24, color: g.textDim))),
+            const SizedBox(height: 40),
+            Text('CAPTIONS', style: g.display(26, weight: FontWeight.w800, color: g.accent)),
+            const SizedBox(height: 14),
+            ValueListenableBuilder<CaptionSize>(
+              valueListenable: app.captionSize,
+              builder: (context, inForce, _) => Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  for (final size in CaptionSize.values)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 10),
+                      child: TvToggle(
+                        label: size.label,
+                        radio: true,
+                        on: size == inForce,
+                        onPressed: () => app.setPlayback(playback.copyWith(captionSize: () => size)),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 12),
+            ConstrainedBox(constraints: const BoxConstraints(maxWidth: 1100), child: Text(captionSizeHelp, style: g.body(24, color: g.textDim))),
             const SizedBox(height: 40),
             Text('COMMERCIALS', style: g.display(26, weight: FontWeight.w800, color: g.accent)),
             const SizedBox(height: 14),

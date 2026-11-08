@@ -6,6 +6,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import 'playback_diagnostics.dart';
+import 'caption_size.dart';
+import 'caption_style.dart';
 import 'subtitles.dart';
 import 'tuner_player.dart';
 
@@ -253,6 +255,10 @@ class ExoTunerPlayer implements TunerPlayer {
     await _call<void>('setLeveling', {'on': on});
   }
 
+  /// The cues are drawn in Flutter, so it's only their size that changes.
+  @override
+  Future<void> setCaptionSize(CaptionSize size) async => captionSize.value = size;
+
   /// ExoPlayer's volume; one ExoPlayer plays the item on screen and the one
   /// queued, so it covers both.
   @override
@@ -270,6 +276,9 @@ class ExoTunerPlayer implements TunerPlayer {
 
   @override
   Widget buildVideo({BoxFit fit = BoxFit.contain}) => _ExoVideo(this, fit);
+
+  /// The size captions are drawn at.
+  final captionSize = ValueNotifier(CaptionSize.medium);
 
   // ---- Readings -------------------------------------------------------------
 
@@ -467,82 +476,108 @@ class _ExoVideo extends StatelessWidget {
                                 clipBehavior: Clip.hardEdge,
                                 child: SizedBox.fromSize(size: size, child: Texture(textureId: id)),
                               ),
-                              FittedBox(child: SizedBox.fromSize(size: size, child: _ImageCues(player.cues, size))),
+                              FittedBox(child: SizedBox.fromSize(size: size, child: ExoImageCues(player.cues, player.captionSize, size))),
                             ],
                           ),
                   ),
           ),
-          _TextCues(player.cues),
+          _TextCues(player.cues, player.captionSize),
         ],
       ),
     );
   }
 }
 
-class _ImageCues extends StatelessWidget {
-  const _ImageCues(this.cues, this.size);
+/// Where image cues go at [factor] of their authored size, in the picture
+/// ([size]): each grows about its own bottom centre and stays inside the
+/// picture, with its shape kept. Cues that were apart stay apart, the upper
+/// moving up (a two-line DVB caption can be one cue per line).
+@visibleForTesting
+List<Rect> placeImageCues(List<ExoImageCue> cues, Size size, double factor) {
+  Rect inside(Rect r) => Rect.fromLTWH(r.left.clamp(0, max(0.0, size.width - r.width)).toDouble(),
+      r.top.clamp(0, max(0.0, size.height - r.height)).toDouble(), r.width, r.height);
+  final authored = [
+    for (final c in cues)
+      Rect.fromLTWH(c.left * size.width, c.top * size.height, c.width * size.width,
+          c.height == null ? c.width * size.width / c.aspect : c.height! * size.height),
+  ];
+  final placed = [
+    for (final r in authored)
+      () {
+        final f = min(factor, min(size.width / r.width, size.height / r.height));
+        final w = r.width * f, h = r.height * f;
+        return inside(Rect.fromLTWH(r.center.dx - w / 2, r.bottom - h, w, h));
+      }(),
+  ];
+  final lowestFirst = [for (var i = 0; i < cues.length; i++) i]..sort((a, b) => authored[b].bottom.compareTo(authored[a].bottom));
+  for (var k = 1; k < lowestFirst.length; k++) {
+    final i = lowestFirst[k];
+    for (final j in lowestFirst.take(k)) {
+      if (!authored[i].overlaps(authored[j]) && placed[i].overlaps(placed[j])) {
+        placed[i] = inside(placed[i].shift(Offset(0, placed[j].top - placed[i].bottom)));
+      }
+    }
+  }
+  return placed;
+}
+
+/// Image captions on the picture, at the size in force.
+@visibleForTesting
+class ExoImageCues extends StatelessWidget {
+  const ExoImageCues(this.cues, this.captionSize, this.size, {super.key});
 
   final ValueListenable<ExoCues> cues;
+  final ValueListenable<CaptionSize> captionSize;
   final Size size;
 
   @override
   Widget build(BuildContext context) {
-    return ValueListenableBuilder<ExoCues>(
-      valueListenable: cues,
-      builder: (context, c, _) => Stack(
-        children: [
-          for (final i in c.images)
-            Positioned(
-              left: i.left * size.width,
-              top: i.top * size.height,
-              width: i.width * size.width,
-              height: i.height == null ? i.width * size.width / i.aspect : i.height! * size.height,
-              child: Image.memory(i.png, fit: BoxFit.fill, gaplessPlayback: true),
-            ),
-        ],
-      ),
+    return ListenableBuilder(
+      listenable: Listenable.merge([cues, captionSize]),
+      builder: (context, _) {
+        final images = cues.value.images;
+        final rects = placeImageCues(images, size, captionSize.value.ratio);
+        return Stack(
+          children: [
+            for (var n = 0; n < images.length; n++)
+              Positioned.fromRect(
+                rect: rects[n],
+                child: Image.memory(images[n].png, fit: BoxFit.fill, gaplessPlayback: true),
+              ),
+          ],
+        );
+      },
     );
   }
 }
 
-/// Text captions, styled and scaled as media_kit_video's `SubtitleView`
-/// defaults (the Linux captions).
+/// Text captions, in the captions' one style.
 class _TextCues extends StatelessWidget {
-  const _TextCues(this.cues);
+  const _TextCues(this.cues, this.captionSize);
 
   final ValueListenable<ExoCues> cues;
+  final ValueListenable<CaptionSize> captionSize;
 
   @override
   Widget build(BuildContext context) {
-    return ValueListenableBuilder<ExoCues>(
-      valueListenable: cues,
-      builder: (context, c, _) => LayoutBuilder(
-        builder: (context, constraints) {
-          final scale = sqrt((constraints.maxWidth * constraints.maxHeight / (1920 * 1080)).clamp(0.0, 1.0));
-          return Padding(
-            padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
-            child: Align(
-              alignment: Alignment.bottomCenter,
-              child: Text(
-                [
-                  for (final line in c.text)
-                    if (line.trim().isNotEmpty) line.trim(),
-                ].join('\n'),
-                style: const TextStyle(
-                  height: 1.4,
-                  fontSize: 32,
-                  letterSpacing: 0,
-                  wordSpacing: 0,
-                  color: Color(0xffffffff),
-                  fontWeight: FontWeight.normal,
-                  backgroundColor: Color(0xaa000000),
-                ),
-                textAlign: TextAlign.center,
-                textScaler: TextScaler.linear(scale),
-              ),
+    return ListenableBuilder(
+      listenable: Listenable.merge([cues, captionSize]),
+      builder: (context, _) => LayoutBuilder(
+        builder: (context, constraints) => Padding(
+          padding: captionPadding,
+          child: Align(
+            alignment: Alignment.bottomCenter,
+            child: Text(
+              [
+                for (final line in cues.value.text)
+                  if (line.trim().isNotEmpty) line.trim(),
+              ].join('\n'),
+              style: captionTextStyle(captionSize.value),
+              textAlign: TextAlign.center,
+              textScaler: TextScaler.linear(captionBoxScale(constraints.biggest)),
             ),
-          );
-        },
+          ),
+        ),
       ),
     );
   }

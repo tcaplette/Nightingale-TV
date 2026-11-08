@@ -11,6 +11,8 @@ import 'package:media_kit_video/media_kit_video.dart';
 import '../server/languages.dart';
 import 'exo_tuner_player.dart';
 import 'playback_diagnostics.dart';
+import 'caption_size.dart';
+import 'caption_style.dart';
 import 'subtitles.dart';
 
 /// Volume leveling (volume-leveling spec, design D1) as an FFmpeg filter
@@ -27,6 +29,9 @@ const volumeLevelingChain = 'acompressor=detection=rms:link=average:threshold=0.
 
 /// [volumeLevelingChain] as mpv's `af` property.
 const volumeLevelingAf = 'lavfi=[$volumeLevelingChain]';
+
+/// mpv's names for the subtitle codecs that are pictures, not text.
+const imageSubtitleCodecs = {'hdmv_pgs_subtitle', 'pgssub', 'dvd_subtitle', 'dvb_subtitle'};
 
 /// What the [Tuner] needs from a video player: mpv on Linux
 /// ([MediaKitTunerPlayer]), ExoPlayer on Android ([ExoTunerPlayer]); tests
@@ -120,6 +125,9 @@ abstract class TunerPlayer implements PlayerReadings {
   /// rebuilt, and the tuner then re-tunes.
   Future<void> setVolumeLeveling(bool on);
 
+  /// Draws captions at [size], on what's showing and whatever plays next.
+  Future<void> setCaptionSize(CaptionSize size);
+
   /// The output volume, 0–1 (the sleep timer's fade), for what's playing,
   /// what's queued and everything opened after. The tuner sets it back to 1
   /// at every tune.
@@ -189,6 +197,8 @@ class MediaKitTunerPlayer implements TunerPlayer {
 
   /// [setVolume]'s volume, 0–1: on every deck, including decks made later.
   double _volume = 1;
+
+  final _captionSize = ValueNotifier(CaptionSize.medium);
 
   /// The `af` set while leveling is on (tests replace it).
   @visibleForTesting
@@ -411,6 +421,17 @@ class MediaKitTunerPlayer implements TunerPlayer {
     }
   }
 
+  /// The size in force: the text style at once, and each deck's image
+  /// tracks (a deck made later gets it as its tracks arrive).
+  @override
+  Future<void> setCaptionSize(CaptionSize size) async {
+    if (_captionSize.value == size) return;
+    _captionSize.value = size;
+    for (final deck in [_onAir, ?_spare]) {
+      await _applySubtitles(deck);
+    }
+  }
+
   /// mpv's software volume, after the leveling filters, so leveling is
   /// unaffected.
   @override
@@ -510,7 +531,22 @@ class MediaKitTunerPlayer implements TunerPlayer {
     return work;
   }
 
+  /// Puts [deck]'s choice on, then says who draws it.
   Future<void> _applySubtitlesNow(_Deck deck) async {
+    await _selectSubtitles(deck);
+    await _drawSubtitles(deck);
+  }
+
+  /// mpv's own subtitle output is for image tracks, which it alone can draw
+  /// (scaled against Medium, their authored size). Flutter draws text
+  /// tracks, so mpv's output is off for those: nothing is drawn twice.
+  Future<void> _drawSubtitles(_Deck deck) async {
+    final image = imageSubtitleCodecs.contains((await deck.subtitleTracks()).where((t) => t.selected).firstOrNull?.codec);
+    await deck.setOption('sub-visibility', image ? 'yes' : 'no');
+    if (image) await deck.setOption('sub-scale', '${_captionSize.value.ratio}');
+  }
+
+  Future<void> _selectSubtitles(_Deck deck) async {
     final want = deck.subtitles;
     final player = deck.player;
     final sid = await deck.property('sid');
@@ -568,7 +604,17 @@ class MediaKitTunerPlayer implements TunerPlayer {
           fit: StackFit.expand,
           children: [
             for (final deck in decks)
-              Video(key: ValueKey(deck), controller: deck.video, controls: NoVideoControls, fill: Colors.black, fit: fit),
+              ValueListenableBuilder<CaptionSize>(
+                valueListenable: _captionSize,
+                builder: (context, size, _) => Video(
+                  key: ValueKey(deck),
+                  controller: deck.video,
+                  controls: NoVideoControls,
+                  fill: Colors.black,
+                  fit: fit,
+                  subtitleViewConfiguration: SubtitleViewConfiguration(style: captionTextStyle(size), padding: captionPadding),
+                ),
+              ),
           ],
         ),
       );
@@ -738,7 +784,7 @@ class _Deck {
 
   /// The subtitle tracks mpv lists for the file (only those of a track type
   /// `sub`; with [any], tracks of every type).
-  Future<List<({int id, bool external, String? language})>> subtitleTracks({bool any = false}) async {
+  Future<List<({int id, bool external, String? language, String? codec, bool selected})>> subtitleTracks({bool any = false}) async {
     final raw = await property('track-list');
     if (raw.isEmpty) return const [];
     final Object? list;
@@ -751,7 +797,13 @@ class _Deck {
     return [
       for (final t in list.whereType<Map<String, Object?>>())
         if ((any || t['type'] == 'sub') && t['id'] is num)
-          (id: (t['id'] as num).toInt(), external: t['external'] == true, language: normalizeLanguage(t['lang'] as String?)),
+          (
+            id: (t['id'] as num).toInt(),
+            external: t['external'] == true,
+            language: normalizeLanguage(t['lang'] as String?),
+            codec: t['codec'] as String?,
+            selected: t['selected'] == true,
+          ),
     ];
   }
 

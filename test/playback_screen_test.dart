@@ -7,6 +7,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:nightingale_tv/app_scope.dart';
 import 'package:nightingale_tv/app_state.dart';
 import 'package:nightingale_tv/platform/platform_info.dart';
+import 'package:nightingale_tv/playback/caption_size.dart';
 import 'package:nightingale_tv/playback/tuner.dart';
 import 'package:nightingale_tv/server/media_server.dart';
 import 'package:nightingale_tv/theme/tv_theme.dart';
@@ -56,7 +57,10 @@ void main() {
   /// The bitrate list's radios (the still-watching list has its own).
   List<String> choices(WidgetTester tester) => [
         for (final t in tester.widgetList<TvToggle>(find.byType(TvToggle)))
-          if (t.radio && !PlaybackSettings.stillWatchingChoices.any((c) => c.label == t.label)) t.label,
+          if (t.radio &&
+              !PlaybackSettings.stillWatchingChoices.any((c) => c.label == t.label) &&
+              !CaptionSize.values.any((s) => s.label == t.label))
+            t.label,
       ];
 
   testWidgets('Original comes first, then the caps down to 4 Mbps; no Auto', (tester) async {

@@ -392,6 +392,8 @@ class _ProfileSessionState extends State<ProfileSession> {
   /// Back in front: the same channel, at what's airing now, or at the same
   /// place if the viewer was behind or paused.
   Future<void> _onShow() async {
+    // The system caption size may have changed while the app was away.
+    unawaited(widget.app.readSystemCaptionSize());
     await _hiding;
     final channel = _hiddenChannel;
     final place = _hiddenPlace;

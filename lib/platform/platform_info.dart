@@ -104,6 +104,18 @@ abstract final class PlatformInfo {
     }
   }
 
+  /// The system's caption font scale (1.0 is normal); null where there's
+  /// no such setting or it can't be read.
+  static Future<double?> captionFontScale() async {
+    if (!isAndroid) return null;
+    try {
+      return await _channel.invokeMethod<double>('captionFontScale');
+    } on Object catch (e) {
+      debugPrint('Caption font scale unavailable: $e');
+      return null;
+    }
+  }
+
   /// Forgets the looked-up name and the override, between tests.
   @visibleForTesting
   static void debugReset() {

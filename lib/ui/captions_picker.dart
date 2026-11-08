@@ -1,10 +1,13 @@
 import 'package:flutter/material.dart';
 
+import '../playback/caption_size.dart';
+import '../playback/caption_style.dart';
 import '../playback/subtitles.dart';
 import '../playback/tuner.dart';
 import '../server/languages.dart';
 import '../server/media_server.dart';
 import '../theme/tv_theme.dart';
+import 'widgets/screen_layout.dart';
 import 'widgets/tv_focus.dart';
 
 /// Said, disabled, when the program on screen has no subtitle tracks.
@@ -12,6 +15,12 @@ const noSubtitlesRow = 'No subtitles for this program';
 
 /// Said, disabled, while the program's tracks are asked for.
 const findingSubtitlesRow = 'Finding subtitles…';
+
+/// Over the sizes' place while the server draws the captions in.
+const burnedInCaptionsNote = "The server draws these captions into the picture, so their size can't change here.";
+
+/// The line drawn at the size captions appear on the picture.
+const captionSampleText = 'Sample caption';
 
 /// The Captions button's label: "Captions" while off, "Captions: English"
 /// while on (the track showing, else On).
@@ -22,10 +31,11 @@ String captionsButtonLabel(Tuner tuner) {
 }
 
 /// The captions picker (subtitles spec, "Captions picker"), modelled on the
-/// sleep picker: Off, then each subtitle track of the program on screen,
-/// focus on the current choice. On a live channel, Off and On. Choosing
-/// sets the tuner's captions and closes the picker. D-pad, pointer and
-/// touch all work it (TvToggle rows). True when a row was chosen.
+/// sleep picker: the size, then Off and each subtitle track of the program
+/// on screen, focus on the current choice. On a live channel, Off and On.
+/// Choosing a track sets the tuner's captions and closes the picker; choosing
+/// a size applies it and leaves the picker open. D-pad, pointer and touch
+/// all work it (TvToggle rows). True when a track row was chosen.
 Future<bool> showCaptionsPicker(BuildContext context, Tuner tuner) async {
   // The program's tracks are asked for now, captions on or off.
   final loading = tuner.isLive ? null : tuner.loadSubtitleTracks();
@@ -33,7 +43,7 @@ Future<bool> showCaptionsPicker(BuildContext context, Tuner tuner) async {
     context: context,
     barrierColor: Colors.black87,
     builder: (context) => ListenableBuilder(
-      listenable: tuner,
+      listenable: Listenable.merge([tuner, tuner.app.captionSize]),
       builder: (context, _) => _CaptionsDialog(tuner: tuner, loading: loading),
     ),
   );
@@ -115,6 +125,12 @@ class _CaptionsDialog extends StatelessWidget {
       }
     }
 
+    final app = tuner.app;
+    final inForce = app.captionSize.value;
+    final layout = ScreenLayout.of(context);
+    // The picture fills the width upright, so captions shrink with it.
+    final sampleScale = layout.isPortrait ? layout.canvas.width / 1920 : 1.0;
+
     return Dialog(
       backgroundColor: g.panel,
       shape: RoundedRectangleBorder(
@@ -124,16 +140,45 @@ class _CaptionsDialog extends StatelessWidget {
       child: Padding(
         padding: EdgeInsets.all(dialogPadding(context)),
         child: SizedBox(
-          width: dialogWidth(context, 720, padding: dialogPadding(context)),
-          child: dialogBody(
-            context,
-            FocusTraversalGroup(
+          width: dialogWidth(context, 1040, padding: dialogPadding(context)),
+          // Scrolls on every platform: a program can have dozens of tracks.
+          child: SingleChildScrollView(
+            child: FocusTraversalGroup(
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text('Captions', style: g.display(48, weight: FontWeight.w800)),
                   const SizedBox(height: 24),
+                  Text('Size', style: g.display(30, weight: FontWeight.w700)),
+                  const SizedBox(height: 14),
+                  if (tuner.captionsBurnedIn)
+                    Text(burnedInCaptionsNote, style: g.body(26, color: g.textDim))
+                  else ...[
+                    Wrap(
+                      spacing: 12,
+                      runSpacing: 12,
+                      children: [
+                        for (final size in CaptionSize.values)
+                          TvToggle(
+                            label: size.label,
+                            radio: true,
+                            on: size == inForce,
+                            onPressed: () => app.setPlayback(app.settings.playback.copyWith(captionSize: () => size)),
+                          ),
+                      ],
+                    ),
+                    const SizedBox(height: 14),
+                    // As tall as Extra large, so the rows below don't move.
+                    SizedBox(
+                      height: CaptionSize.extraLarge.px * 1.4 * sampleScale,
+                      child: Align(
+                        alignment: Alignment.centerLeft,
+                        child: Text(captionSampleText, style: captionTextStyle(inForce), textScaler: TextScaler.linear(sampleScale)),
+                      ),
+                    ),
+                  ],
+                  const SizedBox(height: 28),
                   ...rows,
                 ],
               ),

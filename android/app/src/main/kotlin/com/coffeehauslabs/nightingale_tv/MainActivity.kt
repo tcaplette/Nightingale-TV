@@ -7,6 +7,7 @@ import android.os.Build
 import android.os.Bundle
 import android.os.Process
 import android.provider.Settings
+import android.view.accessibility.CaptioningManager
 import android.view.KeyEvent
 import android.view.WindowManager
 import androidx.annotation.OptIn
@@ -126,6 +127,10 @@ class MainActivity : FlutterActivity() {
                         }
                         result.success(null)
                     }
+                    // The system caption size, a viewer's starting caption size.
+                    "captionFontScale" -> result.success(
+                        (getSystemService(CAPTIONING_SERVICE) as? CaptioningManager)?.fontScale?.toDouble()
+                    )
                     else -> result.notImplemented()
                 }
             }
