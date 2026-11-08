@@ -4,10 +4,12 @@ import '../../channels/channel.dart';
 import '../../commercials/commercial_pool.dart';
 import '../app.dart';
 import 'common.dart';
+import 'folder_nodes.dart';
 
-/// What a channel or block plays: collections and folders (dragged from the
-/// folder browser, or added with its Add buttons, for keyboard and touch),
-/// shows, genres and movies (custom-channels D12, D13).
+/// What a channel or block plays: collections, folders and single movies
+/// (dragged from the folder browser, or added with its Add buttons, for
+/// keyboard and touch), shows, genres and movies (custom-channels D12, D13).
+/// The browser lists only movies as videos: nothing else plays as a program.
 class SourceEditor extends StatefulWidget {
   const SourceEditor({
     super.key,
@@ -81,8 +83,8 @@ class _SourceEditorState extends State<SourceEditor> {
   }
 
   /// One row of the browser: a handle to drag, an Add button, and the name,
-  /// which opens it when it holds more.
-  Widget _row(PoolRoot root, String name, {VoidCallback? onOpen}) {
+  /// which opens it when it holds more (or adds it, for a movie).
+  Widget _row(PoolRoot root, String name, {VoidCallback? onOpen, String? detail}) {
     final added = _s.roots.any((r) => r.itemId == root.itemId);
     return ListTile(
       contentPadding: EdgeInsets.zero,
@@ -99,7 +101,8 @@ class _SourceEditorState extends State<SourceEditor> {
         ),
       ),
       title: Text(name, overflow: TextOverflow.ellipsis),
-      onTap: onOpen,
+      subtitle: detail == null ? null : Text(detail),
+      onTap: onOpen ?? (added ? null : () => _addRoot(root)),
       trailing: Wrap(crossAxisAlignment: WrapCrossAlignment.center, spacing: 4, children: [
         TextButton(
           onPressed: added ? null : () => _addRoot(root),
@@ -132,7 +135,9 @@ class _SourceEditorState extends State<SourceEditor> {
       builder: (context, snapshot) {
         if (snapshot.hasError) return ErrorText('${snapshot.error}');
         if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
-        final nodes = _path.isEmpty ? snapshot.data! : (_path.last['children'] as List).cast<Map<String, Object?>>();
+        final nodes = _path.isEmpty
+            ? shownNodes(snapshot.data!, programsOnly: true)
+            : shownChildren(_path.last, programsOnly: true);
         return ListView(children: [
           ListTile(
             contentPadding: EdgeInsets.zero,
@@ -141,9 +146,11 @@ class _SourceEditorState extends State<SourceEditor> {
                 overflow: TextOverflow.ellipsis),
             onTap: () => setState(() => _path.isEmpty ? _library = null : _path.removeLast()),
           ),
+          if (nodes.isEmpty) const ListTile(contentPadding: EdgeInsets.zero, title: Text('Nothing inside.')),
           for (final n in nodes)
             _row(_rootOf(n), n['name'] as String,
-                onOpen: (n['children'] as List).isEmpty ? null : () => setState(() => _path.add(n))),
+                detail: nodeDetail(n, programsOnly: true),
+                onOpen: opensNode(n, programsOnly: true) ? () => setState(() => _path.add(n)) : null),
         ]);
       },
     );
@@ -168,7 +175,7 @@ class _SourceEditorState extends State<SourceEditor> {
             borderRadius: BorderRadius.circular(8),
           ),
           child: _s.roots.isEmpty
-              ? const Text('Drag a collection or folder here, or use its Add button.')
+              ? const Text('Drag a collection, folder or movie here, or use its Add button.')
               : Wrap(spacing: 6, runSpacing: 6, children: [
                   for (final r in _s.roots)
                     InputChip(

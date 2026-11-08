@@ -394,8 +394,28 @@ class JellyfinClient implements MediaServer {
     return index.withRoots(roots.found, missing: roots.missing);
   }
 
+  /// Item types that are videos, not folders: a root of one is that video.
+  static const _videoTypes = {'Movie', 'Episode', 'Video', 'MusicVideo', 'Trailer'};
+
+  /// Root [rootId] itself (its `Type`, and [fields]), or null when the
+  /// server doesn't list it as an item (a library). A listing under a video
+  /// would ignore it as a parent, so every root is looked up first.
+  @protected
+  Future<Map<String, Object?>?> rootItem(String rootId, {String? fields}) async => (await allItems({
+        'Ids': rootId,
+        'Fields': ?fields,
+        'EnableImages': 'false',
+        'EnableUserData': 'false',
+      }))
+          .firstOrNull;
+
   @override
   Future<List<String>> idsUnder(String rootId) async {
+    // A single movie or episode is its own root; another video never plays
+    // as a program.
+    final type = (await rootItem(rootId))?['Type'];
+    if (type == 'Movie' || type == 'Episode') return [rootId];
+    if (_videoTypes.contains(type)) return const [];
     Future<List<Map<String, Object?>>> under(String id, String types) => allItems({
           'ParentId': id,
           'Recursive': 'true',
@@ -420,17 +440,30 @@ class JellyfinClient implements MediaServer {
   }
 
   /// Every video under pool root [rootId] (a folder, show, season or
-  /// collection), with what the index keeps of commercials.
+  /// collection), or the root itself when it's a video, with what the index
+  /// keeps of commercials.
   @protected
-  Future<List<Map<String, Object?>>> itemsUnder(String rootId) => allItems({
+  Future<List<Map<String, Object?>>> itemsUnder(String rootId) async {
+    const fields = 'Chapters,Etag';
+    final Map<String, Object?>? root;
+    try {
+      root = await rootItem(rootId, fields: fields);
+    } on ServerException catch (e) {
+      // Gone from the server: nothing under it.
+      if (e.statusCode == 400 || e.statusCode == 404) return const [];
+      rethrow;
+    }
+    if (_videoTypes.contains(root?['Type'])) return [root!];
+    return allItems({
         'ParentId': rootId,
         'Recursive': 'true',
         'IncludeItemTypes': 'Movie,Episode,Video,MusicVideo,Trailer',
         'IsMissing': 'false',
-        'Fields': 'Chapters,Etag',
+        'Fields': fields,
         'EnableImages': 'false',
         'EnableUserData': 'false',
       });
+  }
 
   /// The media source to name for [itemId]: Jellyfin's first source has the
   /// item's id. Null leaves it to the server (its first source).
@@ -452,8 +485,8 @@ class JellyfinClient implements MediaServer {
   @protected
   Map<String, Object?> get itemsQuery => {'userId': userId};
 
-  /// The folders inside library [libraryId], as a tree (see
-  /// [FolderNode.buildTree]).
+  /// The folders and videos inside library [libraryId], as a tree (see
+  /// [FolderNode.buildTree]), from one listing.
   @override
   Future<List<FolderNode>> folderTree(String libraryId) async => FolderNode.buildTree(await allItems({
         'ParentId': libraryId,

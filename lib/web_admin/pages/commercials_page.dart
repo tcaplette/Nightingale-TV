@@ -5,6 +5,7 @@ import '../../commercials/commercial_pool.dart';
 import '../app.dart';
 import '../widgets/break_plan_editor.dart';
 import '../widgets/common.dart';
+import '../widgets/folder_nodes.dart';
 
 /// Commercials: pools with the library folders they draw from, the main
 /// break plan and channels' own plans, as on the TV.
@@ -173,7 +174,8 @@ class _ChannelPlanRow extends StatelessWidget {
 }
 
 /// Picks the folders a pool draws from, as the TV's folder picker does:
-/// whole libraries, or folders, shows, seasons and collections in them.
+/// whole libraries, or folders, shows, seasons, collections and single
+/// videos in them.
 /// Returns the roots picked, or null when cancelled.
 Future<List<PoolRoot>?> pickFolders(BuildContext context,
         {required String profileId, required Map<String, Object?> pool}) =>
@@ -243,28 +245,38 @@ class _FolderPickerState extends State<_FolderPicker> {
                 builder: (context, snapshot) {
                   if (snapshot.hasError) return Text('${snapshot.error}');
                   if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
-                  final nodes = _path.isEmpty ? snapshot.data! : (_path.last['children'] as List).cast<Map<String, Object?>>();
+                  final nodes = _path.isEmpty
+                      ? shownNodes(snapshot.data!, programsOnly: false)
+                      : shownChildren(_path.last, programsOnly: false);
                   return ListView(children: [
                     ListTile(
                       leading: const Icon(Icons.arrow_upward),
                       title: Text(_label(_path)),
                       onTap: () => setState(() => _path.isEmpty ? _library = null : _path.removeLast()),
                     ),
+                    if (nodes.isEmpty) const ListTile(title: Text('Nothing inside.')),
                     for (final n in nodes)
-                      ListTile(
-                        leading: Checkbox(
-                          value: _picked.containsKey(n['id']),
-                          onChanged: (_) => _toggle(
-                              n['id'] as String,
-                              () => PoolRoot(
-                                  itemId: n['id'] as String,
-                                  libraryId: library['id'] as String,
-                                  label: _label([..._path, n]))),
-                        ),
-                        title: Text(n['name'] as String),
-                        trailing: (n['children'] as List).isEmpty ? null : const Icon(Icons.chevron_right),
-                        onTap: (n['children'] as List).isEmpty ? null : () => setState(() => _path.add(n)),
-                      ),
+                      () {
+                        void toggle() => _toggle(
+                            n['id'] as String,
+                            () => PoolRoot(
+                                itemId: n['id'] as String,
+                                libraryId: library['id'] as String,
+                                label: _label([..._path, n])));
+                        final opens = opensNode(n, programsOnly: false);
+                        return ListTile(
+                          leading: Checkbox(
+                            value: _picked.containsKey(n['id']),
+                            onChanged: (_) => toggle(),
+                            semanticLabel: n['name'] as String,
+                          ),
+                          title: Text(n['name'] as String),
+                          subtitle: Text(nodeDetail(n, programsOnly: false)),
+                          trailing: opens ? const Icon(Icons.chevron_right) : null,
+                          // A video (or an empty folder) ticks from its name.
+                          onTap: opens ? () => setState(() => _path.add(n)) : toggle,
+                        );
+                      }(),
                   ]);
                 },
               ),

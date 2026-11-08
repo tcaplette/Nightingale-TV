@@ -2395,6 +2395,8 @@ class AppState extends ChangeNotifier {
   /// Fetches [roots] (every source root the library hasn't resolved, when
   /// null) on their own, without a full scan, and merges what's under them
   /// into the library and the channels using them (custom-channels D3).
+  /// When they hold episodes or movies the library doesn't have yet, the
+  /// library is scanned once first, so those play too.
   Future<void> resolveRoots([Iterable<PoolRoot>? roots]) async {
     final wanted = _unresolvedRoots(roots);
     if (client == null || wanted.isEmpty) return;
@@ -2427,6 +2429,13 @@ class AppState extends ChangeNotifier {
       }
     }
     if (_closed || found.isEmpty) return;
+    // Programs added to the server since the last scan aren't in the index,
+    // and would be left out of the playlist: one scan brings them in first
+    // (jellyfin-folder-browse D5). Pool clips count as known.
+    if (found.values.any((ids) => ids.any((id) => library[library.primaryIdOf(id)] == null))) {
+      await refreshLibrary(background: true);
+      if (_closed) return;
+    }
     final result = (found: found, missing: missing);
     final previous = library;
     final plansBefore = _plans();

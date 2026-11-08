@@ -8,15 +8,19 @@ import 'widgets/screen_layout.dart';
 import 'widgets/tv_focus.dart';
 import '../server/media_server.dart';
 
-/// Pick the Jellyfin folders a pool draws from: libraries on the left, the
-/// folders of the opened library (or folder) on the right.
+/// Pick the folders a pool draws from, or what a channel plays: libraries
+/// on the left, the folders and videos of the opened library (or folder) on
+/// the right.
 ///
-/// Keys: ▲▼ move, OK ticks a folder, ▶ opens it, ◀ / ESC go back up. With a
-/// pointer, the checkbox ticks and the name opens. Pops with the picked
-/// folders on Done, or nothing (no change) on ESC from the libraries.
+/// Keys: ▲▼ move, OK ticks a folder or video, ▶ opens a folder, ◀ / ESC go
+/// back up. With a pointer, the checkbox ticks and the name opens (or ticks
+/// a video). Pops with the picks on Done, or nothing (no change) on ESC from
+/// the libraries.
 ///
 /// Only what any signed-in user can see is listed: libraries, and the
-/// folders, shows, seasons and collections in them. No server paths.
+/// folders, shows, seasons, collections and videos in them. No server
+/// paths. A channel's picker lists only movies as videos, since nothing else
+/// plays as a program; a pool's lists every video.
 class FolderPickerScreen extends StatefulWidget {
   const FolderPickerScreen({super.key, required this.initial, this.poolName, this.forChannel = false});
 
@@ -34,6 +38,10 @@ class _FolderPickerScreenState extends State<FolderPickerScreen> {
   late final Map<String, PoolRoot> _picked = {for (final r in widget.initial) r.itemId: r};
   late Future<List<ServerLibrary>> _libraries;
   final _trees = <String, Future<List<FolderNode>>>{};
+
+  /// Folders whose videos are all hidden here (a channel's picker shows no
+  /// trailers): not empty on the server.
+  final _hiddenOnly = <String>{};
 
   ServerLibrary? _library;
 
@@ -86,7 +94,19 @@ class _FolderPickerScreenState extends State<FolderPickerScreen> {
   Future<List<FolderNode>> _treeOf(ServerLibrary lib) => _trees.putIfAbsent(lib.id, () async {
         final client = AppScope.read(context).clientOf(lib.id);
         if (client == null) throw ServerException('Not signed in.');
-        return client.folderTree(lib.id);
+        final tree = await client.folderTree(lib.id);
+        if (!widget.forChannel) return tree;
+        void note(List<FolderNode> nodes) {
+          for (final n in nodes) {
+            if (!n.isVideo && n.children.isNotEmpty && n.children.every((c) => c.type == FolderNode.videoType)) {
+              _hiddenOnly.add(n.id);
+            }
+            note(n.children);
+          }
+        }
+
+        note(tree);
+        return FolderNode.shown(tree, programsOnly: true);
       });
 
   void _retry() => setState(() {
@@ -194,8 +214,8 @@ class _FolderPickerScreenState extends State<FolderPickerScreen> {
                       const SizedBox(height: 24),
                       Text(
                         _picked.isEmpty
-                            ? 'Nothing ticked yet. Tick a library to use all of it, or ▶ to pick folders in it.'
-                            : '${_picked.length} folder${_picked.length == 1 ? '' : 's'} ticked',
+                            ? 'Nothing ticked yet. Tick a library to use all of it, or ▶ to pick what\'s in it.'
+                            : '${_picked.length} ticked',
                         style: g.body(24, color: g.textDim),
                       ),
                       const SizedBox(height: 16),
@@ -247,7 +267,7 @@ class _FolderPickerScreenState extends State<FolderPickerScreen> {
     if (lib == null) {
       return Padding(
         padding: inline ? EdgeInsets.zero : const EdgeInsets.fromLTRB(24, 56, 100, 32),
-        child: Text('Press ▶ on a library to see its folders.', style: g.body(26, color: g.textDim)),
+        child: Text('Press ▶ on a library to see what\'s in it.', style: g.body(26, color: g.textDim)),
       );
     }
     return FutureBuilder<List<FolderNode>>(
@@ -270,7 +290,7 @@ class _FolderPickerScreenState extends State<FolderPickerScreen> {
                 style: g.display(26, weight: FontWeight.w800, color: g.accent)),
             const SizedBox(height: 12),
             if (folders.isEmpty)
-              Text('No folders inside. Tick the library to use its videos.', style: g.body(26, color: g.textDim)),
+              Text('Nothing inside.', style: g.body(26, color: g.textDim)),
             for (final node in folders)
               Padding(
                 // A row keeps its focus highlight in its state: opening a
@@ -280,11 +300,7 @@ class _FolderPickerScreenState extends State<FolderPickerScreen> {
                 child: _FolderRow(
                   focusNode: _nodeFor('f:${node.id}'),
                   label: node.name,
-                  detail: covered && !_picked.containsKey(node.id)
-                      ? 'Included'
-                      : node.children.isEmpty
-                          ? null
-                          : '${node.children.length} inside',
+                  detail: covered && !_picked.containsKey(node.id) ? 'Included' : _detail(node),
                   ticked: _picked.containsKey(node.id) || covered,
                   dim: covered && !_picked.containsKey(node.id),
                   canOpen: node.children.isNotEmpty,
@@ -310,6 +326,13 @@ class _FolderPickerScreenState extends State<FolderPickerScreen> {
         );
       },
     );
+  }
+
+  /// What a row says of [node]: a video's kind, or what a folder holds.
+  String _detail(FolderNode node) {
+    if (node.isVideo) return node.type == FolderNode.movieType ? 'Movie' : 'Video';
+    if (node.children.isNotEmpty) return '${node.children.length} inside';
+    return _hiddenOnly.contains(node.id) ? 'No movies' : 'Nothing inside';
   }
 
   Widget _error(GuideTheme g, Object error) {

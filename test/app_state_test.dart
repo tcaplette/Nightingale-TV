@@ -18,10 +18,16 @@ void main() {
   const shows = {'Cheers': 20, 'Taxi': 10, 'Alpha': 10};
   const box = PoolRoot(itemId: 'box80s', libraryId: 'tv', label: '80s Sitcoms');
 
-  /// A server with [shows] and 6 movies in "TV Shows", and the collection
-  /// `box80s` holding [boxed] (item ids).
-  JellyfinClient server(List<String> boxed) {
-    final items = fakeItems(shows: shows, movies: 6);
+  /// How many library scans the [server] saw (its show listings).
+  var scans = 0;
+
+  /// A server with [shows] and 6 movies in "TV Shows", plus [added] (movies
+  /// added since the app's last scan), and the collection `box80s` holding
+  /// [boxed] (item ids).
+  JellyfinClient server(List<String> boxed, {List<Map<String, Object?>> added = const []}) {
+    scans = 0;
+    final fake = fakeItems(shows: shows, movies: 6);
+    final items = (series: fake.series, episodes: fake.episodes, movies: [...fake.movies, ...added]);
     final byId = {for (final i in [...items.episodes, ...items.movies]) i['Id']: i};
     return JellyfinClient(
       serverUrl: 'https://jf.example',
@@ -40,11 +46,12 @@ void main() {
               200);
         }
         final q = r.url.queryParameters;
+        if (q['ParentId'] == 'tv' && q['IncludeItemTypes'] == 'Series') scans++;
         final all = switch ((q['ParentId'], q['IncludeItemTypes'])) {
           ('tv', 'Series') => items.series,
           ('tv', 'Episode') => items.episodes,
           ('tv', 'Movie') => items.movies,
-          ('box80s', _) => [for (final id in boxed) byId[id]!],
+          ('box80s', _) => [for (final id in boxed) byId[id] ?? {'Id': id, 'Type': 'Movie'}],
           _ => const <Map<String, Object?>>[],
         };
         return http.Response(jsonEncode({'Items': all, 'TotalRecordCount': all.length}), 200);
@@ -86,6 +93,60 @@ void main() {
     expect(reloaded.channelById(ch.id)!.source.roots, [box]);
     expect(reloaded.library.itemsByRoot['box80s'], hasLength(4), reason: 'saved with the library');
     await reloaded.close();
+  });
+
+  group('roots holding what the library lacks (jellyfin-folder-browse D5)', () {
+    Map<String, Object?> newMovie(int i) => {
+          'Id': 'new-$i',
+          'Name': 'New Pick $i',
+          'Type': 'Movie',
+          'ProductionYear': 2026,
+          'RunTimeTicks': const Duration(minutes: 100).inMicroseconds * 10,
+          'LocationType': 'FileSystem',
+        };
+
+    test('movies added since the last scan: one scan, then they play', () async {
+      app.client = server([for (var i = 1; i <= 5; i++) 'new-$i'], added: [for (var i = 1; i <= 5; i++) newMovie(i)]);
+      expect(app.library['new-1'], isNull);
+      final ch = await app.createCustomChannel('New Picks', const ChannelSource(roots: [box]));
+      expect(scans, 1);
+      expect(ch.playlist.toSet(), {for (var i = 1; i <= 5; i++) 'new-$i'});
+      expect(app.library.itemsByRoot['box80s'], hasLength(5));
+      expect(app.scheduleFor(ch)!.playbackAt(DateTime.now()).item, isNotNull);
+    });
+
+    test('a root whose items stay unknown is scanned for once, not again and again', () async {
+      // `ghost` is listed under the root but in none of the server's
+      // library listings.
+      app.client = server(['Cheers-e1', 'ghost']);
+      final ch = await app.createCustomChannel('80s TV', const ChannelSource(roots: [box]));
+      expect(scans, 1);
+      expect(ch.playlist, ['Cheers-e1']);
+      await app.setChannelSource(ch, const ChannelSource(roots: [box]));
+      expect(scans, 1, reason: 'the root is resolved now');
+    });
+
+    test('pool clips under a root are known: no scan', () async {
+      final poolDir = await Directory.systemTemp.createTemp('nightingale_tv_custom_pool');
+      final withAds =
+          await signedInApp(poolDir, fakeLibrary(shows: shows, movies: 6, commercials: [const Duration(seconds: 30)]));
+      addTearDown(() async {
+        await withAds.close();
+        await poolDir.delete(recursive: true);
+      });
+      // A trailer the server types as a movie, in a pool's folder.
+      withAds.client = server(['Cheers-e1', 'ad-1']);
+      final ch = await withAds.createCustomChannel('80s TV', const ChannelSource(roots: [box]));
+      expect(scans, 0);
+      expect(ch.playlist, ['Cheers-e1'], reason: 'pool items never play as programs');
+    });
+
+    test('roots holding only what the library has: no scan', () async {
+      app.client = server(['Cheers-e1', 'movie-1']);
+      final ch = await app.createCustomChannel('80s TV', const ChannelSource(roots: [box]));
+      expect(scans, 0);
+      expect(ch.playlist.toSet(), {'Cheers-e1', 'movie-1'});
+    });
   });
 
   test('nothing picked, or nothing matching, adds no channel', () async {

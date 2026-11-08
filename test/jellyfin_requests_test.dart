@@ -71,6 +71,8 @@ void main() {
     ], channelRoots: {'box80s'});
     expect(sent.map(line), [
       'GET https://jf.example:8920/UserViews?userId=u1',
+      // A pool root is looked up first: it may be a single video.
+      'GET https://jf.example:8920/Items?Ids=ads&Fields=Chapters%2CEtag&EnableImages=false&EnableUserData=false&userId=u1&StartIndex=0&Limit=500',
       'GET https://jf.example:8920/Items?ParentId=ads&Recursive=true&IncludeItemTypes=Movie%2CEpisode%2CVideo%2CMusicVideo%2CTrailer'
           '&IsMissing=false&Fields=Chapters%2CEtag&EnableImages=false&EnableUserData=false&userId=u1&StartIndex=0&Limit=500',
       'GET https://jf.example:8920/Items?ParentId=tv&Recursive=true&ImageTypeLimit=1&IncludeItemTypes=Series'
@@ -85,7 +87,9 @@ void main() {
       'GET https://jf.example:8920/Items?ParentId=mu&Recursive=true&ImageTypeLimit=1&IncludeItemTypes=Audio&IsMissing=false'
           '&Fields=Genres%2CProductionYear%2CArtists%2CAlbumArtist%2CAlbum%2CAlbumId%2COfficialRating%2CEtag%2CMediaSources'
           '&EnableImages=false&EnableUserData=false&userId=u1&StartIndex=0&Limit=500',
-      // A channel's root: ids only, once.
+      // A channel's root: looked up (it may be a single movie), then ids
+      // only, once.
+      'GET https://jf.example:8920/Items?Ids=box80s&EnableImages=false&EnableUserData=false&userId=u1&StartIndex=0&Limit=500',
       'GET https://jf.example:8920/Items?ParentId=box80s&Recursive=true&IncludeItemTypes=Movie%2CEpisode%2CSeries%2CBoxSet'
           '&IsMissing=false&EnableImages=false&EnableUserData=false&userId=u1&StartIndex=0&Limit=500',
     ]);
@@ -94,7 +98,7 @@ void main() {
   test('the folder picker', () async {
     await client().folderTree('ads');
     expect(sent.map(line), [
-      'GET https://jf.example:8920/Items?ParentId=ads&Recursive=true&IncludeItemTypes=Folder%2CSeries%2CSeason%2CBoxSet'
+      'GET https://jf.example:8920/Items?ParentId=ads&Recursive=true&IncludeItemTypes=Folder%2CSeries%2CSeason%2CBoxSet%2CMovie%2CVideo%2CMusicVideo%2CTrailer'
           '&Fields=ParentId&EnableImages=false&EnableUserData=false&userId=u1&StartIndex=0&Limit=500',
     ]);
   });

@@ -144,9 +144,10 @@ class ServerInfo {
 /// A stretch of a video, e.g. a Jellyfin media segment.
 typedef MediaSegment = ({Duration start, Duration end});
 
-/// A folder in a library, for picking commercial folders. Built from the
-/// folder-like items the server lists to any user (folders, shows, seasons,
-/// collections), never from server file-system paths.
+/// A folder in a library, or a video in one, for picking commercial
+/// folders and channel sources. Built from the items the server lists to any
+/// user (folders, shows, seasons, collections, movies and other videos),
+/// never from server file-system paths.
 class FolderNode {
   FolderNode({required this.id, required this.name, required this.type, this.index, List<FolderNode>? children})
       : children = children ?? [];
@@ -154,15 +155,47 @@ class FolderNode {
   final String id;
   final String name;
 
-  /// `Folder`, `Series`, `Season` or `BoxSet` (Jellyfin's item types).
+  /// `Folder`, `Series`, `Season` or `BoxSet` (Jellyfin's item types), or
+  /// a leaf: `Movie`, or `Video` for any other video (home videos, music
+  /// videos, trailers).
   final String type;
   final int? index;
   final List<FolderNode> children;
 
-  static const itemTypes = 'Folder,Series,Season,BoxSet';
+  /// A movie or another video, not a folder: it's picked, never opened.
+  bool get isVideo => type == movieType || type == videoType;
+
+  static const movieType = 'Movie';
+  static const videoType = 'Video';
+
+  static const itemTypes = 'Folder,Series,Season,BoxSet,Movie,Video,MusicVideo,Trailer';
+
+  /// Jellyfin's video types other than movies, all shown as [videoType].
+  static const _otherVideos = {'Video', 'MusicVideo', 'Trailer'};
+
+  /// What a picker lists of [nodes]: with [programsOnly] (channel and block
+  /// sources), the only videos are movies, since nothing else plays as a
+  /// program; otherwise everything (commercial pools).
+  static List<FolderNode> shown(List<FolderNode> nodes, {required bool programsOnly}) {
+    if (!programsOnly) return nodes;
+    return [
+      for (final n in nodes)
+        if (n.type != videoType)
+          n.isVideo
+              ? n
+              : FolderNode(
+                  id: n.id,
+                  name: n.name,
+                  type: n.type,
+                  index: n.index,
+                  children: shown(n.children, programsOnly: true)),
+    ];
+  }
 
   /// Rebuilds the tree from a recursive Jellyfin listing. Each item's
-  /// `ParentId` points at its folder; items whose parent isn't in the
+  /// `ParentId` points at its folder (a movie's at the folder above its
+  /// own, which Jellyfin and Emby merge into the movie when it holds only
+  /// that movie); items whose parent isn't in the
   /// listing are the top level (a library's storage folders). Virtual items
   /// (placeholder seasons for missing episodes) are left out.
   static List<FolderNode> buildTree(List<Map<String, Object?>> items) {
@@ -172,7 +205,11 @@ class FolderNode {
         i['Id'] as String: FolderNode(
           id: i['Id'] as String,
           name: (i['Name'] as String?)?.trim() ?? '',
-          type: i['Type'] as String? ?? 'Folder',
+          type: switch (i['Type'] as String?) {
+            null => 'Folder',
+            final t when _otherVideos.contains(t) => videoType,
+            final t => t,
+          },
           index: i['IndexNumber'] as int?,
         ),
     };
@@ -193,9 +230,10 @@ class FolderNode {
     return top;
   }
 
-  /// Seasons by number; everything else by name, numbers in order
-  /// ("Season 2" before "Season 10").
+  /// Folders before videos; seasons by number; everything else by name,
+  /// numbers in order ("Season 2" before "Season 10").
   static int compare(FolderNode a, FolderNode b) {
+    if (a.isVideo != b.isVideo) return a.isVideo ? 1 : -1;
     if (a.type == 'Season' && b.type == 'Season' && a.index != null && b.index != null) {
       final byIndex = a.index!.compareTo(b.index!);
       if (byIndex != 0) return byIndex;

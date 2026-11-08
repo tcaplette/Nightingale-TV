@@ -387,7 +387,10 @@ class PlexClient implements MediaServer {
             children: (byShow['${s['ratingKey']}'] ?? [])..sort(FolderNode.compare)));
       }
     } else {
-      nodes.addAll(await _folders(section, null));
+      // Only a movie library's movies play as programs (see
+      // fetchLibraryIndex); other libraries' videos are plain videos.
+      nodes.addAll(await _folders(section, null,
+          movieType: lib?.collectionType == 'movies' ? FolderNode.movieType : FolderNode.videoType));
     }
     try {
       for (final c in _list(await _container('/library/sections/$section/collections'), 'Metadata')) {
@@ -401,19 +404,27 @@ class PlexClient implements MediaServer {
   }
 
   /// The sub-folders of [parent] (the library's top when null), and theirs,
-  /// level by level.
-  Future<List<FolderNode>> _folders(String section, String? parent) async {
+  /// level by level, with the videos in each: movies as [movieType], clips
+  /// as plain videos.
+  Future<List<FolderNode>> _folders(String section, String? parent, {required String movieType}) async {
     final c = await _container('/library/sections/$section/folder', {'parent': ?parent});
     final nodes = <FolderNode>[];
     for (final d in _list(c, 'Metadata')) {
-      if (d['type'] != null && d['type'] != 'folder') continue;
-      final key = _folderKey(d['key'] as String? ?? '');
-      if (key == null) continue;
-      nodes.add(FolderNode(
-          id: '$_folderPrefix$section:$key',
-          name: (d['title'] as String? ?? '').trim(),
-          type: 'Folder',
-          children: await _folders(section, key)));
+      final name = (d['title'] as String? ?? '').trim();
+      switch (d['type']) {
+        case null || 'folder':
+          final key = _folderKey(d['key'] as String? ?? '');
+          if (key == null) continue;
+          nodes.add(FolderNode(
+              id: '$_folderPrefix$section:$key',
+              name: name,
+              type: 'Folder',
+              children: await _folders(section, key, movieType: movieType)));
+        case 'movie':
+          nodes.add(FolderNode(id: '${d['ratingKey']}', name: name, type: movieType));
+        case 'clip':
+          nodes.add(FolderNode(id: '${d['ratingKey']}', name: name, type: FolderNode.videoType));
+      }
     }
     return nodes..sort(FolderNode.compare);
   }

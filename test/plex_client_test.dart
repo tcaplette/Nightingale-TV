@@ -153,7 +153,10 @@ void main() {
       final tree = await client.folderTree('library:3');
       expect(tree.single.name, 'Commercials');
       expect(tree.single.id, 'folder:3:15');
-      expect(tree.single.children.single.name, 'Reels');
+      // The folder's own videos are listed beside its sub-folder: a home
+      // videos library's movies are plain videos.
+      expect([for (final n in tree.single.children) (n.name, n.type, n.id)],
+          [('Reels', 'Folder', 'folder:3:16'), ('Boomer', 'Video', '50'), ('Boomer', 'Video', '70')]);
       parents.clear();
       final pool = CommercialPool(id: 'p', name: 'Commercials', roots: [
         PoolRoot(itemId: tree.single.id, libraryId: 'library:3', label: 'Home Videos › Commercials'),
@@ -162,6 +165,58 @@ void main() {
       expect(parents, ['15', '16']);
       expect(index.commercials.map((c) => c.id), ['50', '70'], reason: 'the two clips the trimmed listing holds');
       expect(index.commercials.every((c) => c.poolIds.contains('p')), isTrue);
+    });
+
+    test('a movie library\'s folders list their movies, a folder of loose movies included', () async {
+      Map<String, Object?> listing(List<Map<String, Object?>> metadata) =>
+          {'MediaContainer': {'size': metadata.length, 'Metadata': metadata}};
+      final client = plex((r) async {
+        if (r.url.path == '/library/sections/2/folder') {
+          return json(switch (r.url.queryParameters['parent']) {
+            null => listing([
+                {'key': '/library/sections/2/folder?parent=30', 'title': 'New Picks'},
+                {'key': '/library/sections/2/folder?parent=31', 'title': 'Empty'},
+                {'ratingKey': '34', 'key': '/library/metadata/34', 'type': 'movie', 'title': 'Die Hard'},
+              ]),
+            '30' => listing([
+                for (var i = 1; i <= 5; i++)
+                  {'ratingKey': '6$i', 'key': '/library/metadata/6$i', 'type': 'movie', 'title': 'Loose $i'},
+              ]),
+            _ => empty,
+          });
+        }
+        return testServer(r);
+      });
+      final tree = await client.folderTree('library:2');
+      final folders = tree.where((n) => !n.isVideo && n.type == 'Folder').toList();
+      expect(folders.map((n) => n.name), ['Empty', 'New Picks']);
+      expect(folders[0].children, isEmpty);
+      expect([for (final n in folders[1].children) (n.name, n.type)],
+          [for (var i = 1; i <= 5; i++) ('Loose $i', 'Movie')]);
+      final dieHard = tree.firstWhere((n) => n.name == 'Die Hard');
+      expect((dieHard.type, dieHard.id), ('Movie', '34'));
+    });
+
+    test('a movie, a clip or an episode as a root is that item', () async {
+      final types = {'34': 'movie', '50': 'clip', '9001': 'episode'};
+      final client = plex((r) async {
+        final key = r.url.path.split('/').last;
+        if (r.url.path.startsWith('/library/metadata/') && types.containsKey(key)) {
+          return json({
+            'MediaContainer': {
+              'Metadata': [
+                {'ratingKey': key, 'type': types[key], 'title': 'T$key', 'duration': 60000}
+              ]
+            }
+          });
+        }
+        return testServer(r);
+      });
+      expect(await client.idsUnder('34'), ['34']);
+      expect(await client.idsUnder('9001'), ['9001']);
+      for (final id in types.keys) {
+        expect([for (final i in await client.itemsUnder(id)) '${i['ratingKey']}'], [id]);
+      }
     });
 
     test('a collection contributes its items', () async {

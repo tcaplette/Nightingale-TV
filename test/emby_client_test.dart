@@ -294,6 +294,62 @@ void main() {
     expect(tree.single.children.single.children.single.name, 'Reels');
   });
 
+  group('movie folders', () {
+    /// An Emby movie library, which resolves a folder holding one movie as
+    /// that movie (its parent is the folder above), as Jellyfin does.
+    final items = <Map<String, Object?>>[
+      {'Id': '20', 'Name': 'movies', 'Type': 'Folder', 'ParentId': '7'},
+      {'Id': '21', 'Name': 'Action', 'Type': 'Folder', 'ParentId': '20'},
+      for (var i = 0; i < 12; i++) {'Id': '3$i', 'Name': 'Action $i', 'Type': 'Movie', 'ParentId': '21'},
+      {'Id': '22', 'Name': 'New Picks', 'Type': 'Folder', 'ParentId': '20'},
+      for (var i = 0; i < 5; i++) {'Id': '4$i', 'Name': 'Loose $i', 'Type': 'Movie', 'ParentId': '22'},
+      {'Id': '50', 'Name': 'Die Hard', 'Type': 'Movie', 'ParentId': '20'},
+      {'Id': '51', 'Name': 'Die Hard trailer', 'Type': 'Trailer', 'ParentId': '20'},
+    ];
+
+    test('the tree lists every folder and the movies in them, in one listing', () async {
+      final asked = <Uri>[];
+      final tree = await emby((r) async {
+        asked.add(r.url);
+        return json({'Items': items, 'TotalRecordCount': items.length});
+      }).folderTree('7');
+      expect(asked.single.path, '/Users/$userId/Items');
+      expect(asked.single.queryParameters['IncludeItemTypes'], 'Folder,Series,Season,BoxSet,Movie,Video,MusicVideo,Trailer');
+      final top = tree.single.children;
+      expect([for (final n in top) (n.name, n.type)],
+          [('Action', 'Folder'), ('New Picks', 'Folder'), ('Die Hard', 'Movie'), ('Die Hard trailer', 'Video')]);
+      expect(top[0].children, hasLength(12));
+      expect(top[1].children.map((n) => n.name), ['Loose 0', 'Loose 1', 'Loose 2', 'Loose 3', 'Loose 4']);
+    });
+
+    EmbyClient server(List<Uri> asked) => emby((r) async {
+          asked.add(r.url);
+          final path = r.url.path;
+          if (path.startsWith('/Users/$userId/Items/')) {
+            final id = path.split('/').last;
+            final item = items.where((i) => i['Id'] == id).firstOrNull;
+            return item == null ? json({}, 404) : json({...item, 'DateModified': '2026-11-01T00:00:00Z'});
+          }
+          final parent = r.url.queryParameters['ParentId'];
+          final found = [for (final i in items) if (i['ParentId'] == parent && i['Type'] == 'Movie') i];
+          return json({'Items': found, 'TotalRecordCount': found.length});
+        });
+
+    test('a movie root is that movie, without listing under it', () async {
+      final asked = <Uri>[];
+      expect(await server(asked).idsUnder('50'), ['50']);
+      expect(asked.map((u) => u.path), ['/Users/$userId/Items/50']);
+    });
+
+    test('a folder root lists the movies in it', () async {
+      expect(await server([]).idsUnder('22'), ['40', '41', '42', '43', '44']);
+    });
+
+    test('a deleted root is still found gone', () async {
+      expect(server([]).idsUnder('99'), throwsA(isA<ServerException>().having((e) => e.statusCode, 'status', 404)));
+    });
+  });
+
   test('the address step finds Emby, and makes an Emby client for it', () async {
     final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
     addTearDown(server.close);

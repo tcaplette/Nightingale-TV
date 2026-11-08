@@ -61,12 +61,12 @@ class EmbyClient extends JellyfinClient {
     return ServerInfo(url: info.url, name: info.name, version: info.version, id: info.id, kind: ServerKind.emby);
   }
 
-  /// Emby ignores a parent it doesn't know and lists every item, so a
-  /// deleted root is found by asking for it first (404: gone).
+  /// Emby ignores a parent it doesn't know and lists every item, so a root
+  /// is asked for on its own: a deleted one answers 404 (gone).
   @override
-  Future<List<String>> idsUnder(String rootId) async {
-    await getMap('$userPath/Items/$rootId');
-    return super.idsUnder(rootId);
+  Future<Map<String, Object?>?> rootItem(String rootId, {String? fields}) async {
+    final item = await getMap('$userPath/Items/$rootId');
+    return fields != null && fields.split(',').contains('Etag') ? _withEtag(item) : item;
   }
 
   @override
@@ -115,14 +115,12 @@ class EmbyClient extends JellyfinClient {
     final items = await super.allItems(wantsEtag ? {...query, 'Fields': '$fields,DateModified'} : query,
         pageSize: pageSize);
     if (!wantsEtag) return items;
-    return [
-      for (final item in items)
-        if (item['Etag'] == null && item['DateModified'] != null)
-          {...item, 'Etag': '${item['DateModified']}|${_size(item) ?? ''}'}
-        else
-          item,
-    ];
+    return [for (final item in items) _withEtag(item)];
   }
+
+  static Map<String, Object?> _withEtag(Map<String, Object?> item) => item['Etag'] == null && item['DateModified'] != null
+      ? {...item, 'Etag': '${item['DateModified']}|${_size(item) ?? ''}'}
+      : item;
 
   static Object? _size(Map<String, Object?> item) => switch (item['MediaSources']) {
         [final Map<String, Object?> source, ...] => source['Size'],

@@ -164,6 +164,17 @@ void main() {
                   }),
                   200);
             }
+            // A root looked up by id: these are all folders or collections.
+            if (q['Ids'] case final id?) {
+              return http.Response(
+                  jsonEncode({
+                    'Items': [
+                      {'Id': id, 'Name': id, 'Type': id == 'box80s' ? 'BoxSet' : 'Folder'}
+                    ],
+                    'TotalRecordCount': 1,
+                  }),
+                  200);
+            }
             final parent = q['ParentId']!;
             final types = q['IncludeItemTypes']!.split(',');
             asked.add('$parent:${q['IncludeItemTypes']}:${q['Fields']}');
