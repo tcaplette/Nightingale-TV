@@ -71,3 +71,13 @@ docker compose pull && docker compose up -d
 To build the image for a release that already exists: Actions → Linux release → Run workflow, with its tag (`v1.1.0`).
 
 The first time, make the package public: GitHub → your profile → Packages → nightingale-tv-server → Package settings → Change visibility → Public.
+
+## Testing a new image (maintainers)
+
+Before publishing, run the server idle check against the image ([`tool/idle_budget/`](../tool/idle_budget/README.md)):
+
+```
+tool/idle_budget/server_check.sh --docker <image>
+```
+
+It starts the container with a prepared config signed in to a test server, sends `HEAD` to a channel every 5 s for a minute, plays one viewer for 10 s, then measures 5 minutes idle. It fails if a probe starts a stream, if a stream ffmpeg is still running 20 s after the viewer left, if the app and its virtual display use 1% of a core or more, or if anything is left running after the container stops.

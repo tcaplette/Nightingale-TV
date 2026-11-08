@@ -216,6 +216,18 @@ class SleepTimer extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Goes to sleep now, with the fade but no warning minute: nobody answered
+  /// the still-watching prompt ([by]), which was the warning. Input during
+  /// the fade [cancel]s it with full volume back, as for a timer.
+  void sleepNow({required String by}) {
+    if (phase == SleepPhase.fading || phase == SleepPhase.asleep) return;
+    _stopTimers();
+    choice = SleepChoice.off;
+    deadline = null;
+    _note('sleep now by $by');
+    _startFade();
+  }
+
   /// Turns the timer off: input in the warning or the fade ([by]: what), or
   /// Android putting the app out of sight ('hidden', with no toast). Full
   /// volume comes back at once. Asleep, only hiding ends the sleep (without
@@ -233,13 +245,15 @@ class SleepTimer extends ChangeNotifier {
       return;
     }
     final wasFading = phase == SleepPhase.fading;
+    // A fade from [sleepNow] had no timer to turn off.
+    final hadTimer = !choice.isOff;
     _stopTimers();
     choice = SleepChoice.off;
     deadline = null;
     phase = SleepPhase.idle;
     if (wasFading) unawaited(tuner.media.setVolume(1));
     _note('cancel by $by');
-    if (!hidden) _say('Sleep timer off');
+    if (!hidden && hadTimer) _say('Sleep timer off');
     notifyListeners();
   }
 

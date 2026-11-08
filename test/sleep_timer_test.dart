@@ -368,4 +368,64 @@ void main() {
       expect(app.asleep, isFalse);
     });
   });
+
+  group('sleep now (still watching)', () {
+    void sleepNow() {
+      fa.run((_) => sleep.sleepNow(by: 'still watching'));
+      fa.flushMicrotasks();
+    }
+
+    test('fades at once with no warning, then sleeps as a timer does', () async {
+      final ch = app.channels.first;
+      await tuneIntoShow(ch);
+      final phases = <SleepPhase>[];
+      sleep.addListener(() {
+        if (phases.isEmpty || phases.last != sleep.phase) phases.add(sleep.phase);
+      });
+      sleepNow();
+      expect(sleep.phase, SleepPhase.fading);
+      advance(const Duration(seconds: 10));
+      await settle();
+      fa.flushMicrotasks();
+      await settle();
+      expect(phases, [SleepPhase.fading, SleepPhase.asleep]);
+      expect(tuner.status, TunerStatus.idle);
+      expect(player.volume, 1);
+      expect(player.volumes.where((v) => v < 1), hasLength(20));
+      expect(screenOn, [false]);
+      expect(sleep.sleptOn?.id, ch.id);
+      expect(app.analyzerBudgetNow.paused, isTrue);
+      expect(messages, isEmpty, reason: 'no timer toast');
+    });
+
+    test('input during its fade cancels it with full volume back and no toast', () async {
+      await tuneIntoShow(app.channels.first);
+      sleepNow();
+      advance(const Duration(seconds: 4));
+      expect(player.volume, lessThan(1));
+      cancel('key');
+      expect(sleep.phase, SleepPhase.idle);
+      expect(player.volume, 1);
+      expect(messages, isEmpty);
+      advance(const Duration(seconds: 20));
+      expect(player.volume, 1);
+      expect(tuner.status, isNot(TunerStatus.idle));
+    });
+
+    test('waking afterwards tunes the channel slept on', () async {
+      final ch = app.channels.first;
+      await tuneIntoShow(ch);
+      sleepNow();
+      advance(const Duration(seconds: 10));
+      await settle();
+      var woke = 0;
+      sleep.woke.addListener(() => woke++);
+      fa.run((_) => sleep.wake(by: 'key Enter'));
+      fa.flushMicrotasks();
+      await settle();
+      fa.flushMicrotasks();
+      expect(woke, 1);
+      expect(sleep.sleptOn?.id, ch.id);
+    });
+  });
 }

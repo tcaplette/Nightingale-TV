@@ -147,12 +147,12 @@ void main() {
     }
     const eight = PlaybackSettings(transcodeIfNeeded: true, maxKbps: 8000);
     expect(eight.toJson(),
-        {'transcodeIfNeeded': true, 'bitrate': 8000, 'volumeLeveling': false, 'breakNotices': true, 'pauseAndRewind': true, 'onScreenClock': false, 'captions': false, 'reportPlayback': true});
+        {'transcodeIfNeeded': true, 'bitrate': 8000, 'volumeLeveling': false, 'breakNotices': true, 'pauseAndRewind': true, 'onScreenClock': false, 'captions': false, 'reportPlayback': true, 'stillWatchingAfterMinutes': 240});
     expect(eight.capKbps(), 8000);
     expect(PlaybackSettings.off.toJson(),
-        {'transcodeIfNeeded': false, 'bitrate': 'original', 'volumeLeveling': false, 'breakNotices': true, 'pauseAndRewind': true, 'onScreenClock': false, 'captions': false, 'reportPlayback': true});
+        {'transcodeIfNeeded': false, 'bitrate': 'original', 'volumeLeveling': false, 'breakNotices': true, 'pauseAndRewind': true, 'onScreenClock': false, 'captions': false, 'reportPlayback': true, 'stillWatchingAfterMinutes': 240});
     expect(const PlaybackSettings(transcodeIfNeeded: true).toJson(),
-        {'transcodeIfNeeded': true, 'bitrate': 'original', 'volumeLeveling': false, 'breakNotices': true, 'pauseAndRewind': true, 'onScreenClock': false, 'captions': false, 'reportPlayback': true});
+        {'transcodeIfNeeded': true, 'bitrate': 'original', 'volumeLeveling': false, 'breakNotices': true, 'pauseAndRewind': true, 'onScreenClock': false, 'captions': false, 'reportPlayback': true, 'stillWatchingAfterMinutes': 240});
   });
 
   test('volume leveling is off by default and round-trips through JSON', () {
@@ -346,6 +346,30 @@ void main() {
       expect(upstream.queryParameters['static'], 'true');
       expect(upstream.path, '/Videos/item1/stream');
       await app.close();
+    });
+  });
+
+  group('still watching (idle-power)', () {
+    test('4 hours by default, and when missing or unreadable', () {
+      expect(PlaybackSettings.off.stillWatchingAfter, const Duration(hours: 4));
+      expect(PlaybackSettings.fromJson(<String, Object?>{}).stillWatchingAfter, const Duration(hours: 4));
+      expect(PlaybackSettings.fromJson({'stillWatchingAfterMinutes': 17}).stillWatchingAfter, const Duration(hours: 4));
+      expect(PlaybackSettings.fromJson({'stillWatchingAfterMinutes': 'soon'}).stillWatchingAfter, const Duration(hours: 4));
+    });
+
+    test('each choice saves and loads, Off included', () {
+      for (final c in PlaybackSettings.stillWatchingChoices) {
+        final s = PlaybackSettings.off.copyWith(stillWatchingAfter: () => c.after);
+        final back = PlaybackSettings.fromJson(s.toJson());
+        expect(back.stillWatchingAfter, c.after, reason: c.label);
+        expect(back, s);
+      }
+    });
+
+    test('it changes no playback decision', () {
+      final s = PlaybackSettings.off.copyWith(stillWatchingAfter: () => null);
+      expect(s.decidesLike(PlaybackSettings.off), isTrue);
+      expect(s == PlaybackSettings.off, isFalse);
     });
   });
 }

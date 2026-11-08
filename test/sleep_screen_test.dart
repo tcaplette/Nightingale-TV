@@ -338,6 +338,23 @@ void main() {
       await h.end(tester);
     });
 
+    testWidgets('an air mouse\'s stream of moves turns it off and the rest of the movement does nothing', (tester) async {
+      await start(tester);
+      await intoWarning(tester);
+      final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
+      await mouse.addPointer(location: const Offset(900, 300));
+      addTearDown(mouse.removePointer);
+      for (var i = 1; i <= 12; i++) {
+        await mouse.moveTo(Offset(900 + i * 10.0, 300 + i * 5.0));
+        await tester.pump(const Duration(milliseconds: 40));
+      }
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(sleep().phase, SleepPhase.idle);
+      expect(buttonsUp(tester), isFalse, reason: 'the movement did not bring up the buttons');
+      await tester.pump(const Duration(seconds: 6));
+      await h.end(tester);
+    });
+
     testWidgets('a key-state sync (focus coming back with a modifier down) is not a press', (tester) async {
       await start(tester);
       await intoWarning(tester);

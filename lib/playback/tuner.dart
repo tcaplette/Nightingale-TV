@@ -52,7 +52,8 @@ class Tuner extends ChangeNotifier {
         _clock = clock ?? DateTime.now,
         _proxy = proxy ?? (player == null && !PlaybackProxy.disabled ? PlaybackProxy() : null) {
     _diagnostics = PlaybackDiagnostics.start(
-        app.storage.root, media, app.analyzerDebugState, () => status == TunerStatus.playing && !paused);
+        app.storage.root, media, app.analyzerDebugState, () => status == TunerStatus.playing && !paused,
+        active: () => channel != null);
     if (_diagnostics != null) debugPrint('Playback diagnostics: ${_diagnostics!.path}');
     _subscriptions.addAll([
       // Tuned in once the picture moves: mpv reports "playing" (and not
@@ -517,7 +518,11 @@ class Tuner extends ChangeNotifier {
 
   /// Tunes [ch], at the live point, or at [at]: where the viewer was before
   /// the app went out of sight (timeshift D12).
+  /// Tunes so far (the still-watching count starts again on each).
+  int tunes = 0;
+
   Future<void> tune(Channel ch, {ViewingPlace? at}) async {
+    tunes++;
     // A sleep timer's fade that was cancelled never leaves a channel quiet.
     unawaited(media.setVolume(1));
     // Diagnostics: the first tune is the launch's; one after [stop] (Android

@@ -69,3 +69,6 @@ PLAY_STORE_NOTES.md
 
 # Release steps for agents (kept local)
 /RELEASE_NOTES_FOR_AGENTS.md
+
+# Idle check seed config: holds the test server sign-in (idle-cpu)
+tool/idle_budget/seed/

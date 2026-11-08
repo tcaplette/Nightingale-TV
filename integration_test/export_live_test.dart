@@ -26,8 +26,10 @@ import 'package:nightingale_tv/profiles/household.dart';
 
 final _env = Platform.environment;
 
-void main() {
-  testWidgets('a real channel streams continuously over HTTP', (tester) async {
+/// Signs in from the environment, exports the profile on a free loopback
+/// port and runs [body] with it; skipped when no server is set.
+Future<void> _withExport(WidgetTester tester,
+    Future<void> Function(AppState app, ExportService service, int port, HttpClient http, Directory dir) body) async {
     final server = _env['JF_SERVER'], user = _env['JF_USER'], password = _env['JF_PW'];
     final plex = _env['MEDIA_SERVER'] == 'plex';
     final emby = _env['MEDIA_SERVER'] == 'emby';
@@ -97,6 +99,21 @@ void main() {
         print('Export live: ${app.channels.length} channels, guide ${guide.length ~/ 1024} KB, '
             'streaming channel ${channel.number} (${channel.name}).');
 
+        await body(app, service, port, http, dir);
+      } finally {
+        await service.stop();
+        await app.signOut();
+        household.leave();
+        await household.setExportedProfiles({});
+        await dir.delete(recursive: true);
+      }
+    });
+}
+
+void main() {
+  testWidgets('a real channel streams continuously over HTTP', (tester) async {
+    await _withExport(tester, (app, service, port, http, dir) async {
+        final channel = app.channels.first;
         final requested = DateTime.now();
         final response = await (await http.getUrl(Uri.parse('http://127.0.0.1:$port/stream/${channel.number}.ts'))).close();
         expect(response.statusCode, 200);
@@ -145,13 +162,29 @@ void main() {
         expect(video.length, greaterThan(110 * 29));
         expect(gaps, isEmpty);
         expect(packets.where((p) => '${p['flags']}'.contains('C')), isEmpty);
-      } finally {
-        await service.stop();
-        await app.signOut();
-        household.leave();
-        await household.setExportedProfiles({});
-        await dir.delete(recursive: true);
-      }
     });
   }, timeout: const Timeout(Duration(minutes: 10)));
+
+  // idle-cpu: a probe starts nothing, and the GET after it still starts
+  // within the fast-tune budget.
+  testWidgets('a HEAD starts no stream; the GET after it has its first byte within 2 s', (tester) async {
+    await _withExport(tester, (app, service, port, http, dir) async {
+      final channel = app.channels.first;
+      final url = Uri.parse('http://127.0.0.1:$port/stream/${channel.number}.ts');
+      final head = await (await http.headUrl(url)).close();
+      await head.drain<void>();
+      expect(head.statusCode, 200);
+      expect(head.headers.contentType?.mimeType, 'video/mp2t');
+      await Future<void>.delayed(const Duration(seconds: 2));
+      expect(service.streams.running, isEmpty, reason: 'the HEAD started a stream');
+      final requested = DateTime.now();
+      final response = await (await http.getUrl(url)).close();
+      expect(response.statusCode, 200);
+      final first = await response.first;
+      final took = DateTime.now().difference(requested);
+      // ignore: avoid_print
+      print('Export live: HEAD then GET, first byte after ${took.inMilliseconds} ms (${first.length} bytes).');
+      expect(took, lessThan(const Duration(seconds: 2)));
+    });
+  }, timeout: const Timeout(Duration(minutes: 5)));
 }

@@ -228,6 +228,49 @@ void main() {
     });
   });
 
+  group('still watching (idle-power)', () {
+    Future<Map<String, Object?>> momSettings(BuiltBackup built) async =>
+        {...BackupArchive.check(built.bytes).profiles[momAndKids().first.id]!.settings!, 'installId': 'x'};
+
+    test('a backup carries the still-watching time', () async {
+      await writeHousehold(dir, momAndKids(), fakeLibrary());
+      final storage = AppStorage.existing(Directory('${dir.path}/profiles/${momAndKids().first.id}'));
+      final settings = await storage.readRaw('settings.json') as Map<String, Object?>;
+      final playback = PlaybackSettings.fromJson(settings['playback'])
+          .copyWith(stillWatchingAfter: () => const Duration(hours: 2));
+      await storage.writeJson('settings.json', {...settings, 'playback': playback.toJson()});
+      await storage.flush();
+      final restored = AppSettings.fromJson(await momSettings(await build()));
+      expect(restored.playback.stillWatchingAfter, const Duration(hours: 2));
+    });
+
+    test('Off is carried too', () async {
+      await writeHousehold(dir, momAndKids(), fakeLibrary());
+      final storage = AppStorage.existing(Directory('${dir.path}/profiles/${momAndKids().first.id}'));
+      final settings = await storage.readRaw('settings.json') as Map<String, Object?>;
+      final playback = PlaybackSettings.fromJson(settings['playback']).copyWith(stillWatchingAfter: () => null);
+      await storage.writeJson('settings.json', {...settings, 'playback': playback.toJson()});
+      await storage.flush();
+      final restored = AppSettings.fromJson(await momSettings(await build()));
+      expect(restored.playback.stillWatchingAfter, isNull);
+    });
+
+    test('a backup from before the setting asks after 4 hours', () async {
+      final bytes = edited((await household()).bytes, (j) {
+        for (final id in [for (final p in momAndKids()) p.id]) {
+          final settings = part(j, id)['settings'] as Map<String, Object?>?;
+          final playback = settings?['playback'];
+          if (playback is Map<String, Object?>) playback.remove('stillWatchingAfterMinutes');
+        }
+      });
+      final archive = BackupArchive.check(bytes);
+      for (final p in momAndKids()) {
+        final settings = AppSettings.fromJson({...?archive.profiles[p.id]!.settings, 'installId': 'x'});
+        expect(settings.playback.stillWatchingAfter, const Duration(hours: 4), reason: p.name);
+      }
+    });
+  });
+
   group('the store', () {
     late BackupStore store;
     late List<int> bytes;

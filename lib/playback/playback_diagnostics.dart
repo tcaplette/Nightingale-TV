@@ -139,16 +139,20 @@ class PlaybackDiagnostics {
 
   /// Starts logging to `playback-debug.log` in [dir], reading [player].
   /// [analyzer] says what background analysis is doing; [playing] whether
-  /// the tuner thinks a segment is playing now.
+  /// the tuner thinks a segment is playing now; [active] whether a channel is
+  /// on at all (paused included). While none is (asleep, stopped), the
+  /// samplers stand down, so the log doesn't load an idle app.
   static PlaybackDiagnostics? start(Directory dir, PlayerReadings player,
-      Future<({String job, String budget, int proxyBytes})> Function() analyzer, bool Function() playing) {
+      Future<({String job, String budget, int proxyBytes})> Function() analyzer, bool Function() playing,
+      {bool Function()? active}) {
     if (!enabled) return null;
     final path = '${dir.path}/playback-debug.log';
     final file = File(path);
     // Keep the last run's log as .1 once it gets big.
     if (file.existsSync() && file.lengthSync() > 20 * 1024 * 1024) file.renameSync('$path.1');
     final d = PlaybackDiagnostics._(file.openWrite(mode: FileMode.append), player, analyzer, path)..playing = playing;
-    active = d;
+    if (active != null) d._active = active;
+    PlaybackDiagnostics.active = d;
     d._begin();
     return d;
   }
@@ -160,6 +164,9 @@ class PlaybackDiagnostics {
   final IOSink _sink;
   final PlayerReadings _player;
   late final bool Function() playing;
+  bool Function() _active = _always;
+  static bool _always() => true;
+  bool _idleLogged = false;
   Timer? _freezeTimer;
   bool _checkingFreeze = false;
   double? _freezePos;
@@ -219,6 +226,12 @@ class PlaybackDiagnostics {
   /// tuner says it's playing, and one when it moves again.
   Future<void> _checkFreeze() async {
     if (_checkingFreeze) return;
+    if (!_active()) {
+      _frozenSince = null;
+      _freezeLogged = false;
+      _freezePos = null;
+      return;
+    }
     _checkingFreeze = true;
     try {
       final pos = await _safe(_player.debugPosition, null);
@@ -398,6 +411,14 @@ class PlaybackDiagnostics {
 
   Future<void> _sample() async {
     if (_sampling) return;
+    if (!_active()) {
+      if (!_idleLogged) {
+        _idleLogged = true;
+        _write('IDLE', 'no channel on; sampling stops until the next tune');
+      }
+      return;
+    }
+    _idleLogged = false;
     _sampling = true;
     try {
       await _sampleOnce();

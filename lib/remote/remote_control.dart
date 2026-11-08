@@ -88,6 +88,9 @@ class RemoteControl extends ChangeNotifier {
   /// The tuner of whoever is watching; attached by the UI.
   Tuner? tuner;
 
+  /// Told of every key or tune command (the still-watching count, idle-power).
+  void Function()? onCommand;
+
   bool enabled = false;
   HttpServer? _server;
   String? error;
@@ -446,6 +449,7 @@ class RemoteControl extends ChangeNotifier {
           return;
         }
         if (await _authorize(request) == null) return;
+        if (path == '/api/key' || path == '/api/tune') onCommand?.call();
         switch (path) {
           case '/api/key':
             final key = remoteKeys[body['key']];

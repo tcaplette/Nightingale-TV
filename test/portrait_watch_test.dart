@@ -444,9 +444,11 @@ void main() {
     await tester.runAsync(() => h.app.setGlobalPlan(BreakPlan.automatic));
     final ch = h.app.channels.first;
     final schedule = h.app.scheduleFor(ch)!;
-    // 3 seconds into the next "Commercial break" countdown.
+    // 3 seconds into the next "Commercial break" countdown, from its start
+    // (one already counting when the test starts may have under 3 s left).
+    bool counting(DateTime at) => breakNoticeAt(schedule, at)?.kind == BreakNoticeKind.breakStarts;
     var t = DateTime.now();
-    while (breakNoticeAt(schedule, t)?.kind != BreakNoticeKind.breakStarts) {
+    while (!counting(t) || counting(t.subtract(const Duration(seconds: 1)))) {
       t = t.add(const Duration(seconds: 1));
     }
     start = t.add(const Duration(seconds: 3)).subtract(tester.binding.clock.now().difference(testStart));

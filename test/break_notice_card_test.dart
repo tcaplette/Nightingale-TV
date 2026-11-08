@@ -31,11 +31,15 @@ class _Points implements BreakPointSource {
       candidates: const [Duration(minutes: 7, seconds: 10), Duration(minutes: 14, seconds: 40)]);
 }
 
-/// The first moment at or after [from] that [schedule] has a notice of
-/// [kind] on, to the second.
+/// The first moment after [from] that a notice of [kind] comes up on
+/// [schedule], to the second: its start, so the whole countdown is ahead
+/// (one already on at [from] may be nearly over).
 DateTime firstNotice(ProgramSchedule schedule, DateTime from, BreakNoticeKind kind) {
-  for (var t = from; t.isBefore(from.add(const Duration(hours: 3))); t = t.add(const Duration(seconds: 1))) {
-    if (breakNoticeAt(schedule, t)?.kind == kind) return t;
+  bool on(DateTime t) => breakNoticeAt(schedule, t)?.kind == kind;
+  for (var t = from.add(const Duration(seconds: 1));
+      t.isBefore(from.add(const Duration(hours: 3)));
+      t = t.add(const Duration(seconds: 1))) {
+    if (on(t) && !on(t.subtract(const Duration(seconds: 1)))) return t;
   }
   throw StateError('no $kind notice');
 }

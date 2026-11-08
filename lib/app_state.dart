@@ -75,7 +75,8 @@ class PlaybackSettings {
       this.onScreenClock = false,
       this.captions = false,
       this.captionLanguage,
-      this.reportPlayback = true});
+      this.reportPlayback = true,
+      this.stillWatchingAfter = defaultStillWatching});
 
   /// A setting never saved: transcoding and leveling off, with Original
   /// chosen; break notices on.
@@ -112,6 +113,20 @@ class PlaybackSettings {
   /// none (play-reporting).
   final bool reportPlayback;
 
+  /// How long a channel plays with no input before the app asks whether
+  /// anyone is still watching (idle-power); null is Off.
+  final Duration? stillWatchingAfter;
+
+  static const defaultStillWatching = Duration(hours: 4);
+
+  /// The still-watching choices, in this order, Off first.
+  static const stillWatchingChoices = <({String label, Duration? after})>[
+    (label: 'Off', after: null),
+    (label: 'After 2 hours', after: Duration(hours: 2)),
+    (label: 'After 4 hours', after: Duration(hours: 4)),
+    (label: 'After 8 hours', after: Duration(hours: 8)),
+  ];
+
   /// In this order, Original first.
   static const presets = <BitratePreset>[
     (label: 'Original (no limit)', kbps: null),
@@ -135,8 +150,9 @@ class PlaybackSettings {
   int? capKbps() => transcodeIfNeeded ? maxKbps : null;
 
   /// Whether playback decisions made under [other] still hold: everything
-  /// but [breakNotices], [pauseAndRewind], [onScreenClock], the captions and
-  /// [reportPlayback], which change no decision, is the same.
+  /// but [breakNotices], [pauseAndRewind], [onScreenClock], the captions,
+  /// [reportPlayback] and [stillWatchingAfter], which change no decision, is
+  /// the same.
   bool decidesLike(PlaybackSettings other) =>
       copyWith(
           breakNotices: other.breakNotices,
@@ -144,7 +160,8 @@ class PlaybackSettings {
           onScreenClock: other.onScreenClock,
           captions: other.captions,
           captionLanguage: () => other.captionLanguage,
-          reportPlayback: other.reportPlayback) ==
+          reportPlayback: other.reportPlayback,
+          stillWatchingAfter: () => other.stillWatchingAfter) ==
       other;
 
   PlaybackSettings copyWith(
@@ -156,7 +173,8 @@ class PlaybackSettings {
           bool? onScreenClock,
           bool? captions,
           String? Function()? captionLanguage,
-          bool? reportPlayback}) =>
+          bool? reportPlayback,
+          Duration? Function()? stillWatchingAfter}) =>
       PlaybackSettings(
         transcodeIfNeeded: transcodeIfNeeded ?? this.transcodeIfNeeded,
         maxKbps: bitrate == null ? maxKbps : bitrate.kbps,
@@ -167,6 +185,7 @@ class PlaybackSettings {
         captions: captions ?? this.captions,
         captionLanguage: captionLanguage == null ? this.captionLanguage : captionLanguage(),
         reportPlayback: reportPlayback ?? this.reportPlayback,
+        stillWatchingAfter: stillWatchingAfter == null ? this.stillWatchingAfter : stillWatchingAfter(),
       );
 
   Map<String, Object?> toJson() => {
@@ -179,6 +198,7 @@ class PlaybackSettings {
         'captions': captions,
         'captionLanguage': ?captionLanguage,
         'reportPlayback': reportPlayback,
+        'stillWatchingAfterMinutes': stillWatchingAfter?.inMinutes ?? 'off',
       };
 
   /// A missing or unreadable setting is off with Original chosen. A saved
@@ -188,7 +208,8 @@ class PlaybackSettings {
   /// leveling is off unless saved as on; break notices and pause and rewind
   /// are on unless saved as off; the on-screen clock and captions are off
   /// unless saved as on, with no caption language unless one was saved;
-  /// playback reports are on unless saved as off.
+  /// playback reports are on unless saved as off. The still-watching time
+  /// is 4 hours unless saved as Off or as one of the other choices.
   factory PlaybackSettings.fromJson(Object? json) {
     if (json is! Map<String, Object?>) return off;
     final captions = json['captions'] == true;
@@ -199,6 +220,13 @@ class PlaybackSettings {
     final rewind = json['pauseAndRewind'] != false;
     final clock = json['onScreenClock'] == true;
     final reports = json['reportPlayback'] != false;
+    final savedStill = json['stillWatchingAfterMinutes'];
+    final still = savedStill == 'off'
+        ? null
+        : stillWatchingChoices
+                .map((c) => c.after)
+                .firstWhere((d) => d != null && savedStill is num && d.inMinutes == savedStill, orElse: () => null) ??
+            defaultStillWatching;
     final bitrate = json['bitrate'];
     if (bitrate is num) {
       return PlaybackSettings(
@@ -210,7 +238,8 @@ class PlaybackSettings {
           onScreenClock: clock,
           captions: captions,
           captionLanguage: language,
-          reportPlayback: reports);
+          reportPlayback: reports,
+          stillWatchingAfter: still);
     }
     if (!json.containsKey('bitrate')) {
       if (json['maxBitrateMbps'] case final num mbps) {
@@ -223,7 +252,8 @@ class PlaybackSettings {
             onScreenClock: clock,
             captions: captions,
             captionLanguage: language,
-            reportPlayback: reports);
+            reportPlayback: reports,
+            stillWatchingAfter: still);
       }
     }
     return PlaybackSettings(
@@ -234,7 +264,8 @@ class PlaybackSettings {
         onScreenClock: clock,
         captions: captions,
         captionLanguage: language,
-        reportPlayback: reports);
+        reportPlayback: reports,
+        stillWatchingAfter: still);
   }
 
   @override
@@ -248,18 +279,19 @@ class PlaybackSettings {
       other.onScreenClock == onScreenClock &&
       other.captions == captions &&
       other.captionLanguage == captionLanguage &&
-      other.reportPlayback == reportPlayback;
+      other.reportPlayback == reportPlayback &&
+      other.stillWatchingAfter == stillWatchingAfter;
 
   @override
   int get hashCode => Object.hash(
       transcodeIfNeeded, maxKbps, volumeLeveling, breakNotices, pauseAndRewind, onScreenClock, captions, captionLanguage,
-      reportPlayback);
+      reportPlayback, stillWatchingAfter);
 
   @override
   String toString() => 'PlaybackSettings(${transcodeIfNeeded ? 'on' : 'off'}, ${preset.label}, '
       'leveling ${volumeLeveling ? 'on' : 'off'}, notices ${breakNotices ? 'on' : 'off'}, rewind ${pauseAndRewind ? 'on' : 'off'}, '
       'clock ${onScreenClock ? 'on' : 'off'}, captions ${captions ? 'on' : 'off'} ${captionLanguage ?? '-'}, '
-      'reports ${reportPlayback ? 'on' : 'off'})';
+      'reports ${reportPlayback ? 'on' : 'off'}, still watching ${stillWatchingAfter?.inHours ?? 'off'})';
 }
 
 /// What the TV is doing, as far as bandwidth goes.

@@ -8,6 +8,7 @@ import 'package:nightingale_tv/library/library_index.dart';
 import 'package:nightingale_tv/platform/orientation.dart';
 import 'package:nightingale_tv/platform/platform_info.dart';
 import 'package:nightingale_tv/playback/sleep_timer.dart';
+import 'package:nightingale_tv/playback/still_watching.dart';
 import 'package:nightingale_tv/playback/tuner.dart';
 import 'package:nightingale_tv/profiles/household.dart';
 import 'package:nightingale_tv/profiles/profile.dart';
@@ -45,7 +46,7 @@ void setWindow(WidgetTester tester, Size size) {
 /// A signed-in household of one ("Mom"), its tuner on a fake player, shown
 /// the way main() shows it: scopes above the app, the canvas in its builder.
 class PortraitHarness {
-  PortraitHarness._(this.household, this.tuner, this._dir, this.sleep, this.screenOn);
+  PortraitHarness._(this.household, this.tuner, this._dir, this.sleep, this.screenOn, {this.stillAfter});
 
   final Household household;
   final Tuner tuner;
@@ -54,15 +55,21 @@ class PortraitHarness {
   /// The sleep timer, when asked for, on the tuner's clock.
   final SleepTimer? sleep;
 
+  /// "Are you still watching?", when a time is given; [stillAfter] is its
+  /// time, which a test may change (null is Off).
+  StillWatching? still;
+  Duration? stillAfter;
+
   /// What the sleep timer asked of Android's screen-on flag.
   final List<bool> screenOn;
 
   AppState get app => household.app!;
 
   /// [clock] is the tuner's (the real time by default). [sleep]: with a
-  /// sleep timer, on the same clock.
+  /// sleep timer, on the same clock. [stillWatching]: with the
+  /// still-watching prompt after that long (needs [sleep]).
   static Future<PortraitHarness> start(WidgetTester tester,
-      {LibraryIndex? library, DateTime Function()? clock, bool sleep = false}) async {
+      {LibraryIndex? library, DateTime Function()? clock, bool sleep = false, Duration? stillWatching}) async {
     late Directory dir;
     late Household h;
     await tester.runAsync(() async {
@@ -79,7 +86,10 @@ class PortraitHarness {
     final screenOn = <bool>[];
     final timer =
         sleep ? SleepTimer(tuner, clock: clock, keepScreenOn: (on) async => screenOn.add(on)) : null;
-    final harness = PortraitHarness._(h, tuner, dir, timer, screenOn);
+    final harness = PortraitHarness._(h, tuner, dir, timer, screenOn, stillAfter: stillWatching);
+    if (stillWatching != null) {
+      harness.still = StillWatching(tuner, timer!, clock: clock, after: () => harness.stillAfter);
+    }
     addTearDown(() => harness._dispose(tester));
     return harness;
   }
@@ -92,6 +102,7 @@ class PortraitHarness {
         app: app,
         tuner: tuner,
         sleep: sleep,
+        stillWatching: still,
         child: MaterialApp(
           theme: GuideTheme.cableGuide.toThemeData(),
           builder: (context, child) => TvCanvas(child: SleepOverlay(child: child!)),
@@ -106,6 +117,7 @@ class PortraitHarness {
   Future<void> end(WidgetTester tester) async {
     // No sleep timer left counting.
     if (sleep?.armed ?? false) sleep!.choose(SleepChoice.off);
+    stillAfter = null;
     await tester.pumpWidget(const SizedBox());
     await tester.runAsync(tuner.stop);
     await tester.pump(const Duration(minutes: 10));
@@ -113,6 +125,7 @@ class PortraitHarness {
 
   Future<void> _dispose(WidgetTester tester) async {
     await tester.pumpWidget(const SizedBox());
+    still?.dispose();
     sleep?.dispose();
     tuner.dispose();
     await tester.runAsync(() async {

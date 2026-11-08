@@ -10,7 +10,7 @@ import 'widgets/tv_focus.dart';
 
 /// "Transcode only if needed", the maximum streaming bitrate, volume
 /// leveling, break notices, the on-screen clock, pause and rewind and watch
-/// status reports. Off by default: everything direct-plays, audio untouched,
+/// status reports, and when to ask if anyone is still watching. Off by default: everything direct-plays, audio untouched,
 /// no clock; break notices, pause and rewind and watch status reports are on.
 class PlaybackScreen extends StatelessWidget {
   const PlaybackScreen({super.key});
@@ -55,6 +55,12 @@ class PlaybackScreen extends StatelessWidget {
   /// Added to [reportsHelp] for Plex and Emby, which end a live stream
   /// without its reports (play-reporting D4).
   static const reportsLiveHelp = 'Live TV still shows on the dashboard.';
+
+  static const stillWatchingLabel = 'Ask if I\'m still watching';
+
+  static const stillWatchingHelp = 'After this long with no button pressed, Nightingale TV asks if anyone is '
+      'watching. With no answer in a minute, it goes to sleep: playback stops and your server stops streaming. '
+      'Not while a sleep timer is set.';
 
   static String reportsHelpText(Iterable<ServerKind> kinds) =>
       kinds.any((k) => k != ServerKind.jellyfin) ? '$reportsHelp $reportsLiveHelp' : reportsHelp;
@@ -187,6 +193,26 @@ class PlaybackScreen extends StatelessWidget {
             const SizedBox(height: 12),
             ConstrainedBox(constraints: const BoxConstraints(maxWidth: 1100), child: Text(reportsHelpText([for (final server in app.servers.ordered) server.kind]),
                     style: g.body(24, color: g.textDim))),
+            const SizedBox(height: 28),
+            Text(stillWatchingLabel, style: g.display(28, weight: FontWeight.w700)),
+            const SizedBox(height: 14),
+            for (final choice in PlaybackSettings.stillWatchingChoices)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 10),
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: TvToggle(
+                    label: choice.label,
+                    radio: true,
+                    on: choice.after == playback.stillWatchingAfter,
+                    onPressed: () => app.setPlayback(playback.copyWith(stillWatchingAfter: () => choice.after)),
+                  ),
+                ),
+              ),
+            const SizedBox(height: 12),
+            ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 1100),
+                child: Text(stillWatchingHelp, style: g.body(24, color: g.textDim))),
           ],
         ),
       ),

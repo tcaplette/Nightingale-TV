@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:ui' show PointerDeviceKind;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -52,9 +53,10 @@ void main() {
     });
   }
 
+  /// The bitrate list's radios (the still-watching list has its own).
   List<String> choices(WidgetTester tester) => [
         for (final t in tester.widgetList<TvToggle>(find.byType(TvToggle)))
-          if (t.radio) t.label,
+          if (t.radio && !PlaybackSettings.stillWatchingChoices.any((c) => c.label == t.label)) t.label,
       ];
 
   testWidgets('Original comes first, then the caps down to 4 Mbps; no Auto', (tester) async {
@@ -85,7 +87,7 @@ void main() {
     await show(tester, PlaybackSettings.off);
     expect(choices(tester), hasLength(6));
     for (final t in tester.widgetList<TvToggle>(find.byType(TvToggle))) {
-      if (t.radio) expect(t.onPressed, isNull, reason: t.label);
+      if (choices(tester).contains(t.label)) expect(t.onPressed, isNull, reason: t.label);
     }
   });
 
@@ -323,5 +325,56 @@ void main() {
     await tester.tap(find.text(reportsLabel()));
     await tester.pumpAndSettle();
     expect(app.settings.playback, const PlaybackSettings(reportPlayback: false));
+  });
+
+  group('Ask if I\'m still watching', () {
+    List<String> stillChoices(WidgetTester tester) => [
+          for (final t in tester.widgetList<TvToggle>(find.byType(TvToggle)))
+            if (t.radio && PlaybackSettings.stillWatchingChoices.any((c) => c.label == t.label)) t.label,
+        ];
+
+    bool chosen(WidgetTester tester, String label) => tester.widget<TvToggle>(find.widgetWithText(TvToggle, label)).on;
+
+    testWidgets('under WATCHING: Off, 2, 4 and 8 hours, 4 hours chosen by default, with help text', (tester) async {
+      await show(tester, PlaybackSettings.off);
+      expect(find.text(PlaybackScreen.stillWatchingLabel), findsOneWidget);
+      expect(stillChoices(tester), ['Off', 'After 2 hours', 'After 4 hours', 'After 8 hours']);
+      expect(chosen(tester, 'After 4 hours'), isTrue);
+      expect(find.text(PlaybackScreen.stillWatchingHelp), findsOneWidget);
+      expect(tester.getTopLeft(find.text(PlaybackScreen.stillWatchingLabel)).dy,
+          greaterThan(tester.getTopLeft(find.text('WATCHING')).dy));
+    });
+
+    testWidgets('the D-pad reaches Off and OK saves it, with no re-tune', (tester) async {
+      await show(tester, PlaybackSettings.off);
+      for (var i = 0; i < 40 && focusedLabel() != 'Off'; i++) {
+        await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+        await tester.pumpAndSettle();
+      }
+      expect(focusedLabel(), 'Off');
+      await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+      await tester.pumpAndSettle();
+      expect(app.settings.playback.stillWatchingAfter, isNull);
+      expect(chosen(tester, 'Off'), isTrue);
+      expect(chosen(tester, 'After 4 hours'), isFalse);
+      expect(player.opens, isEmpty);
+    });
+
+    testWidgets('a click picks 8 hours', (tester) async {
+      await show(tester, PlaybackSettings.off);
+      await tester.tap(find.text('After 8 hours'), kind: PointerDeviceKind.mouse);
+      await tester.pumpAndSettle();
+      expect(app.settings.playback.stillWatchingAfter, const Duration(hours: 8));
+      expect(chosen(tester, 'After 8 hours'), isTrue);
+    });
+
+    testWidgets('a tap picks 2 hours, and it is saved with the profile', (tester) async {
+      await show(tester, PlaybackSettings.off);
+      await tester.tap(find.text('After 2 hours'), kind: PointerDeviceKind.touch);
+      await tester.pumpAndSettle();
+      expect(app.settings.playback.stillWatchingAfter, const Duration(hours: 2));
+      final saved = PlaybackSettings.fromJson(app.settings.playback.toJson());
+      expect(saved.stillWatchingAfter, const Duration(hours: 2));
+    });
   });
 }

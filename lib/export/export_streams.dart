@@ -63,23 +63,30 @@ class ExportStreams implements ChannelStreamer {
   final _warmed = <String>{};
   final _toWarm = <AppState>{};
   bool _warming = false;
+  Future<void>? _warmRun;
+
+  /// Bumped by [stopAll] for everything: a warm run that started before
+  /// stops at its next card.
+  int _warmEpoch = 0;
 
   /// Encodes the black card and [app]'s channels' tuning cards ahead, one
   /// at a time, skipping those done before.
   void warm(AppState app) {
     _toWarm.add(app);
-    if (!_warming) unawaited(_warmQueued());
+    if (!_warming) _warmRun = _warmQueued();
   }
 
   Future<void> _warmQueued() async {
     _warming = true;
+    final epoch = _warmEpoch;
     try {
-      while (_toWarm.isNotEmpty) {
+      while (_toWarm.isNotEmpty && epoch == _warmEpoch) {
         final app = _toWarm.first;
         _toWarm.remove(app);
         final quality = policy.quality();
         final encoder = await policy.encoder();
         for (final card in <BroadcastCard>[const BlackCard(), for (final c in [...app.channels]) if (!c.isLive) TuningCardSpec(c)]) {
+          if (epoch != _warmEpoch) return;
           // Tried once: a card that can't be made is made when it plays.
           if (!_warmed.add('${card.key}|${quality.label}|${encoder.codec}')) continue;
           try {
@@ -109,10 +116,36 @@ class ExportStreams implements ChannelStreamer {
         for (final e in _sessions.entries) (profileId: e.key.$1, channel: e.value.channel, viewers: e.value.clients.length),
       ];
 
+  /// Whether a stream of [key] can be had now (design D1): one runs, one
+  /// can start under the limit (a stream lingering with nobody watching
+  /// counts as giving way), or every tuner is busy. GET and HEAD both ask
+  /// this, so they can't disagree.
+  _Admission _admission((String, String) key) {
+    if (_sessions.containsKey(key)) return _Admission.join;
+    if (_sessions.length < policy.limit()) return _Admission.start;
+    if (_sessions.values.any((s) => s.clients.isEmpty)) return _Admission.start;
+    return _Admission.full;
+  }
+
   @override
   Future<void> serve(HttpRequest request, LineupServer server, AppState app, Channel channel) async {
     final response = request.response;
     final key = (server.profileId, channel.id);
+    final admission = _admission(key);
+    if (admission == _Admission.full) {
+      response
+        ..statusCode = HttpStatus.serviceUnavailable
+        ..headers.set('X-HDHomeRun-Error', '805 All Tuners In Use');
+      await response.close();
+      return;
+    }
+    if (request.method == 'HEAD') {
+      // A probe: never starts, joins, keeps or makes room for a stream.
+      response.headers.contentType = ContentType('video', 'mp2t');
+      response.headers.set('Cache-Control', 'no-store');
+      await response.close();
+      return;
+    }
     var session = _sessions[key];
     if (session == null) {
       if (_sessions.length >= policy.limit()) {
@@ -143,11 +176,6 @@ class ExportStreams implements ChannelStreamer {
     }
     response.headers.contentType = ContentType('video', 'mp2t');
     response.headers.set('Cache-Control', 'no-store');
-    if (request.method == 'HEAD') {
-      await response.close();
-      session.headOnly();
-      return;
-    }
     // A plain stream until the connection closes, as tuners send it, on
     // the raw socket: an HttpResponse keeps accepting writes after the
     // viewer has gone, so a hang-up would never be noticed.
@@ -166,6 +194,10 @@ class ExportStreams implements ChannelStreamer {
         if (profileId == null || s.key.$1 == profileId) s.stop(),
     ]);
     if (profileId == null) {
+      // Cards still being made ahead stop too (the one in hand finishes).
+      _warmEpoch++;
+      _toWarm.clear();
+      await _warmRun;
       for (final p in [..._proxies.values]) {
         await p.proxy.close();
       }
@@ -215,6 +247,8 @@ class ExportStreams implements ChannelStreamer {
     return _proxies[profileId] = _Proxy(app, proxy);
   }
 }
+
+enum _Admission { start, join, full }
 
 class _Proxy {
   _Proxy(this.app, this.proxy);
@@ -303,9 +337,6 @@ class _Session {
   }
 
   VideoEncoder streamEncoder() => stream?.ctx.encoder ?? VideoEncoder.x264;
-
-  /// A HEAD request: nobody is watching yet.
-  void headOnly() => _maybeLinger();
 
   /// Streams to a viewer until they hang up ([incoming] ends).
   Future<void> attach(IOSink sink, Stream<List<int>> incoming) async {

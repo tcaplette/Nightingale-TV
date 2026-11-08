@@ -24,6 +24,7 @@ import 'platform/platform_info.dart';
 import 'playback/device_effects.dart';
 import 'playback/playback_diagnostics.dart';
 import 'playback/sleep_timer.dart';
+import 'playback/still_watching.dart';
 import 'playback/tuner.dart';
 import 'profiles/household.dart';
 import 'remote/remote_control.dart';
@@ -348,6 +349,7 @@ class ProfileSession extends StatefulWidget {
 class _ProfileSessionState extends State<ProfileSession> {
   late final Tuner _tuner = Tuner(widget.app);
   late final SleepTimer _sleep = SleepTimer(_tuner);
+  late final StillWatching _still = StillWatching(_tuner, _sleep);
   late final RemoteControl? _remote = HouseholdScope.read(context).remote;
 
   /// Android: stops playback in the background and tunes back in on return.
@@ -362,6 +364,8 @@ class _ProfileSessionState extends State<ProfileSession> {
   void initState() {
     super.initState();
     _remote?.tuner = _tuner;
+    // A phone-remote command is input (idle-power).
+    _remote?.onCommand = _remoteCommand;
     exitHooks.add(_tuner.stopTranscodeForExit);
     // A live stream is closed at its server or provider (at most 2 s).
     exitHooks.add(_tuner.closeLiveForExit);
@@ -403,15 +407,19 @@ class _ProfileSessionState extends State<ProfileSession> {
     exitHooks.remove(_tuner.closeLiveForExit);
     exitHooks.remove(_tuner.flushReports);
     if (_remote?.tuner == _tuner) _remote?.tuner = null;
+    if (_remote?.onCommand == _remoteCommand) _remote?.onCommand = null;
+    _still.dispose();
     _sleep.dispose();
     final tuner = _tuner;
     tuner.stop().whenComplete(tuner.dispose);
     super.dispose();
   }
 
+  void _remoteCommand() => _still.input('phone remote');
+
   @override
   Widget build(BuildContext context) =>
-      AppScope(app: widget.app, tuner: _tuner, sleep: _sleep, child: widget.child);
+      AppScope(app: widget.app, tuner: _tuner, sleep: _sleep, stillWatching: _still, child: widget.child);
 }
 
 /// Picks the screen for the app's current phase.

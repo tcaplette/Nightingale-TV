@@ -270,6 +270,19 @@ void main() {
     expect(chunks.asked, hasLength(app.channels.length + 1));
   });
 
+  test('stopping everything stops making cards ahead, after the one in hand', () async {
+    streams.warm(app);
+    await streams.stopAll();
+    final made = chunks.asked.length;
+    expect(made, lessThanOrEqualTo(1));
+    await pumpEventQueue();
+    expect(chunks.asked, hasLength(made), reason: 'nothing more after the stop');
+    // Warming again later works.
+    streams.warm(app);
+    await pumpEventQueue();
+    expect(chunks.asked.toSet(), {const BlackCard().key, for (final c in app.channels) TuningCardSpec(c).key});
+  });
+
   test('two viewers of a channel share one stream', () async {
     final (_, a) = await read(await open(0, number(0)), 188 * 10);
     final (_, b) = await read(await open(0, number(0)), 188 * 10);
@@ -397,5 +410,108 @@ void main() {
     final (_, sub) = await read(r, 188);
     await sub.cancel();
     expect(utf8.decode(utf8.encode('ok')), 'ok');
+  });
+
+  // HEAD (idle-cpu D1). Times are scaled to the 300 ms test linger: a probe
+  // every 100 ms is one every 5 s against the real 15 s.
+  Future<HttpClientResponse> head(int server, int channel) async {
+    final c = HttpClient();
+    try {
+      final r = await (await c.headUrl(Uri.parse('http://127.0.0.1:${servers[server].port}/stream/$channel.ts'))).close();
+      await r.drain<void>();
+      return r;
+    } finally {
+      c.close(force: true);
+    }
+  }
+
+  group('HEAD', () {
+    test('repeated probes start nothing', () async {
+      for (var i = 0; i < 12; i++) {
+        final r = await head(0, number(0));
+        expect(r.statusCode, 200);
+        expect(r.headers.contentType?.mimeType, 'video/mp2t');
+        expect(r.headers.value('cache-control'), 'no-store');
+        await Future<void>.delayed(const Duration(milliseconds: 100));
+      }
+      expect(muxers, isEmpty);
+      expect(encoders, isEmpty);
+      expect(streams.running, isEmpty);
+      expect(streaming.value, isFalse);
+    });
+
+    test('probes during the linger don\'t keep the stream alive', () async {
+      final ra = await open(0, number(0));
+      final (_, a) = await read(ra, 188 * 10);
+      await a.cancel();
+      hangUp(ra);
+      final left = Stopwatch()..start();
+      Duration? stoppedAt;
+      for (var i = 0; i < 12; i++) {
+        expect((await head(0, number(0))).statusCode, 200);
+        if (stoppedAt == null && streams.running.isEmpty) stoppedAt = left.elapsed;
+        await Future<void>.delayed(const Duration(milliseconds: 100));
+      }
+      expect(stoppedAt, isNotNull, reason: 'the stream never stopped while probed');
+      expect(stoppedAt!, lessThan(const Duration(milliseconds: 700)));
+      expect(muxers, hasLength(1), reason: 'no stream started by a probe');
+      expect(muxers.single.killed, isTrue);
+    });
+
+    test('at the limit with a viewer, a probe is busy and the viewer keeps playing', () async {
+      limit = 1;
+      final (_, a) = await read(await open(0, number(0)), 188);
+      final r = await head(0, number(1));
+      expect(r.statusCode, 503);
+      expect(r.headers.value('X-HDHomeRun-Error'), '805 All Tuners In Use');
+      expect(streams.running.single.channel.number, number(0));
+      expect(streams.running.single.viewers, 1);
+      expect(muxers.single.killed, isFalse);
+      await a.cancel();
+    });
+
+    test('at the limit with only a lingering stream, a probe is 200 and the stream still lingers', () async {
+      limit = 1;
+      final ra = await open(0, number(0));
+      final (_, a) = await read(ra, 188 * 10);
+      await a.cancel();
+      hangUp(ra);
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+      expect((await head(0, number(1))).statusCode, 200);
+      expect(streams.running.single.channel.number, number(0), reason: 'not stopped to make room');
+      expect(muxers.single.killed, isFalse);
+      for (var i = 0; i < 50 && streams.running.isNotEmpty; i++) {
+        await Future<void>.delayed(const Duration(milliseconds: 20));
+      }
+      expect(streams.running, isEmpty, reason: 'still stops on time');
+    });
+
+    test('GET and HEAD agree: start, join and full', () async {
+      Future<int> get(int server, int channel, List<StreamSubscription<List<int>>> keep) async {
+        final r = await open(server, channel);
+        if (r.statusCode == 200) {
+          keep.add((await read(r, 188)).$2);
+        } else {
+          await r.drain<void>();
+        }
+        return r.statusCode;
+      }
+
+      final keep = <StreamSubscription<List<int>>>[];
+      limit = 1;
+      // Start: nothing running.
+      expect((await head(0, number(0))).statusCode, 200);
+      expect(await get(0, number(0), keep), 200);
+      // Join: the channel already streams.
+      expect((await head(0, number(0))).statusCode, 200);
+      expect(await get(0, number(0), keep), 200);
+      // Full: another channel, with every tuner watched.
+      expect((await head(0, number(1))).statusCode, 503);
+      expect(await get(0, number(1), keep), 503);
+      expect(muxers, hasLength(1));
+      for (final k in keep) {
+        await k.cancel();
+      }
+    });
   });
 }

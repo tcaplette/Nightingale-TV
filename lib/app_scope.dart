@@ -2,13 +2,15 @@ import 'package:flutter/widgets.dart';
 
 import 'app_state.dart';
 import 'playback/sleep_timer.dart';
+import 'playback/still_watching.dart';
 import 'playback/tuner.dart';
 import 'profiles/household.dart';
 
 /// Makes [AppState], the [Tuner] and the [SleepTimer] available to the
 /// widget tree and rebuilds dependents when app state changes.
 class AppScope extends InheritedNotifier<AppState> {
-  const AppScope({super.key, required AppState app, required this.tuner, this.sleep, required super.child})
+  const AppScope(
+      {super.key, required AppState app, required this.tuner, this.sleep, this.stillWatching, required super.child})
       : super(notifier: app);
 
   final Tuner tuner;
@@ -19,6 +21,12 @@ class AppScope extends InheritedNotifier<AppState> {
 
   static SleepTimer? sleepOf(BuildContext context) =>
       context.getInheritedWidgetOfExactType<AppScope>()?.sleep;
+
+  /// "Are you still watching?", made with the sleep timer.
+  final StillWatching? stillWatching;
+
+  static StillWatching? stillWatchingOf(BuildContext context) =>
+      context.getInheritedWidgetOfExactType<AppScope>()?.stillWatching;
 
   static AppState of(BuildContext context) =>
       context.dependOnInheritedWidgetOfExactType<AppScope>()!.notifier!;
