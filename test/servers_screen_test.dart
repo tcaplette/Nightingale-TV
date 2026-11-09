@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -100,6 +101,15 @@ void main() {
     await tester.sendKeyEvent(LogicalKeyboardKey.enter);
     await settle(tester);
     expect(h.app!.servers.order, ['s2', ServerSet.mainKey]);
+    // The order's save is queued, and a restart reads what's on disk. The
+    // write runs on the test's clock, so it's pumped until it lands.
+    var saved = false;
+    unawaited(h.app!.storage.flush().then((_) => saved = true));
+    for (var i = 0; i < 200 && !saved; i++) {
+      await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 20)));
+      await tester.pump();
+    }
+    expect(saved, isTrue, reason: 'the order is saved');
     await tester.runAsync(() async {
       final again = await openHousehold(dir);
       await again.select(again.profiles.first);

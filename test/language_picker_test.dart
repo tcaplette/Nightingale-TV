@@ -46,6 +46,12 @@ void main() {
     await tester.pump();
     await settle(tester);
     expect(h.household.current!.language, 'es');
+    // The switch loads the language's strings off the test clock: wait for
+    // them (a fixed settle is too short when the whole suite runs).
+    for (var i = 0; i < 60 && find.text('Idioma').evaluate().isEmpty; i++) {
+      await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 50)));
+      await tester.pump(const Duration(milliseconds: 50));
+    }
     expect(find.text('Español'), findsOneWidget, reason: 'the picker stays open');
     expect(find.text('Idioma'), findsWidgets, reason: 'its title is in Spanish');
     expect(find.byType(MenuScreen), findsOneWidget, reason: 'the screen stays');

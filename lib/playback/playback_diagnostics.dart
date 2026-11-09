@@ -64,6 +64,21 @@ abstract interface class PlayerReadings {
 class PlaybackDiagnostics {
   PlaybackDiagnostics._(this._sink, this._player, this._analyzer, this.path);
 
+  /// For tests of the freeze check: writes to [sink], reads [player], and
+  /// takes the time from [now].
+  @visibleForTesting
+  PlaybackDiagnostics.forTest(this._sink, this._player, this.playing, {DateTime Function()? now})
+      : _analyzer = _noAnalyzer,
+        path = '' {
+    if (now != null) _now = now;
+  }
+
+  static Future<({String job, String budget, int proxyBytes})> _noAnalyzer() async =>
+      (job: '-', budget: '-', proxyBytes: 0);
+
+  /// The freeze check's clock.
+  DateTime Function() _now = DateTime.now;
+
   static bool get enabled =>
       (Platform.environment['NIGHTINGALE_TV_DEBUG_PLAYBACK'] == '1' || _builtIn == '1') &&
       !Platform.environment.containsKey('FLUTTER_TEST');
@@ -172,6 +187,14 @@ class PlaybackDiagnostics {
   double? _freezePos;
   DateTime? _frozenSince;
   bool _freezeLogged = false;
+
+  /// The frame gap at the last freeze check, and when it was read.
+  Duration? _lastGap;
+  DateTime? _lastGapAt;
+
+  /// Whether the tuner played at the last freeze check, and since when.
+  bool _wasPlaying = false;
+  DateTime? _playingSince;
   final Future<({String job, String budget, int proxyBytes})> Function() _analyzer;
   int _proxyBytes = 0;
   bool _streamLogged = false;
@@ -222,26 +245,47 @@ class PlaybackDiagnostics {
     _freezeTimer = Timer.periodic(const Duration(milliseconds: 250), (_) => _checkFreeze());
   }
 
-  /// A FREEZE line when the position stops moving for over 0.5 s while the
-  /// tuner says it's playing, and one when it moves again.
+  /// One run of the freeze check, for tests.
+  @visibleForTesting
+  Future<void> checkFreeze() => _checkFreeze();
+
+  /// The window the freeze check reads the frame gap over.
+  static const _freezeWindow = Duration(milliseconds: 750);
+
+  /// A FREEZE line when no picture has been shown for over 0.5 s while the
+  /// tuner says it's playing, and one when pictures move again
+  /// (video-size-surface-swap, design D3). Whether a picture was shown comes
+  /// from the player's frame times ([PlayerReadings.debugFrameGap]); on
+  /// Android the position follows the audio, which plays on over a frozen
+  /// picture. While the player can't tell (null), the position decides, as
+  /// FIRST always does.
   Future<void> _checkFreeze() async {
     if (_checkingFreeze) return;
     if (!_active()) {
       _frozenSince = null;
       _freezeLogged = false;
       _freezePos = null;
+      _lastGap = null;
+      _wasPlaying = false;
       return;
     }
     _checkingFreeze = true;
     try {
       final pos = await _safe(_player.debugPosition, null);
-      final now = DateTime.now();
+      final gap = await _safe(() => _player.debugFrameGap(_freezeWindow), null);
+      final now = _now();
       final moved = pos != null && _freezePos != null && (pos - _freezePos!).abs() > 0.01;
       final openedAt = _openedAt;
       if (moved && !_firstLogged && openedAt != null) {
         _firstLogged = true;
         _write('FIRST', 'picture moving ${(_clock.elapsed - openedAt).inMilliseconds} ms after open, pos=$pos playing=$_playing');
       }
+      if (gap != null) {
+        await _checkFrameGap(gap, pos, now);
+        _freezePos = pos;
+        return;
+      }
+      _lastGap = null;
       if (!playing() || pos == null || moved) {
         final since = _frozenSince;
         if (since != null && now.difference(since) > const Duration(milliseconds: 500)) {
@@ -259,6 +303,46 @@ class PlaybackDiagnostics {
       _freezePos = pos;
     } finally {
       _checkingFreeze = false;
+    }
+  }
+
+  /// The freeze check from the time since the last picture: [gap] is the
+  /// longest time between pictures in the window, counting the picture on
+  /// screen up to now. The picture is frozen while that gap is over 0.5 s and
+  /// keeps growing with the clock since the last reading. Once pictures move
+  /// again the window still holds the old gap for a moment, but it stops
+  /// growing. A freeze is dated from when its picture was shown.
+  Future<void> _checkFrameGap(Duration gap, double? pos, DateTime now) async {
+    const limit = Duration(milliseconds: 500);
+    final lastGap = _lastGap, lastAt = _lastGapAt;
+    _lastGap = gap;
+    _lastGapAt = now;
+    final isPlaying = playing();
+    if (isPlaying && !_wasPlaying) _playingSince = now;
+    _wasPlaying = isPlaying;
+    // Two readings tell a picture still on screen from an old gap.
+    final growing = lastGap != null && lastAt != null &&
+        gap >= lastGap + now.difference(lastAt) - const Duration(milliseconds: 150);
+    // A picture shown before the tuner played (paused, opening) only counts
+    // from when it did.
+    var stoppedAt = now.subtract(gap);
+    final playingSince = _playingSince;
+    if (playingSince != null && stoppedAt.isBefore(playingSince)) stoppedAt = playingSince;
+    final frozen = isPlaying && pos != null && growing && now.difference(stoppedAt) > limit;
+    final since = _frozenSince;
+    if (!frozen) {
+      if (since != null && _freezeLogged) {
+        _write('FREEZE', 'ended after ${now.difference(since).inMilliseconds} ms at pos=$pos playing=$_playing');
+      }
+      _frozenSince = null;
+      _freezeLogged = false;
+      return;
+    }
+    if (since == null) _frozenSince = stoppedAt;
+    if (!_freezeLogged) {
+      _freezeLogged = true;
+      final state = (await _safe(_player.debugStall, const <String>[])).join(' ');
+      _write('FREEZE', 'started at pos=$pos playing=$_playing $state');
     }
   }
 

@@ -6,6 +6,8 @@ import android.media.MediaFormat
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
+import android.view.Surface
 import androidx.media3.common.C
 import androidx.media3.common.Format
 import android.net.Uri
@@ -29,12 +31,16 @@ import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlaybackException
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.LoadControl
 import androidx.media3.exoplayer.LoadingInfo
+import androidx.media3.exoplayer.analytics.PlayerId
 import androidx.media3.exoplayer.Renderer
 import androidx.media3.exoplayer.SeekParameters
 import androidx.media3.exoplayer.analytics.AnalyticsListener
 import androidx.media3.exoplayer.audio.AudioCapabilities
+import androidx.media3.exoplayer.audio.AudioRendererEventListener
 import androidx.media3.exoplayer.audio.AudioSink
+import androidx.media3.exoplayer.audio.MediaCodecAudioRenderer
 import androidx.media3.exoplayer.audio.DefaultAudioSink
 import androidx.media3.exoplayer.mediacodec.MediaCodecAdapter
 import androidx.media3.exoplayer.mediacodec.MediaCodecInfo
@@ -175,10 +181,24 @@ class ExoTunerHost(
     /** [leveling]: volume leveling (volume-leveling spec) at creation; see
      *  [setLeveling]. */
     private inner class Instance(leveling: Boolean) :
-        Player.Listener, AnalyticsListener, TextureRegistry.SurfaceProducer.Callback, EventChannel.StreamHandler {
+        Player.Listener, AnalyticsListener, TextureRegistry.SurfaceProducer.Callback, EventChannel.StreamHandler,
+        RenderHost {
 
         private val producer = textures.createSurfaceProducer().apply { setSize(1920, 1080) }
         val id: Long = producer.id()
+
+        /** The texture's size: the video's, so a picture of any size fills
+         *  it (the Flutter texture shows the whole buffer and ignores the
+         *  decoder's crop). Written only by [prepareSurface], on the playback
+         *  thread (video-size-surface-swap, design D2). */
+        @Volatile private var textureSize = Pair(1920, 1080)
+
+        /** The producer's Surface the player was last given, and whether
+         *  Flutter has it (false between [onSurfaceCleanup] and
+         *  [onSurfaceAvailable]). */
+        @Volatile private var surface: Surface? = null
+        @Volatile private var surfaceLive = true
+        @Volatile private var disposed = false
 
         private val main = Handler(Looper.getMainLooper())
         private val events = EventChannel(messenger, "nightingale_tv/player/$id")
@@ -205,19 +225,28 @@ class ExoTunerHost(
         /** Built in init, after everything [attach] uses. */
         private lateinit var player: ExoPlayer
 
-        private fun buildPlayer(): ExoPlayer = ExoPlayer.Builder(context, Renderers(context, leveler))
-            .setLoadControl(
-                // Design D7: up to 60 s ahead, never over 100 MB (4K on 1–2 GB
-                // boxes), playing once 2.5 s is in.
-                DefaultLoadControl.Builder()
-                    .setBufferDurationsMs(30_000, 60_000, 2_500, 5_000)
-                    .setTargetBufferBytes(100 * 1024 * 1024)
-                    .setPrioritizeTimeOverSizeThresholds(false)
-                    .build()
-            )
-            .setLooper(Looper.getMainLooper())
-            .build()
-            .also { attach(it) }
+        private fun buildPlayer(): ExoPlayer {
+            // Picture and sound start together (video-size-surface-swap D4):
+            // shared by this ExoPlayer's renderers and its load control.
+            val aligner = AvStartAligner()
+            return ExoPlayer.Builder(context, Renderers(context, leveler, this, aligner))
+                .setLoadControl(
+                    AlignedLoadControl(
+                        // Design D7: up to 60 s ahead, never over 100 MB (4K on
+                        // 1–2 GB boxes), playing once 2.5 s is in.
+                        DefaultLoadControl.Builder()
+                            .setBufferDurationsMs(30_000, 60_000, 2_500, 5_000)
+                            .setTargetBufferBytes(100 * 1024 * 1024)
+                            .setPrioritizeTimeOverSizeThresholds(false)
+                            .build(),
+                        aligner,
+                        this,
+                    )
+                )
+                .setLooper(Looper.getMainLooper())
+                .build()
+                .also { attach(it) }
+        }
 
         /** The subtitles the item playing shows (subtitles spec), and the
          *  queued item's, which take over with it. */
@@ -289,7 +318,7 @@ class ExoTunerHost(
 
         /** Wires a new ExoPlayer to the texture and to this instance. */
         private fun attach(player: ExoPlayer) {
-            player.setVideoSurface(producer.surface)
+            player.setVideoSurface(producer.surface.also { surface = it })
             player.addListener(this)
             player.addAnalyticsListener(this)
             player.setVideoFrameMetadataListener(frames)
@@ -684,6 +713,7 @@ class ExoTunerHost(
         }
 
         fun dispose() {
+            disposed = true
             main.removeCallbacks(ticker)
             main.removeCallbacks(levelTicker)
             events.setStreamHandler(null)
@@ -804,23 +834,12 @@ class ExoTunerHost(
             send(mapOf("e" to "error", "message" to message))
         }
 
-        /** The texture's size: the video's, so a picture of any size fills
-         *  it (a 720p channel after a 1080p one would otherwise take the
-         *  corner of a 1080p texture, over the old picture). */
-        private var textureSize = Pair(1920, 1080)
-
+        /** Only the size, for the picture's aspect. The texture was already
+         *  sized for it when its decoder was configured ([prepareSurface]);
+         *  the decoder's output is never moved while it runs
+         *  (video-size-surface-swap). */
         override fun onVideoSizeChanged(videoSize: VideoSize) {
             if (videoSize.width <= 0 || videoSize.height <= 0) return
-            val size = Pair(videoSize.width, videoSize.height)
-            if (size != textureSize) {
-                textureSize = size
-                producer.setSize(size.first, size.second)
-                // The decoder keeps the buffers it has unless its output is
-                // detached and attached again (to the producer's Surface,
-                // which resizing can also replace).
-                player.clearVideoSurface()
-                player.setVideoSurface(producer.surface)
-            }
             send(
                 mapOf(
                     "e" to "size",
@@ -911,12 +930,52 @@ class ExoTunerHost(
 
         // ---- The texture's Surface ------------------------------------------------
 
+        /** Back from the background: Flutter made the texture again, at the
+         *  size last set. */
         override fun onSurfaceAvailable() {
-            player.setVideoSurface(producer.surface)
+            surfaceLive = true
+            player.setVideoSurface(producer.surface.also { surface = it })
         }
 
         override fun onSurfaceCleanup() {
+            surfaceLive = false
+            surface = null
             player.clearVideoSurface()
+        }
+
+        /** Called on the playback thread as a decoder for [width]×[height]
+         *  is configured, before it decodes anything (design D1/D2). When the
+         *  size differs from the texture's, the texture is resized, and the
+         *  Surface returned when that replaced it (an ImageReader producer,
+         *  API 29+; a SurfaceTexture keeps its Surface): the renderer
+         *  configures the new decoder on it. ExoPlayer's own record of the
+         *  output follows on the main thread, with the latest Surface, which
+         *  the renderer already has. */
+        override fun note(line: String) {
+            main.post { log(line) }
+        }
+
+        override fun prepareSurface(width: Int, height: Int): Surface? {
+            if (width <= 0 || height <= 0) return null
+            val size = Pair(width, height)
+            if (size == textureSize) return null
+            textureSize = size
+            producer.setSize(width, height)
+            // In the background: the texture comes back at this size and
+            // onSurfaceAvailable attaches it.
+            if (!surfaceLive) return null
+            val next = producer.surface
+            if (next === surface) {
+                main.post { log("info exo: texture ${width}x${height}, same surface") }
+                return null
+            }
+            surface = next
+            main.post {
+                log("info exo: texture ${width}x${height}, new surface before the decoder starts")
+                val latest = surface
+                if (!disposed && surfaceLive && latest != null) player.setVideoSurface(latest)
+            }
+            return next
         }
     }
 }
@@ -928,7 +987,12 @@ class ExoTunerHost(
  *  output (Android 13+), since the Flutter texture is SDR. With [leveler]
  *  (volume leveling on), the audio goes through it. */
 @UnstableApi
-private class Renderers(context: Context, private val leveler: LevelingAudioProcessor?) : DefaultRenderersFactory(context) {
+private class Renderers(
+    context: Context,
+    private val leveler: LevelingAudioProcessor?,
+    private val sizer: RenderHost,
+    private val aligner: AvStartAligner,
+) : DefaultRenderersFactory(context) {
     init {
         setEnableDecoderFallback(true)
         setMediaCodecSelector { mimeType, secure, tunneling ->
@@ -955,6 +1019,29 @@ private class Renderers(context: Context, private val leveler: LevelingAudioProc
             .build()
     }
 
+    /** The default audio renderer, swapped for one built with the same
+     *  arguments that drops the audio before the first picture. */
+    override fun buildAudioRenderers(
+        context: Context,
+        extensionRendererMode: Int,
+        mediaCodecSelector: MediaCodecSelector,
+        enableDecoderFallback: Boolean,
+        audioSink: AudioSink,
+        eventHandler: Handler,
+        eventListener: AudioRendererEventListener,
+        out: ArrayList<Renderer>,
+    ) {
+        super.buildAudioRenderers(
+            context, extensionRendererMode, mediaCodecSelector, enableDecoderFallback, audioSink, eventHandler, eventListener, out,
+        )
+        val index = out.indexOfFirst { it is MediaCodecAudioRenderer }
+        if (index < 0) return
+        out[index] = AlignedAudioRenderer(
+            context, codecAdapterFactory, mediaCodecSelector, enableDecoderFallback, eventHandler, eventListener, audioSink,
+            aligner, sizer,
+        )
+    }
+
     override fun buildVideoRenderers(
         context: Context,
         extensionRendererMode: Int,
@@ -967,6 +1054,8 @@ private class Renderers(context: Context, private val leveler: LevelingAudioProc
     ) {
         out.add(
             SdrVideoRenderer(
+                sizer,
+                aligner,
                 MediaCodecVideoRenderer.Builder(context)
                     .setMediaCodecSelector(mediaCodecSelector)
                     .setAllowedJoiningTimeMs(allowedVideoJoiningTimeMs)
@@ -979,8 +1068,71 @@ private class Renderers(context: Context, private val leveler: LevelingAudioProc
     }
 }
 
+/** What the renderers need from their player: [prepareSurface] sizes the
+ *  Flutter texture for a decoder about to be configured (see
+ *  `Instance.prepareSurface`; the Surface to configure it on when the resize
+ *  replaced it, else null), and [note] writes a diagnostics line. */
+private interface RenderHost {
+    /** A diagnostics line. */
+    fun note(line: String)
+
+    fun prepareSurface(width: Int, height: Int): Surface?
+}
+
 @UnstableApi
-private class SdrVideoRenderer(builder: Builder) : MediaCodecVideoRenderer(builder) {
+private class SdrVideoRenderer(
+    private val sizer: RenderHost,
+    private val aligner: AvStartAligner,
+    builder: Builder,
+) : MediaCodecVideoRenderer(builder) {
+    // What the audio renderer aligns to (design D4): whether there's video,
+    // and the first sample queued after each playback start.
+    override fun onEnabled(joining: Boolean, mayRenderStartOfStream: Boolean) {
+        super.onEnabled(joining, mayRenderStartOfStream)
+        aligner.videoEnabled(true)
+    }
+
+    override fun onDisabled() {
+        aligner.videoEnabled(false)
+        super.onDisabled()
+    }
+
+    override fun onPositionReset(positionUs: Long, joining: Boolean, sampleStreamIsResetToKeyFrame: Boolean) {
+        super.onPositionReset(positionUs, joining, sampleStreamIsResetToKeyFrame)
+        aligner.videoReset()
+    }
+
+    override fun onQueueInputBuffer(buffer: androidx.media3.decoder.DecoderInputBuffer) {
+        super.onQueueInputBuffer(buffer)
+        if (!buffer.isEndOfStream) aligner.videoSample(buffer.timeUs, outputStreamOffsetUs)
+    }
+
+    /** Frames before the first sound are skipped unshown (design D4), so the
+     *  first picture is the one the sound starts with: otherwise it would
+     *  stand still while they're dropped as late. */
+    override fun processOutputBuffer(
+        positionUs: Long, elapsedRealtimeUs: Long, codec: MediaCodecAdapter?, buffer: java.nio.ByteBuffer?,
+        bufferIndex: Int, bufferFlags: Int, sampleCount: Int, bufferPresentationTimeUs: Long,
+        isDecodeOnlyBuffer: Boolean, isLastBuffer: Boolean, format: Format,
+    ): Boolean {
+        if (!isDecodeOnlyBuffer && !isLastBuffer) {
+            when (aligner.video(bufferPresentationTimeUs, SystemClock.elapsedRealtime())) {
+                AvStartAligner.Decision.SKIP -> {
+                    codec?.let { skipOutputBuffer(it, bufferIndex, bufferPresentationTimeUs) }
+                    return true
+                }
+                AvStartAligner.Decision.HOLD -> return false
+                AvStartAligner.Decision.PLAY -> aligner.takeVideoSkipped()?.let {
+                    sizer.note("info exo: video before the first sound skipped: ${it / 1000} ms")
+                }
+            }
+        }
+        return super.processOutputBuffer(
+            positionUs, elapsedRealtimeUs, codec, buffer, bufferIndex, bufferFlags, sampleCount,
+            bufferPresentationTimeUs, isDecodeOnlyBuffer, isLastBuffer, format,
+        )
+    }
+
     /** A decoder reused across a change of resolution keeps its old output
      *  size and crops the new picture inside it, and the Flutter texture
      *  ignores that crop (a 720p channel after a 1080p one showed in a
@@ -1001,12 +1153,120 @@ private class SdrVideoRenderer(builder: Builder) : MediaCodecVideoRenderer(build
     override fun getMediaCodecConfiguration(
         codecInfo: MediaCodecInfo, format: Format, crypto: android.media.MediaCrypto?, codecOperatingRate: Float,
     ): MediaCodecAdapter.Configuration {
+        // No decoder exists here (the old one was released, see
+        // canReuseCodec), so this only sets the display surface the new one
+        // is configured on: nothing running is re-targeted.
+        sizer.prepareSurface(format.width, format.height)?.let { handleMessage(Renderer.MSG_SET_VIDEO_OUTPUT, it) }
         val configuration = super.getMediaCodecConfiguration(codecInfo, format, crypto, codecOperatingRate)
         val transfer = format.colorInfo?.colorTransfer
         if (Build.VERSION.SDK_INT >= 33 && (transfer == C.COLOR_TRANSFER_ST2084 || transfer == C.COLOR_TRANSFER_HLG)) {
             configuration.mediaFormat.setInteger(MediaFormat.KEY_COLOR_TRANSFER_REQUEST, MediaFormat.COLOR_TRANSFER_SDR_VIDEO)
         }
         return configuration
+    }
+}
+
+/** [inner], except that while the audio before the first picture is about to
+ *  be dropped (design D4), the start's buffer counts only from the first
+ *  picture: playback starts with 2.5 s in past it, not past the audio that
+ *  never plays. */
+@UnstableApi
+private class AlignedLoadControl(
+    private val inner: LoadControl,
+    private val aligner: AvStartAligner,
+    private val host: RenderHost,
+) : LoadControl {
+    override fun shouldStartPlayback(parameters: LoadControl.Parameters): Boolean {
+        val skip = aligner.pendingSkipUs(parameters.playbackPositionUs)
+        if (skip == 0L) return inner.shouldStartPlayback(parameters)
+        val past = (parameters.bufferedDurationUs - skip).coerceAtLeast(0)
+        val start = inner.shouldStartPlayback(
+            LoadControl.Parameters(
+                parameters.playerId, parameters.timeline, parameters.mediaPeriodId, parameters.playbackPositionUs,
+                past, parameters.playbackSpeed, parameters.playWhenReady, parameters.rebuffering,
+                parameters.targetLiveOffsetUs, parameters.lastRebufferRealtimeMs,
+            )
+        )
+        if (start) host.note("info exo: playback starts with ${past / 1000} ms buffered past the first picture")
+        return start
+    }
+
+    override fun onPrepared(playerId: PlayerId) = inner.onPrepared(playerId)
+    override fun onTracksSelected(
+        parameters: LoadControl.Parameters, trackGroups: TrackGroupArray, trackSelections: Array<out ExoTrackSelection?>,
+    ) = inner.onTracksSelected(parameters, trackGroups, trackSelections)
+    override fun onStopped(playerId: PlayerId) = inner.onStopped(playerId)
+    override fun onReleased(playerId: PlayerId) = inner.onReleased(playerId)
+    override fun getAllocator(playerId: PlayerId): Allocator = inner.getAllocator(playerId)
+    override fun getBackBufferDurationUs(playerId: PlayerId): Long = inner.getBackBufferDurationUs(playerId)
+    override fun retainBackBufferFromKeyframe(playerId: PlayerId): Boolean = inner.retainBackBufferFromKeyframe(playerId)
+    override fun shouldContinueLoading(parameters: LoadControl.Parameters): Boolean = inner.shouldContinueLoading(parameters)
+    override fun shouldContinuePreloading(
+        playerId: PlayerId, timeline: Timeline, mediaPeriodId: MediaSource.MediaPeriodId, bufferedDurationUs: Long,
+    ): Boolean = inner.shouldContinuePreloading(playerId, timeline, mediaPeriodId, bufferedDurationUs)
+}
+
+/** The default MediaCodec audio renderer, except that after a playback start
+ *  (an open or a seek) it drops the decoded audio that comes before the
+ *  first video sample, so picture and sound start together (design D4). A
+ *  dropped buffer is released unplayed; the audio output's clock then starts
+ *  at the first buffer kept. */
+@UnstableApi
+private class AlignedAudioRenderer(
+    context: Context,
+    codecAdapterFactory: MediaCodecAdapter.Factory,
+    mediaCodecSelector: MediaCodecSelector,
+    enableDecoderFallback: Boolean,
+    eventHandler: Handler,
+    eventListener: AudioRendererEventListener,
+    audioSink: AudioSink,
+    private val aligner: AvStartAligner,
+    private val host: RenderHost,
+) : MediaCodecAudioRenderer(
+    context, codecAdapterFactory, mediaCodecSelector, enableDecoderFallback, eventHandler, eventListener, audioSink,
+) {
+    override fun onEnabled(joining: Boolean, mayRenderStartOfStream: Boolean) {
+        super.onEnabled(joining, mayRenderStartOfStream)
+        aligner.audioEnabled(true)
+    }
+
+    override fun onDisabled() {
+        aligner.audioEnabled(false)
+        super.onDisabled()
+    }
+
+    override fun onPositionReset(positionUs: Long, joining: Boolean, sampleStreamIsResetToKeyFrame: Boolean) {
+        super.onPositionReset(positionUs, joining, sampleStreamIsResetToKeyFrame)
+        aligner.audioReset()
+    }
+
+    override fun onQueueInputBuffer(buffer: androidx.media3.decoder.DecoderInputBuffer) {
+        super.onQueueInputBuffer(buffer)
+        if (!buffer.isEndOfStream) aligner.audioSample(buffer.timeUs, outputStreamOffsetUs)
+    }
+
+    override fun processOutputBuffer(
+        positionUs: Long, elapsedRealtimeUs: Long, codec: MediaCodecAdapter?, buffer: java.nio.ByteBuffer?,
+        bufferIndex: Int, bufferFlags: Int, sampleCount: Int, bufferPresentationTimeUs: Long,
+        isDecodeOnlyBuffer: Boolean, isLastBuffer: Boolean, format: Format,
+    ): Boolean {
+        if (!isDecodeOnlyBuffer && !isLastBuffer) {
+            when (aligner.audio(bufferPresentationTimeUs, SystemClock.elapsedRealtime())) {
+                AvStartAligner.Decision.SKIP -> {
+                    codec?.releaseOutputBuffer(bufferIndex, false)
+                    decoderCounters.skippedOutputBufferCount += sampleCount
+                    return true
+                }
+                AvStartAligner.Decision.HOLD -> return false
+                AvStartAligner.Decision.PLAY -> aligner.takeAudioDropped()?.let {
+                    host.note("info exo: audio before the first picture dropped: ${it / 1000} ms")
+                }
+            }
+        }
+        return super.processOutputBuffer(
+            positionUs, elapsedRealtimeUs, codec, buffer, bufferIndex, bufferFlags, sampleCount,
+            bufferPresentationTimeUs, isDecodeOnlyBuffer, isLastBuffer, format,
+        )
     }
 }
 
