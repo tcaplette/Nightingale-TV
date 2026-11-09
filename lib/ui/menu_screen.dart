@@ -14,6 +14,7 @@ import 'blocks_screen.dart';
 import 'channel_editor_screen.dart';
 import 'channel_groups_screen.dart';
 import 'commercials_screen.dart';
+import 'error_reports_screen.dart';
 import 'format.dart';
 import 'phone_remote_screen.dart';
 import 'live_sources_screen.dart';
@@ -195,6 +196,15 @@ class _MenuScreenState extends State<MenuScreen> {
               .push(MaterialPageRoute<void>(builder: (_) => const PhoneRemoteScreen()))),
         ),
       ],
+      // A privacy choice, not household setup: never behind the PIN.
+      const SizedBox(height: 18),
+      TvButton(
+        label: tr.errorReports,
+        icon: Icons.bug_report,
+        expand: true,
+        onPressed: () => Navigator.of(context)
+            .push(MaterialPageRoute<void>(builder: (_) => const ErrorReportsScreen())),
+      ),
       const SizedBox(height: 18),
       TvButton(
         label: tr.servers,

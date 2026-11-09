@@ -14,6 +14,12 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 tool/check_version.sh
 
+# Official builds report errors to the Nightingale TV GlitchTip project
+# (error-reporting D2). The DSN lives in the git-ignored error_reporting.env;
+# without it the app is built with reporting off.
+DEFINES=()
+[[ -f error_reporting.env ]] && DEFINES=(--dart-define-from-file=error_reporting.env)
+
 if [[ ! -f android/key.properties ]]; then
   cat >&2 <<'HELP'
 android/key.properties is missing, so there's no release key to sign with.
@@ -53,7 +59,7 @@ fi
 
 # One APK per architecture: Android picks the matching one, and each is a
 # fraction of the universal APK's size.
-flutter build apk --release --split-per-abi --target-platform "$PLATFORMS"
+flutter build apk --release --split-per-abi --target-platform "$PLATFORMS" ${DEFINES[@]+"${DEFINES[@]}"}
 OUT=()
 for abi in arm64-v8a armeabi-v7a x86_64; do
   dest="$DIST/nightingale-tv_${VERSION}_${abi}.apk"
@@ -61,7 +67,7 @@ for abi in arm64-v8a armeabi-v7a x86_64; do
   OUT+=("$dest")
 done
 
-flutter build apk --release --target-platform "$PLATFORMS"
+flutter build apk --release --target-platform "$PLATFORMS" ${DEFINES[@]+"${DEFINES[@]}"}
 dest="$DIST/nightingale-tv_${VERSION}_universal.apk"
 cp "$APKS/app-release.apk" "$dest"
 OUT+=("$dest")

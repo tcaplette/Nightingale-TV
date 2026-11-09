@@ -1,4 +1,9 @@
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+    <!-- sentry_flutter declares Android 8 (API 26). Android 7 keeps working:
+         there the app starts only its Dart error reports and never the
+         plugin's Android SDK (lib/reporting/error_reports.dart). -->
+    <uses-sdk tools:overrideLibrary="io.sentry.flutter" />
     <!-- Talking to the Jellyfin server; nothing else. -->
     <uses-permission android:name="android.permission.INTERNET"/>
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>

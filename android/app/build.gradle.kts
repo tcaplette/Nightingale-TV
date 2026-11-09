@@ -125,6 +125,13 @@ dependencies {
     testImplementation("junit:junit:4.13.2")
 }
 
+// Error reports (error-reporting D1): sentry_flutter brings the Sentry Android
+// SDK for Java/Kotlin crashes and freezes. Its NDK part is left out, so native
+// crash handling is off and the APK carries no libsentry.so.
+configurations.all {
+    exclude(group = "io.sentry", module = "sentry-android-ndk")
+}
+
 gradle.taskGraph.whenReady {
     val releasePackaging = allTasks.any { it.project == project && it.name in setOf("packageRelease", "signReleaseBundle") }
     if (releasePackaging && !keyPropertiesFile.exists()) {

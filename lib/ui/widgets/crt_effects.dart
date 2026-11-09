@@ -124,6 +124,7 @@ class CrtShader {
 
   Future<void> _load() async {
     if (!ui.ImageFilter.isShaderFilterSupported) {
+      PlaybackDiagnostics.note('RETRO', 'shader tier unavailable: no shader filters on this renderer');
       available.value = false;
       return;
     }

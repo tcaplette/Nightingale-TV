@@ -31,6 +31,15 @@ void main() {
     }
   }
 
+  /// Pumps until [done] holds (real async work, such as disk writes, can
+  /// take longer under load than a fixed number of rounds), at most ~10 s.
+  Future<void> settleUntil(WidgetTester tester, bool Function() done) async {
+    for (var i = 0; i < 500 && !done(); i++) {
+      await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 20)));
+      await tester.pump(const Duration(milliseconds: 20));
+    }
+  }
+
   Future<void> start(WidgetTester tester) async {
     tester.view.physicalSize = const Size(3200, 4000);
     tester.view.devicePixelRatio = 1;
@@ -105,10 +114,7 @@ void main() {
     // write runs on the test's clock, so it's pumped until it lands.
     var saved = false;
     unawaited(h.app!.storage.flush().then((_) => saved = true));
-    for (var i = 0; i < 200 && !saved; i++) {
-      await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 20)));
-      await tester.pump();
-    }
+    await settleUntil(tester, () => saved);
     expect(saved, isTrue, reason: 'the order is saved');
     await tester.runAsync(() async {
       final again = await openHousehold(dir);
@@ -130,12 +136,14 @@ void main() {
     await tester.tap(find.text('2 Mbps'));
     // The page's pop transition ends before the next tap.
     await settle(tester, 30);
+    await settleUntil(tester, () => find.textContaining('Quality: 2 Mbps').evaluate().isNotEmpty);
     expect(h.app!.servers.byKey('s2')!.qualityLimit, 2000000);
     expect(find.textContaining('Quality: 2 Mbps'), findsOneWidget);
     await tester.tap(find.widgetWithText(TvButton, 'Remove'));
     await settle(tester);
     await tester.tap(find.widgetWithText(TvButton, 'Remove').last);
     await settle(tester, 40);
+    await settleUntil(tester, () => !h.app!.servers.multiple);
     expect(h.app!.servers.multiple, isFalse);
     expect(find.textContaining('Basement Plex'), findsNothing);
   });

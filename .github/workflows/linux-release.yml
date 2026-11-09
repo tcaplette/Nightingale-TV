@@ -69,6 +69,19 @@ jobs:
           flutter-version: 3.47.7
           channel: stable
 
+      # Error reports (error-reporting D2): the DSN from the repository
+      # secret NTV_ERROR_DSN, when it's set; without it the release reports
+      # nothing.
+      - name: Error reporting address
+        env:
+          NTV_ERROR_DSN: ${{ secrets.NTV_ERROR_DSN }}
+        run: |
+          if [[ -n "$NTV_ERROR_DSN" ]]; then
+            printf 'NTV_ERROR_DSN=%s\n' "$NTV_ERROR_DSN" > error_reporting.env
+          else
+            echo "::warning::No NTV_ERROR_DSN secret: this release won't send error reports."
+          fi
+
       # The Linux app with the web admin in its web/ folder; fails when the
       # web admin doesn't build.
       - name: Build and package

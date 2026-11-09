@@ -74,7 +74,32 @@ abstract final class PlatformInfo {
     } on MissingPluginException catch (e) {
       debugPrint('Device name unavailable: $e');
     }
+    try {
+      _androidSdk = await _channel.invokeMethod<int>('sdkInt');
+    } on Object catch (e) {
+      debugPrint('Android version unavailable: $e');
+    }
+    // Only for the diagnostics: never in the way of the above.
+    try {
+      final renderer = await _channel.invokeMethod<Object?>('renderer');
+      _renderer = renderer is String ? renderer : null;
+    } on Object catch (e) {
+      debugPrint('Renderer unavailable: $e');
+    }
   }
+
+  /// Android's API level (24 is Android 7); null elsewhere or unknown.
+  static int? get androidSdk => _androidSdk;
+  static int? _androidSdk;
+
+  /// Pretends to be this Android API level, in tests.
+  @visibleForTesting
+  static set debugAndroidSdk(int? value) => _androidSdk = value;
+
+  /// The renderer Android asked for at start-up ("impeller opengles
+  /// (nvidia)", or "default"), for the diagnostics; null elsewhere.
+  static String? get renderer => _renderer;
+  static String? _renderer;
 
   /// Has a touch screen to tap links on: a phone or tablet, not a TV or a
   /// PC.
@@ -116,11 +141,36 @@ abstract final class PlatformInfo {
     }
   }
 
+  /// The household's names for Android's own crash reports to leave out
+  /// (error-reporting D4).
+  static Future<void> setReportNames(List<String> names) async {
+    if (!isAndroid) return;
+    try {
+      await _channel.invokeMethod<void>('reportNames', names);
+    } on Object catch (e) {
+      debugPrint('Report names: $e');
+    }
+  }
+
+  /// The error reporting check's forced error (`debug.nightingale_tv.force_error`,
+  /// set with adb), or null.
+  static Future<String?> forcedError() async {
+    if (!isAndroid) return null;
+    try {
+      final value = await _channel.invokeMethod<String>('forcedError');
+      return value == null || value.isEmpty ? null : value;
+    } on Object {
+      return null;
+    }
+  }
+
   /// Forgets the looked-up name and the override, between tests.
   @visibleForTesting
   static void debugReset() {
     debugOverride = null;
     _androidName = null;
     _television = null;
+    _renderer = null;
+    _androidSdk = null;
   }
 }

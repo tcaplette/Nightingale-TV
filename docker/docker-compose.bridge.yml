@@ -40,6 +40,9 @@ services:
       # Where the web admin is served from (default: the web/ folder next to
       # the app in the image). Only for trying a web admin you built.
       # NTV_WEB_DIR: "/web"
+      # Set to 0 to stop sending error reports to the Nightingale TV
+      # developer (no addresses, tokens or names are in them).
+      # NTV_ERROR_REPORTS: "0"
     volumes:
       # Everything the server keeps: profiles, channels, sign-ins, user
       # accounts, export ports, backups, caches.

@@ -3635,5 +3635,30 @@
         "type": "Object"
       }
     }
-  }
+  },
+  "errorReports": "Error reports",
+  "sendErrorReportsFrom": "Send error reports from this device",
+  "errorReportsExplain": "When something goes wrong, Nightingale TV sends its developer a short report: the error, the app version, the kind of device, and the last few screens and channel numbers. Server addresses, passwords and keys, names and file paths are taken out before it's sent. Titles and what you watch are never sent.",
+  "errorReportsOff": "Turn this off and nothing is sent from this device; reports waiting to go are deleted.",
+  "sendATestReport": "Send a test report",
+  "lastReportId": "Last report ID: {id}",
+  "@lastReportId": {
+    "placeholders": {
+      "id": {
+        "type": "String"
+      }
+    }
+  },
+  "noReportSentYet": "No report sent from this device yet.",
+  "quoteReportId": "Quote this ID when you tell the developer about a problem.",
+  "testReportSent": "Test report sent: {id}",
+  "@testReportSent": {
+    "placeholders": {
+      "id": {
+        "type": "String"
+      }
+    }
+  },
+  "testReportNotSent": "The test report couldn't be sent. Try again in a moment.",
+  "reportsNotInBuild": "Error reporting isn't part of this build of Nightingale TV, so nothing is ever sent."
 }

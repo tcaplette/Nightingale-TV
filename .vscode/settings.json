@@ -1,3 +1,4 @@
 {
-    "cmake.sourceDirectory": "/home/howard/Documents/Flutter/Nightingale-TV/linux"
+    "cmake.sourceDirectory": "/home/howard/Documents/Flutter/Nightingale-TV/linux",
+    "java.configuration.updateBuildConfiguration": "interactive"
 }

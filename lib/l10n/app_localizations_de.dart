@@ -5278,4 +5278,47 @@ class AppLocalizationsDe extends AppLocalizations {
   String decadeGenreMovies(Object decade, Object genre) {
     return '$decade $genre-Filme';
   }
+
+  @override
+  String get errorReports => 'Fehlerberichte';
+
+  @override
+  String get sendErrorReportsFrom => 'Fehlerberichte von diesem Gerät senden';
+
+  @override
+  String get errorReportsExplain =>
+      'Wenn etwas schiefgeht, schickt Nightingale TV dem Entwickler einen kurzen Bericht: den Fehler, die App-Version, die Art des Geräts und die letzten Bildschirme und Sendernummern. Serveradressen, Passwörter und Schlüssel, Namen und Dateipfade werden vor dem Senden entfernt. Titel und was du schaust, werden nie gesendet.';
+
+  @override
+  String get errorReportsOff =>
+      'Schaltest du das aus, wird von diesem Gerät nichts gesendet; wartende Berichte werden gelöscht.';
+
+  @override
+  String get sendATestReport => 'Testbericht senden';
+
+  @override
+  String lastReportId(String id) {
+    return 'ID des letzten Berichts: $id';
+  }
+
+  @override
+  String get noReportSentYet =>
+      'Von diesem Gerät wurde noch kein Bericht gesendet.';
+
+  @override
+  String get quoteReportId =>
+      'Nenne diese ID, wenn du dem Entwickler ein Problem meldest.';
+
+  @override
+  String testReportSent(String id) {
+    return 'Testbericht gesendet: $id';
+  }
+
+  @override
+  String get testReportNotSent =>
+      'Der Testbericht konnte nicht gesendet werden. Versuch es gleich noch einmal.';
+
+  @override
+  String get reportsNotInBuild =>
+      'Fehlerberichte sind in diesem Build von Nightingale TV nicht enthalten, daher wird nie etwas gesendet.';
 }

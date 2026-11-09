@@ -10,6 +10,8 @@ import 'plex/plex_connections.dart';
 import 'server_clients.dart';
 import 'server_set.dart';
 import '../l10n/tr.dart';
+import '../reporting/error_reports.dart';
+import '../reporting/report_breadcrumbs.dart';
 
 /// What the address step found: a client for the server, and its info.
 typedef IdentifiedServer = ({MediaServer client, ServerInfo info});
@@ -212,8 +214,11 @@ class SignInFlow {
     _set(step.copyWith(busy: true, error: () => null));
     try {
       await task();
-    } on ServerException catch (e) {
+    } on ServerException catch (e, stack) {
       debugPrint('Sign-in failed: ${e.message}');
+      // A wrong password or an unreachable server is a trail entry only.
+      reportServerResult('sign-in', step.kind, e);
+      ErrorReports.capture(e, stack, area: 'sign-in');
       _set(step.copyWith(error: () => e.message));
     } finally {
       _set(step.copyWith(busy: false));
@@ -285,9 +290,11 @@ class SignInFlow {
       final client = _client!;
       _client = null;
       await _finish(session, client);
-    } on ServerException catch (e) {
+    } on ServerException catch (e, stack) {
       _poll?.cancel();
       debugPrint('Quick Connect stopped: ${e.message}');
+      reportServerResult('sign-in', step.kind, e);
+      ErrorReports.capture(e, stack, area: 'sign-in');
       _set(step.copyWith(error: () => tr.quickConnectStopped(e.message)));
     }
   }

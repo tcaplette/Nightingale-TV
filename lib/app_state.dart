@@ -51,6 +51,8 @@ import 'server/server_clients.dart';
 import 'server/server_set.dart';
 import 'ui/format.dart';
 import 'l10n/tr.dart';
+import 'reporting/error_reports.dart';
+import 'reporting/report_breadcrumbs.dart';
 
 /// A choice for the maximum streaming bitrate: Original (no [kbps]) or a
 /// fixed cap.
@@ -2362,10 +2364,13 @@ class AppState extends ChangeNotifier {
       // Groups and the last channel follow merged channels.
       await _saveSettings();
       _setPhase(AppPhase.ready);
+      reportServerResult('library', servers.multiple ? null : session?.kind);
       _startAnalysis();
       _startLiveRefresh();
       _analyzer?.poke();
-    } on ServerException catch (e) {
+    } on ServerException catch (e, stack) {
+      reportServerResult('library', servers.multiple ? null : session?.kind, e);
+      ErrorReports.capture(e, stack, area: 'library');
       syncError = e.message;
       if (e.statusCode == 401 && !servers.multiple) {
         // The token was revoked (e.g. device removed in the dashboard).
@@ -2413,9 +2418,11 @@ class AppState extends ChangeNotifier {
         for (var attempt = 0; part == null && attempt < 2; attempt++) {
           try {
             part = await _scanServer(server, status);
-          } on ServerException catch (e) {
+          } on ServerException catch (e, stack) {
             failure ??= e;
             debugPrint('Could not scan ${server.name}: ${e.message}');
+            reportServerResult('library', server.kind, e);
+            ErrorReports.capture(e, stack, area: 'library');
             if (e.statusCode == 401) {
               await _expireServer(server);
               break;

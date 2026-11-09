@@ -33,6 +33,7 @@ Everything else is set up in the web admin at `http://<server>:8484`, from a com
 | `NTV_LAN_HOST` | | address shown in the web admin's URLs (set it on a bridge network) |
 | `NTV_RESET_PASSWORD` | | `1` for one start when an admin's password is forgotten (see below) |
 | `NTV_WEB_DIR` | the image's `web/` | where the web admin is served from (only for trying one you built) |
+| `NTV_ERROR_REPORTS` | | `0` turns off [error reports](../README.md#error-reports) to the developer |
 
 Everything is kept in `/config`: the household in `/config/com.coffeehauslabs.nightingale_tv/`, with the user accounts in `nightingale.db` there, and caches in `/config/cache/`. Ports: 8484 (web admin), 5004 and up (one per exported profile).
 

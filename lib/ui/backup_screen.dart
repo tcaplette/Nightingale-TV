@@ -20,6 +20,7 @@ import 'menu_screen.dart' show confirm, showMessage;
 import 'widgets/screen_layout.dart';
 import 'widgets/tv_focus.dart';
 import '../l10n/tr.dart';
+import '../reporting/error_reports.dart';
 
 /// Menu → Backup & restore (backup-restore D11): Back up now, opening a
 /// file, the phone or computer page, and every backup, newest first, each
@@ -87,7 +88,8 @@ class _BackupScreenState extends State<BackupScreen> {
       await task();
     } on BackupException catch (e) {
       if (mounted) setState(() => _error = e.message);
-    } on Object catch (e) {
+    } on Object catch (e, stack) {
+      ErrorReports.capture(e, stack, area: 'backup');
       if (mounted) setState(() => _error = tr.thatDidntWork(e));
     } finally {
       if (mounted) setState(() => _busy = false);
@@ -99,7 +101,8 @@ class _BackupScreenState extends State<BackupScreen> {
           await _backups.backUp(BackupReason.manual);
         } on BackupException {
           rethrow;
-        } on Object catch (e) {
+        } on Object catch (e, stack) {
+          ErrorReports.capture(e, stack, area: 'backup');
           throw BackupException(tr.couldntSaveThe(e));
         }
         await _reload();

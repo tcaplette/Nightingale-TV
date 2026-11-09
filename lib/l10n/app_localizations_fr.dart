@@ -5302,4 +5302,48 @@ class AppLocalizationsFr extends AppLocalizations {
   String decadeGenreMovies(Object decade, Object genre) {
     return 'Films $genre $decade';
   }
+
+  @override
+  String get errorReports => 'Rapports d\'erreur';
+
+  @override
+  String get sendErrorReportsFrom =>
+      'Envoyer les rapports d\'erreur depuis cet appareil';
+
+  @override
+  String get errorReportsExplain =>
+      'Quand quelque chose ne va pas, Nightingale TV envoie un court rapport à son développeur : l\'erreur, la version de l\'appli, le type d\'appareil, et les derniers écrans et numéros de chaîne. Les adresses de serveur, mots de passe et clés, noms et chemins de fichiers sont retirés avant l\'envoi. Les titres et ce que vous regardez ne sont jamais envoyés.';
+
+  @override
+  String get errorReportsOff =>
+      'Désactivez ceci et rien n\'est envoyé depuis cet appareil ; les rapports en attente sont supprimés.';
+
+  @override
+  String get sendATestReport => 'Envoyer un rapport de test';
+
+  @override
+  String lastReportId(String id) {
+    return 'ID du dernier rapport : $id';
+  }
+
+  @override
+  String get noReportSentYet =>
+      'Aucun rapport envoyé depuis cet appareil pour l\'instant.';
+
+  @override
+  String get quoteReportId =>
+      'Indiquez cet ID quand vous signalez un problème au développeur.';
+
+  @override
+  String testReportSent(String id) {
+    return 'Rapport de test envoyé : $id';
+  }
+
+  @override
+  String get testReportNotSent =>
+      'Le rapport de test n\'a pas pu être envoyé. Réessayez dans un instant.';
+
+  @override
+  String get reportsNotInBuild =>
+      'Les rapports d\'erreur ne font pas partie de cette version de Nightingale TV : rien n\'est jamais envoyé.';
 }

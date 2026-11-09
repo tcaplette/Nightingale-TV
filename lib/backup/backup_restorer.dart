@@ -17,6 +17,7 @@ import '../server/media_server.dart';
 import '../server/server_set.dart';
 import '../server/server_clients.dart';
 import '../l10n/tr.dart';
+import '../reporting/error_reports.dart';
 
 /// What a restore will do, for its confirmation.
 class RestorePlan {
@@ -122,7 +123,8 @@ class BackupRestorer {
         await _swap(_root);
         PlaybackDiagnostics.note('BACKUP', 'restore: swapped in ${watch.elapsedMilliseconds} ms');
       });
-    } on Object catch (e) {
+    } on Object catch (e, stack) {
+      ErrorReports.capture(e, stack, area: 'backup');
       household.notice.value = tr.couldntRestoreThe(e);
       rethrow;
     }

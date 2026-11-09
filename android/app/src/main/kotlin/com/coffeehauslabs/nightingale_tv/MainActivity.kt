@@ -1,12 +1,16 @@
 package com.coffeehauslabs.nightingale_tv
 
 import android.app.UiModeManager
+import android.content.Context
 import android.content.Intent
+import android.content.pm.ApplicationInfo
 import android.content.res.Configuration
 import android.os.Build
 import android.os.Bundle
 import android.os.Process
 import android.provider.Settings
+import android.util.Log
+import android.view.View
 import android.view.accessibility.CaptioningManager
 import android.view.KeyEvent
 import android.view.WindowManager
@@ -31,6 +35,12 @@ class MainActivity : FlutterActivity() {
         // A setup handed over by the other Nightingale TV app (not again
         // when the activity is recreated).
         if (savedInstanceState == null) installSwitching.onIntent(intent)
+        // Android's default focus highlight would outline the whole picture
+        // once a key is pressed (phones, tablets and boxes with a keyboard,
+        // remote or air mouse); the app draws its own focus.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            findViewById<View>(FLUTTER_VIEW_ID)?.defaultFocusHighlightEnabled = false
+        }
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -82,6 +92,32 @@ class MainActivity : FlutterActivity() {
         }
     }
 
+    /** Why this engine runs Impeller on OpenGL ES, or null for the default
+     *  renderer (RendererChoice). */
+    private var rendererReason: String? = null
+
+    /** On an NVIDIA device (or a debug build told to act as one), an engine
+     *  with Impeller on OpenGL ES; otherwise null, so FlutterActivity builds
+     *  its usual engine. The engine registers the plugins itself, and
+     *  configureFlutterEngine runs as on the default path. */
+    override fun provideFlutterEngine(context: Context): FlutterEngine? {
+        val debuggable = (applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE) != 0
+        val reason = RendererChoice.reason(
+            Build.MANUFACTURER,
+            debuggable,
+            intent?.getBooleanExtra(RendererChoice.DEBUG_EXTRA, false) == true,
+        )
+        rendererReason = reason
+        // In logcat in every build (release builds keep Dart's prints out).
+        Log.i("NightingaleTV", "renderer: ${RendererChoice.describe(reason)}")
+        if (reason == null) return null
+        return FlutterEngine(context, RendererChoice.engineArguments(reason))
+    }
+
+    /** An engine made in provideFlutterEngine goes with the activity, as the
+     *  default one does (FlutterActivity keeps a supplied engine otherwise). */
+    override fun shouldDestroyEngineWithHost(): Boolean = rendererReason != null || super.shouldDestroyEngineWithHost()
+
     private var platformChannel: MethodChannel? = null
 
     /** An on-screen keyboard holds the D-pad while it's up, and its own caret
@@ -130,6 +166,28 @@ class MainActivity : FlutterActivity() {
                     // The system caption size, a viewer's starting caption size.
                     "captionFontScale" -> result.success(
                         (getSystemService(CAPTIONING_SERVICE) as? CaptioningManager)?.fontScale?.toDouble()
+                    )
+                    // The renderer asked for at start-up, for the diagnostics.
+                    "renderer" -> result.success(RendererChoice.describe(rendererReason))
+                    // Android's API level (error reports pick their SDK by it).
+                    "sdkInt" -> result.success(Build.VERSION.SDK_INT)
+                    // The household's names, taken out of Java/Kotlin crash
+                    // reports (error-reporting D4).
+                    "reportNames" -> {
+                        io.sentry.flutter.NightingaleScrub.names =
+                            (call.arguments as? List<*>)?.filterIsInstance<String>() ?: emptyList()
+                        result.success(null)
+                    }
+                    // The error reporting check's forced error: a debug.*
+                    // property, which only adb (or root) can set.
+                    "forcedError" -> result.success(
+                        try {
+                            Class.forName("android.os.SystemProperties")
+                                .getMethod("get", String::class.java)
+                                .invoke(null, "debug.nightingale_tv.force_error") as String
+                        } catch (e: Exception) {
+                            ""
+                        }
                     )
                     else -> result.notImplemented()
                 }

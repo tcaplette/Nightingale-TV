@@ -30,6 +30,9 @@ import 'playback/still_watching.dart';
 import 'playback/tuner.dart';
 import 'profiles/household.dart';
 import 'remote/remote_control.dart';
+import 'reporting/error_reports.dart';
+import 'reporting/household_names.dart';
+import 'reporting/report_breadcrumbs.dart';
 import 'server/server_log.dart';
 import 'setup/accounts.dart';
 import 'setup/server_db.dart';
@@ -76,9 +79,16 @@ Future<void> main(List<String> args) async {
     HardwareKeyboard.instance.addHandler(back.handleKey);
   }
 
+  // Which renderer Android started with (android-playback, NVIDIA Shields).
+  if (PlatformInfo.isAndroid) PlaybackDiagnostics.note('DEVICE', 'renderer: ${PlatformInfo.renderer ?? 'unknown'}');
   PlaybackDiagnostics.mark('platform ready');
   final household = Household(await AppStorage.open());
   household.backups = BackupScheduler(household, BackupStore(Directory('${household.root.root.path}/backups')));
+  // Error reports, in builds that carry the address and while this device's
+  // switch is on (error-reporting); not awaited, so the first picture never
+  // waits for it. The household's names are kept out of every report.
+  HouseholdNames(household);
+  unawaited(ErrorReports.startApp(household.root).then((_) => ErrorReports.forceErrorForChecks()));
   // Automatic follows the device's languages while the app runs.
   WidgetsBinding.instance.addObserver(household.language);
   await DeviceEffects.instance.load(household.root);
@@ -138,6 +148,11 @@ Future<void> _serverMain() async {
   final env = Platform.environment;
   final household = Household(await AppStorage.open(), serverMode: true);
   household.backups = BackupScheduler(household, BackupStore(Directory('${household.root.root.path}/backups')));
+  // Error reports (error-reporting): on unless NTV_ERROR_REPORTS=0, after
+  // the server log in the error handlers.
+  HouseholdNames(household);
+  await ErrorReports.startServer(env, log: ServerLog.info, dataFolder: household.root.root.path);
+  unawaited(ErrorReports.forceErrorForChecks());
   final reset = env['NTV_RESET_PASSWORD'] == '1';
   final Accounts accounts;
   try {
@@ -292,6 +307,9 @@ class _Shell extends StatefulWidget {
 class _ShellState extends State<_Shell> {
   final _navigator = GlobalKey<NavigatorState>();
 
+  /// Screens opened and closed, for the error reports' trail.
+  final _reportRoutes = ReportRouteObserver();
+
   @override
   void initState() {
     super.initState();
@@ -321,6 +339,7 @@ class _ShellState extends State<_Shell> {
   Widget build(BuildContext context) => MaterialApp(
         title: 'Nightingale TV',
         navigatorKey: _navigator,
+        navigatorObservers: [_reportRoutes],
         locale: widget.household.language.locale,
         supportedLocales: [for (final l in supportedLanguages) Locale(l)],
         localizationsDelegates: const [

@@ -5193,4 +5193,46 @@ class AppLocalizationsEn extends AppLocalizations {
   String decadeGenreMovies(Object decade, Object genre) {
     return '$decade $genre Movies';
   }
+
+  @override
+  String get errorReports => 'Error reports';
+
+  @override
+  String get sendErrorReportsFrom => 'Send error reports from this device';
+
+  @override
+  String get errorReportsExplain =>
+      'When something goes wrong, Nightingale TV sends its developer a short report: the error, the app version, the kind of device, and the last few screens and channel numbers. Server addresses, passwords and keys, names and file paths are taken out before it\'s sent. Titles and what you watch are never sent.';
+
+  @override
+  String get errorReportsOff =>
+      'Turn this off and nothing is sent from this device; reports waiting to go are deleted.';
+
+  @override
+  String get sendATestReport => 'Send a test report';
+
+  @override
+  String lastReportId(String id) {
+    return 'Last report ID: $id';
+  }
+
+  @override
+  String get noReportSentYet => 'No report sent from this device yet.';
+
+  @override
+  String get quoteReportId =>
+      'Quote this ID when you tell the developer about a problem.';
+
+  @override
+  String testReportSent(String id) {
+    return 'Test report sent: $id';
+  }
+
+  @override
+  String get testReportNotSent =>
+      'The test report couldn\'t be sent. Try again in a moment.';
+
+  @override
+  String get reportsNotInBuild =>
+      'Error reporting isn\'t part of this build of Nightingale TV, so nothing is ever sent.';
 }

@@ -26,6 +26,7 @@ import 'package:nightingale_tv/profiles/household.dart';
 import 'package:nightingale_tv/profiles/profile.dart';
 import 'package:nightingale_tv/remote/firewall_check.dart';
 import 'package:nightingale_tv/remote/remote_control.dart';
+import 'package:nightingale_tv/reporting/report_switch.dart';
 
 import 'backup_fixtures.dart';
 import 'fixtures.dart';
@@ -314,6 +315,32 @@ void main() {
       expect(h.app!.channelById(ch.id)!.retro, own);
       expect(DeviceEffects.instance.on, isTrue, reason: 'a restore leaves this device as it is');
       DeviceEffects.instance.reset();
+    });
+
+    test('the error reports switch is neither saved nor changed', () async {
+      await writeHousehold(dir, momAndKids(), fakeLibrary(), logos: 0);
+      final h = await open(dir);
+      await h.select(mom);
+      ReportSwitch.instance.reset();
+      await ReportSwitch.instance.load(h.root);
+      await ReportSwitch.instance.setOn(false);
+      await ReportSwitch.instance.sent('3fa9c2d1e4b5469788c0a1b2c3d4e5f6');
+      await h.root.flush();
+      final backup = (await h.backups!.backUp(BackupReason.manual))!;
+      final bytes = await h.backups!.store.read(backup);
+      final text = utf8.decode(bytes, allowMalformed: true);
+      expect(text, isNot(contains('error_reports')));
+      expect(text, isNot(contains('3fa9c2d1')));
+      for (final f in Directory('${dir.path}/profiles').existsSync()
+          ? Directory('${dir.path}/profiles').listSync(recursive: true).whereType<File>()
+          : const <File>[]) {
+        expect(f.readAsStringSync(), isNot(contains('3fa9c2d1')), reason: 'not in a profile: ${f.path}');
+      }
+
+      await ReportSwitch.instance.setOn(true);
+      await BackupRestorer(h).restore(bytes);
+      expect(ReportSwitch.instance.on, isTrue, reason: 'a restore leaves this device as it is');
+      ReportSwitch.instance.reset();
     });
 
     test('the Guide range comes back', () async {

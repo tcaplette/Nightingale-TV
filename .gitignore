@@ -72,3 +72,9 @@ PLAY_STORE_NOTES.md
 
 # Idle check seed config: holds the test server sign-in (idle-cpu)
 tool/idle_budget/seed/
+
+# GlitchTip credentials (kept local)
+/glitchtip-credentials.txt
+
+# Error reporting DSN for official builds (error-reporting change)
+/error_reporting.env

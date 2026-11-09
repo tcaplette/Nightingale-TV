@@ -8643,6 +8643,72 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'{decade} {genre} Movies'**
   String decadeGenreMovies(Object decade, Object genre);
+
+  /// No description provided for @errorReports.
+  ///
+  /// In en, this message translates to:
+  /// **'Error reports'**
+  String get errorReports;
+
+  /// No description provided for @sendErrorReportsFrom.
+  ///
+  /// In en, this message translates to:
+  /// **'Send error reports from this device'**
+  String get sendErrorReportsFrom;
+
+  /// No description provided for @errorReportsExplain.
+  ///
+  /// In en, this message translates to:
+  /// **'When something goes wrong, Nightingale TV sends its developer a short report: the error, the app version, the kind of device, and the last few screens and channel numbers. Server addresses, passwords and keys, names and file paths are taken out before it\'s sent. Titles and what you watch are never sent.'**
+  String get errorReportsExplain;
+
+  /// No description provided for @errorReportsOff.
+  ///
+  /// In en, this message translates to:
+  /// **'Turn this off and nothing is sent from this device; reports waiting to go are deleted.'**
+  String get errorReportsOff;
+
+  /// No description provided for @sendATestReport.
+  ///
+  /// In en, this message translates to:
+  /// **'Send a test report'**
+  String get sendATestReport;
+
+  /// No description provided for @lastReportId.
+  ///
+  /// In en, this message translates to:
+  /// **'Last report ID: {id}'**
+  String lastReportId(String id);
+
+  /// No description provided for @noReportSentYet.
+  ///
+  /// In en, this message translates to:
+  /// **'No report sent from this device yet.'**
+  String get noReportSentYet;
+
+  /// No description provided for @quoteReportId.
+  ///
+  /// In en, this message translates to:
+  /// **'Quote this ID when you tell the developer about a problem.'**
+  String get quoteReportId;
+
+  /// No description provided for @testReportSent.
+  ///
+  /// In en, this message translates to:
+  /// **'Test report sent: {id}'**
+  String testReportSent(String id);
+
+  /// No description provided for @testReportNotSent.
+  ///
+  /// In en, this message translates to:
+  /// **'The test report couldn\'t be sent. Try again in a moment.'**
+  String get testReportNotSent;
+
+  /// No description provided for @reportsNotInBuild.
+  ///
+  /// In en, this message translates to:
+  /// **'Error reporting isn\'t part of this build of Nightingale TV, so nothing is ever sent.'**
+  String get reportsNotInBuild;
 }
 
 class _AppLocalizationsDelegate

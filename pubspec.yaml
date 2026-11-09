@@ -56,6 +56,8 @@ dependencies:
   xml: ^7.0.1
   # Server mode's account database, over the system libsqlite3 (docker-web-admin D6).
   sqlite3: ^2.9.4
+  # Error reports to the Nightingale TV GlitchTip project (error-reporting).
+  sentry_flutter: ^10.3.0
 
 dev_dependencies:
   flutter_test:
@@ -76,6 +78,10 @@ dependency_overrides:
   # the GPU on X11 and Wayland; see third_party/media_kit_video/NIGHTINGALE.md.
   media_kit_video:
     path: third_party/media_kit_video
+  # sentry_flutter without its Linux/Windows/web plugins, so the Linux build
+  # gains no native library; see third_party/sentry_flutter/NIGHTINGALE.md.
+  sentry_flutter:
+    path: third_party/sentry_flutter
 
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec

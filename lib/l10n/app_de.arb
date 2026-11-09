@@ -1418,5 +1418,16 @@
   "genreThrillerMystery": "Thriller & Krimi",
   "decadeTv": "{decade} TV",
   "decadeGenreTv": "{decade} {genre} TV",
-  "decadeGenreMovies": "{decade} {genre}-Filme"
+  "decadeGenreMovies": "{decade} {genre}-Filme",
+  "errorReports": "Fehlerberichte",
+  "sendErrorReportsFrom": "Fehlerberichte von diesem Gerät senden",
+  "errorReportsExplain": "Wenn etwas schiefgeht, schickt Nightingale TV dem Entwickler einen kurzen Bericht: den Fehler, die App-Version, die Art des Geräts und die letzten Bildschirme und Sendernummern. Serveradressen, Passwörter und Schlüssel, Namen und Dateipfade werden vor dem Senden entfernt. Titel und was du schaust, werden nie gesendet.",
+  "errorReportsOff": "Schaltest du das aus, wird von diesem Gerät nichts gesendet; wartende Berichte werden gelöscht.",
+  "sendATestReport": "Testbericht senden",
+  "lastReportId": "ID des letzten Berichts: {id}",
+  "noReportSentYet": "Von diesem Gerät wurde noch kein Bericht gesendet.",
+  "quoteReportId": "Nenne diese ID, wenn du dem Entwickler ein Problem meldest.",
+  "testReportSent": "Testbericht gesendet: {id}",
+  "testReportNotSent": "Der Testbericht konnte nicht gesendet werden. Versuch es gleich noch einmal.",
+  "reportsNotInBuild": "Fehlerberichte sind in diesem Build von Nightingale TV nicht enthalten, daher wird nie etwas gesendet."
 }

@@ -11,10 +11,16 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 tool/check_version.sh
 
+# Official builds report errors to the Nightingale TV GlitchTip project
+# (error-reporting D2). The DSN lives in the git-ignored error_reporting.env;
+# without it the app is built with reporting off.
+DEFINES=()
+[[ -f error_reporting.env ]] && DEFINES=(--dart-define-from-file=error_reporting.env)
+
 VERSION="${1:-$(sed -n 's/^version: *\([^+]*\).*/\1/p' pubspec.yaml)}"
 FILE="nightingale-tv-linux-x64-${VERSION}.tar.gz"
 
-flutter build linux --release
+flutter build linux --release ${DEFINES[@]+"${DEFINES[@]}"}
 tool/build_web_admin.sh
 
 BUNDLE=build/linux/x64/release/bundle

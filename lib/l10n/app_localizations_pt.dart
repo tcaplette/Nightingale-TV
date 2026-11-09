@@ -5266,4 +5266,48 @@ class AppLocalizationsPt extends AppLocalizations {
   String decadeGenreMovies(Object decade, Object genre) {
     return 'Filmes de $genre $decade';
   }
+
+  @override
+  String get errorReports => 'Relatórios de erros';
+
+  @override
+  String get sendErrorReportsFrom =>
+      'Enviar relatórios de erros deste dispositivo';
+
+  @override
+  String get errorReportsExplain =>
+      'Quando algo dá errado, o Nightingale TV envia ao desenvolvedor um relatório curto: o erro, a versão do app, o tipo de dispositivo e as últimas telas e números de canal. Endereços de servidor, senhas e chaves, nomes e caminhos de arquivo são removidos antes do envio. Títulos e o que você assiste nunca são enviados.';
+
+  @override
+  String get errorReportsOff =>
+      'Desative isto e nada é enviado deste dispositivo; relatórios aguardando envio são apagados.';
+
+  @override
+  String get sendATestReport => 'Enviar um relatório de teste';
+
+  @override
+  String lastReportId(String id) {
+    return 'ID do último relatório: $id';
+  }
+
+  @override
+  String get noReportSentYet =>
+      'Nenhum relatório enviado deste dispositivo ainda.';
+
+  @override
+  String get quoteReportId =>
+      'Informe este ID quando contar um problema ao desenvolvedor.';
+
+  @override
+  String testReportSent(String id) {
+    return 'Relatório de teste enviado: $id';
+  }
+
+  @override
+  String get testReportNotSent =>
+      'Não foi possível enviar o relatório de teste. Tente de novo daqui a pouco.';
+
+  @override
+  String get reportsNotInBuild =>
+      'Relatórios de erros não fazem parte desta versão do Nightingale TV, então nada é enviado.';
 }

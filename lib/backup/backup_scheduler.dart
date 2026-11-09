@@ -10,6 +10,7 @@ import '../profiles/household.dart';
 import 'backup_archive.dart';
 import 'backup_store.dart';
 import '../l10n/tr.dart';
+import '../reporting/error_reports.dart';
 
 /// Makes the household's backups (D9): a daily one when something changed,
 /// and a safety backup right before anything that replaces a lot at once.
@@ -78,9 +79,10 @@ class BackupScheduler extends ChangeNotifier {
   Future<StoredBackup?> dailyCheck() async {
     try {
       return await backUp(BackupReason.daily, onlyIfChanged: true);
-    } on Object catch (e) {
+    } on Object catch (e, stack) {
       lastError = '$e';
       debugPrint('Daily backup failed: $e');
+      ErrorReports.capture(e, stack, area: 'backup');
       return null;
     }
   }
@@ -92,7 +94,8 @@ class BackupScheduler extends ChangeNotifier {
     assert(BackupReason.isSafety(reason));
     try {
       return await backUp(reason, subject: subject, onlyIfChanged: true);
-    } on Object catch (e) {
+    } on Object catch (e, stack) {
+      ErrorReports.capture(e, stack, area: 'backup');
       throw BackupException(tr.couldntSaveA(_plain(e)));
     }
   }

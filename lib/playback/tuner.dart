@@ -24,6 +24,7 @@ import 'report_plan.dart';
 import 'subtitles.dart';
 import 'tuner_player.dart';
 import '../server/media_server.dart';
+import '../reporting/error_reports.dart';
 import '../l10n/tr.dart';
 
 enum TunerStatus {
@@ -535,6 +536,9 @@ class Tuner extends ChangeNotifier {
     // coming back to the front) is a resume.
     final trigger = !_tunedOnce ? 'launch' : (channel == null ? 'resume' : 'channel');
     _tunedOnce = true;
+    // The error reports' trail: the channel and where it plays from.
+    ErrorReports.breadcrumb('tune', 'Tuned channel ${ch.number}',
+        data: {'channel': ch.number, 'source': ch.isLive ? (app.live.lookup(ch)?.source.kind.name ?? 'live') : 'library'});
     // How far the program on the channel being left got.
     _noteReached(atSegmentEnd: false);
     _endShift();
@@ -971,9 +975,10 @@ class Tuner extends ChangeNotifier {
           directStream = decision.directStream;
           _diagnostics?.tuneWaited('playback-info', waited.elapsed);
           _diagnostics?.event('decision for $source at cap ${cap == null ? 'none' : '$cap kbps'}: ${_decided(template, directStream)}');
-        } on Object catch (e) {
+        } on Object catch (e, stack) {
           // Can't ask: play it directly, as with the setting off.
           debugPrint('Playback decision failed: $e');
+          ErrorReports.capture(e, stack, area: 'playback');
           _diagnostics?.tuneWaited('playback-info (failed)', waited.elapsed);
           _diagnostics?.event('decision for $source failed: $e');
           // Its server is down and another has a copy: that one plays.
@@ -1014,8 +1019,9 @@ class Tuner extends ChangeNotifier {
         await media.open(routed,
             headers: headers, start: startAt, end: current.itemTo, exact: !keyframe, subtitles: _openChoice(pick, null));
         _diagnostics?.openReturned();
-      } on Object catch (e) {
+      } on Object catch (e, stack) {
         if (generation != _generation) return;
+        ErrorReports.capture(e, stack, area: 'playback');
         _onPlaybackError('$e');
         return;
       }
@@ -1079,8 +1085,9 @@ class Tuner extends ChangeNotifier {
       var moved = false;
       try {
         moved = await media.advance();
-      } on Object catch (e) {
+      } on Object catch (e, stack) {
         _diagnostics?.event('advance failed: $e');
+        ErrorReports.capture(e, stack, area: 'playback');
       } finally {
         _advancing = false;
       }
@@ -1238,8 +1245,9 @@ class Tuner extends ChangeNotifier {
       final d = await app.decide(source, cap, startAt: s.itemFrom);
       if (asking) _diagnostics?.event('decision for the next segment $source: ${_decided(d.template, d.directStream)}');
       return d.template == null;
-    } on Object catch (e) {
+    } on Object catch (e, stack) {
       if (asking) _diagnostics?.event('decision for the next segment $source failed: $e');
+      if (asking) ErrorReports.capture(e, stack, area: 'playback');
       return false;
     }
   }
@@ -1637,8 +1645,9 @@ class Tuner extends ChangeNotifier {
           end: end,
           subtitles: pick == null || pick.item.sourceId != item.sourceId ? null : _openChoice(pick, job));
       _diagnostics?.openReturned();
-    } on Object catch (e) {
+    } on Object catch (e, stack) {
       if (generation != _generation) return false;
+      ErrorReports.capture(e, stack, area: 'playback');
       _fail('$e');
       return false;
     }
@@ -1750,8 +1759,9 @@ class Tuner extends ChangeNotifier {
           forceTranscode: true,
           startAt: current.positionAt(viewNow()),
           profile: app.decidesEverySegment ? await app.deviceProfile(cap) : null);
-    } on Object catch (e) {
+    } on Object catch (e, stack) {
       if (generation != _generation) return;
+      ErrorReports.capture(e, stack, area: 'playback');
       if (e is ServerException && e.unreachable && await _failOver(generation)) return;
       _fail('$e');
       return;
@@ -2002,7 +2012,14 @@ class Tuner extends ChangeNotifier {
   void _holdPicture() {
     final seg = segment;
     _pausedPosition = seg?.item == null ? _itemPosition : seg!.positionAt(viewNow());
-    unawaited(media.pause().catchError((Object e) {
+    unawaited(media.pause().then((_) {
+      // The held picture's item and place in its file, for picture checks
+      // (tool/video_color_check.py).
+      if (!PlaybackDiagnostics.enabled) return;
+      final at = media.position + (_active?.timeOffset ?? Duration.zero);
+      PlaybackDiagnostics.note('SHIFT',
+          'held item=${seg?.item?.id ?? '-'} at=${(at.inMilliseconds / 1000).toStringAsFixed(3)}s');
+    }).catchError((Object e) {
       _diagnostics?.event('pause failed: $e');
       _reopenOnResume = true;
     }));
@@ -2344,10 +2361,13 @@ class Tuner extends ChangeNotifier {
       stream = await client.open(info,
           maxBitrate: cap == null ? null : cap * 1000,
           profile: PlatformInfo.isAndroid ? await app.deviceProfile(cap) : null);
-    } on Object catch (e) {
+    } on Object catch (e, stack) {
       opening.complete(null);
       if (!identical(_live, session)) return;
       final failure = e is LiveTvException ? e.failure : LiveFailure.other;
+      // A busy tuner, a refusing provider or a channel the device can't
+      // play is the source's doing, not the app's.
+      ErrorReports.capture(e, stack, area: 'playback', expected: e is LiveTvException && failure != LiveFailure.other);
       _liveFailed(generation, ch, failure, scrubUrlsIn('$e'), source: source, attempt: attempt);
       return;
     }
@@ -2365,8 +2385,11 @@ class Tuner extends ChangeNotifier {
     try {
       await media.open(stream.uri, headers: stream.headers, live: true, subtitles: captions ? const StreamCaptions() : null);
       _diagnostics?.openReturned();
-    } on Object catch (e) {
-      if (identical(_live, session)) _onLiveError('$e');
+    } on Object catch (e, stack) {
+      if (identical(_live, session)) {
+        ErrorReports.capture(e, stack, area: 'playback');
+        _onLiveError('$e');
+      }
       return;
     }
     if (identical(_live, session)) await _applyCaptions();

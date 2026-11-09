@@ -11,6 +11,12 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 tool/check_version.sh
 
+# Official builds report errors to the Nightingale TV GlitchTip project
+# (error-reporting D2). The DSN lives in the git-ignored error_reporting.env;
+# without it the app is built with reporting off.
+DEFINES=()
+[[ -f error_reporting.env ]] && DEFINES=(--dart-define-from-file=error_reporting.env)
+
 # pubspec "1.0.0+1" is already a valid Debian version. The UTC build time
 # after it makes every build newer than the last, so apt always upgrades
 # the installed app in place, even when pubspec's version hasn't changed.
@@ -18,7 +24,7 @@ VERSION="$(sed -n 's/^version: *//p' pubspec.yaml).$(date -u +%Y%m%d%H%M%S)"
 ARCH=amd64
 OUT="$ROOT/dist/nightingale-tv_${VERSION}_${ARCH}.deb"
 
-flutter build linux --release
+flutter build linux --release ${DEFINES[@]+"${DEFINES[@]}"}
 
 # The libmpv package is named after the library version the build linked
 # (libmpv1 on Ubuntu 22.04, libmpv2 on 24.04+), so ask dpkg which package

@@ -10,6 +10,12 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 tool/check_version.sh
 
+# Official builds report errors to the Nightingale TV GlitchTip project
+# (error-reporting D2). The DSN lives in the git-ignored error_reporting.env;
+# without it the app is built with reporting off.
+DEFINES=()
+[[ -f error_reporting.env ]] && DEFINES=(--dart-define-from-file=error_reporting.env)
+
 if [[ ! -f android/key.properties ]]; then
   echo "android/key.properties is missing, so there's no key to sign the store bundle with." >&2
   echo "Store bundles must be signed with the official Nightingale TV key; see tool/build_apk.sh for the file's contents." >&2
@@ -44,7 +50,7 @@ VERSION="$(sed -n 's/^version: *//p' pubspec.yaml)"
 DIST="$ROOT/dist"
 mkdir -p "$DIST"
 
-flutter build appbundle --release
+flutter build appbundle --release ${DEFINES[@]+"${DEFINES[@]}"}
 dest="$DIST/nightingale-tv_${VERSION}.aab"
 cp build/app/outputs/bundle/release/app-release.aab "$dest"
 

@@ -15,6 +15,7 @@ import 'package:nightingale_tv/playback/tuner.dart';
 import 'package:nightingale_tv/profiles/household.dart';
 import 'package:nightingale_tv/theme/tv_theme.dart';
 import 'package:nightingale_tv/ui/backup_screen.dart';
+import 'package:nightingale_tv/ui/error_reports_screen.dart';
 import 'package:nightingale_tv/ui/login_screen.dart';
 import 'package:nightingale_tv/ui/menu_screen.dart';
 import 'package:nightingale_tv/ui/widgets/tv_canvas.dart';
@@ -266,6 +267,18 @@ void main() {
     await settle(tester);
     expect(find.text('Parental controls'), findsOneWidget);
     expect(find.byType(BackupScreen), findsNothing);
+  });
+
+  testWidgets('Error reports sits above Servers and opens without the PIN on a kid profile', (tester) async {
+    await setUpHousehold(tester, watching: 'Kids');
+    await show(tester, const MenuScreen());
+    final labels = [for (final b in tester.widgetList<TvButton>(find.byType(TvButton))) b.label];
+    expect(labels.indexOf('Error reports'), labels.indexOf('Servers') - 1);
+    expect(tester.widget<TvButton>(find.widgetWithText(TvButton, 'Error reports')).icon, isNot(Icons.lock));
+    await tester.tap(find.widgetWithText(TvButton, 'Error reports'));
+    await settle(tester);
+    expect(find.text('Parental controls'), findsNothing);
+    expect(find.byType(ErrorReportsScreen), findsOneWidget);
   });
 
   testWidgets('Welcome back offers the backup; Restore it is focused', (tester) async {

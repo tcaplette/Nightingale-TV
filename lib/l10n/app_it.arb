@@ -1418,5 +1418,16 @@
   "genreThrillerMystery": "Thriller e mistero",
   "decadeTv": "{decade} TV",
   "decadeGenreTv": "{genre} TV {decade}",
-  "decadeGenreMovies": "Film {genre} {decade}"
+  "decadeGenreMovies": "Film {genre} {decade}",
+  "errorReports": "Segnalazioni di errori",
+  "sendErrorReportsFrom": "Invia segnalazioni di errori da questo dispositivo",
+  "errorReportsExplain": "Quando qualcosa va storto, Nightingale TV invia allo sviluppatore una breve segnalazione: l'errore, la versione dell'app, il tipo di dispositivo e le ultime schermate e i numeri dei canali. Indirizzi dei server, password e chiavi, nomi e percorsi dei file vengono tolti prima dell'invio. I titoli e ciò che guardi non vengono mai inviati.",
+  "errorReportsOff": "Se lo disattivi, da questo dispositivo non viene inviato nulla; le segnalazioni in attesa vengono eliminate.",
+  "sendATestReport": "Invia una segnalazione di prova",
+  "lastReportId": "ID dell'ultima segnalazione: {id}",
+  "noReportSentYet": "Nessuna segnalazione ancora inviata da questo dispositivo.",
+  "quoteReportId": "Indica questo ID quando segnali un problema allo sviluppatore.",
+  "testReportSent": "Segnalazione di prova inviata: {id}",
+  "testReportNotSent": "Impossibile inviare la segnalazione di prova. Riprova tra un momento.",
+  "reportsNotInBuild": "Le segnalazioni di errori non fanno parte di questa build di Nightingale TV, quindi non viene mai inviato nulla."
 }

@@ -619,6 +619,21 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "0.2.2"
+  sentry:
+    dependency: transitive
+    description:
+      name: sentry
+      sha256: de233eb7a4d30e8fc18dafffde344b1846f92ffd079f454c56872e064145e396
+      url: "https://pub.dev"
+    source: hosted
+    version: "10.3.0"
+  sentry_flutter:
+    dependency: "direct main"
+    description:
+      path: "third_party/sentry_flutter"
+      relative: true
+    source: path
+    version: "10.3.0"
   sky_engine:
     dependency: transitive
     description: flutter
