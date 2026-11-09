@@ -7,14 +7,20 @@ import 'package:xml/xml_events.dart';
 
 import 'guide_match.dart';
 import 'live_data.dart';
+import '../l10n/tr.dart';
 
 class XmltvException implements Exception {
-  const XmltvException(this.message);
+  const XmltvException._(this._message);
 
-  final String message;
+  final String Function() _message;
 
-  static const tooBig = XmltvException('The guide is too big (over 1 GB)');
-  static const notXmltv = XmltvException("That isn't an XMLTV guide");
+  String get message => _message();
+
+  static const tooBig = XmltvException._(_tooBigMessage);
+  static const notXmltv = XmltvException._(_notXmltvMessage);
+
+  static String _tooBigMessage() => tr.theGuideIs;
+  static String _notXmltvMessage() => tr.thatIsntAnXmltv;
 
   @override
   String toString() => message;

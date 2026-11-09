@@ -6,6 +6,7 @@ import '../channels/channel.dart';
 import '../platform/platform_info.dart';
 import 'playback_diagnostics.dart';
 import 'tuner.dart';
+import '../l10n/tr.dart';
 
 /// What the viewer picked in the sleep picker (sleep-timer spec).
 @immutable
@@ -194,7 +195,7 @@ class SleepTimer extends ChangeNotifier {
       phase = SleepPhase.idle;
       deadline = null;
       _note('off');
-      _say('Sleep timer off');
+      _say(tr.sleepTimerOff);
     } else {
       phase = SleepPhase.armed;
       final minutes = c.minutes;
@@ -209,7 +210,7 @@ class SleepTimer extends ChangeNotifier {
         deadline = end;
       }
       _note('set $c, deadline ${_at(deadline)}');
-      _say(minutes != null ? 'Sleep in $minutes min' : 'Sleep at end of program');
+      _say(minutes != null ? tr.sleepInMin(minutes) : tr.sleepAtEnd);
       _tick();
     }
     if (wasFading) unawaited(tuner.media.setVolume(1));
@@ -253,7 +254,7 @@ class SleepTimer extends ChangeNotifier {
     phase = SleepPhase.idle;
     if (wasFading) unawaited(tuner.media.setVolume(1));
     _note('cancel by $by');
-    if (!hidden && hadTimer) _say('Sleep timer off');
+    if (!hidden && hadTimer) _say(tr.sleepTimerOff);
     notifyListeners();
   }
 

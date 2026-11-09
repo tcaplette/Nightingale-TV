@@ -1,5 +1,6 @@
 import '../channels/logo_windows.dart';
 import 'export_settings.dart';
+import '../l10n/tr.dart';
 
 /// The channel logo burned into a segment (channel-streaming): its PNG and
 /// when it shows, relative to the segment's start. With [always], it shows
@@ -17,14 +18,19 @@ class SegmentLogo {
 
 /// The H.264 encoders exported streams can use, best first.
 enum VideoEncoder {
-  vaapi('h264_vaapi', 'Graphics card (VAAPI)'),
-  nvenc('h264_nvenc', 'Graphics card (NVENC)'),
-  x264('libx264', 'Processor');
+  vaapi('h264_vaapi'),
+  nvenc('h264_nvenc'),
+  x264('libx264');
 
-  const VideoEncoder(this.codec, this.label);
+  const VideoEncoder(this.codec);
 
   final String codec;
-  final String label;
+
+  String get label => switch (this) {
+        VideoEncoder.vaapi => tr.graphicsCardVaapi,
+        VideoEncoder.nvenc => tr.graphicsCardNvenc,
+        VideoEncoder.x264 => tr.processor,
+      };
 
   bool get hardware => this != x264;
 }

@@ -1,7 +1,8 @@
 // A virtual USB mouse for Android emulators, whose `input mouse` is ignored by
 // apps' hover handling. Build static, push to /data/local/tmp, run as root:
 //   gcc -static -O2 -o uhid_mouse uhid_mouse.c
-// stdin: "go DX DY" moves in small steps, "d" presses, "u" releases.
+// stdin: "go DX DY" moves in small steps, "d" presses, "u" releases,
+// "w N" turns the wheel N notches (negative: down, scrolling a list on).
 #include <fcntl.h>
 #include <linux/uhid.h>
 #include <stdio.h>
@@ -12,21 +13,24 @@
 static const unsigned char desc[] = {
     0x05, 0x01, 0x09, 0x02, 0xA1, 0x01, 0x09, 0x01, 0xA1, 0x00, 0x05, 0x09, 0x19, 0x01, 0x29, 0x03,
     0x15, 0x00, 0x25, 0x01, 0x95, 0x03, 0x75, 0x01, 0x81, 0x02, 0x95, 0x01, 0x75, 0x05, 0x81, 0x03,
-    0x05, 0x01, 0x09, 0x30, 0x09, 0x31, 0x15, 0x81, 0x25, 0x7F, 0x75, 0x08, 0x95, 0x02, 0x81, 0x06,
+    0x05, 0x01, 0x09, 0x30, 0x09, 0x31, 0x09, 0x38, 0x15, 0x81, 0x25, 0x7F, 0x75, 0x08, 0x95, 0x03, 0x81, 0x06,
     0xC0, 0xC0};
 static int fd;
 static int buttons;
 
-static void report(int dx, int dy) {
+static void report3(int dx, int dy, int wheel) {
   struct uhid_event e;
   memset(&e, 0, sizeof e);
   e.type = UHID_INPUT2;
-  e.u.input2.size = 3;
+  e.u.input2.size = 4;
   e.u.input2.data[0] = buttons;
   e.u.input2.data[1] = (signed char)dx;
   e.u.input2.data[2] = (signed char)dy;
+  e.u.input2.data[3] = (signed char)wheel;
   if (write(fd, &e, sizeof e) < 0) perror("write");
 }
+
+static void report(int dx, int dy) { report3(dx, dy, 0); }
 
 int main(void) {
   setvbuf(stdout, NULL, _IONBF, 0);
@@ -57,6 +61,11 @@ int main(void) {
         dx -= sx;
         dy -= sy;
         usleep(6000);
+      }
+    } else if (sscanf(line, "w %d", &dx) == 1) {
+      for (int step = dx > 0 ? 1 : -1; dx; dx -= step) {
+        report3(0, 0, step);
+        usleep(60000);
       }
     } else if (line[0] == 'd') {
       buttons = 1;

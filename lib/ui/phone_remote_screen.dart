@@ -7,6 +7,7 @@ import '../theme/tv_theme.dart';
 import 'format.dart';
 import 'menu_screen.dart' show confirm;
 import 'widgets/tv_focus.dart';
+import '../l10n/tr.dart';
 
 /// Turn the phone remote on or off, pair phones, and show whether phones can
 /// reach it (remote-setup). Phones can pair only while this screen is open.
@@ -48,9 +49,9 @@ class _PhoneRemoteScreenState extends State<PhoneRemoteScreen> {
 
   Future<void> _removeAll() async {
     final ok = await confirm(context,
-        title: 'Remove all phones?',
-        message: 'Every paired phone stops working as a remote until it scans the code on this screen again.',
-        action: 'Remove all');
+        title: tr.removeAllPhones,
+        message: tr.everyPairedPhone,
+        action: tr.removeAll);
     if (ok) await _remote.removeAllPairings();
   }
 
@@ -66,8 +67,8 @@ class _PhoneRemoteScreenState extends State<PhoneRemoteScreen> {
         final blocked = running && remote.status == RemoteStatus.blocked;
         final code = remote.pairingCode;
         return TvPage(
-          title: 'Phone remote',
-          hints: '▲▼◀▶ Move    OK Select    ESC Back',
+          title: tr.phoneRemote,
+          hints: tr.moveOkSelectEsc,
           onBack: () => Navigator.of(context).pop(),
           child: SingleChildScrollView(
             padding: const EdgeInsets.fromLTRB(120, 48, 120, 48),
@@ -82,8 +83,7 @@ class _PhoneRemoteScreenState extends State<PhoneRemoteScreen> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            'Use your phone as the remote: open a web page on it to change channels, '
-                            'bring up the guide, or tap a channel to tune in. Nothing to install.',
+                            tr.useYourPhoneAs,
                             style: g.body(30, color: g.textDim),
                           ),
                           const SizedBox(height: 36),
@@ -92,14 +92,14 @@ class _PhoneRemoteScreenState extends State<PhoneRemoteScreen> {
                               spacing: 12,
                               children: [
                                 TvToggle(
-                                  label: 'On',
+                                  label: tr.onLabel2,
                                   radio: true,
                                   autofocus: true,
                                   on: remote.enabled,
                                   onPressed: () => remote.setEnabled(true),
                                 ),
                                 TvToggle(
-                                  label: 'Off',
+                                  label: tr.off,
                                   radio: true,
                                   on: !remote.enabled,
                                   onPressed: () => remote.setEnabled(false),
@@ -122,21 +122,21 @@ class _PhoneRemoteScreenState extends State<PhoneRemoteScreen> {
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  Text('ON YOUR PHONE, OPEN',
+                                  Text(tr.onYourPhoneOpen,
                                       style: g.display(26, weight: FontWeight.w800, color: g.accent)),
                                   const SizedBox(height: 8),
                                   Text('$url', style: g.display(64, weight: FontWeight.w800)),
                                   if (code != null) ...[
                                     const SizedBox(height: 12),
                                     Text.rich(TextSpan(children: [
-                                      TextSpan(text: 'and enter  ', style: g.body(28, color: g.textDim)),
+                                      TextSpan(text: tr.andEnter, style: g.body(28, color: g.textDim)),
                                       TextSpan(
                                           text: '${code.substring(0, 3)} ${code.substring(3)}',
                                           style: g.display(48, weight: FontWeight.w800, color: g.accent)),
                                     ])),
                                   ],
                                   const SizedBox(height: 12),
-                                  Text('or scan the code with the phone\'s camera.',
+                                  Text(tr.orScanThe,
                                       style: g.body(26, color: g.textDim)),
                                 ],
                               ),
@@ -146,7 +146,7 @@ class _PhoneRemoteScreenState extends State<PhoneRemoteScreen> {
                               _Tips(remote: remote),
                             ],
                           ] else
-                            Text('The remote is off.', style: g.body(28, color: g.textDim)),
+                            Text(tr.theRemoteIs, style: g.body(28, color: g.textDim)),
                         ],
                       ),
                     ),
@@ -179,12 +179,12 @@ class _StatusLine extends StatelessWidget {
       RemoteStatus.working => (
           const Color(0xFF3DDC84),
           switch (remote.pairings.firstOrNull) {
-            final p? => 'Working · last used by ${p.name}, ${formatTime(p.lastUsed)}',
-            null => 'Working',
+            final p? => tr.workingLastUsed(p.name, formatTime(p.lastUsed)),
+            null => tr.working,
           }
         ),
-      RemoteStatus.notConfirmed => (const Color(0xFFFFB020), 'Not confirmed yet · no phone has connected'),
-      RemoteStatus.blocked => (g.nowLine, 'Blocked by this computer\'s firewall'),
+      RemoteStatus.notConfirmed => (const Color(0xFFFFB020), tr.notConfirmedYet),
+      RemoteStatus.blocked => (g.nowLine, tr.blockedByThis),
     };
     return Row(children: [
       Container(width: 22, height: 22, decoration: BoxDecoration(color: color, shape: BoxShape.circle)),
@@ -230,8 +230,7 @@ class _BlockedSteps extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          'This computer\'s firewall stops phones from reaching the remote. To let them in, '
-          'open a terminal on this computer and run:',
+          tr.thisComputersFirewall,
           style: g.body(28, color: g.textDim),
         ),
         if (command != null) ...[
@@ -239,9 +238,9 @@ class _BlockedSteps extends StatelessWidget {
           _Command(command),
         ],
         const SizedBox(height: 16),
-        Text('Then choose Check again.', style: g.body(28, color: g.textDim)),
+        Text(tr.thenChooseCheck, style: g.body(28, color: g.textDim)),
         const SizedBox(height: 24),
-        TvButton(label: 'Check again', icon: Icons.refresh, onPressed: remote.checkFirewall),
+        TvButton(label: tr.checkAgain, icon: Icons.refresh, onPressed: remote.checkFirewall),
       ],
     );
   }
@@ -263,16 +262,14 @@ class _Tips extends StatelessWidget {
         Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('If the phone can\'t connect, this computer\'s firewall may be blocking it. '
-                'Open a terminal on this computer and run:', style: g.body(26, color: g.textDim)),
+            Text(tr.ifThePhone, style: g.body(26, color: g.textDim)),
             const SizedBox(height: 12),
             _Command(command),
           ],
         ),
-      Text('The phone has to be on the same Wi-Fi as this TV, not a guest network or mobile data.',
+      Text(tr.thePhoneHas,
           style: g.body(26, color: g.textDim)),
-      Text('Some Wi-Fi networks keep devices apart (called AP or client isolation). If the phone still '
-          'can\'t connect, turn that setting off for your Wi-Fi.', style: g.body(26, color: g.textDim)),
+      Text(tr.someWiFi, style: g.body(26, color: g.textDim)),
     ];
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -314,7 +311,7 @@ class _Qr extends StatelessWidget {
             width: 400,
             padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
             decoration: BoxDecoration(color: g.nowLine, borderRadius: BorderRadius.circular(g.radius)),
-            child: Text('Blocked by this computer\'s firewall',
+            child: Text(tr.blockedByThis,
                 textAlign: TextAlign.center, style: g.display(30, weight: FontWeight.w800)),
           ),
       ],
@@ -340,10 +337,10 @@ class _PairedPhones extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text('PAIRED PHONES', style: g.display(26, weight: FontWeight.w800, color: g.accent)),
+        Text(tr.pairedPhones, style: g.display(26, weight: FontWeight.w800, color: g.accent)),
         const SizedBox(height: 16),
         if (phones.isEmpty)
-          Text('No phones paired yet.', style: g.body(28, color: g.textDim))
+          Text(tr.noPhonesPaired, style: g.body(28, color: g.textDim))
         else ...[
           for (final p in phones)
             Padding(
@@ -359,13 +356,13 @@ class _PairedPhones extends StatelessWidget {
                   Expanded(
                     child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                       Text(p.name, style: g.display(32, weight: FontWeight.w700)),
-                      Text('paired ${formatMoment(p.paired)} · last used ${formatRecent(p.lastUsed)}',
+                      Text(tr.pairedLastUsed(formatMoment(p.paired), formatRecent(p.lastUsed)),
                           style: g.body(24, color: g.textDim)),
                     ]),
                   ),
                   SizedBox(
                     width: _actionWidth,
-                    child: TvButton(label: 'Remove', expand: true, onPressed: () => remote.removePairing(p.id)),
+                    child: TvButton(label: tr.remove, expand: true, onPressed: () => remote.removePairing(p.id)),
                   ),
                 ]),
               ),
@@ -379,7 +376,7 @@ class _PairedPhones extends StatelessWidget {
               padding: const EdgeInsets.only(right: _rowInset),
               child: SizedBox(
                 width: _actionWidth,
-                child: TvButton(label: 'Remove all', danger: true, expand: true, onPressed: onRemoveAll),
+                child: TvButton(label: tr.removeAll, danger: true, expand: true, onPressed: onRemoveAll),
               ),
             ),
           ),

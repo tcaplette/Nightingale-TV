@@ -3,6 +3,8 @@ import 'dart:typed_data';
 
 import 'package:http/http.dart' as http;
 
+import '../l10n/tr.dart';
+
 /// A refused API call: the server's message (the TV's wording), and what
 /// it needs (`pin`, `grownUp`) when a PIN would let it through.
 class ApiException implements Exception {
@@ -69,6 +71,8 @@ class ApiClient {
       {Object? body, Uint8List? bytes, Map<String, String>? query}) async {
     final request = http.Request(method, url(path, query));
     if (method != 'GET') request.headers['X-Nightingale-TV'] = '1';
+    // Server messages come back in this language (design D8).
+    request.headers['Accept-Language'] = activeLanguage;
     final scope = scopeOf(path);
     if ((method == 'PUT' || method == 'PATCH' || method == 'DELETE') && scope != null) {
       request.headers['If-Match'] = _revisions[scope] ?? await _readRevision(scope);
@@ -84,7 +88,7 @@ class ApiClient {
     try {
       response = await http.Response.fromStream(await _http.send(request));
     } on Object {
-      throw ApiException(0, "Can't reach the server. Check that it's running.");
+      throw ApiException(0, tr.cantReachThe);
     }
     final etag = response.headers['etag'];
     if (scope != null && etag != null && etag.isNotEmpty) _revisions[scope] = etag;
@@ -111,10 +115,10 @@ class ApiClient {
   }
 
   static String _plain(int status) => switch (status) {
-        401 => 'Sign in first.',
-        403 => "You can't do that.",
-        404 => 'Not found.',
-        413 => 'That is too big.',
-        _ => 'Something went wrong ($status).',
+        401 => tr.signInFirst,
+        403 => tr.youCantDo,
+        404 => tr.notFound,
+        413 => tr.thatIsTooBig,
+        _ => tr.somethingWentWrong2(status),
       };
 }

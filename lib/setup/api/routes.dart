@@ -3,6 +3,7 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import '../accounts.dart';
+import '../../l10n/tr.dart';
 
 /// Who may call a route (user-accounts, design D7). The setup server checks
 /// it before the handler runs.
@@ -140,7 +141,7 @@ class ApiRequest {
   /// The JSON object sent (an empty one when nothing was).
   Future<Map<String, Object?>> body() async {
     if (_body case final b?) return b;
-    final bytes = await this.bytes(maxBody, 'That is too much to send at once.');
+    final bytes = await this.bytes(maxBody, tr.thatIsToo);
     if (bytes.isEmpty) return _body = const {};
     try {
       final json = jsonDecode(utf8.decode(bytes));
@@ -148,7 +149,7 @@ class ApiRequest {
     } on FormatException {
       // Below.
     }
-    throw ApiError(HttpStatus.badRequest, 'Expected a JSON object.');
+    throw ApiError(HttpStatus.badRequest, tr.expectedAJson);
   }
 
   /// The body's bytes; more than [max] is refused with 413 and
@@ -180,31 +181,31 @@ extension BodyFields on Map<String, Object?> {
   String? string(String key) => switch (this[key]) {
         null => null,
         final String s => s,
-        _ => throw ApiError(HttpStatus.badRequest, '"$key" should be text.'),
+        _ => throw ApiError(HttpStatus.badRequest, tr.shouldBeText(key)),
       };
 
   int? integer(String key) => switch (this[key]) {
         null => null,
         final int i => i,
         final double d when d == d.roundToDouble() => d.toInt(),
-        _ => throw ApiError(HttpStatus.badRequest, '"$key" should be a number.'),
+        _ => throw ApiError(HttpStatus.badRequest, tr.shouldBeANumber(key)),
       };
 
   bool? boolean(String key) => switch (this[key]) {
         null => null,
         final bool b => b,
-        _ => throw ApiError(HttpStatus.badRequest, '"$key" should be true or false.'),
+        _ => throw ApiError(HttpStatus.badRequest, tr.shouldBeTrue(key)),
       };
 
   Map<String, Object?>? object(String key) => switch (this[key]) {
         null => null,
         final Map<String, Object?> m => m,
-        _ => throw ApiError(HttpStatus.badRequest, '"$key" should be an object.'),
+        _ => throw ApiError(HttpStatus.badRequest, tr.shouldBeAn(key)),
       };
 
   List<String>? strings(String key) => switch (this[key]) {
         null => null,
         final List<Object?> l when l.every((e) => e is String) => l.cast<String>(),
-        _ => throw ApiError(HttpStatus.badRequest, '"$key" should be a list of text.'),
+        _ => throw ApiError(HttpStatus.badRequest, tr.shouldBeA(key)),
       };
 }

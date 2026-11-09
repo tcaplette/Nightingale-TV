@@ -16,6 +16,7 @@ import 'backup_archive.dart';
 import '../server/media_server.dart';
 import '../server/server_set.dart';
 import '../server/server_clients.dart';
+import '../l10n/tr.dart';
 
 /// What a restore will do, for its confirmation.
 class RestorePlan {
@@ -122,11 +123,11 @@ class BackupRestorer {
         PlaybackDiagnostics.note('BACKUP', 'restore: swapped in ${watch.elapsedMilliseconds} ms');
       });
     } on Object catch (e) {
-      household.notice.value = 'Couldn\'t restore the backup: $e';
+      household.notice.value = tr.couldntRestoreThe(e);
       rethrow;
     }
     PlaybackDiagnostics.note('BACKUP', 'restore: started again in ${watch.elapsedMilliseconds} ms');
-    household.notice.value = 'Restored the backup from ${formatMoment(archive.createdAt.toLocal())}.';
+    household.notice.value = tr.restoredTheBackup(formatMoment(archive.createdAt.toLocal()));
     // In the background: an unreachable server never holds up a restore.
     for (final session in [..._dropped]) {
       unawaited(_signOut(session).then((_) {}, onError: (Object e) => debugPrint('Couldn\'t sign out a replaced profile: $e')));

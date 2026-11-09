@@ -4,6 +4,7 @@ import '../live/live_data.dart';
 import '../server/live_tv.dart';
 import '../server/media_server.dart';
 import 'jellyfin_client.dart';
+import '../l10n/tr.dart';
 
 /// Jellyfin's and Emby's Live TV (the same routes; Emby's auth comes from
 /// [EmbyClient]), as their web clients use it (design: "Confirmed server
@@ -152,7 +153,7 @@ class JellyfinLiveTv implements LiveTv {
       method = client.keepsSourceVideo(uri, source) && !forceTranscode ? PlayMethod.directStream : PlayMethod.transcode;
     } else {
       if (liveStreamId != null) await _closeLiveStream(liveStreamId);
-      throw const LiveTvException(LiveFailure.cantDecode, 'The server would not convert this channel.');
+      throw LiveTvException(LiveFailure.cantDecode, tr.theServerWouldNot);
     }
     return LiveStream(
       channelId: channelId,

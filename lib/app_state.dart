@@ -50,6 +50,7 @@ import 'server/plex/plex_connections.dart';
 import 'server/server_clients.dart';
 import 'server/server_set.dart';
 import 'ui/format.dart';
+import 'l10n/tr.dart';
 
 /// A choice for the maximum streaming bitrate: Original (no [kbps]) or a
 /// fixed cap.
@@ -126,22 +127,22 @@ class PlaybackSettings {
   static const defaultStillWatching = Duration(hours: 4);
 
   /// The still-watching choices, in this order, Off first.
-  static const stillWatchingChoices = <({String label, Duration? after})>[
-    (label: 'Off', after: null),
-    (label: 'After 2 hours', after: Duration(hours: 2)),
-    (label: 'After 4 hours', after: Duration(hours: 4)),
-    (label: 'After 8 hours', after: Duration(hours: 8)),
-  ];
+  static List<({String label, Duration? after})> get stillWatchingChoices => [
+        (label: tr.stillWatchingOff, after: null),
+        (label: tr.afterHours(2), after: const Duration(hours: 2)),
+        (label: tr.afterHours(4), after: const Duration(hours: 4)),
+        (label: tr.afterHours(8), after: const Duration(hours: 8)),
+      ];
 
   /// In this order, Original first.
-  static const presets = <BitratePreset>[
-    (label: 'Original (no limit)', kbps: null),
-    (label: '40 Mbps · 4K', kbps: 40000),
-    (label: '20 Mbps · 1080p high', kbps: 20000),
-    (label: '12 Mbps · 1080p', kbps: 12000),
-    (label: '8 Mbps · 1080p', kbps: 8000),
-    (label: '4 Mbps · 720p', kbps: 4000),
-  ];
+  static List<BitratePreset> get presets => [
+        (label: tr.bitrateOriginal, kbps: null),
+        (label: tr.bitrate40, kbps: 40000),
+        (label: tr.bitrate20, kbps: 20000),
+        (label: tr.bitrate12, kbps: 12000),
+        (label: tr.bitrate8, kbps: 8000),
+        (label: tr.bitrate4, kbps: 4000),
+      ];
 
   /// The preset cap at or below [kbps], never below the lowest (4 Mbps).
   static int capAtOrBelow(num kbps) {
@@ -413,7 +414,7 @@ class AppSettings {
   /// cable rules (cable-lineup D8).
   int lineupVersion;
 
-  static const currentLineupVersion = 2;
+  static const currentLineupVersion = 3;
 
   /// Generated blocks (cable-dayparts) the user deleted, by id: refreshes
   /// don't make them again, until Reset channel lineup.
@@ -818,7 +819,7 @@ class AppState extends ChangeNotifier {
   Future<ChannelGroup> createGroup(String name) async {
     final group = ChannelGroup(
       id: 'group:${DateTime.now().microsecondsSinceEpoch.toRadixString(36)}',
-      name: name.trim().isEmpty ? 'New group' : name.trim(),
+      name: name.trim().isEmpty ? tr.newGroup : name.trim(),
     );
     settings.groups = [...settings.groups, group];
     settings.guideTabs = GuideTabs.normalize(settings.guideTabs, settings.groups);
@@ -1047,21 +1048,21 @@ class AppState extends ChangeNotifier {
   /// [LiveSourceException].
   Future<LiveSource> addServerLiveSource({String key = ServerSet.mainKey}) async {
     final s = servers.byKey(key)?.session;
-    if (s == null) throw const LiveSourceException('Not signed in');
+    if (s == null) throw LiveSourceException(tr.notSignedIn2);
     if (servers.multiple && live.serverSourceFor(s.serverId) != null) {
-      throw LiveSourceException('${s.serverName} Live TV is already a source');
+      throw LiveSourceException(tr.liveTvIs(s.serverName));
     }
     final source = LiveSource(
       id: LiveSource.newId(),
       kind: LiveSourceKind.server,
-      name: '${s.serverName} Live TV',
+      name: tr.liveTv(s.serverName),
       serverKind: s.kind,
       serverId: s.serverId,
     );
     final reader = live.clientFor(source);
-    if (reader == null) throw LiveSourceException("Couldn't reach ${s.serverName}");
+    if (reader == null) throw LiveSourceException(tr.couldntReach(s.serverName));
     final channels = await reader.fetchChannels();
-    if (channels.isEmpty) throw LiveSourceException('${s.serverName} has no Live TV channels');
+    if (channels.isEmpty) throw LiveSourceException(tr.hasNoLive(s.serverName));
     await addLiveSource(source, channels);
     return source;
   }
@@ -1092,7 +1093,7 @@ class AppState extends ChangeNotifier {
     final source = LiveSource(
       id: id,
       kind: LiveSourceKind.m3u,
-      name: name.trim().isEmpty ? 'M3U playlist' : name.trim(),
+      name: name.trim().isEmpty ? tr.m3uPlaylist : name.trim(),
       playlistUrl: playlist == null ? _blankToNull(playlistUrl) : null,
       guideUrl: guide == null ? _blankToNull(guideUrl) : null,
     );
@@ -1337,7 +1338,7 @@ class AppState extends ChangeNotifier {
     // The server the source is on (multi-server); the main one's client
     // as it is.
     final c = servers.clientFor(source);
-    if (c == null) return Future.error(StateError('Not signed in.'));
+    if (c == null) return Future.error(StateError(tr.notSignedIn));
     final playback = settings.playback;
     final request = () async {
       try {
@@ -1581,17 +1582,22 @@ class AppState extends ChangeNotifier {
 
   /// Once per profile, an older lineup is cleaned up without a scan. One
   /// made before show identity (lineup-dedup D7) has the saved library
-  /// re-keyed and saved show keys rewritten. Then (cable-lineup D8) show
-  /// channels beyond the cap retire (favorites and channels carrying the
-  /// user's blocks stay), titles are placed by primary genre with the genre
-  /// channels that now qualify added, movie genre channels left without
-  /// movies retire, genre channels get their dayparts, and retired channels
-  /// hand their settings to the channel that took their titles, as a
-  /// refresh does. Generated channels are then numbered from 1 in their
-  /// order, around the numbers live and user-built channels hold. A safety
-  /// backup comes first; without one, it waits for the next launch.
+  /// re-keyed and saved show keys rewritten. One made before the 12 major
+  /// genres (genre-decade-channels D8) has its old genre channels become
+  /// the new ones ([_takeMajorGenres]). One made before cable-lineup (D8)
+  /// has its show channels beyond the cap retire (favorites and channels
+  /// carrying the user's blocks stay). Then, as a refresh does, the genre,
+  /// decade and decade + genre channels that now qualify are added, ones
+  /// under their minimums retire, genre channels get their dayparts, and
+  /// retired channels hand their settings to the channel that took their
+  /// titles. A lineup from before cable-lineup is then numbered from 1 in
+  /// its order, around the numbers live and user-built channels hold;
+  /// newer ones keep their numbers, added channels coming after the highest
+  /// generated one. A safety backup comes first; without one, it waits for
+  /// the next launch.
   Future<void> _cleanUpLineup() async {
-    if (settings.lineupVersion >= AppSettings.currentLineupVersion) return;
+    final from = settings.lineupVersion;
+    if (from >= AppSettings.currentLineupVersion) return;
     if (_channels.any((c) => c.auto && !c.isLive)) {
       try {
         await safetyBackup?.call(BackupReason.beforeLineupCleanup);
@@ -1601,15 +1607,23 @@ class AppState extends ChangeNotifier {
       }
       final previous = library;
       final plansBefore = _plans();
-      if (settings.lineupVersion < 1) library = previous.rekeyed();
-      final capped = _showChannelsOverCap();
+      if (from < 1) library = previous.rekeyed();
+      final orphans = _takeMajorGenres();
+      final capped = from < 2 ? _showChannelsOverCap() : const <Channel>[];
       _channels.removeWhere(capped.contains);
       final retired = [...capped, ..._mergeLibraryIntoChannels(previous, plansBefore)];
-      for (final ch in retired) {
-        if (_takerOf(ch) case final taker?) _retireInto(ch, taker, nameEdited: false);
+      for (final ch in [...orphans, ...retired]) {
+        if (_takerOf(ch) case final taker?) {
+          _retireInto(ch, taker, nameEdited: false);
+        } else if (orphans.contains(ch) && _blocks.any((b) => b.channelId == ch.id && b.generated == null)) {
+          // Nothing took its titles: it stays for the user's blocks.
+          _channels.add(ch);
+        }
       }
-      final held = {for (final c in _channels) if (!c.auto || c.isLive) c.number};
-      ChannelNumbers.numberSkipping([for (final c in _channels) if (c.auto && !c.isLive) c], held);
+      if (from < 2) {
+        final held = {for (final c in _channels) if (!c.auto || c.isLive) c.number};
+        ChannelNumbers.numberSkipping([for (final c in _channels) if (c.auto && !c.isLive) c], held);
+      }
       _setChannels(_channels);
       PlaybackDiagnostics.note('LINEUP', 'cleaned up: ${[for (final c in _channels) '${c.number} ${c.name}'].join(', ')}');
       await storage.writeJson(_libraryFile, library.toJson());
@@ -1618,6 +1632,78 @@ class AppState extends ChangeNotifier {
     }
     settings.lineupVersion = AppSettings.currentLineupVersion;
     await _saveSettings();
+  }
+
+  /// The old genre channels become the 12 major genres' (genre-decade-
+  /// channels D8), on the show and movie sides: Action & Adventure becomes
+  /// Action (Adventure when Action gets no channel), Sci-Fi & Fantasy
+  /// becomes Sci-Fi (or Fantasy), Mystery and Thriller become Thriller &
+  /// Mystery. A channel keeps its number, favorite, groups, hidden state
+  /// and the settings the user changed, and takes the new genre's name and
+  /// icon unless the user changed them; when two become one, the lower
+  /// number wins ([_retireInto]). Returns the old channels with no new
+  /// channel to become, taken out of the lineup: they retire into the
+  /// channel that takes their titles once the lineup is fitted again.
+  List<Channel> _takeMajorGenres() {
+    const becomes = {
+      'Action & Adventure': ['Action', 'Adventure'],
+      'Sci-Fi & Fantasy': ['Sci-Fi', 'Fantasy'],
+      'Mystery': [thrillerAndMystery],
+      'Thriller': [thrillerAndMystery],
+    };
+    // The names and icons the generator gave them.
+    const oldStyle = {
+      'Action & Adventure': ('Adventure TV', 'bolt'),
+      'Sci-Fi & Fantasy': ('Sci-Fi & Fantasy', 'rocket_launch'),
+      'Mystery': ('Mystery TV', 'search'),
+      'Thriller': ('Thrill TV', 'visibility'),
+    };
+    const sides = ['auto:genre:', 'auto:movies:'];
+    (String, String)? oldGenre(Channel c) {
+      if (!c.auto || c.isLive) return null;
+      for (final side in sides) {
+        if (!c.id.startsWith(side)) continue;
+        final genre = c.id.substring(side.length);
+        if (becomes.containsKey(genre)) return (side, genre);
+      }
+      return null;
+    }
+
+    final old = [for (final c in _channels) if (oldGenre(c) != null) c]..sort((a, b) => a.number.compareTo(b.number));
+    if (old.isEmpty) return const [];
+    final fresh = {for (final c in ChannelGenerator(library).generate()) c.id: c};
+    final orphans = <Channel>[];
+    for (final ch in old) {
+      final (side, genre) = oldGenre(ch)!;
+      final movies = side == 'auto:movies:';
+      final (oldName, oldIcon) = movies ? ('$genre Movies', oldStyle[genre]!.$2) : oldStyle[genre]!;
+      final named = ch.name == oldName || ch.name.startsWith('$oldName (');
+      final target = [for (final g in becomes[genre]!) '$side$g'].where(fresh.containsKey).firstOrNull;
+      if (target == null) {
+        _channels.remove(ch);
+        _schedules.remove(ch.id);
+        orphans.add(ch);
+        continue;
+      }
+      final made = fresh[target]!;
+      if (channelById(target) case final into?) {
+        _retireInto(ch, into, nameEdited: !named && into.name == made.name);
+        continue;
+      }
+      final moved = ch.withId(target)..source = made.source;
+      if (named) moved.name = made.name;
+      if (ch.icon.kind == ChannelIconKind.builtin && ch.icon.value == oldIcon) moved.icon = made.icon;
+      _channels[_channels.indexOf(ch)] = moved;
+      _schedules.remove(ch.id);
+      _channelMoved(ch.id, target);
+      for (final part in Daypart.values) {
+        if (settings.removedLineupBlocks.remove(ChannelGenerator.daypartId(ch.id, part))) {
+          settings.removedLineupBlocks.add(ChannelGenerator.daypartId(target, part));
+        }
+      }
+      PlaybackDiagnostics.note('LINEUP', 'renamed ${ch.number} ${ch.name} (${ch.id}) to ${moved.name} ($target)');
+    }
+    return orphans;
   }
 
   Future<void> _loadBlocks() async {
@@ -1783,7 +1869,7 @@ class AppState extends ChangeNotifier {
 
   Future<void> _expireSession() async {
     await signOut();
-    syncError = 'Your session expired. Please sign in again.';
+    syncError = tr.yourSessionExpired;
     notifyListeners();
   }
 
@@ -1870,7 +1956,7 @@ class AppState extends ChangeNotifier {
   Future<ProfileServer> addServer(ServerSession newSession, MediaServer newClient, {bool refresh = true}) async {
     if (serverLike(newSession) case final existing?) {
       newClient.close();
-      throw ServerException('${existing.name} is already in this profile');
+      throw ServerException(tr.isAlreadyIn(existing.name));
     }
     // The library so far is the main server's: its part until it's scanned
     // again, so a failing first scan keeps it.
@@ -1889,11 +1975,11 @@ class AppState extends ChangeNotifier {
   /// to the same channels. The main server's sign-in is saved as today's.
   Future<void> signInAgainTo(String key, ServerSession newSession, MediaServer newClient, {bool refresh = true}) async {
     final server = servers.byKey(key);
-    if (server == null) throw ServerException('That server is no longer in this profile');
+    if (server == null) throw ServerException(tr.thatServerIs);
     final other = serverLike(newSession);
     if (other != null && other.key != key) {
       newClient.close();
-      throw ServerException('${other.name} is already in this profile');
+      throw ServerException(tr.isAlreadyIn(other.name));
     }
     final previous = server.client;
     server
@@ -2016,7 +2102,7 @@ class AppState extends ChangeNotifier {
   Future<List<ServerLibrary>> allLibraries() async {
     if (!servers.multiple) {
       final c = client;
-      if (c == null) throw ServerException('Not signed in.');
+      if (c == null) throw ServerException(tr.notSignedIn);
       return c.libraries();
     }
     final out = <ServerLibrary>[];
@@ -2226,7 +2312,7 @@ class AppState extends ChangeNotifier {
       if (servers.multiple) {
         fresh = await _scanServers();
       } else {
-        syncStatus = 'Connecting to ${session?.serverName ?? 'your server'}…';
+        syncStatus = tr.connectingTo(session?.serverName ?? tr.yourServerLower);
         notifyListeners();
         fresh = await fetchLibraryIndex(c, pools: settings.commercialPools, channelRoots: _channelRoots(),
             onStatus: (s) {
@@ -2240,7 +2326,7 @@ class AppState extends ChangeNotifier {
       // a profile with no lineup yet is on its first scan.
       final restored = _restoredLineup;
       fresh = fresh.withAvailability(!_hasGenerated || restored ? null : library, DateTime.now());
-      syncStatus = 'Building channels…';
+      syncStatus = tr.buildingChannels;
       notifyListeners();
       final previous = library;
       final plansBefore = _plans();
@@ -2315,7 +2401,7 @@ class AppState extends ChangeNotifier {
     ServerException? failure;
     for (final (i, server) in list.indexed) {
       final where = '${server.name} (${i + 1} of ${list.length})';
-      syncStatus = 'Scanning $where…';
+      syncStatus = tr.scanning(where);
       notifyListeners();
       void status(String s) {
         syncStatus = '$where: $s';
@@ -2345,7 +2431,7 @@ class AppState extends ChangeNotifier {
       if (part != null) parts.add(part);
       if (_closed) break;
     }
-    if (parts.isEmpty) throw failure ?? ServerException('None of your servers could be reached.');
+    if (parts.isEmpty) throw failure ?? ServerException(tr.noneOfYour);
     return mergeLibraries(parts, previous: _hasGenerated ? library : null);
   }
 
@@ -2499,9 +2585,10 @@ class AppState extends ChangeNotifier {
       for (final c in ChannelGenerator(library, options: options).generate())
         if (!existingIds.contains(c.id) && (!c.id.startsWith(_showPrefix) || showRoom-- > 0)) c..number = 1 << 30,
     ];
-    // Each show and movie has one home; a genre channel left under its
-    // minimums is thin: retired, or not added.
-    final (:thin, :evenings) = ChannelGenerator.spreadTitles(library, [..._channels, ...added]);
+    // A show with its own channel airs only there; a genre, decade or
+    // decade + genre channel left under its minimums is thin: retired, or
+    // not added (genre-decade-channels D8).
+    final thin = ChannelGenerator.spreadTitles(library, [..._channels, ...added]);
     final retired = <Channel>[];
     for (final ch in _channels) {
       if (ch.isLive) continue;
@@ -2553,7 +2640,7 @@ class AppState extends ChangeNotifier {
         keep: existingIds.difference(renamed));
     // The genre channels' dayparts follow their titles (cable-dayparts D6).
     final today = DateTime(now.year, now.month, now.day);
-    _applyDayparts(ChannelGenerator.dayparts(library, _channels, evenings, anchor: today, planOf: configuredPlanFor));
+    _applyDayparts(ChannelGenerator.dayparts(library, _channels, anchor: today, planOf: configuredPlanFor));
     _setChannels(_channels);
     return retired;
   }
@@ -2894,19 +2981,19 @@ class AppState extends ChangeNotifier {
   // ---- Custom channels (custom-channels) -------------------------------------
 
   /// The name a new custom channel gets when none is given.
-  static const customChannelName = 'My Channel';
+  static String get customChannelName => tr.myChannel;
 
   /// A channel of [source] (collections, folders, shows, seasons, genres
   /// and movies) in [order], with the next free number, on the air at once.
   /// Throws [StateError] when nothing is picked or nothing matches.
   Future<Channel> createCustomChannel(String name, ChannelSource source,
       {PlaybackOrder order = PlaybackOrder.random}) async {
-    if (source.isMusic || !source.hasPicks) throw StateError('Choose something for the channel to play.');
+    if (source.isMusic || !source.hasPicks) throw StateError(tr.chooseSomethingFor);
     await resolveRoots(source.roots);
     final now = DateTime.now();
     final id = 'user:${now.microsecondsSinceEpoch.toRadixString(36)}';
     final playlist = buildPlaylist(library, source, order, seed: stableHash(id));
-    if (playlist.isEmpty) throw StateError('Nothing in the library matches that.');
+    if (playlist.isEmpty) throw StateError(tr.nothingInThe);
     final ch = Channel(
       id: id,
       number: ChannelNumbers.nextGenerated(_channels),
@@ -2929,11 +3016,11 @@ class AppState extends ChangeNotifier {
   /// on at the same point when it's still in [source]; otherwise the new
   /// playlist starts now.
   Future<void> setChannelSource(Channel ch, ChannelSource source, {DateTime? now}) async {
-    if (!ch.isCustom) throw StateError('Only channels you added can change what they play.');
-    if (source.isMusic || !source.hasPicks) throw StateError('Choose something for the channel to play.');
+    if (!ch.isCustom) throw StateError(tr.onlyChannelsYouAdded);
+    if (source.isMusic || !source.hasPicks) throw StateError(tr.chooseSomethingFor);
     await resolveRoots(source.roots);
     final playlist = buildPlaylist(library, source, ch.order, seed: ch.seed);
-    if (playlist.isEmpty) throw StateError('Nothing in the library matches that.');
+    if (playlist.isEmpty) throw StateError(tr.nothingInThe);
     final at = now ?? DateTime.now();
     ch.source = source;
     if (!_rebase(ch, playlist, at)) ch.anchor = at;
@@ -2949,7 +3036,7 @@ class AppState extends ChangeNotifier {
   /// Rebuilds [ch]'s order with a new seed (and, for Least watched first,
   /// today's play counts), keeping the program on the air.
   Future<void> reshuffleChannel(Channel ch, {DateTime? now}) async {
-    if (!canReshuffle(ch)) throw StateError('Only shuffled channels can be reshuffled.');
+    if (!canReshuffle(ch)) throw StateError(tr.onlyShuffledChannels);
     ch.generation++;
     _rebase(ch, buildPlaylist(library, ch.source, ch.order, seed: ch.seed), now ?? DateTime.now());
     _setChannels(_channels);
@@ -2959,7 +3046,7 @@ class AppState extends ChangeNotifier {
   /// Sets [ch]'s slot length and tail mode (null: off), keeping the program
   /// on the air in place as a break plan change does.
   Future<void> setSlotRule(Channel ch, SlotRule? rule, {DateTime? now}) async {
-    if (!ch.playsPrograms) throw StateError("This channel doesn't have slots.");
+    if (!ch.playsPrograms) throw StateError(tr.thisChannelDoesnt);
     if (rule == ch.slotRule) return;
     final before = ch.slotRule;
     ch.slotRule = rule;
@@ -3417,24 +3504,24 @@ class AppState extends ChangeNotifier {
   /// for the TV and the web admin. [newChannel]: it gets a new channel on
   /// save; [lineupMode]: it plays a lineup of shows rather than a mix.
   String? blockProblem(ProgramBlock draft, {bool newChannel = false, bool lineupMode = false}) {
-    if (draft.title.trim().isEmpty) return 'Give the block a title.';
-    if (draft.days.isEmpty) return 'Pick at least one day.';
-    if (draft.startMinute == draft.endMinute) return 'The block has to end at a different time than it starts.';
-    if (!newChannel && channelById(draft.channelId) == null) return 'Choose a channel.';
-    if (lineupMode && !draft.hasLineup) return 'Add a show to the lineup.';
+    if (draft.title.trim().isEmpty) return tr.giveTheBlock;
+    if (draft.days.isEmpty) return tr.pickAtLeast;
+    if (draft.startMinute == draft.endMinute) return tr.theBlockHas;
+    if (!newChannel && channelById(draft.channelId) == null) return tr.chooseAChannel;
+    if (lineupMode && !draft.hasLineup) return tr.addAShow;
     if (blockPlaylist(draft).isEmpty) {
-      if (lineupMode) return "The lineup's shows have no episodes. Pick other shows.";
+      if (lineupMode) return tr.theLineupsShows;
       final floor = draft.source.ratingFloor;
       // Something matches, just nothing rated high enough (late-night-drift D7).
       if (floor != null &&
           buildPlaylist(library, draft.source.copyWith(ratingFloor: () => null), draft.order, seed: 0).isNotEmpty) {
-        return 'Nothing in this mix is rated ${floor.shortLabel} or higher. Choose a lower rating or other shows.';
+        return tr.nothingInThis(floor.shortLabel);
       }
-      return 'Choose some shows or movies for the block to play.';
+      return tr.chooseSomeShows;
     }
     if (!newChannel) {
       final clash = blockConflict(draft);
-      if (clash != null) return 'This overlaps "${clash.title}" (${describeBlock(clash)}) on the same channel.';
+      if (clash != null) return tr.thisOverlapsOn(clash.title, describeBlock(clash));
     }
     return null;
   }
@@ -3532,7 +3619,7 @@ class AppState extends ChangeNotifier {
     final ch = Channel(
       id: 'user:${now.microsecondsSinceEpoch.toRadixString(36)}',
       number: ChannelNumbers.nextGenerated(_channels),
-      name: name.trim().isEmpty ? 'Block Channel' : name.trim(),
+      name: name.trim().isEmpty ? tr.blockChannel : name.trim(),
       icon: const ChannelIcon.builtin('live_tv'),
       source: const ChannelSource(),
       order: PlaybackOrder.cyclic,
@@ -3549,15 +3636,15 @@ class AppState extends ChangeNotifier {
   /// A music channel of [source]'s songs or music videos, shuffled, with
   /// the next free number. Throws [StateError] when nothing matches.
   Future<Channel> createMusicChannel(String name, ChannelSource source) async {
-    if (!source.isMusic) throw StateError('Choose songs or music videos.');
+    if (!source.isMusic) throw StateError(tr.chooseSongsOr);
     final now = DateTime.now();
     final id = 'user:${now.microsecondsSinceEpoch.toRadixString(36)}';
     final playlist = buildPlaylist(library, source, PlaybackOrder.random, seed: stableHash(id));
-    if (playlist.isEmpty) throw StateError('Nothing in the library matches that.');
+    if (playlist.isEmpty) throw StateError(tr.nothingInThe);
     final ch = Channel(
       id: id,
       number: ChannelNumbers.nextGenerated(_channels),
-      name: name.trim().isEmpty ? 'Music' : name.trim(),
+      name: name.trim().isEmpty ? tr.music : name.trim(),
       icon: ChannelIcon.builtin(source.includeMusicVideos ? 'music_video' : 'music_note'),
       source: source,
       order: PlaybackOrder.random,
@@ -3574,7 +3661,7 @@ class AppState extends ChangeNotifier {
   /// blocks and group places. Generated and live channels can only be
   /// hidden.
   Future<void> deleteUserChannel(Channel ch) async {
-    if (ch.auto || ch.isLive) throw StateError('Only channels you added can be removed. Hide this one instead.');
+    if (ch.auto || ch.isLive) throw StateError(tr.onlyChannelsYou);
     _blocks = _blocks.where((b) => b.channelId != ch.id).toList();
     for (final g in settings.groups) {
       g.channelIds = [for (final id in g.channelIds) if (id != ch.id) id];

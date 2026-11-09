@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import '../api_client.dart';
 import '../app.dart';
 import '../widgets/common.dart';
+import '../../l10n/tr.dart';
 
 /// The server and its profiles' sign-ins: what the docker-server-core setup
 /// page did (restore or start fresh, signing profiles in to Jellyfin, Emby
@@ -47,8 +48,8 @@ class _ServerPageState extends State<ServerPage> {
   }
 
   Future<void> _restore() async {
-    final file = await openFile(acceptedTypeGroups: const [
-      XTypeGroup(label: 'Nightingale TV backups', extensions: ['ntvbackup']),
+    final file = await openFile(acceptedTypeGroups: [
+      XTypeGroup(label: tr.nightingaleTvBackups, extensions: ['ntvbackup']),
     ]);
     if (file == null || !mounted) return;
     final api = context.api;
@@ -58,18 +59,18 @@ class _ServerPageState extends State<ServerPage> {
     if (summary is! Map || !mounted) return;
     final profiles = (summary['profiles'] as List).join(', ');
     final ok = await confirm(context,
-        title: 'Restore this backup?',
-        message: 'From ${summary['when']} (${summary['device']}): $profiles. '
-            '${summary['channels']} channels, ${summary['blocks']} programming blocks, ${summary['logos']} logos.'
-            '${summary['backsUpFirst'] == true ? '\n\nA backup of what\'s here now is saved first.' : ''}',
-        action: 'Restore');
+        title: tr.restoreThisBackup,
+        message: tr.backupSummary('${summary['when']}', '${summary['device']}', profiles, '${summary['channels']}', '${summary['blocks']}',
+                '${summary['logos']}') +
+            (summary['backsUpFirst'] == true ? '\n\n${tr.backupSavedFirst}' : ''),
+        action: tr.restore);
     if (!ok || !mounted) return;
     setState(() => _restoring = true);
     final done = await attempt(context, () => api.post('restore/${summary['id']}/confirm'));
     if (!mounted) return;
     setState(() => _restoring = false);
     if (done != null) {
-      showMessage(context, 'Restored the backup.');
+      showMessage(context, tr.restoredTheBackup2);
       await context.session.refresh();
       await _load();
     }
@@ -91,42 +92,41 @@ class _ServerPageState extends State<ServerPage> {
     final status = _status;
     final session = context.session;
     if (status == null) {
-      return PageBody(title: 'Server and sign-in', children: [
+      return PageBody(title: tr.serverAndSign, children: [
         if (_error == null) const Center(child: CircularProgressIndicator()) else ErrorText(_error),
       ]);
     }
     final profiles = (status['profiles'] as List).cast<Map<String, Object?>>();
-    return PageBody(title: 'Server and sign-in', children: [
-      if (status['started'] != true) const Section(children: [Busy(text: 'The server is starting…')]),
-      if (profiles.isEmpty) const Section(children: [Text('No profiles are assigned to you yet. Ask an admin.')]),
+    return PageBody(title: tr.serverAndSign, children: [
+      if (status['started'] != true) Section(children: [Busy(text: tr.theServerIs)]),
+      if (profiles.isEmpty) Section(children: [Text(tr.noProfilesAre)]),
       for (final p in profiles) _ProfileSignIn(profile: p, onChanged: _load),
       if (session.isAdmin) ...[
-        Section(title: 'Restore a backup', children: [
-          const Text('Move a household here from a TV or another server: its profiles, channels, blocks, logos and '
-              'export settings.'),
+        Section(title: tr.restoreABackup, children: [
+          Text(tr.moveAHousehold),
           const SizedBox(height: 12),
           Row(children: [
             FilledButton.icon(
               icon: const Icon(Icons.restore),
-              label: const Text('Choose a backup file…'),
+              label: Text(tr.chooseABackup),
               onPressed: _restoring ? null : _restore,
             ),
-            if (_restoring) const Padding(padding: EdgeInsets.only(left: 12), child: Busy(text: 'Restoring…')),
+            if (_restoring) Padding(padding: EdgeInsets.only(left: 12), child: Busy(text: tr.restoring)),
           ]),
         ]),
         if (status['canStartFresh'] == true)
-          Section(title: 'Start fresh', children: [
-            const Text('Name a profile, sign it in to your media server, and its channels are made and exported.'),
+          Section(title: tr.startFresh, children: [
+            Text(tr.nameAProfile),
             const SizedBox(height: 12),
             TextField(
               controller: _freshName,
-              decoration: const InputDecoration(labelText: 'Profile name'),
+              decoration: InputDecoration(labelText: tr.profileName),
               onSubmitted: (_) => _startFresh(),
             ),
             const SizedBox(height: 12),
             Align(
               alignment: Alignment.centerLeft,
-              child: FilledButton(onPressed: _startFresh, child: const Text('Start fresh')),
+              child: FilledButton(onPressed: _startFresh, child: Text(tr.startFresh)),
             ),
           ]),
       ],
@@ -152,12 +152,12 @@ class _ProfileSignIn extends StatelessWidget {
     final problem = profile['problem'] as String?;
     return Section(title: name, children: [
       if (signedIn)
-        Text('Signed in to ${profile['server']} as ${profile['user']}.')
+        Text(tr.signedInTo('${profile['server']}', '${profile['user']}'))
       else if (hint != null)
-        Text('Was signed in to ${hint['serverName'] ?? hint['server']} as ${hint['user']}. Sign in again.')
+        Text(tr.wasSignedIn('${hint['serverName'] ?? hint['server']}', '${hint['user']}'))
       else
-        const Text('Not signed in.'),
-      if (profile['signingIn'] == true) const Padding(padding: EdgeInsets.only(top: 8), child: Busy(text: 'Signing in…')),
+        Text(tr.notSignedIn),
+      if (profile['signingIn'] == true) Padding(padding: EdgeInsets.only(top: 8), child: Busy(text: tr.signingIn)),
       if (problem != null) Padding(padding: const EdgeInsets.only(top: 8), child: Text(problem)),
       const SizedBox(height: 12),
       Wrap(spacing: 8, runSpacing: 8, children: [
@@ -167,18 +167,18 @@ class _ProfileSignIn extends StatelessWidget {
             if (context.mounted) await context.session.refresh();
             await onChanged();
           },
-          child: Text(signedIn ? 'Sign in again' : 'Sign in'),
+          child: Text(signedIn ? tr.signInAgain : tr.signIn),
         ),
         if (signedIn)
           OutlinedButton(
             onPressed: () async {
               final ok = await confirm(context,
-                  title: 'Sign $name out?', message: 'Its channels stay; it needs signing in to play.', action: 'Sign out');
+                  title: tr.signOut4(name), message: tr.itsChannelsStayIt, action: tr.signOut);
               if (!ok || !context.mounted) return;
               await attempt(context, () => context.api.delete('profiles/$id/session'), profileId: id);
               await onChanged();
             },
-            child: const Text('Sign out'),
+            child: Text(tr.signOut),
           ),
       ]),
     ]);
@@ -266,7 +266,7 @@ class _SignInFlowState extends State<_SignInFlow> {
           if (_user.text.isEmpty) _user.text = hint['user'] as String? ?? '';
         }
       } else {
-        _error ??= "Couldn't do that. Try again.";
+        _error ??= tr.couldntDoThat;
       }
     });
   }
@@ -294,33 +294,33 @@ class _SignInFlowState extends State<_SignInFlow> {
       children.add(const Center(child: CircularProgressIndicator()));
     } else if (step['finished'] == true) {
       children.addAll([
-        Text(widget.path == null ? '${widget.name} is signed in.' : 'Done.', style: text.titleMedium),
+        Text(widget.path == null ? tr.isSignedIn(widget.name) : 'Done.', style: text.titleMedium),
         const SizedBox(height: 8),
         Text(widget.path == null
-            ? 'Its library is being read and its channels made. This takes a minute or two.'
-            : "The library is being read again; the server's programs join the channels when it's done."),
+            ? tr.itsLibraryIs
+            : tr.theLibraryIs),
         const SizedBox(height: 16),
-        FilledButton(onPressed: () => Navigator.of(context).pop(), child: const Text('Done')),
+        FilledButton(onPressed: () => Navigator.of(context).pop(), child: Text(tr.done)),
       ]);
     } else {
       switch (step['stage']) {
         case 'server':
           children.addAll([
-            Text('Connect to your server', style: text.titleLarge),
+            Text(tr.connectToYour, style: text.titleLarge),
             const SizedBox(height: 12),
             TextField(
               controller: _address,
               autofocus: true,
               keyboardType: TextInputType.url,
-              decoration: const InputDecoration(labelText: 'Server address', hintText: 'https://media.example.org:8920'),
+              decoration: InputDecoration(labelText: tr.serverAddress, hintText: 'https://media.example.org:8920'),
               onSubmitted: (_) => _send({'action': 'connect', 'address': _address.text.trim()}),
             ),
             const SizedBox(height: 12),
             FilledButton(
                 onPressed: busy ? null : () => _send({'action': 'connect', 'address': _address.text.trim()}),
-                child: const Text('Connect')),
+                child: Text(tr.connect)),
             const SizedBox(height: 8),
-            OutlinedButton(onPressed: busy ? null : () => _send({'action': 'plex'}), child: const Text('Sign in with Plex')),
+            OutlinedButton(onPressed: busy ? null : () => _send({'action': 'plex'}), child: Text(tr.signInWith)),
           ]);
         case 'method':
           children.addAll([
@@ -330,24 +330,24 @@ class _SignInFlowState extends State<_SignInFlow> {
             if (step['quickConnect'] == true) ...[
               FilledButton.tonal(
                   onPressed: busy ? null : () => _send({'action': 'quickConnect'}),
-                  child: const Text('Quick Connect (use your phone)')),
+                  child: Text(tr.quickConnectUse)),
               const SizedBox(height: 8),
             ],
             FilledButton(
-                onPressed: busy ? null : () => _send({'action': 'choosePassword'}), child: const Text('Sign in with password')),
+                onPressed: busy ? null : () => _send({'action': 'choosePassword'}), child: Text(tr.signInWithPassword)),
             const SizedBox(height: 8),
-            TextButton(onPressed: busy ? null : () => _send({'action': 'back'}), child: const Text('Different server')),
+            TextButton(onPressed: busy ? null : () => _send({'action': 'back'}), child: Text(tr.differentServer)),
           ]);
         case 'password':
           void signIn() => _send({'action': 'password', 'user': _user.text.trim(), 'password': _password.text});
           children.addAll([
-            Text('Sign in to ${server?['name'] ?? kind}', style: text.titleLarge),
+            Text(tr.signInTo2('${server?['name'] ?? kind}'), style: text.titleLarge),
             if (server != null) Text('$kind ${server['version']} · ${server['url']}', style: text.bodySmall),
             const SizedBox(height: 12),
             TextField(
               controller: _user,
               autofocus: _user.text.isEmpty,
-              decoration: const InputDecoration(labelText: 'Username'),
+              decoration: InputDecoration(labelText: tr.username),
               textInputAction: TextInputAction.next,
             ),
             const SizedBox(height: 12),
@@ -355,36 +355,36 @@ class _SignInFlowState extends State<_SignInFlow> {
               controller: _password,
               autofocus: _user.text.isNotEmpty,
               obscureText: true,
-              decoration: const InputDecoration(labelText: 'Password'),
+              decoration: InputDecoration(labelText: tr.password),
               onSubmitted: (_) => signIn(),
             ),
             const SizedBox(height: 12),
-            FilledButton(onPressed: busy ? null : signIn, child: const Text('Sign in')),
-            TextButton(onPressed: busy ? null : () => _send({'action': 'back'}), child: const Text('Back')),
+            FilledButton(onPressed: busy ? null : signIn, child: Text(tr.signIn)),
+            TextButton(onPressed: busy ? null : () => _send({'action': 'back'}), child: Text(tr.back)),
           ]);
         case 'quickConnect':
           children.addAll([
-            Text('Quick Connect', style: text.titleLarge),
+            Text(tr.quickConnect, style: text.titleLarge),
             const SizedBox(height: 8),
-            Text('On your phone or computer, open $kind → your profile → Quick Connect, and enter this code:'),
+            Text(tr.onYourPhone(kind)),
             code('${step['quickConnectCode']}'),
-            const Text('Waiting for approval…'),
+            Text(tr.waitingForApproval),
             const SizedBox(height: 12),
-            OutlinedButton(onPressed: () => _send({'action': 'back'}), child: const Text('Cancel')),
+            OutlinedButton(onPressed: () => _send({'action': 'back'}), child: Text(tr.cancel)),
           ]);
         case 'plexCode':
           children.addAll([
-            Text('Sign in with Plex', style: text.titleLarge),
+            Text(tr.signInWith, style: text.titleLarge),
             const SizedBox(height: 8),
-            const Text('Go to plex.tv/link on your phone or computer and enter this code.'),
+            Text(tr.goToPlex),
             if (step['plexCode'] != null) code('${step['plexCode']}'),
-            const Text('Waiting for the code to be linked…'),
+            Text(tr.waitingForThe),
             const SizedBox(height: 12),
-            OutlinedButton(onPressed: () => _send({'action': 'back'}), child: const Text('Cancel')),
+            OutlinedButton(onPressed: () => _send({'action': 'back'}), child: Text(tr.cancel)),
           ]);
         case 'plexUsers':
           children.addAll([
-            Text("Who's signing in?", style: text.titleLarge),
+            Text(tr.whosSigningIn, style: text.titleLarge),
             const SizedBox(height: 12),
             for (final u in (step['homeUsers'] as List).cast<Map>())
               ListTile(
@@ -393,12 +393,12 @@ class _SignInFlowState extends State<_SignInFlow> {
                 trailing: u['protected'] == true ? const Icon(Icons.lock_outline) : null,
                 onTap: busy ? null : () => _send({'action': 'homeUser', 'id': u['id']}),
               ),
-            TextButton(onPressed: busy ? null : () => _send({'action': 'back'}), child: const Text('Back')),
+            TextButton(onPressed: busy ? null : () => _send({'action': 'back'}), child: Text(tr.back)),
           ]);
         case 'plexPin':
           void enter() => _send({'action': 'homePin', 'pin': _pin.text});
           children.addAll([
-            Text('PIN for ${step['homeUser'] ?? ''}', style: text.titleLarge),
+            Text(tr.pinFor('${step['homeUser'] ?? ''}'), style: text.titleLarge),
             const SizedBox(height: 12),
             TextField(
               controller: _pin,
@@ -406,26 +406,26 @@ class _SignInFlowState extends State<_SignInFlow> {
               obscureText: true,
               keyboardType: TextInputType.number,
               maxLength: 4,
-              decoration: const InputDecoration(labelText: 'PIN'),
+              decoration: InputDecoration(labelText: tr.pin),
               onSubmitted: (_) => enter(),
             ),
-            FilledButton(onPressed: busy ? null : enter, child: const Text('OK')),
-            TextButton(onPressed: busy ? null : () => _send({'action': 'back'}), child: const Text('Back')),
+            FilledButton(onPressed: busy ? null : enter, child: Text(tr.ok)),
+            TextButton(onPressed: busy ? null : () => _send({'action': 'back'}), child: Text(tr.back)),
           ]);
         case 'plexServers':
           final servers = (step['servers'] as List).cast<Map>();
           children.addAll([
-            Text('Choose a server', style: text.titleLarge),
+            Text(tr.chooseAServer, style: text.titleLarge),
             const SizedBox(height: 12),
             for (final s in servers)
               ListTile(
                 title: Text(s['label'] as String),
                 // Already in the profile (adding a server): not pickable.
-                trailing: Text(s['added'] == true ? 'Added' : (s['online'] == true ? 'Online' : 'Offline')),
+                trailing: Text(s['added'] == true ? tr.added : (s['online'] == true ? tr.online : tr.offline)),
                 enabled: s['added'] != true,
                 onTap: busy || s['added'] == true ? null : () => _send({'action': 'server', 'id': s['id']}),
               ),
-            TextButton(onPressed: busy ? null : () => _send({'action': 'back'}), child: const Text('Back')),
+            TextButton(onPressed: busy ? null : () => _send({'action': 'back'}), child: Text(tr.back)),
           ]);
       }
       if (busy) children.add(const Padding(padding: EdgeInsets.only(top: 8), child: LinearProgressIndicator()));
@@ -436,8 +436,8 @@ class _SignInFlowState extends State<_SignInFlow> {
       child: SingleChildScrollView(
         child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
           Row(children: [
-            Expanded(child: Text(widget.title ?? 'Sign ${widget.name} in', style: text.labelLarge)),
-            IconButton(tooltip: 'Close', icon: const Icon(Icons.close), onPressed: _close),
+            Expanded(child: Text(widget.title ?? tr.signIn2(widget.name), style: text.labelLarge)),
+            IconButton(tooltip: tr.close, icon: const Icon(Icons.close), onPressed: _close),
           ]),
           ...children,
         ]),

@@ -3,4 +3,4 @@
 ///
 /// Bump it with pubspec.yaml: test/app_version_test.dart and every release
 /// build (tool/check_version.sh) fail while the two differ.
-const appVersion = '1.2.0';
+const appVersion = '1.2.1';

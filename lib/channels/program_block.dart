@@ -1,6 +1,8 @@
 import 'dart:math';
 
 import 'channel.dart';
+import '../ui/format.dart';
+import '../l10n/tr.dart';
 
 /// A calendar day without a year, for seasonal ranges that repeat yearly.
 class MonthDay implements Comparable<MonthDay> {
@@ -45,8 +47,7 @@ class MonthDay implements Comparable<MonthDay> {
 
   @override
   String toString() {
-    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-    return '${months[month - 1]} $day';
+    return formatMonthDay(month, day);
   }
 }
 
@@ -219,11 +220,10 @@ class ProgramBlock {
 
 /// "Every day", "Weekdays", "Weekends", or "Sat" / "Mon, Wed, Fri".
 String describeDays(Set<int> days) {
-  const names = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
   if (days.length == 7) return 'Every day';
   if (days.length == 5 && days.every((d) => d <= 5)) return 'Weekdays';
   if (days.length == 2 && days.containsAll({6, 7})) return 'Weekends';
-  return [for (var d = 1; d <= 7; d++) if (days.contains(d)) names[d - 1]].join(', ');
+  return [for (var d = 1; d <= 7; d++) if (days.contains(d)) weekdayName(d)].join(', ');
 }
 
 /// Whether [a] and [b] would ever be on the same channel at the same time.
@@ -244,7 +244,7 @@ bool blocksOverlap(ProgramBlock a, ProgramBlock b) {
 /// The late-night shortcut's title, days, times and minimum rating
 /// (late-night-drift D4), applied to [block] in place.
 ProgramBlock lateNightDefaults(ProgramBlock block) => block
-  ..title = 'Late Night'
+  ..title = tr.lateNightTitle
   ..days = {1, 2, 3, 4, 5, 6, 7}
   ..startMinute = 23 * 60
   ..endMinute = 4 * 60

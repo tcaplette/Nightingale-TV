@@ -7,47 +7,75 @@ import '../profiles/profile.dart';
 import 'channel.dart';
 import 'program_block.dart';
 
-/// Merges the many spellings metadata providers use for the same genre.
-String normalizeGenre(String raw) {
+/// The merged genre of thrillers, mysteries and suspense (genres-and-decades).
+const thrillerAndMystery = 'Thriller & Mystery';
+
+/// The genres one server tag counts as (genres-and-decades D1): the many
+/// spellings providers use merge, and a combined tag ("Action & Adventure",
+/// "Sci-Fi & Fantasy") counts as both of its genres.
+Set<String> genresOf(String raw) {
   final g = raw.trim().toLowerCase();
-  const map = {
-    'action': 'Action & Adventure',
-    'adventure': 'Action & Adventure',
-    'action & adventure': 'Action & Adventure',
-    'action and adventure': 'Action & Adventure',
-    'science fiction': 'Sci-Fi & Fantasy',
-    'sci-fi': 'Sci-Fi & Fantasy',
-    'sci-fi & fantasy': 'Sci-Fi & Fantasy',
-    'fantasy': 'Sci-Fi & Fantasy',
-    'children': 'Kids',
-    'kids': 'Kids',
-    'animation': 'Animation',
-    'anime': 'Animation',
-    'comedy': 'Comedy',
-    'sitcom': 'Comedy',
-    'family': 'Family',
-    'drama': 'Drama',
-    'crime': 'Crime',
-    'mystery': 'Mystery',
-    'thriller': 'Thriller',
-    'suspense': 'Thriller',
-    'horror': 'Horror',
-    'romance': 'Romance',
-    'documentary': 'Documentary',
-    'music': 'Music',
-    'musical': 'Music',
-    'reality': 'Reality',
-    'game show': 'Game Shows',
-    'western': 'Western',
-    'war': 'War',
-    'history': 'History',
-    'news': 'News',
-    'talk': 'Talk',
-    'soap': 'Soap',
-    'sport': 'Sports',
-    'sports': 'Sports',
+  const map = <String, List<String>>{
+    'action': ['Action'],
+    'adventure': ['Adventure'],
+    'action & adventure': ['Action', 'Adventure'],
+    'action and adventure': ['Action', 'Adventure'],
+    'science fiction': ['Sci-Fi'],
+    'sci-fi': ['Sci-Fi'],
+    'fantasy': ['Fantasy'],
+    'sci-fi & fantasy': ['Sci-Fi', 'Fantasy'],
+    'science fiction & fantasy': ['Sci-Fi', 'Fantasy'],
+    'children': ['Kids'],
+    'kids': ['Kids'],
+    'animation': ['Animation'],
+    'anime': ['Animation'],
+    'comedy': ['Comedy'],
+    'sitcom': ['Comedy'],
+    'family': ['Family'],
+    'drama': ['Drama'],
+    'crime': ['Crime'],
+    'mystery': [thrillerAndMystery],
+    'thriller': [thrillerAndMystery],
+    'suspense': [thrillerAndMystery],
+    'horror': ['Horror'],
+    'romance': ['Romance'],
+    'documentary': ['Documentary'],
+    'music': ['Music'],
+    'musical': ['Music'],
+    'reality': ['Reality'],
+    'game show': ['Game Shows'],
+    'western': ['Western'],
+    'war': ['War'],
+    'history': ['History'],
+    'news': ['News'],
+    'talk': ['Talk'],
+    'soap': ['Soap'],
+    'sport': ['Sports'],
+    'sports': ['Sports'],
   };
-  return map[g] ?? raw.trim();
+  final mapped = map[g];
+  if (mapped != null) return {...mapped};
+  final kept = raw.trim();
+  return kept.isEmpty ? {} : {kept};
+}
+
+/// A title's genres: every genre its [tags] count as, in the order the
+/// server first lists them.
+Set<String> titleGenres(Iterable<String> tags) => {for (final t in tags) ...genresOf(t)};
+
+/// Saved genre names from before the 12 major genres, converted
+/// (genres-and-decades D2): "Action & Adventure" is Action and Adventure,
+/// "Sci-Fi & Fantasy" is Sci-Fi and Fantasy, Thriller and Mystery are
+/// Thriller & Mystery. Without old names, [saved] comes back as it was.
+List<String> migrateGenres(List<String> saved) {
+  const old = {
+    'Action & Adventure': ['Action', 'Adventure'],
+    'Sci-Fi & Fantasy': ['Sci-Fi', 'Fantasy'],
+    'Thriller': [thrillerAndMystery],
+    'Mystery': [thrillerAndMystery],
+  };
+  if (!saved.any(old.containsKey)) return saved;
+  return {for (final g in saved) ...(old[g] ?? [g])}.toList()..sort();
 }
 
 /// Merges the many spellings music metadata uses for the same genre
@@ -111,14 +139,19 @@ String normalizeMusicGenre(String raw) {
   return map[g] ?? raw.trim();
 }
 
-/// The decade (its first year) of [year], from the 1950s to the 2020s.
+/// The decade (its first year) of [year], from the 1900s to the 2090s.
 int? decadeOf(int? year) {
-  if (year == null || year < 1950 || year >= 2030) return null;
+  if (year == null || year < 1900 || year >= 2100) return null;
   return year ~/ 10 * 10;
 }
 
-/// "50s" … "90s", then "2000s", "2010s", "2020s".
-String decadeName(int decade) => decade < 2000 ? '${decade % 100}s' : '${decade}s';
+/// "1900s" and "1910s", then "20s" … "90s", then "2000s", "2010s" …
+String decadeName(int decade) => decade >= 1920 && decade < 2000 ? '${decade % 100}s' : '${decade}s';
+
+/// [item]'s decade: a movie's or song's by its year, an episode's by its
+/// own year, or its show's when it has none (genres-and-decades).
+int? itemDecade(LibraryIndex library, MediaEntry item) =>
+    decadeOf(item.year ?? library.seriesByKey[item.seriesKey]?.year);
 
 /// Cable-style names and icons for genre channels.
 const _genreStyle = <String, (String name, String icon)>{
@@ -126,12 +159,13 @@ const _genreStyle = <String, (String name, String icon)>{
   'Animation': ('Toon TV', 'animation'),
   'Comedy': ('Laugh Track', 'theater_comedy'),
   'Family': ('Family Room', 'family_restroom'),
-  'Action & Adventure': ('Adventure TV', 'bolt'),
-  'Sci-Fi & Fantasy': ('Sci-Fi & Fantasy', 'rocket_launch'),
-  'Mystery': ('Mystery TV', 'search'),
+  'Action': ('Action TV', 'bolt'),
+  'Adventure': ('Adventure TV', 'public'),
+  'Sci-Fi': ('Sci-Fi TV', 'rocket_launch'),
+  'Fantasy': ('Fantasy TV', 'castle'),
+  thrillerAndMystery: ('Mystery & Thrills', 'search'),
   'Drama': ('Drama Central', 'theaters'),
   'Crime': ('Crime & Justice', 'local_police'),
-  'Thriller': ('Thrill TV', 'visibility'),
   'Horror': ('Fright Night', 'nightlight'),
   'Romance': ('Romance TV', 'favorite'),
   'Documentary': ('Discovery Zone', 'explore'),
@@ -153,6 +187,10 @@ class GeneratorOptions {
     this.showsPerShowChannel = 8,
     this.minMoviesForMovieChannel = 5,
     this.minMoviesPerMovieGenre = 12,
+    this.minSeriesPerCombo = 3,
+    this.minEpisodesPerCombo = 60,
+    this.minMoviesPerCombo = 25,
+    this.maxCombosPerSide = 4,
     this.overlapThreshold = 0.85,
     this.minMusicVideos = 40,
     this.minSongs = 150,
@@ -167,7 +205,20 @@ class GeneratorOptions {
   /// up to [maxShowChannels].
   final int showsPerShowChannel;
   final int minMoviesForMovieChannel;
+
+  /// What a movie genre or decade channel, or a genre channel's Evening,
+  /// needs at least.
   final int minMoviesPerMovieGenre;
+
+  /// What a decade + genre channel needs at least: shows and their
+  /// episodes on the show side, movies on the movie side.
+  final int minSeriesPerCombo;
+  final int minEpisodesPerCombo;
+  final int minMoviesPerCombo;
+
+  /// At most this many decade + genre channels for shows, and as many for
+  /// movies.
+  final int maxCombosPerSide;
 
   /// Skip a genre channel whose shows overlap an earlier one this much
   /// (Jaccard index). Small libraries tag the same shows with many genres.
@@ -244,39 +295,87 @@ class ChannelGenerator {
           ChannelSource(excluded: _sorted(marathon)), PlaybackOrder.random);
     }
 
-    // Genre channels, biggest first, skipping near-duplicates.
-    final showsByGenre = <String, Set<String>>{};
-    for (final s in library.series) {
-      for (final g in s.genres.map(normalizeGenre)) {
-        showsByGenre.putIfAbsent(g, () => {}).add(s.key);
+    // Show genre, decade and decade + genre channels (genre-decade-channels
+    // D5), from the shows without a marathon channel: each holds every one
+    // of its shows, episodes going by their own decade.
+    final shown = [for (final s in library.series) if (!marathon.contains(s.key)) s];
+    final showEpisodes = <String, Set<String>>{};
+    final showsOfGenre = <String, Set<String>>{};
+    final showsOfDecade = <int, Set<String>>{};
+    final episodesOfDecade = <int, Set<String>>{};
+    final episodesOfPair = <(int, String), Set<String>>{};
+    final showsOfPair = <(int, String), Set<String>>{};
+    for (final s in shown) {
+      final eps = library.episodesBySeries[s.key] ?? const [];
+      if (eps.isEmpty) continue;
+      showEpisodes[s.key] = {for (final e in eps) e.id};
+      final genres = titleGenres(s.genres);
+      for (final g in genres) {
+        showsOfGenre.putIfAbsent(g, () => {}).add(s.key);
+      }
+      for (final e in eps) {
+        final d = decadeOf(e.year ?? s.year);
+        if (d == null) continue;
+        episodesOfDecade.putIfAbsent(d, () => {}).add(e.id);
+        showsOfDecade.putIfAbsent(d, () => {}).add(s.key);
+        for (final g in genres) {
+          episodesOfPair.putIfAbsent((d, g), () => {}).add(e.id);
+          showsOfPair.putIfAbsent((d, g), () => {}).add(s.key);
+        }
       }
     }
-    int episodeCount(Set<String> shows) => shows.fold(0, (n, k) => n + episodesOf(k));
-    final genres = showsByGenre.entries
-        .where((e) =>
-            e.value.length >= options.minSeriesPerGenre &&
-            episodeCount(e.value) >= options.minEpisodesPerGenre &&
+    Set<String> episodesOfShows(Set<String> shows) => {for (final k in shows) ...?showEpisodes[k]};
+    final allEpisodes = episodesOfShows(showEpisodes.keys.toSet());
+    final showGenreSets = {
+      for (final MapEntry(key: g, value: shows) in showsOfGenre.entries)
+        if (shows.length >= options.minSeriesPerGenre &&
             // A genre covering every show is just "All Shows" again.
-            e.value.length < library.series.length)
-        .toList()
-      ..sort((a, b) => episodeCount(b.value).compareTo(episodeCount(a.value)));
-    final usedShowSets = <Set<String>>[];
-    final candidates = <String>[];
-    for (final g in genres) {
-      if (usedShowSets.any((used) => _jaccard(used, g.value) >= options.overlapThreshold)) continue;
-      usedShowSets.add(g.value);
-      candidates.add(g.key);
-    }
-    // Each show airs on the channel of its first listed genre; a genre left
-    // without enough of its own gives way.
-    final showsOf = {for (final g in candidates) g: showsByGenre[g]!.difference(marathon)};
-    final genreShows = _pickAndShare(candidates, candidates.length, showsOf, episodesOf,
-        (shows) => shows.length < options.minSeriesPerGenre || episodeCount(shows) < options.minEpisodesPerGenre,
-        rank: (show, g) => _rank(library.seriesByKey[show]!.genres, [g]));
-    for (final MapEntry(key: g, value: mine) in genreShows.entries) {
+            shows.length < showEpisodes.length)
+          g: episodesOfShows(shows),
+    };
+    final showGenres = _choose(
+        {
+          for (final e in showGenreSets.entries)
+            if (e.value.length >= options.minEpisodesPerGenre) e.key: e.value
+        },
+        _bySize,
+        const [],
+        options.overlapThreshold);
+    final showDecades = _choose(
+        {
+          for (final e in episodesOfDecade.entries)
+            if (showsOfDecade[e.key]!.length >= options.minSeriesPerGenre &&
+                e.value.length >= options.minEpisodesPerGenre)
+              e.key: e.value
+        },
+        (a, b) => a.key.compareTo(b.key),
+        [if (library.series.length > 1) allEpisodes, ...showGenres.values],
+        options.overlapThreshold);
+    final showPairs = _pairs(
+        {
+          for (final e in episodesOfPair.entries)
+            if (showGenres.containsKey(e.key.$2) &&
+                showDecades.containsKey(e.key.$1) &&
+                showsOfPair[e.key]!.length >= options.minSeriesPerCombo &&
+                e.value.length >= options.minEpisodesPerCombo)
+              e.key: e.value
+        },
+        showGenres,
+        showDecades,
+        options);
+    final skipMarathon = _sorted(marathon);
+    for (final g in showGenres.keys) {
       final style = _genreStyle[g] ?? (g, 'live_tv');
       add('auto:genre:$g', style.$1, ChannelIcon.builtin(style.$2),
-          ChannelSource(genres: [g], excluded: _sorted(showsByGenre[g]!.difference(mine))), PlaybackOrder.cyclic);
+          ChannelSource(genres: [g], excluded: skipMarathon), PlaybackOrder.cyclic);
+    }
+    for (final d in showDecades.keys) {
+      add('auto:decade:$d', '${decadeName(d)} TV', const ChannelIcon.builtin('tv'),
+          ChannelSource(decades: [d], excluded: skipMarathon), PlaybackOrder.cyclic);
+    }
+    for (final (d, g) in showPairs.keys) {
+      add('auto:decade:$d:$g', '${decadeName(d)} $g TV', ChannelIcon.builtin(_genreStyle[g]?.$2 ?? 'live_tv'),
+          ChannelSource(genres: [g], decades: [d], excluded: skipMarathon), PlaybackOrder.cyclic);
     }
 
     for (final s in bigShows) {
@@ -291,45 +390,69 @@ class ChannelGenerator {
       );
     }
 
-    // Movies go to the evenings of the genre channels of their first listed
-    // genre (cable-lineup D5); an evening needs 12 of its own.
-    final moviesByGenre = <String, Set<String>>{};
-    for (final m in library.movies) {
-      for (final g in m.genres.map(normalizeGenre)) {
-        moviesByGenre.putIfAbsent(g, () => {}).add(m.id);
-      }
-    }
-    final movieGenresOf = {for (final m in library.movies) m.id: m.genres};
-    int movieRank(String movie, String g) => _rank(movieGenresOf[movie]!, [g]);
-    bool fewMovies(Set<String> movies) => movies.length < options.minMoviesPerMovieGenre;
-    final made = {for (final c in channels) c.id};
-    final showGenres = [for (final g in genreShows.keys) if (made.contains('auto:genre:$g')) g];
-    final evenings = _pickAndShare(showGenres, showGenres.length,
-        {for (final g in showGenres) g: moviesByGenre[g] ?? const {}}, (_) => 1, fewMovies,
-        rank: movieRank);
-    final homed = {for (final movies in evenings.values) ...movies};
-
-    // Movie channels: every movie, then the biggest genres of the movies
-    // with no evening, each movie on one of them.
+    // Movie Channel, then movie genre, decade and decade + genre channels,
+    // each holding every movie it matches; the show genre channels'
+    // evenings play their genre's movies too (cable-dayparts).
     if (library.movies.length >= options.minMoviesForMovieChannel) {
       add('auto:movies', 'Movie Channel', const ChannelIcon.builtin('movie'),
           const ChannelSource(includeEpisodes: false, includeMovies: true), PlaybackOrder.random);
-      final unhomed = {for (final e in moviesByGenre.entries) e.key: e.value.difference(homed)};
-      final movieGenres = [
-        for (final e in unhomed.entries.toList()..sort((a, b) => b.value.length.compareTo(a.value.length)))
-          if (e.value.length >= options.minMoviesPerMovieGenre && e.value.length < library.movies.length) e.key,
-      ];
-      final shared = _pickAndShare(movieGenres, 3, unhomed, (_) => 1, fewMovies, rank: movieRank);
-      for (final MapEntry(key: g, value: mine) in shared.entries) {
-        add(
-            'auto:movies:$g',
-            '$g Movies',
-            ChannelIcon.builtin(_genreStyle[g]?.$2 ?? 'local_movies'),
-            ChannelSource(
-                genres: [g],
-                includeEpisodes: false,
-                includeMovies: true,
-                excluded: _sorted(moviesByGenre[g]!.difference(mine))),
+      final moviesOfGenre = <String, Set<String>>{};
+      final moviesOfDecade = <int, Set<String>>{};
+      final moviesOfPair = <(int, String), Set<String>>{};
+      for (final m in library.movies) {
+        final genres = titleGenres(m.genres);
+        for (final g in genres) {
+          moviesOfGenre.putIfAbsent(g, () => {}).add(m.id);
+        }
+        final d = decadeOf(m.year);
+        if (d == null) continue;
+        moviesOfDecade.putIfAbsent(d, () => {}).add(m.id);
+        for (final g in genres) {
+          moviesOfPair.putIfAbsent((d, g), () => {}).add(m.id);
+        }
+      }
+      final everyMovie = {for (final m in library.movies) m.id};
+      final movieGenres = _choose(
+          {
+            for (final e in moviesOfGenre.entries)
+              if (e.value.length >= options.minMoviesPerMovieGenre && e.value.length < everyMovie.length)
+                e.key: e.value
+          },
+          _bySize,
+          const [],
+          options.overlapThreshold);
+      final movieDecades = _choose(
+          {
+            for (final e in moviesOfDecade.entries)
+              if (e.value.length >= options.minMoviesPerMovieGenre) e.key: e.value
+          },
+          (a, b) => a.key.compareTo(b.key),
+          [everyMovie, ...movieGenres.values],
+          options.overlapThreshold);
+      final moviePairs = _pairs(
+          {
+            for (final e in moviesOfPair.entries)
+              if (movieGenres.containsKey(e.key.$2) &&
+                  movieDecades.containsKey(e.key.$1) &&
+                  e.value.length >= options.minMoviesPerCombo)
+                e.key: e.value
+          },
+          movieGenres,
+          movieDecades,
+          options);
+      ChannelSource movies({List<String> genres = const [], List<int> decades = const []}) =>
+          ChannelSource(genres: genres, decades: decades, includeEpisodes: false, includeMovies: true);
+      for (final g in movieGenres.keys) {
+        add('auto:movies:$g', '$g Movies', ChannelIcon.builtin(_genreStyle[g]?.$2 ?? 'local_movies'),
+            movies(genres: [g]), PlaybackOrder.random);
+      }
+      for (final d in movieDecades.keys) {
+        add('auto:movies:decade:$d', '${decadeName(d)} Movies', const ChannelIcon.builtin('local_movies'),
+            movies(decades: [d]), PlaybackOrder.random);
+      }
+      for (final (d, g) in moviePairs.keys) {
+        add('auto:movies:decade:$d:$g', '${decadeName(d)} $g Movies',
+            ChannelIcon.builtin(_genreStyle[g]?.$2 ?? 'local_movies'), movies(genres: [g], decades: [d]),
             PlaybackOrder.random);
       }
     }
@@ -384,8 +507,8 @@ class ChannelGenerator {
     PlaybackDiagnostics.note('MUSIC', '${library.musicVideos.length} music videos, ${library.songs.length} songs: '
         '${[for (final c in channels.skip(before)) '${c.name} (${c.playlist.length})'].join(', ')}');
     nameApart(library, channels);
-    blocks = dayparts(library, channels, {for (final e in evenings.entries) 'auto:genre:${e.key}': e.value},
-        anchor: anchor, planOf: planOf, options: options);
+    PlaybackDiagnostics.note('LINEUP', 'generated: ${[for (final c in channels) '${c.number} ${c.name} (${c.playlist.length})'].join(', ')}');
+    blocks = dayparts(library, channels, anchor: anchor, planOf: planOf, options: options);
     return channels;
   }
 
@@ -399,15 +522,15 @@ class ChannelGenerator {
   static bool isGenreChannel(Channel c) => c.auto && !c.isLive && c.id.startsWith('auto:genre:');
 
   /// The Daytime and Evening blocks (cable-dayparts) of [channels]'
-  /// generated genre channels, airing from [anchor]. [evenings] holds each
-  /// channel's own movies (by id), as [spreadTitles] shares them; a channel
-  /// with fewer than [GeneratorOptions.minMoviesPerMovieGenre] gets no
-  /// Evening.
+  /// generated genre channels, airing from [anchor]. A channel's Evening
+  /// plays every movie of its genre (genre-decade-channels D7); one whose
+  /// genre has fewer than [GeneratorOptions.minMoviesPerMovieGenre] gets
+  /// none.
   ///
   /// Daytime is a lineup of two-episode stacks of the channel's shows, the
   /// most episodes first, as many as fit 12 hours by their average slot
   /// under [planOf]'s plan (at least one).
-  static List<ProgramBlock> dayparts(LibraryIndex library, List<Channel> channels, Map<String, Set<String>> evenings,
+  static List<ProgramBlock> dayparts(LibraryIndex library, List<Channel> channels,
       {required DateTime anchor, BreakPlan Function(Channel channel)? planOf, GeneratorOptions options = const GeneratorOptions()}) {
     final day = DateTime(anchor.year, anchor.month, anchor.day);
     const everyDay = {1, 2, 3, 4, 5, 6, 7};
@@ -457,17 +580,8 @@ class ChannelGenerator {
         ));
       }
 
-      final movies = evenings[c.id] ?? const <String>{};
-      if (movies.length < options.minMoviesPerMovieGenre) continue;
       final id = daypartId(c.id, Daypart.evening);
-      final source = ChannelSource(
-          genres: c.source.genres,
-          includeEpisodes: false,
-          includeMovies: true,
-          excluded: _sorted({
-            for (final m in library.movies)
-              if (!movies.contains(m.id) && m.genres.map(normalizeGenre).any(c.source.genres.contains)) m.id,
-          }));
+      final source = ChannelSource(genres: c.source.genres, includeEpisodes: false, includeMovies: true);
       final playlist = buildPlaylist(library, source, PlaybackOrder.random, seed: stableHash(id));
       if (playlist.length < options.minMoviesPerMovieGenre) continue;
       blocks.add(ProgramBlock(
@@ -487,13 +601,53 @@ class ChannelGenerator {
     return blocks;
   }
 
-  /// Where [channelGenres] first comes in [titleGenres] (a title's genres
-  /// as the server lists them); past the end when it doesn't.
-  static int _rank(List<String> titleGenres, List<String> channelGenres) {
-    for (final (i, g) in titleGenres.indexed) {
-      if (channelGenres.contains(normalizeGenre(g))) return i;
+  /// Biggest first, ties by key.
+  static int _bySize(MapEntry<String, Set<String>> a, MapEntry<String, Set<String>> b) {
+    final bySize = b.value.length.compareTo(a.value.length);
+    return bySize != 0 ? bySize : a.key.compareTo(b.key);
+  }
+
+  /// The [groups] (each a channel's titles) that get a channel, taken in
+  /// [order]: a group overlapping [earlier] channels' titles or an already
+  /// taken group by [threshold] or more (Jaccard) is skipped. Keeps
+  /// [order].
+  static Map<K, Set<String>> _choose<K>(Map<K, Set<String>> groups,
+      int Function(MapEntry<K, Set<String>> a, MapEntry<K, Set<String>> b) order, List<Set<String>> earlier,
+      double threshold) {
+    final used = [...earlier];
+    final taken = <K, Set<String>>{};
+    for (final e in groups.entries.toList()..sort(order)) {
+      if (used.any((u) => _jaccard(u, e.value) >= threshold)) continue;
+      used.add(e.value);
+      taken[e.key] = e.value;
     }
-    return titleGenres.length;
+    return taken;
+  }
+
+  /// The decade + genre [pairs] that get a channel: biggest first, at most
+  /// [GeneratorOptions.maxCombosPerSide], skipping a pair that overlaps its
+  /// genre's channel ([genres]) or its decade's ([decades]) by the overlap
+  /// threshold.
+  static Map<(int, String), Set<String>> _pairs(Map<(int, String), Set<String>> pairs,
+      Map<String, Set<String>> genres, Map<int, Set<String>> decades, GeneratorOptions options) {
+    final sorted = pairs.entries.toList()
+      ..sort((a, b) {
+        final bySize = b.value.length.compareTo(a.value.length);
+        if (bySize != 0) return bySize;
+        final byDecade = a.key.$1.compareTo(b.key.$1);
+        return byDecade != 0 ? byDecade : a.key.$2.compareTo(b.key.$2);
+      });
+    final taken = <(int, String), Set<String>>{};
+    for (final e in sorted) {
+      if (taken.length == options.maxCombosPerSide) break;
+      final (d, g) = e.key;
+      if (_jaccard(genres[g]!, e.value) >= options.overlapThreshold ||
+          _jaccard(decades[d]!, e.value) >= options.overlapThreshold) {
+        continue;
+      }
+      taken[e.key] = e.value;
+    }
+    return taken;
   }
 
   /// Gives generated [channels] that share a name their own (lineup-dedup
@@ -538,162 +692,56 @@ class ChannelGenerator {
 
   static List<String> _sorted(Iterable<String> ids) => [...ids]..sort();
 
-  /// Spreads the library over [channels]' generated channels again, as a
-  /// refresh does: each show airs on one show genre channel (none, when it
-  /// has a show channel of its own, and then not on All Shows either), each
-  /// movie in one genre channel's evening or on one movie genre channel.
-  /// Titles go to the channel of their first listed genre (cable-lineup
-  /// D3). Sets the channels' [ChannelSource.excluded]. Hidden channels
-  /// count too, after the visible ones: they take what no visible channel
-  /// has.
+  /// Whether [c] is a generated show or movie genre, decade or decade +
+  /// genre channel: the kinds with minimums of their own.
+  static bool isGroupChannel(Channel c) =>
+      c.auto &&
+      !c.isLive &&
+      (c.id.startsWith('auto:genre:') || c.id.startsWith('auto:decade:') || c.id.startsWith('auto:movies:'));
+
+  /// Whether [c] is a decade + genre channel.
+  static bool isPairChannel(Channel c) => c.source.decades.isNotEmpty && c.source.genres.isNotEmpty;
+
+  /// Fits [channels]' generated channels to the library again, as a
+  /// refresh does (genre-decade-channels D4, D8): a show with a marathon
+  /// channel of its own airs only there, so All Shows and the show genre,
+  /// decade and decade + genre channels skip it ([ChannelSource.excluded]);
+  /// every other title airs on every channel it matches.
   ///
-  /// A genre channel left under [GeneratorOptions]' minimums, as [generate]
-  /// applies them, is thin: its titles go to the other channels of its
-  /// genres and it plays nothing. Returns the thin channels' ids, and each
-  /// show genre channel's own movies when it has enough for an evening.
-  static ({Set<String> thin, Map<String, Set<String>> evenings}) spreadTitles(
-      LibraryIndex library, List<Channel> channels,
+  /// Returns the ids of the genre, decade and decade + genre channels left
+  /// under [GeneratorOptions]' minimums, as [generate] applies them: they
+  /// retire, or aren't added.
+  static Set<String> spreadTitles(LibraryIndex library, List<Channel> channels,
       {GeneratorOptions options = const GeneratorOptions()}) {
-    List<Channel> generated(String prefix) => [
-          for (final c in channels)
-            if (c.auto && !c.isLive && c.id.startsWith(prefix) && c.source.genres.isNotEmpty) c,
-        ]..sort((a, b) => a.number.compareTo(b.number));
     int episodesOf(String show) => library.episodesBySeries[show]?.length ?? 0;
-    // Shows big enough for their own channel air there instead.
-    final marathon = {
+    final marathon = _sorted({
       for (final c in channels)
         if (c.auto && c.id.startsWith('auto:show:'))
           for (final k in c.source.seriesKeys)
             if (library.seriesByKey[k] case final s? when !s.isUnknown && episodesOf(k) >= options.minEpisodesForShowChannel)
               k,
-    };
-    for (final c in channels) {
-      if (c.auto && c.id == 'auto:all-shows') c.source = c.source.copyWith(excluded: _sorted(marathon));
-    }
-    final genresOf = {
-      for (final s in library.series) s.key: s.genres,
-      for (final m in library.movies) m.id: m.genres,
-    };
-    final channelGenres = {for (final c in channels) c.id: c.source.genres};
-    int rank(String title, String channel) => _rank(genresOf[title] ?? const [], channelGenres[channel]!);
+    });
     final thin = <String>{};
-    // Each channel's titles, visible channels first; a channel missing
-    // from it got too few.
-    Map<String, Set<String>> spread(List<Channel> genreChannels, Map<String, Set<String>> titlesOf, Set<String> skip,
-        int Function(String) size, bool Function(Set<String>) tooThin) {
-      final owned = {...skip};
-      final result = <String, Set<String>>{};
-      for (final hidden in [false, true]) {
-        final group = [for (final c in genreChannels) if (c.hidden == hidden) c];
-        final shared = _pickAndShare([for (final c in group) c.id], group.length,
-            {for (final c in group) c.id: titlesOf[c.id]!.difference(owned)}, size, tooThin,
-            rank: rank);
-        for (final c in group) {
-          final mine = shared[c.id];
-          if (mine == null) continue;
-          owned.addAll(mine);
-          result[c.id] = mine;
-        }
-      }
-      return result;
-    }
-
-    Set<String> moviesOf(Channel c) => {
-          for (final m in library.movies)
-            if (m.genres.map(normalizeGenre).any(c.source.genres.contains)) m.id,
-        };
-    bool fewMovies(Set<String> movies) => movies.length < options.minMoviesPerMovieGenre;
-
-    final showChannels = generated('auto:genre:');
-    final showTitles = {
-      for (final c in showChannels)
-        c.id: {
-          for (final s in library.series)
-            if (s.genres.map(normalizeGenre).any(c.source.genres.contains)) s.key,
-        },
-    };
-    final shows = spread(showChannels, showTitles, marathon, episodesOf,
-        (shows) =>
-            shows.length < options.minSeriesPerGenre ||
-            shows.fold(0, (n, k) => n + episodesOf(k)) < options.minEpisodesPerGenre);
-    for (final c in showChannels) {
-      final mine = shows[c.id];
-      if (mine == null) thin.add(c.id);
-      c.source = c.source.copyWith(excluded: _sorted(showTitles[c.id]!.difference(mine ?? const {})));
-    }
-    final open = [for (final c in showChannels) if (!thin.contains(c.id)) c];
-    final evenings = spread(open, {for (final c in open) c.id: moviesOf(c)}, const {}, (_) => 1, fewMovies);
-    final movieChannels = generated('auto:movies:');
-    final movieTitles = {for (final c in movieChannels) c.id: moviesOf(c)};
-    final movies = spread(movieChannels, movieTitles, {for (final m in evenings.values) ...m}, (_) => 1, fewMovies);
-    for (final c in movieChannels) {
-      final mine = movies[c.id];
-      if (mine == null) thin.add(c.id);
-      c.source = c.source.copyWith(excluded: _sorted(movieTitles[c.id]!.difference(mine ?? const {})));
-    }
-    return (thin: thin, evenings: evenings);
-  }
-
-  /// Picks up to [max] of [candidates] (best first) and shares their
-  /// titles ([titlesOf]) between them (see [_share]). A pick left [thin]
-  /// gives way to the next candidate. Returns each pick's titles, in
-  /// [candidates]' order.
-  static Map<String, Set<String>> _pickAndShare(List<String> candidates, int max, Map<String, Set<String>> titlesOf,
-      int Function(String) size, bool Function(Set<String>) thin,
-      {required int Function(String title, String channel) rank}) {
-    final left = [...candidates];
-    while (true) {
-      final picked = left.take(max).toList();
-      final shared = _share(picked, titlesOf, size, rank);
-      String? thinnest;
-      int weight(String g) => shared[g]!.fold(0, (n, t) => n + size(t));
-      for (final g in picked) {
-        if (thin(shared[g]!) && (thinnest == null || weight(g) < weight(thinnest))) thinnest = g;
-      }
-      if (thinnest == null) return shared;
-      left.remove(thinnest);
-    }
-  }
-
-  /// Gives each title one of [channels] it is in ([titlesOf]), so that no
-  /// two channels play the same title: the one [rank] puts first (the
-  /// title's first listed genre). Among equals, titles in the fewest
-  /// channels go first, the biggest ([size]) first among those, each to a
-  /// channel with nothing yet, else the one with the least so far; ties go
-  /// to the earlier channel. Returns each channel's titles, in [channels]'
-  /// order.
-  static Map<String, Set<String>> _share(List<String> channels, Map<String, Set<String>> titlesOf,
-      int Function(String) size, int Function(String title, String channel) rank) {
-    final fits = <String, List<String>>{};
     for (final c in channels) {
-      for (final t in titlesOf[c] ?? const <String>{}) {
-        fits.putIfAbsent(t, () => []).add(c);
-      }
-    }
-    final titles = fits.keys.toList()
-      ..sort((a, b) {
-        final byFits = fits[a]!.length.compareTo(fits[b]!.length);
-        if (byFits != 0) return byFits;
-        final bySize = size(b).compareTo(size(a));
-        return bySize != 0 ? bySize : a.compareTo(b);
-      });
-    final shared = {for (final c in channels) c: <String>{}};
-    final load = {for (final c in channels) c: 0};
-    for (final t in titles) {
-      var best = fits[t]!.first;
-      for (final c in fits[t]!.skip(1)) {
-        final byRank = rank(t, c).compareTo(rank(t, best));
-        if (byRank != 0) {
-          if (byRank < 0) best = c;
-          continue;
+      if (!c.auto || c.isLive) continue;
+      if (c.id == 'auto:all-shows') c.source = c.source.copyWith(excluded: marathon);
+      if (!isGroupChannel(c)) continue;
+      final pair = isPairChannel(c);
+      if (c.id.startsWith('auto:movies:')) {
+        c.source = c.source.copyWith(excluded: const []);
+        final movies = _select(library, c.source).movies.length;
+        if (movies < (pair ? options.minMoviesPerCombo : options.minMoviesPerMovieGenre)) thin.add(c.id);
+      } else {
+        c.source = c.source.copyWith(excluded: marathon);
+        final shows = _select(library, c.source).shows;
+        final episodes = shows.values.fold(0, (n, eps) => n + eps.length);
+        if (shows.length < (pair ? options.minSeriesPerCombo : options.minSeriesPerGenre) ||
+            episodes < (pair ? options.minEpisodesPerCombo : options.minEpisodesPerGenre)) {
+          thin.add(c.id);
         }
-        final (emptyC, emptyBest) = (shared[c]!.isEmpty, shared[best]!.isEmpty);
-        if (emptyC != emptyBest ? emptyC : load[c]! < load[best]!) best = c;
       }
-      shared[best]!.add(t);
-      load[best] = load[best]! + size(t);
     }
-    return shared;
+    return thin;
   }
 }
 
@@ -712,12 +760,8 @@ List<MediaEntry> musicSample(List<MediaEntry> items, int seed) {
 /// Resolves [source] against the library and orders it.
 List<String> buildPlaylist(LibraryIndex library, ChannelSource source, PlaybackOrder order,
     {required int seed}) {
-  final genres = source.genres.toSet();
-  final excluded = source.excluded.toSet();
-  bool genreMatch(Iterable<String> itemGenres) =>
-      genres.isEmpty || itemGenres.map(normalizeGenre).any(genres.contains);
-
   if (source.isMusic) {
+    final genres = source.genres.toSet();
     final decades = source.decades.toSet();
     bool wanted(MediaEntry m) =>
         (genres.isEmpty || m.genres.map(normalizeMusicGenre).any(genres.contains)) &&
@@ -730,11 +774,41 @@ List<String> buildPlaylist(LibraryIndex library, ChannelSource source, PlaybackO
     return [for (final e in _spreadShuffle(items, Random(seed))) e.id];
   }
 
+  final (:shows, :movies) = _select(library, source);
+  final rng = Random(seed);
+  final List<MediaEntry> ordered;
+  switch (order) {
+    case PlaybackOrder.cyclic:
+      ordered = _interleave(shows, rng);
+      // Movies have no airing order; slot them in shuffled.
+      if (movies.isNotEmpty) {
+        final shuffled = [...movies]..shuffle(rng);
+        ordered.addAll(shuffled);
+      }
+    case PlaybackOrder.random:
+      ordered = _spreadShuffle([for (final eps in shows.values) ...eps, ...movies], rng);
+    case PlaybackOrder.weighted:
+      ordered = _spread(_weightedShuffle([for (final eps in shows.values) ...eps, ...movies], rng));
+  }
+  return [for (final e in ordered) e.id];
+}
+
+/// The episodes (by show, in airing order) and movies a show-and-movie
+/// [source] plays, unordered.
+({Map<String, List<MediaEntry>> shows, List<MediaEntry> movies}) _select(LibraryIndex library, ChannelSource source) {
+  final genres = source.genres.toSet();
+  final excluded = source.excluded.toSet();
+  bool genreMatch(Iterable<String> itemGenres) => genres.isEmpty || titleGenres(itemGenres).any(genres.contains);
+  // Decades narrow every choice, picked shows and roots included; an
+  // episode goes by its own year, else its show's (genre-decade-channels D3).
+  final decades = source.decades.toSet();
+  bool decadeMatch(int? year) => decades.isEmpty || decades.contains(decadeOf(year));
+
   // With roots, the other choices add to them (custom-channels D2): roots
-  // alone play only the roots, and an empty genre list no longer means
+  // alone play only the roots, and no genre or decade no longer means
   // every show.
   final rooted = <String>{for (final r in source.roots) ...?library.itemsByRoot[r.itemId]};
-  final byRootOnly = source.roots.isNotEmpty;
+  final byRootOnly = source.roots.isNotEmpty && genres.isEmpty && decades.isEmpty;
   // A minimum rating narrows everything, roots and picked shows included;
   // episodes go by their show's rating (late-night-drift D2).
   final floor = source.ratingFloor;
@@ -752,33 +826,21 @@ List<String> buildPlaylist(LibraryIndex library, ChannelSource source, PlaybackO
     final whole = source.includeEpisodes &&
         (source.seriesKeys.isNotEmpty
             ? source.seriesKeys.contains(s.key)
-            : !(byRootOnly && genres.isEmpty) && !excluded.contains(s.key) && genreMatch(s.genres));
-    final picked = whole ? eps : [for (final e in eps) if (rooted.contains(e.id)) e];
+            : !byRootOnly && !excluded.contains(s.key) && genreMatch(s.genres));
+    final picked = [
+      for (final e in eps)
+        if ((whole || rooted.contains(e.id)) && decadeMatch(e.year ?? s.year)) e,
+    ];
     if (picked.isNotEmpty) shows[s.key] = picked;
   }
   final movies = [
     for (final m in library.movies)
       if (((source.includeMovies && genreMatch(m.genres) && !excluded.contains(m.id)) || rooted.contains(m.id)) &&
-          rated(m.officialRating))
+          rated(m.officialRating) &&
+          decadeMatch(m.year))
         m,
   ];
-
-  final rng = Random(seed);
-  final List<MediaEntry> ordered;
-  switch (order) {
-    case PlaybackOrder.cyclic:
-      ordered = _interleave(shows, rng);
-      // Movies have no airing order; slot them in shuffled.
-      if (movies.isNotEmpty) {
-        final shuffled = [...movies]..shuffle(rng);
-        ordered.addAll(shuffled);
-      }
-    case PlaybackOrder.random:
-      ordered = _spreadShuffle([for (final eps in shows.values) ...eps, ...movies], rng);
-    case PlaybackOrder.weighted:
-      ordered = _spread(_weightedShuffle([for (final eps in shows.values) ...eps, ...movies], rng));
-  }
-  return [for (final e in ordered) e.id];
+  return (shows: shows, movies: movies);
 }
 
 /// Spreads each show's episodes evenly across the loop, in airing order.

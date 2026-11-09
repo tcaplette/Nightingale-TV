@@ -2,6 +2,7 @@ import '../library/library_index.dart';
 import '../profiles/profile.dart';
 import 'channel.dart';
 import 'program_block.dart';
+import '../l10n/tr.dart';
 
 /// A profile's own named set of channels, shown as a guide tab.
 class ChannelGroup {
@@ -40,23 +41,23 @@ abstract final class GuideTabs {
   static bool isAutomatic(String id) => automatic.contains(id);
 
   static String? builtinName(String id) => switch (id) {
-        all => 'All',
-        favorites => 'Favorites',
-        live => 'Live TV',
-        movies => 'Movies',
-        music => 'Music',
-        kids => 'Kids',
+        all => tr.all,
+        favorites => tr.favorites,
+        live => tr.liveTv2,
+        movies => tr.movies,
+        music => tr.music,
+        kids => tr.kids,
         _ => null,
       };
 
   /// What an automatic tab holds, for the Channel groups screen.
   static String? rule(String id) => switch (id) {
-        all => 'Every channel.',
-        favorites => 'Channels you marked as favorites.',
-        live => 'Channels from your Live TV sources.',
-        movies => 'Channels that play movies and no episodes or music.',
-        music => 'Music video and radio channels.',
-        kids => 'Channels where everything that plays, blocks included, is rated TV-Y, TV-Y7, TV-G or G.',
+        all => tr.everyChannel,
+        favorites => tr.channelsYouMarked,
+        live => tr.channelsFromYour,
+        movies => tr.channelsThatPlay,
+        music => tr.musicVideoAnd,
+        kids => tr.channelsWhereEverything,
         _ => null,
       };
 

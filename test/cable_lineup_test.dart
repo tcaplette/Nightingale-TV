@@ -88,7 +88,7 @@ void main() {
       expect(index.series.single.genres, ['Drama', 'Comedy', 'Horror']);
     });
 
-    test('a sitcom tagged Comedy, then Drama, airs on Laugh Track', () {
+    test('a show tagged Comedy and Drama airs on Laugh Track and Drama Central', () {
       final library = fakeLibrary(shows: {'C1': 40, 'C2': 40, 'X': 40, 'D1': 40, 'D2': 40}, genres: {
         'C1': ['Comedy'],
         'C2': ['Comedy'],
@@ -98,11 +98,11 @@ void main() {
       });
       final channels = ChannelGenerator(library, anchor: day).generate();
       Set<String> shows(String name) => {for (final id in byName(channels, name).playlist) id.split('-e').first};
-      expect(shows('Laugh Track'), {'C1', 'C2', 'X'});
-      expect(shows('Drama Central'), {'D1', 'D2'});
+      expect(shows('Laugh Track'), {'C1', 'C2', 'X', 'D2'});
+      expect(shows('Drama Central'), {'X', 'D1', 'D2'});
     });
 
-    test('a show whose first genre has no channel airs on its next one', () {
+    test('Sci-Fi and Fantasy are genres of their own', () {
       final library = fakeLibrary(shows: {'T': 40, 'F1': 40, 'F2': 40, 'O': 10}, genres: {
         'T': ['Horror', 'Fantasy'],
         'F1': ['Fantasy'],
@@ -110,29 +110,71 @@ void main() {
         'O': ['News'],
       });
       final channels = ChannelGenerator(library, anchor: day).generate();
-      expect({for (final id in byName(channels, 'Sci-Fi & Fantasy').playlist) id.split('-e').first}, {'T', 'F1', 'F2'});
-      expect(channels.where((c) => c.name == 'Fright Night'), isEmpty);
+      expect({for (final id in byName(channels, 'Fantasy TV').playlist) id.split('-e').first}, {'T', 'F1'});
+      expect(channels.where((c) => c.name == 'Sci-Fi TV' || c.name == 'Fright Night'), isEmpty,
+          reason: 'one show each');
     });
 
     test("the test server's library gives design D3's lineup", () {
       final library = testServerLibrary().index(ServerShape.jellyfin);
       final generator = ChannelGenerator(library, anchor: day, planOf: automatic);
       final channels = generator.generate();
-      expect(channels.map((c) => c.name).toSet(), {
+      // Genres biggest first, then decades oldest first, then decade +
+      // genre, then the show channel, then the movie side
+      // (genre-decade-channels D5).
+      expect(channels.map((c) => c.name), [
         'All Shows',
         'Laugh Track',
         'Drama Central',
         'Adventure TV',
-        'Sci-Fi & Fantasy',
+        'Action TV',
+        'Fantasy TV',
+        'Crime & Justice',
+        'Sci-Fi TV',
+        'Mystery & Thrills',
+        'Romance TV',
+        'Toon TV',
         'Discovery Zone',
+        '90s TV',
+        '2000s TV',
+        '2010s TV',
+        '2020s TV',
+        '90s Crime TV',
         'Seinfeld',
         'Movie Channel',
-      });
-      expect(showIds(byName(channels, 'Laugh Track')), {'30rock', 'eastbound', 'shameless'});
-      expect(showIds(byName(channels, 'Drama Central')), {'calif', 'sopranos', 'lotus'});
-      expect(showIds(byName(channels, 'Adventure TV')), {'archer', 'tyson'});
-      expect(showIds(byName(channels, 'Sci-Fi & Fantasy')), {'highlander', 'rick', 'twinpeaks'});
+        'Comedy Movies',
+        'Action Movies',
+        'Drama Movies',
+      ]);
+      expect(channels.map((c) => c.number), [for (var i = 1; i <= channels.length; i++) i]);
+      // Every show of its genre, a show on each of its genres' channels.
+      expect(showIds(byName(channels, 'Laugh Track')),
+          {'30rock', 'rick', 'calif', 'tyson', 'lotus', 'archer', 'shameless', 'eastbound'});
+      expect(showIds(byName(channels, 'Drama Central')), {'lotus', 'sopranos', 'twinpeaks', 'calif', 'eastbound', 'shameless'});
+      expect(showIds(byName(channels, 'Adventure TV')), {'highlander', 'archer', 'rick'});
+      expect(showIds(byName(channels, 'Action TV')), {'archer', 'tyson', 'highlander'});
+      expect(showIds(byName(channels, 'Mystery & Thrills')), {'ff2', 'twinpeaks', 'highlander'});
       expect(showIds(byName(channels, 'Discovery Zone')), {'ff', 'ff2'});
+      expect(showIds(byName(channels, '90s TV')), {'highlander', 'sopranos', 'twinpeaks', 'ff'});
+      expect(showIds(byName(channels, '90s Crime TV')), {'twinpeaks', 'sopranos', 'ff'});
+      for (final (name, icon) in [
+        ('Action TV', 'bolt'),
+        ('Adventure TV', 'public'),
+        ('Sci-Fi TV', 'rocket_launch'),
+        ('Fantasy TV', 'castle'),
+        ('Mystery & Thrills', 'search'),
+        ('90s TV', 'tv'),
+        ('90s Crime TV', 'local_police'),
+        ('Comedy Movies', 'theater_comedy'),
+      ]) {
+        expect(byName(channels, name).icon.value, icon, reason: name);
+      }
+      for (final c in channels.where((c) => c.id.startsWith('auto:decade:') || c.id.startsWith('auto:genre:'))) {
+        expect(c.order, PlaybackOrder.cyclic, reason: c.name);
+      }
+      for (final c in channels.where((c) => c.id.startsWith('auto:movies'))) {
+        expect(c.order, PlaybackOrder.random, reason: c.name);
+      }
       expect(showIds(byName(channels, 'Seinfeld')), {'seinfeld'});
       expect(showIds(byName(channels, 'All Shows')), isNot(contains('seinfeld')));
       expect(lineupProblems(library, channels, generator.blocks), isEmpty);
@@ -158,14 +200,17 @@ void main() {
   });
 
   group('movie homes', () {
-    test("comedy movies go to Laugh Track's evenings, and no Comedy Movies channel is made", () {
+    test("every comedy movie airs in Laugh Track's evenings and on Comedy Movies", () {
       final library = testServerLibrary().index(ServerShape.jellyfin);
       final generator = ChannelGenerator(library, anchor: day, planOf: automatic);
       final channels = generator.generate();
       final evening = generator.blocks.firstWhere((b) => b.generated == Daypart.evening && b.channelId == 'auto:genre:Comedy');
-      expect(evening.playlist, hasLength(17));
+      expect(evening.playlist, hasLength(23));
       expect(evening.playlist.map((id) => library[id]!.title), containsAll(['Dumb and Dumber', 'The Princess Bride']));
-      expect(channels.where((c) => c.id.startsWith('auto:movies:')), isEmpty);
+      expect(byName(channels, 'Comedy Movies').playlist.toSet(), evening.playlist.toSet());
+      // A movie tagged Action and Comedy is in both evenings.
+      final action = generator.blocks.firstWhere((b) => b.generated == Daypart.evening && b.channelId == 'auto:genre:Action');
+      expect(action.playlist.toSet().intersection(evening.playlist.toSet()), isNotEmpty);
       expect(byName(channels, 'Movie Channel').playlist, hasLength(38));
     });
 
@@ -203,27 +248,15 @@ void main() {
           final generator = ChannelGenerator(library, anchor: day, planOf: automatic);
           final channels = generator.generate();
           expect(lineupProblems(library, channels, generator.blocks), isEmpty);
-          // Each show on at most two generated channels, a show channel's on one.
-          final on = <String, int>{};
-          for (final c in channels) {
-            for (final k in {for (final id in c.playlist) ?library[id]?.seriesKey}) {
-              on[k] = (on[k] ?? 0) + 1;
-            }
+          // A show with its own channel airs only there.
+          for (final c in channels.where((c) => c.id.startsWith('auto:show:'))) {
+            final key = c.source.seriesKeys.single;
+            final elsewhere = [
+              for (final o in channels)
+                if (o != c && o.playlist.any((id) => library[id]?.seriesKey == key)) o.name,
+            ];
+            expect(elsewhere, isEmpty, reason: key);
           }
-          for (final MapEntry(key: k, value: n) in on.entries) {
-            final own = channels.any((c) => c.id == 'auto:show:$k');
-            expect(n, lessThanOrEqualTo(own ? 1 : 2), reason: k);
-          }
-          // Each movie in at most one home besides Movie Channel.
-          final homes = <String, int>{};
-          for (final id in [
-            for (final c in channels)
-              if (c.id != 'auto:movies') ...c.playlist,
-            for (final b in generator.blocks) ...b.playlist,
-          ]) {
-            if (library[id]?.kind == MediaKind.movie) homes[id] = (homes[id] ?? 0) + 1;
-          }
-          expect(homes.values, everyElement(1));
           expect(generator.blocks.map((b) => b.channelId), everyElement(startsWith('auto:genre:')));
         });
       }
@@ -238,14 +271,17 @@ void main() {
       final daytime = generator.blocks.firstWhere((b) => b.channelId == laugh.id && b.generated == Daypart.daytime);
       expect((daytime.startMinute, daytime.endMinute, daytime.days.length), (6 * 60, 18 * 60, 7));
       expect(daytime.lineup.map((s) => (s.seriesKey, s.count)),
-          [for (final id in ['30rock', 'shameless', 'eastbound']) (keyOf(library, id), 2)]);
+          [
+            for (final id in ['30rock', 'rick', 'calif', 'tyson', 'archer', 'shameless', 'lotus', 'eastbound'])
+              (keyOf(library, id), 2)
+          ]);
       final s = ChannelSchedule.build(laugh, library, generator.blocks, const BreakContext(plan: BreakPlan.automatic))!;
       final rock = library.episodesBySeries[keyOf(library, '30rock')]!;
       int number(ScheduledProgram p) => rock.indexOf(p.item!);
       for (final d in [1, 2]) {
         expect(s.programAt(at(6, 0, d)).item!.seriesKey, keyOf(library, '30rock'));
         expect(s.programAt(at(6, 30, d)).item!.seriesKey, keyOf(library, '30rock'));
-        expect(s.programAt(at(7, 0, d)).item!.seriesKey, keyOf(library, 'shameless'));
+        expect(s.programAt(at(7, 0, d)).item!.seriesKey, keyOf(library, 'rick'));
       }
       expect(number(s.programAt(at(6, 30, 1))), number(s.programAt(at(6, 0, 1))) + 1);
       expect(number(s.programAt(at(6, 0, 2))), greaterThan(number(s.programAt(at(6, 30, 1)))));
@@ -282,7 +318,7 @@ void main() {
           anchor: day,
           auto: false);
       final blocks = ChannelGenerator.dayparts(
-          library, [...channels.where((c) => !c.id.startsWith('auto:genre:')), custom], const {},
+          library, [...channels.where((c) => !c.id.startsWith('auto:genre:')), custom],
           anchor: day, planOf: automatic);
       expect(blocks, isEmpty);
     });
@@ -437,7 +473,7 @@ void main() {
       await refresh(library);
       final daytime = daypart('auto:genre:Comedy', Daypart.daytime)!;
       expect(daypart('auto:genre:Comedy', Daypart.evening), isNotNull);
-      expect(daypart('auto:genre:Drama', Daypart.evening), isNull, reason: 'Drama Central has too few movies');
+      expect(daypart('auto:genre:Documentary', Daypart.evening), isNull, reason: 'Discovery Zone has no movies');
       final old = DateTime(2026, 1, 1);
       daytime.anchor = old;
       await refresh(library);
@@ -465,25 +501,24 @@ void main() {
       final daytime = daypart('auto:genre:Drama', Daypart.daytime)!.copy()..enabled = false;
       await app.saveBlock(daytime);
       expect(daypart('auto:genre:Drama', Daypart.daytime)!.generated, isNull, reason: 'disabling is an edit');
-      await app.deleteBlock(daypart('auto:genre:SciFi & Fantasy', Daypart.daytime) ??
-          daypart('auto:genre:Sci-Fi & Fantasy', Daypart.daytime)!);
+      await app.deleteBlock(daypart('auto:genre:Sci-Fi', Daypart.daytime)!);
 
       await refresh(library);
       final mine = daypart('auto:genre:Comedy', Daypart.evening)!;
       expect((mine.startMinute, mine.generated), (20 * 60, null));
       expect(app.blocks.where((b) => b.channelId == 'auto:genre:Comedy' && b.startMinute == 18 * 60), isEmpty);
       expect(daypart('auto:genre:Drama', Daypart.daytime)!.enabled, isFalse);
-      expect(daypart('auto:genre:Sci-Fi & Fantasy', Daypart.daytime), isNull);
+      expect(daypart('auto:genre:Sci-Fi', Daypart.daytime), isNull);
     });
 
     test("a retired genre channel's generated blocks go with it", () async {
       final library = testServerLibrary();
       app = await signedInApp(dir, library.index(ServerShape.jellyfin));
       await refresh(library);
-      expect(daypart('auto:genre:Drama', Daypart.daytime), isNotNull);
-      await refresh(without(library, {'calif', 'lotus'}));
-      expect(app.channelById('auto:genre:Drama'), isNull);
-      expect(app.blocks.where((b) => b.channelId == 'auto:genre:Drama'), isEmpty);
+      expect(daypart('auto:genre:Documentary', Daypart.daytime), isNotNull);
+      await refresh(without(library, {'ff2'}));
+      expect(app.channelById('auto:genre:Documentary'), isNull, reason: 'one show left');
+      expect(app.blocks.where((b) => b.channelId == 'auto:genre:Documentary'), isEmpty);
     });
   });
 
@@ -542,13 +577,15 @@ void main() {
       expect(app.settings.lineupVersion, AppSettings.currentLineupVersion);
       final library = app.library;
       expect({for (final c in app.allChannels) if (c.id.startsWith('auto:show:')) c.name}, {'Seinfeld', '30 Rock'});
-      final scifi = app.channelById('auto:genre:Sci-Fi & Fantasy')!;
-      expect(showIds(scifi), containsAll(['highlander', 'rick']));
+      expect(showIds(app.channelById('auto:genre:Sci-Fi')!), containsAll(['highlander', 'rick']));
+      // Highlander's channel went to a genre channel airing it, its
+      // settings with it.
+      final taker = app.channelById(app.settings.groups.single.channelIds.single)!;
+      expect(taker.id, startsWith('auto:genre:'));
+      expect(showIds(taker), contains('highlander'));
       expect(showIds(app.channelById('auto:genre:Drama')!), containsAll(['calif', 'sopranos']));
       expect(showIds(app.channelById('auto:genre:Comedy')!), isNot(contains('30rock')));
-      // Highlander's settings went with it.
-      expect(scifi.commercialPlan, BreakPlan.off);
-      expect(app.settings.groups.single.channelIds, [scifi.id]);
+      expect(taker.commercialPlan, BreakPlan.off);
       expect(app.blocks.where((b) => b.generated != null).map((b) => b.channelId), everyElement(startsWith('auto:genre:')));
       expect(daypartOf(app, 'auto:genre:Comedy', Daypart.evening), isNotNull);
       final numbers = [for (final c in app.allChannels) if (c.auto && !c.isLive) c.number];

@@ -1,5 +1,6 @@
 import '../server/languages.dart';
 import '../server/media_server.dart';
+import '../l10n/tr.dart';
 
 /// The track captions show for a program (subtitles spec, "Saved caption
 /// preference"), from its [tracks]: with captions on,
@@ -54,12 +55,12 @@ String subtitleLabel(SubtitleTrack track) {
     (final l?, final e?) => '$l ($e)',
     (final l?, null) => l,
     (null, final e?) => e,
-    (null, null) => 'Unknown language',
+    (null, null) => tr.unknownLanguage,
   };
   return [
     name,
-    if (track.isExternal) 'External',
-    if (track.isForced) 'Forced',
+    if (track.isExternal) tr.externalLabel,
+    if (track.isForced) tr.forced,
   ].join(' · ');
 }
 

@@ -5,10 +5,12 @@ import '../api_client.dart';
 import '../app.dart';
 import '../browser.dart';
 import '../session.dart';
+import '../../l10n/tr.dart';
+import '../../ui/format.dart';
 
 /// What a stale save shows (web-admin "Showing errors, conflicts and
 /// progress").
-const conflictText = 'Changed in another window. Showing the latest.';
+String get conflictText => tr.changedInAnother;
 
 /// A page: its title, then its content, scrolling, with phone-sized
 /// gutters.
@@ -134,7 +136,7 @@ class _DataViewState<T> extends State<DataView<T>> {
         child: Column(mainAxisSize: MainAxisSize.min, children: [
           Text('$_error', textAlign: TextAlign.center),
           const SizedBox(height: 16),
-          FilledButton(onPressed: _reload, child: const Text('Try again')),
+          FilledButton(onPressed: _reload, child: Text(tr.tryAgain)),
         ]),
       ),
     );
@@ -177,15 +179,15 @@ void showMessage(BuildContext context, String text) {
 /// it for this session. True when it worked.
 Future<bool> unlock(BuildContext context, String profileId, {bool grownUp = false}) async {
   final session = context.session;
-  final name = session.profileById(profileId)?.name ?? 'this profile';
+  final name = session.profileById(profileId)?.name ?? tr.thisProfile;
   String? error;
   while (true) {
     if (!context.mounted) return false;
     final pin = await askPin(context,
-        title: grownUp ? "A grown-up's PIN" : 'PIN for $name',
+        title: grownUp ? tr.aGrownUps : tr.pinFor(name),
         message: grownUp
-            ? "Changing a kid profile's settings needs the PIN of a grown-up profile."
-            : '$name has a PIN.',
+            ? tr.changingAKid
+            : tr.hasAPin(name),
         error: error);
     if (pin == null || !context.mounted) return false;
     try {
@@ -220,13 +222,13 @@ Future<String?> askPin(BuildContext context, {required String title, String? mes
             keyboardType: TextInputType.number,
             maxLength: 4,
             inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-            decoration: InputDecoration(labelText: 'PIN', errorText: error),
+            decoration: InputDecoration(labelText: tr.pin, errorText: error),
             onSubmitted: (_) => submit(),
           ),
         ]),
         actions: [
-          TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('Cancel')),
-          FilledButton(onPressed: submit, child: const Text('OK')),
+          TextButton(onPressed: () => Navigator.of(context).pop(), child: Text(tr.cancel)),
+          FilledButton(onPressed: submit, child: Text(tr.ok)),
         ],
       );
     },
@@ -241,7 +243,7 @@ Future<bool> confirm(BuildContext context, {required String title, required Stri
         title: Text(title),
         content: Text(message),
         actions: [
-          TextButton(onPressed: () => Navigator.of(context).pop(false), child: const Text('Cancel')),
+          TextButton(onPressed: () => Navigator.of(context).pop(false), child: Text(tr.cancel)),
           FilledButton(onPressed: () => Navigator.of(context).pop(true), child: Text(action)),
         ],
       ),
@@ -250,7 +252,7 @@ Future<bool> confirm(BuildContext context, {required String title, required Stri
 
 /// Asks for a line of text (a name), or null when cancelled.
 Future<String?> askText(BuildContext context,
-    {required String title, required String label, String initial = '', String action = 'Save'}) {
+    {required String title, required String label, String initial = '', String? action}) {
   final controller = TextEditingController(text: initial);
   return showDialog<String>(
     context: context,
@@ -263,8 +265,8 @@ Future<String?> askText(BuildContext context,
         onSubmitted: (v) => Navigator.of(context).pop(v),
       ),
       actions: [
-        TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('Cancel')),
-        FilledButton(onPressed: () => Navigator.of(context).pop(controller.text), child: Text(action)),
+        TextButton(onPressed: () => Navigator.of(context).pop(), child: Text(tr.cancel)),
+        FilledButton(onPressed: () => Navigator.of(context).pop(controller.text), child: Text(action ?? tr.save)),
       ],
     ),
   );
@@ -281,13 +283,13 @@ class ProfileSwitcher extends StatelessWidget {
     final session = context.session;
     final profiles = session.profiles;
     if (profiles.isEmpty) {
-      return compact ? const SizedBox.shrink() : const Text('No profiles are assigned to you yet. Ask an admin.');
+      return compact ? const SizedBox.shrink() : Text(tr.noProfilesAre);
     }
     return DropdownButton<String>(
       value: session.profileId,
       isExpanded: !compact,
       underline: const SizedBox.shrink(),
-      hint: const Text('Profile'),
+      hint: Text(tr.profile),
       items: [
         for (final p in profiles)
           DropdownMenuItem(
@@ -356,7 +358,7 @@ class ProfileGate extends StatelessWidget {
       listenable: session,
       builder: (context, _) {
         final p = session.profileById(profileId);
-        if (p == null) return const NotFound(text: "That profile isn't yours, or it's gone.");
+        if (p == null) return NotFound(text: tr.thatProfileIsntYours);
         if (p.locked) {
           return Center(
             child: Padding(
@@ -364,9 +366,9 @@ class ProfileGate extends StatelessWidget {
               child: Column(mainAxisSize: MainAxisSize.min, children: [
                 const Icon(Icons.lock_outline, size: 48),
                 const SizedBox(height: 16),
-                Text('${p.name} has a PIN.', style: Theme.of(context).textTheme.titleMedium),
+                Text(tr.hasAPin(p.name), style: Theme.of(context).textTheme.titleMedium),
                 const SizedBox(height: 16),
-                FilledButton(onPressed: () => unlock(context, profileId), child: const Text('Enter PIN')),
+                FilledButton(onPressed: () => unlock(context, profileId), child: Text(tr.enterPin)),
               ]),
             ),
           );
@@ -374,8 +376,8 @@ class ProfileGate extends StatelessWidget {
         if (!p.needsGrownUp) return child;
         return Column(children: [
           MaterialBanner(
-            content: const Text("This is a kid profile. Changing its settings needs a grown-up's PIN."),
-            actions: [TextButton(onPressed: () => unlock(context, profileId, grownUp: true), child: const Text('Enter PIN'))],
+            content: Text(tr.thisIsA),
+            actions: [TextButton(onPressed: () => unlock(context, profileId, grownUp: true), child: Text(tr.enterPin))],
           ),
           Expanded(child: child),
         ]);
@@ -385,17 +387,17 @@ class ProfileGate extends StatelessWidget {
 }
 
 class NotFound extends StatelessWidget {
-  const NotFound({super.key, this.text = 'There is no page here.'});
-  final String text;
+  const NotFound({super.key, this.text});
+  final String? text;
 
   @override
   Widget build(BuildContext context) => Center(
         child: Padding(
           padding: const EdgeInsets.all(32),
           child: Column(mainAxisSize: MainAxisSize.min, children: [
-            Text(text, textAlign: TextAlign.center),
+            Text(text ?? tr.thereIsNoPage, textAlign: TextAlign.center),
             const SizedBox(height: 16),
-            FilledButton(onPressed: () => context.go('/'), child: const Text('Home')),
+            FilledButton(onPressed: () => context.go('/'), child: Text(tr.home)),
           ]),
         ),
       );
@@ -420,11 +422,11 @@ class CopyField extends StatelessWidget {
             ]),
           ),
           IconButton(
-            tooltip: 'Copy $label',
+            tooltip: tr.copy(label),
             icon: const Icon(Icons.copy),
             onPressed: () async {
               final copied = await copyText(value);
-              if (context.mounted) showMessage(context, copied ? 'Copied.' : "Couldn't copy. Select the text and copy it.");
+              if (context.mounted) showMessage(context, copied ? 'Copied.' : tr.couldntCopySelect);
             },
           ),
         ]),
@@ -459,7 +461,7 @@ class ErrorText extends StatelessWidget {
 }
 
 /// "Mon", "Tue"… for [DateTime.weekday] 1–7.
-const weekdayNames = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+List<String> get weekdayNames => [for (var d = 1; d <= 7; d++) weekdayName(d)];
 
 /// Day chips for [DateTime.weekday] values.
 class DayPicker extends StatelessWidget {

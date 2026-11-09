@@ -5,23 +5,24 @@ import 'package:flutter/services.dart';
 
 import '../theme/tv_theme.dart';
 import 'widgets/tv_focus.dart';
+import '../l10n/tr.dart';
 
 /// Asks for a 4-digit PIN until [check] accepts it. False if cancelled.
 Future<bool> askPin(BuildContext context,
     {required String title, String? message, required bool Function(String pin) check}) async {
   final pin = await _showPad(context, title: title, message: message,
-      validate: (pin) => check(pin) ? null : 'That PIN isn\'t right. Try again.');
+      validate: (pin) => check(pin) ? null : tr.thatPinIsnt);
   return pin != null;
 }
 
 /// Asks for a new PIN, then for it again to confirm. Null if cancelled.
 Future<String?> chooseNewPin(BuildContext context, {required String title}) async {
-  final first = await _showPad(context, title: title, message: 'Choose 4 digits.');
+  final first = await _showPad(context, title: title, message: tr.choose4Digits);
   if (first == null || !context.mounted) return null;
   return _showPad(context,
       title: title,
-      message: 'Enter the same 4 digits again.',
-      validate: (pin) => pin == first ? null : 'Those didn\'t match. Try again.');
+      message: tr.enterTheSame,
+      validate: (pin) => pin == first ? null : tr.thoseDidntMatch);
 }
 
 Future<String?> _showPad(BuildContext context,
@@ -174,7 +175,7 @@ class _PinPadState extends State<_PinPad> {
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          key('Cancel', onPressed: () => Navigator.of(context).pop()),
+                          key(tr.cancel, onPressed: () => Navigator.of(context).pop()),
                           key('0'),
                           key('', icon: Icons.backspace_outlined, onPressed: _erase),
                         ],

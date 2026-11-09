@@ -8,6 +8,7 @@ import '../server/media_server.dart';
 import '../theme/tv_theme.dart';
 import 'widgets/screen_layout.dart';
 import 'widgets/tv_focus.dart';
+import '../l10n/tr.dart';
 
 /// "Transcode only if needed", the maximum streaming bitrate, volume
 /// leveling, break notices, the on-screen clock, pause and rewind and watch
@@ -16,65 +17,55 @@ import 'widgets/tv_focus.dart';
 class PlaybackScreen extends StatelessWidget {
   const PlaybackScreen({super.key});
 
-  static const toggleLabel = 'Transcode only if needed (experimental)';
+  static String get toggleLabel => tr.transcodeOnlyIf;
 
-  static const toggleHelp = "Off: Nightingale TV always plays your original files at full quality, and your "
-      "server does no extra work. On: your server converts a show or movie only when it's above "
-      "the maximum bitrate, or when the original file won't play. Converting uses your server's processor or "
-      "graphics card. Commercials always play the original files.";
+  static String get toggleHelp => tr.offNightingaleTv;
 
-  static const relayNotice = 'Connected through Plex Relay; quality is limited.';
+  static String get relayNotice => tr.connectedThroughPlex;
 
-  static const bitrateHelp = 'Pick a lower bitrate if shows buffer or stutter over Wi-Fi or a remote connection. '
-      'Original never converts because of bitrate.';
+  static String get bitrateHelp => tr.pickALower;
 
-  static const levelingLabel = 'Volume leveling';
+  static String get levelingLabel => tr.volumeLeveling;
 
-  static const levelingHelp = 'Evens out the volume as you watch: loud commercials and programs are turned down '
-      'and quiet ones turned up, so you don\'t have to reach for the remote.';
+  static String get levelingHelp => tr.evensOutThe;
 
   /// Added to [levelingHelp] on Android, where leveling turns passthrough off.
-  static const levelingAndroidHelp = 'While it\'s on, surround audio (Dolby, DTS) is decoded by this device '
-      'instead of being passed through to a receiver.';
+  static String get levelingAndroidHelp => tr.whileItsOn;
 
-  static const captionSizeHelp = 'The size of captions on every program and channel.';
+  static String get captionSizeHelp => tr.theSizeOf;
 
-  static const noticesLabel = 'Break notices';
+  static String get noticesLabel => tr.breakNotices;
 
-  static const noticesHelp = 'Show a countdown before commercials start and before the program comes back.';
+  static String get noticesHelp => tr.showACountdown;
 
-  static const clockLabel = 'On-screen clock';
+  static String get clockLabel => tr.onScreenClock;
 
-  static const clockHelp = 'Shows the time in the corner of the picture.';
+  static String get clockHelp => tr.showsTheTime;
 
-  static const rewindLabel = 'Pause and rewind';
+  static String get rewindLabel => tr.pauseAndRewind;
 
-  static const rewindHelp = 'Pause, skip and restart what\'s on. Off: every channel stays on the clock, '
-      'like always-on TV.';
+  static String get rewindHelp => tr.pauseSkipAnd;
 
-  static const reportsHelp = "Off: what you watch here never changes play counts, watched marks or resume "
-      "points on your server, and doesn't show on its dashboard.";
+  static String get reportsHelp => tr.offWhatYou;
 
   /// Added to [reportsHelp] for Plex and Emby, which end a live stream
   /// without its reports (play-reporting D4).
-  static const reportsLiveHelp = 'Live TV still shows on the dashboard.';
+  static String get reportsLiveHelp => tr.liveTvStill;
 
-  static const stillWatchingLabel = 'Ask if I\'m still watching';
+  static String get stillWatchingLabel => tr.askIfIm;
 
-  static const stillWatchingHelp = 'After this long with no button pressed, Nightingale TV asks if anyone is '
-      'watching. With no answer in a minute, it goes to sleep: playback stops and your server stops streaming. '
-      'Not while a sleep timer is set.';
+  static String get stillWatchingHelp => tr.afterThisLong;
 
   static String reportsHelpText(Iterable<ServerKind> kinds) =>
       kinds.any((k) => k != ServerKind.jellyfin) ? '$reportsHelp $reportsLiveHelp' : reportsHelp;
 
   /// "Update watch status on {server name}": the profile's server by name;
   /// with several, all of them.
-  static String reportsLabel(List<String> servers) => 'Update watch status on ${switch (servers) {
-        [] => 'your server',
-        [final one] => one,
-        _ => 'your servers',
-      }}';
+  static String reportsLabel(List<String> servers) => switch (servers) {
+        [] => tr.updateWatchStatusOnYourServer,
+        [final one] => tr.updateWatchStatusOn(one),
+        _ => tr.updateWatchStatusOnYourServers,
+      };
 
   static String levelingHelpText() =>
       PlatformInfo.isAndroid ? '$levelingHelp $levelingAndroidHelp' : levelingHelp;
@@ -88,8 +79,8 @@ class PlaybackScreen extends StatelessWidget {
     final selected = playback.preset;
 
     return TvPage(
-      title: 'Playback',
-      hints: '▲▼ Move    OK Select    ESC Back',
+      title: tr.playback,
+      hints: tr.moveOkSelectEscBack,
       onBack: () => Navigator.of(context).pop(),
       child: FocusTraversalGroup(
         child: ListView(
@@ -99,7 +90,7 @@ class PlaybackScreen extends StatelessWidget {
               Text(relayNotice, style: g.body(26, color: g.nowLine)),
               const SizedBox(height: 28),
             ],
-            Text('CONVERTING', style: g.display(26, weight: FontWeight.w800, color: g.accent)),
+            Text(tr.converting, style: g.display(26, weight: FontWeight.w800, color: g.accent)),
             const SizedBox(height: 14),
             Align(
               alignment: Alignment.centerLeft,
@@ -113,7 +104,7 @@ class PlaybackScreen extends StatelessWidget {
             const SizedBox(height: 12),
             ConstrainedBox(constraints: const BoxConstraints(maxWidth: 1100), child: Text(toggleHelp, style: g.body(24, color: g.textDim))),
             const SizedBox(height: 40),
-            Text('MAXIMUM STREAMING BITRATE',
+            Text(tr.maximumStreamingBitrate,
                 style: g.display(26, weight: FontWeight.w800, color: on ? g.accent : g.textDim)),
             const SizedBox(height: 14),
             for (final preset in PlaybackSettings.presets)
@@ -133,7 +124,7 @@ class PlaybackScreen extends StatelessWidget {
             const SizedBox(height: 12),
             ConstrainedBox(constraints: const BoxConstraints(maxWidth: 1100), child: Text(bitrateHelp, style: g.body(24, color: g.textDim))),
             const SizedBox(height: 40),
-            Text('AUDIO', style: g.display(26, weight: FontWeight.w800, color: g.accent)),
+            Text(tr.audio, style: g.display(26, weight: FontWeight.w800, color: g.accent)),
             const SizedBox(height: 14),
             Align(
               alignment: Alignment.centerLeft,
@@ -146,7 +137,7 @@ class PlaybackScreen extends StatelessWidget {
             const SizedBox(height: 12),
             ConstrainedBox(constraints: const BoxConstraints(maxWidth: 1100), child: Text(levelingHelpText(), style: g.body(24, color: g.textDim))),
             const SizedBox(height: 40),
-            Text('CAPTIONS', style: g.display(26, weight: FontWeight.w800, color: g.accent)),
+            Text(tr.captions2, style: g.display(26, weight: FontWeight.w800, color: g.accent)),
             const SizedBox(height: 14),
             ValueListenableBuilder<CaptionSize>(
               valueListenable: app.captionSize,
@@ -169,7 +160,7 @@ class PlaybackScreen extends StatelessWidget {
             const SizedBox(height: 12),
             ConstrainedBox(constraints: const BoxConstraints(maxWidth: 1100), child: Text(captionSizeHelp, style: g.body(24, color: g.textDim))),
             const SizedBox(height: 40),
-            Text('COMMERCIALS', style: g.display(26, weight: FontWeight.w800, color: g.accent)),
+            Text(tr.commercials2, style: g.display(26, weight: FontWeight.w800, color: g.accent)),
             const SizedBox(height: 14),
             Align(
               alignment: Alignment.centerLeft,
@@ -182,7 +173,7 @@ class PlaybackScreen extends StatelessWidget {
             const SizedBox(height: 12),
             ConstrainedBox(constraints: const BoxConstraints(maxWidth: 1100), child: Text(noticesHelp, style: g.body(24, color: g.textDim))),
             const SizedBox(height: 40),
-            Text('CLOCK', style: g.display(26, weight: FontWeight.w800, color: g.accent)),
+            Text(tr.clock, style: g.display(26, weight: FontWeight.w800, color: g.accent)),
             const SizedBox(height: 14),
             Align(
               alignment: Alignment.centerLeft,
@@ -195,7 +186,7 @@ class PlaybackScreen extends StatelessWidget {
             const SizedBox(height: 12),
             ConstrainedBox(constraints: const BoxConstraints(maxWidth: 1100), child: Text(clockHelp, style: g.body(24, color: g.textDim))),
             const SizedBox(height: 40),
-            Text('WATCHING', style: g.display(26, weight: FontWeight.w800, color: g.accent)),
+            Text(tr.watching, style: g.display(26, weight: FontWeight.w800, color: g.accent)),
             const SizedBox(height: 14),
             Align(
               alignment: Alignment.centerLeft,

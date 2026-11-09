@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
 import 'platform_info.dart';
+import '../l10n/tr.dart';
 
 /// Where an Android install came from (install-switching D4).
 enum InstallSource { googlePlay, officialApk, ownBuild }
@@ -27,7 +28,7 @@ class InstallInfo {
       );
 
   static const officialName = 'Nightingale TV';
-  static const ownBuildName = 'Nightingale TV (own build)';
+  static String get ownBuildName => tr.nightingaleTvOwn;
 
   static const googlePlayInstaller = 'com.android.vending';
 
@@ -55,23 +56,20 @@ class InstallInfo {
 
   /// About this install's first line.
   String get sourceLine => switch (source) {
-        InstallSource.googlePlay => 'Installed from Google Play',
-        InstallSource.officialApk => 'Official Nightingale TV APK',
-        InstallSource.ownBuild => 'Your own build',
+        InstallSource.googlePlay => tr.installedFromGoogle,
+        InstallSource.officialApk => tr.officialNightingaleTv,
+        InstallSource.ownBuild => tr.yourOwnBuild,
       };
 
   /// What switching to another version means from this install.
   String get switching => switch (source) {
         InstallSource.googlePlay || InstallSource.officialApk =>
-          'Updates from Google Play and official Nightingale TV APKs install over this one and keep your setup. '
-              'A build of your own installs as a separate app, "$ownBuildName", and your setup can be moved to it from here.',
+          tr.updatesFromGoogle(ownBuildName),
         InstallSource.ownBuild =>
-          'The store version installs beside this one as a separate app, "$officialName", with its own setup. '
-              'Buying it supports the project. Once it\'s installed, your setup can be moved to it from here.',
+          tr.theStoreVersion(officialName),
       };
 
-  static const uninstallWarning =
-      'Uninstalling this app deletes its profiles, channels and settings unless you back them up or move them first.';
+  static String get uninstallWarning => tr.uninstallingThisApp;
 }
 
 /// What the other app sent: a setup to restore, or a request for this one's.

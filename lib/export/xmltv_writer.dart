@@ -3,6 +3,7 @@ import '../channels/schedule.dart';
 import '../library/library_index.dart';
 import '../ui/format.dart';
 import 'm3u_writer.dart';
+import '../l10n/tr.dart';
 
 /// How far ahead the exported guide reaches.
 const xmltvSpan = Duration(hours: 72);
@@ -26,8 +27,8 @@ String buildXmltv({
   for (final c in channels) {
     out
       ..write('  <channel id="${c.number}">\n')
-      ..write('    <display-name>${xmlEscape(c.name)}</display-name>\n')
-      ..write('    <display-name>${c.number} ${xmlEscape(c.name)}</display-name>\n')
+      ..write('    <display-name>${xmlEscape(c.displayName)}</display-name>\n')
+      ..write('    <display-name>${c.number} ${xmlEscape(c.displayName)}</display-name>\n')
       ..write('    <icon src="${xmlEscape('${urls.logo(c)}')}"/>\n')
       ..write('  </channel>\n');
   }
@@ -61,9 +62,9 @@ void _programme(
   }
   final item = p.item;
   if (item == null) {
-    tag('title', 'Off Air');
+    tag('title', tr.offAir);
     final next = schedule.nextBlockAiring(p.start);
-    tag('desc', next == null ? null : 'Back on the air ${_when(next.start, p.start)} with ${next.title}.');
+    tag('desc', next == null ? null : tr.backOnTheAir(_when(next.start, p.start), next.title));
     out.write('  </programme>\n');
     return;
   }

@@ -106,7 +106,7 @@ class TransferServer {
       final action = segments[2];
       if (request.method == 'GET' && action == '') {
         response.headers.contentType = ContentType.html;
-        response.write(transferPageHtml);
+        response.write(transferPageHtml());
       } else if (request.method == 'GET' && action == 'backup') {
         final built = await backups.build(BackupReason.manual);
         response.headers

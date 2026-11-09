@@ -1,6 +1,7 @@
 export '../library/pool_root.dart';
 
 import '../library/pool_root.dart';
+import '../l10n/tr.dart';
 
 /// What a pool's clips are for: filling breaks, or framing them.
 enum PoolKind {
@@ -8,8 +9,8 @@ enum PoolKind {
   bumpers;
 
   String get label => switch (this) {
-        commercials => 'Commercials',
-        bumpers => 'Bumpers',
+        commercials => tr.commercials,
+        bumpers => tr.bumpers,
       };
 }
 
@@ -23,7 +24,7 @@ class CommercialPool {
   List<PoolRoot> roots;
   PoolKind kind;
 
-  static const defaultName = 'Commercials';
+  static String get defaultName => tr.commercials;
 
   /// "Commercials", or "Commercials 2", "Commercials 3", … when taken.
   static String nextName(Iterable<String> taken) {

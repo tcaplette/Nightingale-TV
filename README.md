@@ -51,6 +51,7 @@ Make TV feel like TV again, with ads between and during shows. Being experimenta
 
 ### Your household
 
+- **Six languages.** English, Deutsch, Français, Español, Português (Brasil) and Italiano, set per profile under Menu → Language. Automatic follows the device. The web admin follows the browser and has its own Language menu.
 - **Jellyfin, Emby and Plex.** Sign in to any of them. Every feature works on all three. The one exception: a Plex server that doesn't list its artists' music videos gets no music video channels.
 - **Several servers in one lineup.** Add more servers to a profile in Menu → **Servers**, in any mix (Jellyfin at home and a friend's Plex, say). Their libraries become one, and something on two servers appears once and plays from the first in your **Play from** order that answers. Give a slow remote server its own **Quality limit**. If one server is down, the others keep playing.
 - **Profiles.** Everyone gets their own channels, blocks and settings. Kid profiles only see content rated for their age. Grown-up profiles and settings can be locked with a PIN.

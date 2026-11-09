@@ -1,6 +1,7 @@
 import '../channels/schedule.dart';
 import '../library/library_index.dart';
 import 'live_data.dart';
+import '../l10n/tr.dart';
 
 /// A live channel's schedule, from its source's guide (live-tv-sources D2):
 /// each programme is one slot (and one segment: no breaks), and gaps are
@@ -16,7 +17,7 @@ class LiveSchedule implements ProgramSchedule {
   final String channelName;
   final List<ScheduledProgram> _slots;
 
-  static const noGuide = 'No guide information';
+  static String get noGuide => tr.noGuideInformation;
 
   /// Where the guide data ends; null with none.
   DateTime? get guideUntil => _slots.isEmpty ? null : _slots.last.end;

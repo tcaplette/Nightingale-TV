@@ -9,6 +9,7 @@ import 'format.dart';
 import 'menu_screen.dart' show confirm;
 import 'widgets/screen_layout.dart';
 import 'widgets/tv_focus.dart';
+import '../l10n/tr.dart';
 
 /// The settings of a Custom break plan, role by role: for the main plan or
 /// one channel's own. Pops with the new settings on Save.
@@ -64,9 +65,9 @@ class _BreakPlanEditorScreenState extends State<BreakPlanEditorScreen> {
     if (_changed) {
       final discard = await confirm(
         context,
-        title: 'Leave without saving?',
-        message: 'Your changes to the break settings are lost.',
-        action: 'Leave',
+        title: tr.leaveWithoutSaving,
+        message: tr.yourChangesTo,
+        action: tr.leave,
       );
       if (!discard || !mounted) return;
     }
@@ -77,8 +78,8 @@ class _BreakPlanEditorScreenState extends State<BreakPlanEditorScreen> {
     final picked = await Navigator.of(context).push<_PoolChoice>(
       MaterialPageRoute(
         builder: (_) => _PoolChooserScreen(
-          title: '${role.label} clips',
-          allLabel: 'All pools',
+          title: tr.clips2(role.label),
+          allLabel: tr.allPools,
           kind: PoolKind.commercials,
           selected: _roles.poolFor(role),
         ),
@@ -91,8 +92,8 @@ class _BreakPlanEditorScreenState extends State<BreakPlanEditorScreen> {
     final picked = await Navigator.of(context).push<_PoolChoice>(
       MaterialPageRoute(
         builder: (_) => _PoolChooserScreen(
-          title: 'Bumpers',
-          allLabel: 'All bumper pools',
+          title: tr.bumpers,
+          allLabel: tr.allBumperPools,
           kind: PoolKind.bumpers,
           selected: _roles.bumperPool,
         ),
@@ -102,10 +103,10 @@ class _BreakPlanEditorScreenState extends State<BreakPlanEditorScreen> {
   }
 
   static String _length(Duration d) {
-    if (d == Duration.zero) return 'None';
+    if (d == Duration.zero) return tr.none;
     if (d.inSeconds < 60) return '${d.inSeconds} s';
     return d.inSeconds % 60 == 0
-        ? '${d.inMinutes} min'
+        ? tr.min(d.inMinutes)
         : '${d.inMinutes}:${(d.inSeconds % 60).toString().padLeft(2, '0')}';
   }
 
@@ -114,7 +115,7 @@ class _BreakPlanEditorScreenState extends State<BreakPlanEditorScreen> {
     final app = AppScope.of(context);
     final g = context.guide;
     final portrait = ScreenLayout.of(context).isPortrait;
-    String poolName(String? id) => id == null ? 'All pools' : app.poolById(id)?.name ?? 'All pools';
+    String poolName(String? id) => id == null ? tr.allPools : app.poolById(id)?.name ?? tr.allPools;
 
     /// A row of choices; with [pool], ending in the button that picks the
     /// role's pool (▶ from the choices reaches it).
@@ -158,7 +159,7 @@ class _BreakPlanEditorScreenState extends State<BreakPlanEditorScreen> {
             if (pool != null) ...[
               if (!portrait) const SizedBox(width: 28),
               TvButton(
-                label: 'Clips from: ${poolName(_roles.poolFor(pool))}',
+                label: tr.clipsFrom(poolName(_roles.poolFor(pool))),
                 icon: Icons.video_library,
                 onPressed: poolEnabled ? () => _pickPool(pool) : null,
               ),
@@ -182,21 +183,21 @@ class _BreakPlanEditorScreenState extends State<BreakPlanEditorScreen> {
           runSpacing: 12,
           children: [
             TvToggle(
-              label: 'None',
+              label: tr.none,
               radio: true,
               focusNode: _node('bumpers:0'),
               on: chosen == 0,
               onPressed: () => _set(_roles.withBumpers(null, none: true)),
             ),
             TvToggle(
-              label: 'All bumper pools',
+              label: tr.allBumperPools,
               radio: true,
               focusNode: _node('bumpers:1'),
               on: chosen == 1,
               onPressed: () => _set(_roles.withBumpers(null)),
             ),
             TvToggle(
-              label: poolName == null ? 'One pool…' : '$poolName…',
+              label: poolName == null ? tr.onePool : '$poolName…',
               radio: true,
               focusNode: _node('bumpers:2'),
               on: chosen == 2,
@@ -211,7 +212,7 @@ class _BreakPlanEditorScreenState extends State<BreakPlanEditorScreen> {
 
     return TvPage(
       title: widget.title,
-      hints: '▲▼◀▶ Move    OK Select    ESC Back',
+      hints: tr.moveOkSelectEsc,
       onBack: _leave,
       // Full width, so each setting's choices fit on one line and ◀▶ reach
       // them all.
@@ -220,7 +221,7 @@ class _BreakPlanEditorScreenState extends State<BreakPlanEditorScreen> {
           padding: ScreenLayout.of(context).pagePadding(const EdgeInsets.fromLTRB(100, 24, 100, 40)),
           children: [
             _Examples(roles: _roles),
-            _section(g, 'PRE-ROLL', 'Before each program'),
+            _section(g, tr.preRoll2, tr.beforeEachProgram),
             choices(
               'pre',
               CustomRoles.preRollChoices,
@@ -231,14 +232,14 @@ class _BreakPlanEditorScreenState extends State<BreakPlanEditorScreen> {
               pool: BreakRole.pre,
               poolEnabled: _roles.preRoll > Duration.zero,
             ),
-            _section(g, 'MID-ROLL', 'Breaks inside shows and movies, at act breaks when they can be found'),
+            _section(g, tr.midRoll2, tr.breaksInsideShows),
             choices<Duration?>(
               'every',
               CustomRoles.midIntervalChoices,
               _roles.midInterval,
-              (v) => v == null ? 'Off' : '${v.inMinutes} min',
+              (v) => v == null ? tr.off : tr.min(v.inMinutes),
               (v) => _roles.copyWith(midInterval: () => v),
-              rowLabel: 'Every',
+              rowLabel: tr.every,
             ),
             const SizedBox(height: 12),
             choices(
@@ -247,11 +248,11 @@ class _BreakPlanEditorScreenState extends State<BreakPlanEditorScreen> {
               _roles.midLength,
               _length,
               (v) => _roles.copyWith(midLength: v),
-              rowLabel: 'Length',
+              rowLabel: tr.length,
               pool: BreakRole.mid,
               poolEnabled: _roles.midInterval != null,
             ),
-            _section(g, 'POST-ROLL', 'After each program'),
+            _section(g, tr.postRoll2, tr.afterEachProgram),
             choices(
               'post',
               CustomRoles.postRollChoices,
@@ -261,16 +262,16 @@ class _BreakPlanEditorScreenState extends State<BreakPlanEditorScreen> {
               pool: BreakRole.post,
               poolEnabled: _roles.postRoll > Duration.zero,
             ),
-            _section(g, 'TAIL', 'Pads each slot to the clock, so programs start on time'),
+            _section(g, tr.tail2, tr.padsEachSlot),
             choices<Duration>(
               'tail',
               CustomRoles.tailGridChoices,
               _roles.tailGrid,
-              (v) => v.inMinutes == 60 ? 'To the hour' : 'To the half hour',
+              (v) => v.inMinutes == 60 ? tr.toTheHour : tr.toTheHalf,
               (v) => _roles.copyWith(tailGrid: v),
               pool: BreakRole.tail,
             ),
-            _section(g, 'BUMPERS', 'Open and close breaks, from pools set to Bumpers'),
+            _section(g, tr.bumpers2, tr.openAndClose),
             bumpers(),
             const SizedBox(height: 40),
             Focus(
@@ -282,12 +283,12 @@ class _BreakPlanEditorScreenState extends State<BreakPlanEditorScreen> {
                 runSpacing: 16,
                 children: [
                   TvButton(
-                    label: 'Save',
+                    label: tr.save,
                     icon: Icons.check,
                     focusNode: _node('actions:save'),
                     onPressed: () => Navigator.of(context).pop(_roles),
                   ),
-                  TvButton(label: 'Cancel', onPressed: _leave),
+                  TvButton(label: tr.cancel, onPressed: _leave),
                 ],
               ),
             ),
@@ -328,12 +329,12 @@ class _Examples extends StatelessWidget {
     final plan = BreakPlan(mode: BreakMode.custom, roles: roles);
     String example(String name, int minutes) {
       final s = resolve(plan, Duration(minutes: minutes));
-      if (!s.hasBreaks) return '$name: no breaks';
-      final mids = s.midCount == 0 ? '' : ', ${s.midCount} break${s.midCount == 1 ? '' : 's'} inside';
+      if (!s.hasBreaks) return tr.noBreaks(name);
+      final mids = s.midCount == 0 ? '' : tr.breaksInside(s.midCount);
       return '$name: ${formatMinutes(s.slotLength)}$mids';
     }
 
-    final examples = [example('22-min sitcom', 22), example('44-min drama', 44), example('100-min movie', 100)];
+    final examples = [example(tr.n22MinSitcom, 22), example(tr.n44MinDrama, 44), example(tr.n100MinMovie, 100)];
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 18),
       decoration: BoxDecoration(
@@ -385,7 +386,7 @@ class _PoolChooserScreen extends StatelessWidget {
     ];
     return TvPage(
       title: title,
-      hints: '▲▼ Move    OK Choose    ESC Back',
+      hints: tr.moveOkChoose,
       onBack: () => Navigator.of(context).pop(),
       child: FocusTraversalGroup(
         child: ListView(
@@ -395,7 +396,7 @@ class _PoolChooserScreen extends StatelessWidget {
               Padding(
                 padding: const EdgeInsets.only(bottom: 12),
                 child: TvButton(
-                  label: '$name  ·  $clips clip${clips == 1 ? '' : 's'}',
+                  label: tr.clips(name, clips),
                   icon: id == selected ? Icons.radio_button_checked : Icons.radio_button_off,
                   autofocus: id == selected,
                   expand: true,

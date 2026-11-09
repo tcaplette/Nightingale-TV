@@ -18,9 +18,13 @@ enum ServerKind {
 }
 
 class ServerException implements Exception {
-  ServerException(this.message, {this.statusCode, this.detail});
+  ServerException(this.message, {this.statusCode, this.detail, this.cause});
 
   final String message;
+
+  /// What went wrong in the message's own words, when another message
+  /// wants to quote it.
+  final String? cause;
   final int? statusCode;
 
   /// The start of the server's answer, for telling causes apart (a busy

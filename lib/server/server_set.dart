@@ -1,17 +1,20 @@
 import '../library/library_index.dart';
 import 'keyed_server.dart';
 import 'media_server.dart';
+import '../l10n/tr.dart';
 
 /// How a profile's server is doing (multi-server): shown in Servers, and
 /// which copies the tuner may play.
 enum ServerState {
-  ok('OK'),
-  unreachable("Can't be reached"),
-  needsSignIn('Needs sign-in');
+  ok,
+  unreachable,
+  needsSignIn;
 
-  const ServerState(this.label);
-
-  final String label;
+  String get label => switch (this) {
+        ServerState.ok => tr.ok,
+        ServerState.unreachable => tr.cantBeReached,
+        ServerState.needsSignIn => tr.needsSignIn,
+      };
 }
 
 /// One of a profile's servers: the main one (key [ServerSet.mainKey], the

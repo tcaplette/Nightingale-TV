@@ -24,6 +24,7 @@ import 'report_plan.dart';
 import 'subtitles.dart';
 import 'tuner_player.dart';
 import '../server/media_server.dart';
+import '../l10n/tr.dart';
 
 enum TunerStatus {
   idle,
@@ -656,7 +657,7 @@ class Tuner extends ChangeNotifier {
 
   /// The device's language, for the choice when nothing else decides it.
   @visibleForTesting
-  String Function() deviceLanguage = () => PlatformDispatcher.instance.locale.languageCode;
+  String Function() deviceLanguage = () => activeLanguage;
 
   /// [item]'s tracks, asked of [client] once this session (shared with a
   /// request in flight). None when the server can't say; asked again later.
@@ -794,7 +795,7 @@ class Tuner extends ChangeNotifier {
     if (!on) {
       await _applyCaptions();
       notifyListeners();
-      return 'Captions off';
+      return tr.captionsOff;
     }
     final playing = _playing;
     List<SubtitleTrack>? tracks;
@@ -806,10 +807,10 @@ class Tuner extends ChangeNotifier {
     }
     await _applyCaptions();
     notifyListeners();
-    if (tracks == null) return 'Captions on';
+    if (tracks == null) return tr.captionsOn2;
     final shown = shownSubtitle;
-    if (shown == null) return tracks.isEmpty ? 'Captions on: no subtitles for this program' : 'Captions on';
-    return 'Captions on: ${languageName(shown.language) ?? subtitleLabel(shown)}';
+    if (shown == null) return tracks.isEmpty ? tr.captionsOnNo : tr.captionsOn2;
+    return tr.captionsOn(languageName(shown.language) ?? subtitleLabel(shown));
   }
 
   /// The captions picker's choice: [track] on, its language saved as the
@@ -902,7 +903,7 @@ class Tuner extends ChangeNotifier {
       segment = null;
       // A channel with nothing in its playlist (a custom channel whose
       // collection is gone) is off the air, not out of signal.
-      error = 'Nothing to play on this channel';
+      error = tr.nothingToPlay;
       _stopTranscode();
       _setStatus(TunerStatus.offAir);
       await media.stop();
@@ -1651,7 +1652,7 @@ class Tuner extends ChangeNotifier {
     _startup = Timer(transcodeStartup, () {
       if (generation != _generation || status != TunerStatus.tuning) return;
       _diagnostics?.event('transcode startup timeout');
-      _fail('The server took too long to start converting this program.');
+      _fail(tr.theServerTookToo);
     });
   }
 
@@ -1833,8 +1834,8 @@ class Tuner extends ChangeNotifier {
   @visibleForTesting
   Duration pausedJobStop = const Duration(seconds: 30);
 
-  static const backToLiveNotice = 'Back to live';
-  static const couldntPlayNotice = "Couldn't play that part. Back to live";
+  static String get backToLiveNotice => tr.backToLive;
+  static String get couldntPlayNotice => tr.couldntPlayThat;
 
   Duration _shift = Duration.zero;
 
@@ -2333,7 +2334,7 @@ class Tuner extends ChangeNotifier {
     session.startTimer = Timer(liveStartTimeout, () {
       if (!identical(_live, session) || session.pictured) return;
       _liveFailed(generation, ch, LiveFailure.other, 'no picture in ${liveStartTimeout.inSeconds} s',
-          source: source, attempt: attempt, message: "${ch.name} didn't start");
+          source: source, attempt: attempt, message: tr.didntStart(ch.displayName));
     });
     final opening = Completer<LiveStream?>();
     session.opening = opening.future;
@@ -2486,7 +2487,7 @@ class Tuner extends ChangeNotifier {
       error = liveMessage;
       _setStatus(TunerStatus.error);
     } else {
-      liveMessage = attempt <= liveRetries.length ? 'Reconnecting…' : 'Lost the signal on ${ch.name}';
+      liveMessage = attempt <= liveRetries.length ? 'Reconnecting…' : tr.lostTheSignal(ch.displayName);
       _setStatus(TunerStatus.standby);
     }
     _diagnostics?.event('live: reopen #$attempt in ${wait.inSeconds} s ($cause)');
@@ -2504,13 +2505,13 @@ class Tuner extends ChangeNotifier {
     final server = app.session?.serverName ?? 'the server';
     final name = source?.name ?? 'the source';
     return switch (failure) {
-      LiveFailure.tunersBusy => "All of $server's tuners are in use",
-      LiveFailure.unreachable => "Can't reach $name",
-      LiveFailure.refused => "Your $server account can't watch this channel",
-      LiveFailure.providerRefused => '$name refused the stream. It may be playing on another device.',
-      LiveFailure.unsupportedScheme => "This channel's stream type isn't supported on this device",
-      LiveFailure.cantDecode => "This device can't play this channel's video",
-      LiveFailure.other => "${ch.name} didn't start",
+      LiveFailure.tunersBusy => tr.allOfS(server),
+      LiveFailure.unreachable => tr.cantReach(name),
+      LiveFailure.refused => tr.yourAccountCant(server),
+      LiveFailure.providerRefused => tr.refusedTheStream(name),
+      LiveFailure.unsupportedScheme => tr.thisChannelsStream,
+      LiveFailure.cantDecode => tr.thisDeviceCant,
+      LiveFailure.other => tr.didntStart(ch.displayName),
     };
   }
 

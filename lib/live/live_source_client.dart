@@ -9,6 +9,7 @@ import 'live_source.dart';
 import 'live_source_files.dart';
 import 'm3u_parser.dart';
 import 'xmltv_parser.dart';
+import '../l10n/tr.dart';
 
 /// A refreshed guide: programmes by channel key, the guide's own channel
 /// list (M3U), and which channels have guide data.
@@ -76,7 +77,7 @@ class ServerLiveSource implements LiveSourceClient {
     try {
       return await tv.channels();
     } on ServerException catch (e) {
-      throw LiveSourceException("Couldn't reach ${source.name}", detail: e.message);
+      throw LiveSourceException(tr.couldntReach(source.name), detail: e.message);
     }
   }
 
@@ -93,7 +94,7 @@ class ServerLiveSource implements LiveSourceClient {
         }
       }
     } on ServerException catch (e) {
-      throw LiveSourceException("Couldn't reach ${source.name}", detail: e.message);
+      throw LiveSourceException(tr.couldntReach(source.name), detail: e.message);
     }
     final programmes = {for (final e in out.entries) e.key: tidyProgrammes(e.value, from)};
     return LiveGuide(programmes: programmes, withGuide: {for (final e in programmes.entries) if (e.value.isNotEmpty) e.key});
@@ -159,16 +160,16 @@ class M3uSource implements LiveSourceClient {
       try {
         text = await store.fileFor(name).readAsString();
       } on FileSystemException {
-        throw const LiveSourceException("Couldn't read the playlist file");
+        throw LiveSourceException(tr.couldntReadThePlaylist);
       } on FormatException {
         throw LiveSourceException(M3uException.notM3u.message);
       }
     } else if (source.playlistUrl case final url?) {
       final uri = Uri.tryParse(url.trim());
-      if (uri == null || !uri.hasScheme) throw const LiveSourceException("Couldn't reach the playlist");
+      if (uri == null || !uri.hasScheme) throw LiveSourceException(tr.couldntReachThePlaylist);
       text = await downloader.text(uri);
     } else {
-      throw const LiveSourceException('The source has no playlist');
+      throw LiveSourceException(tr.theSourceHas);
     }
     try {
       return await parseM3uInBackground(text);
@@ -185,7 +186,7 @@ class M3uSource implements LiveSourceClient {
       file = store.fileFor(name);
     } else if (source.guideUrl case final url?) {
       final uri = Uri.tryParse(url.trim());
-      if (uri == null) throw const LiveSourceException("Couldn't reach the guide");
+      if (uri == null) throw LiveSourceException(tr.couldntReachTheGuide);
       await tempDir.create(recursive: true);
       file = File('${tempDir.path}/guide-${source.id}-${DateTime.now().microsecondsSinceEpoch}.xml');
       temp = true;
@@ -207,7 +208,7 @@ class M3uSource implements LiveSourceClient {
     } on XmltvException catch (e) {
       throw LiveSourceException(e.message);
     } on FileSystemException {
-      throw const LiveSourceException("Couldn't read the guide");
+      throw LiveSourceException(tr.couldntReadThe);
     } finally {
       if (temp && await file.exists()) await file.delete();
     }
@@ -217,7 +218,7 @@ class M3uSource implements LiveSourceClient {
   Future<LiveStream> open(LiveChannelInfo channel,
       {int? maxBitrate, bool forceTranscode = false, Map<String, Object?>? profile}) async {
     final url = Uri.tryParse(channel.url ?? '');
-    if (url == null) throw const LiveTvException(LiveFailure.other, 'The channel has no stream address.');
+    if (url == null) throw LiveTvException(LiveFailure.other, tr.theChannelHas);
     return LiveStream(channelId: channel.key, uri: url, headers: channel.headers);
   }
 

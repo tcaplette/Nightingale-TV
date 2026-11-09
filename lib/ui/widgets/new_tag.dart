@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../theme/tv_theme.dart';
+import '../../l10n/tr.dart';
 
 /// The "NEW" tag on a premiering episode (episode-premieres), in guide
 /// cells, the info panel, the channel banner and the Up next card.
@@ -10,7 +11,7 @@ class NewTag extends StatelessWidget {
   /// The label's font size; the tag scales with it.
   final double size;
 
-  static const label = 'NEW';
+  static String get label => tr.newLabel;
 
   @override
   Widget build(BuildContext context) {
@@ -30,7 +31,7 @@ class LiveTag extends StatelessWidget {
 
   final double size;
 
-  static const label = 'LIVE';
+  static String get label => tr.live;
 
   @override
   Widget build(BuildContext context) {

@@ -3,6 +3,7 @@ import 'dart:math';
 import '../channels/channel.dart';
 import '../channels/retro.dart';
 import '../server/media_server.dart';
+import '../l10n/tr.dart';
 
 enum LiveSourceKind {
   /// The profile's own Jellyfin, Emby or Plex server's Live TV.
@@ -12,8 +13,8 @@ enum LiveSourceKind {
   m3u;
 
   String get label => switch (this) {
-        server => 'Server Live TV',
-        m3u => 'M3U playlist',
+        server => tr.serverLiveTv,
+        m3u => tr.m3uPlaylist,
       };
 }
 

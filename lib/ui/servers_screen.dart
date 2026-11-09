@@ -7,6 +7,7 @@ import 'login_screen.dart';
 import 'menu_screen.dart' show confirm;
 import 'widgets/screen_layout.dart';
 import 'widgets/tv_focus.dart';
+import '../l10n/tr.dart';
 
 /// Menu → Servers (multi-server): the profile's servers, in Play from
 /// order, with their state; add one, sign in again, remove, reorder and
@@ -23,23 +24,22 @@ class ServersScreen extends StatelessWidget {
     final ordered = app.servers.ordered;
     final counts = app.serverCounts();
     return TvPage(
-      title: 'Servers',
-      hints: '▲▼◀▶ Move    OK Select    ESC Back',
+      title: tr.servers,
+      hints: tr.moveOkSelectEsc,
       onBack: () => Navigator.of(context).pop(),
       child: FocusTraversalGroup(
         child: ListView(
           padding: layout.pagePadding(const EdgeInsets.fromLTRB(100, 32, 100, 40)),
           children: [
             Text(
-              'Programs from every server join one lineup. A title on several servers plays from the first one '
-              'in this list that answers (Play from); if it stops answering, the next one takes over.',
+              tr.programsFromEvery,
               style: g.body(24, color: g.textDim),
             ),
             const SizedBox(height: 20),
             Align(
               alignment: Alignment.centerLeft,
               child: TvButton(
-                label: 'Add a server',
+                label: tr.addAServer,
                 icon: Icons.add,
                 autofocus: true,
                 onPressed: () => Navigator.of(context)
@@ -85,28 +85,28 @@ class _ServerRow extends StatelessWidget {
     final buttons = [
       if (state == ServerState.needsSignIn)
         TvButton(
-          label: 'Sign in again',
+          label: tr.signInAgain,
           icon: Icons.login,
           onPressed: () => Navigator.of(context)
               .push(MaterialPageRoute<void>(builder: (_) => LoginScreen(againKey: server.key))),
         ),
       if (count > 1) ...[
         TvButton(
-            label: 'Move up',
+            label: tr.moveUp,
             icon: Icons.arrow_upward,
             onPressed: position == 0 ? null : () => app.moveServer(server.key, -1)),
         TvButton(
-            label: 'Move down',
+            label: tr.moveDown,
             icon: Icons.arrow_downward,
             onPressed: position == count - 1 ? null : () => app.moveServer(server.key, 1)),
       ],
       TvButton(
-        label: 'Quality limit',
+        label: tr.qualityLimit2,
         icon: Icons.high_quality,
         onPressed: () => Navigator.of(context)
             .push(MaterialPageRoute<void>(builder: (_) => _QualityLimitScreen(serverKey: server.key))),
       ),
-      if (!server.isMain) TvButton(label: 'Remove', icon: Icons.delete, danger: true, onPressed: () => _remove(context)),
+      if (!server.isMain) TvButton(label: tr.remove, icon: Icons.delete, danger: true, onPressed: () => _remove(context)),
     ];
     return Padding(
       padding: const EdgeInsets.only(bottom: 28),
@@ -123,26 +123,30 @@ class _ServerRow extends StatelessWidget {
             Text('${count > 1 ? '${position + 1}. ' : ''}${server.name}', style: g.display(40, weight: FontWeight.w800)),
             const SizedBox(height: 6),
             Text(
-              [server.kind.label, if (server.isMain) 'Main server', state.label].join(' · '),
+              [server.kind.label, if (server.isMain) tr.mainServer, state.label].join(' · '),
               style: g.body(26,
                   weight: FontWeight.w600, color: state == ServerState.ok ? g.accent : g.nowLine),
             ),
             Text(
               [
                 ?server.serverUrl,
-                if (server.userName case final user?) 'Signed in as $user',
+                if (server.userName case final user?) tr.signedInAs(user),
               ].join(' · '),
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
               style: g.body(22, color: g.textDim),
             ),
             Text(
-              '$episodes episodes · $movies movies${songs == 0 ? '' : ' · $songs songs'} · '
-              'Quality: ${limit == null ? 'same as the profile' : _mbps(limit)}',
+              [
+                tr.countEpisodes(episodes),
+                tr.countMovies(movies),
+                if (songs != 0) tr.countSongs(songs),
+                limit == null ? tr.qualitySameAsProfile : tr.qualityValue(_mbps(limit)),
+              ].join(' · '),
               style: g.body(22, color: g.textDim),
             ),
             if (server.isMain)
-              Text('Signing out of this profile changes its main server.', style: g.body(22, color: g.textDim)),
+              Text(tr.signingOutOf, style: g.body(22, color: g.textDim)),
             const SizedBox(height: 18),
             Wrap(spacing: 16, runSpacing: 14, children: buttons),
           ],
@@ -154,17 +158,16 @@ class _ServerRow extends StatelessWidget {
   Future<void> _remove(BuildContext context) async {
     final ok = await confirm(
       context,
-      title: 'Remove ${server.name}?',
-      message: 'Its programs leave your channels, which keep their numbers. '
-          'Sources and commercial folders on it show as not found until you change them.',
-      action: 'Remove',
+      title: tr.remove3(server.name),
+      message: tr.itsProgramsLeave,
+      action: tr.remove,
     );
     if (!ok || !context.mounted) return;
     await AppScope.read(context).removeServer(server.key);
   }
 }
 
-String _mbps(int kbps) => '${kbps % 1000 == 0 ? kbps ~/ 1000 : (kbps / 1000).toStringAsFixed(1)} Mbps';
+String _mbps(int kbps) => tr.mbps(kbps % 1000 == 0 ? kbps ~/ 1000 : (kbps / 1000).toStringAsFixed(1));
 
 /// A server's quality limit: the profile's cap, or lower for a slow
 /// (remote) server.
@@ -183,16 +186,15 @@ class _QualityLimitScreen extends StatelessWidget {
     if (server == null) return const SizedBox.shrink();
     final current = server.qualityLimitKbps;
     return TvPage(
-      title: 'Quality limit · ${server.name}',
-      hints: '▲▼ Move    OK Select    ESC Back',
+      title: tr.qualityLimit(server.name),
+      hints: tr.moveOkSelectEscBack,
       onBack: () => Navigator.of(context).pop(),
       child: FocusTraversalGroup(
         child: ListView(
           padding: ScreenLayout.of(context).pagePadding(const EdgeInsets.fromLTRB(100, 40, 100, 40)),
           children: [
             Text(
-              "Streams from this server stay under this. The profile's own limit (Playback) still applies; "
-              'the lower one wins.',
+              tr.streamsFromThis,
               style: g.body(24, color: g.textDim),
             ),
             const SizedBox(height: 24),
@@ -202,7 +204,7 @@ class _QualityLimitScreen extends StatelessWidget {
                 child: Align(
                   alignment: Alignment.centerLeft,
                   child: TvToggle(
-                    label: kbps == null ? 'Same as the profile' : _mbps(kbps),
+                    label: kbps == null ? tr.sameAsThe : _mbps(kbps),
                     radio: true,
                     on: kbps == current,
                     autofocus: kbps == current,

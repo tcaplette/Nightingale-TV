@@ -11,12 +11,14 @@ import '../backup/backup_scheduler.dart';
 import '../backup/backup_store.dart';
 import '../data/app_storage.dart';
 import '../export/export_service.dart';
+import '../l10n/language_controller.dart';
 import '../platform/platform_info.dart';
 import '../remote/remote_control.dart';
 import 'analysis_queue.dart';
 import 'profile.dart';
 import '../server/media_server.dart';
 import '../server/server_clients.dart';
+import '../l10n/tr.dart';
 
 /// Everyone who watches this TV: the profiles, which one is watching now,
 /// and that profile's [AppState].
@@ -24,7 +26,8 @@ import '../server/server_clients.dart';
 /// Each profile keeps its own Jellyfin sign-in, library, channels and blocks
 /// under `profiles/<id>/`; custom logos are shared.
 class Household extends ChangeNotifier {
-  Household(this.root, {this.runAnalysis = true, this.serverMode = false});
+  Household(this.root, {this.runAnalysis = true, this.serverMode = false, LanguageController? language})
+      : language = language ?? LanguageController();
 
   /// Analyze media in the background (off in some tests).
   final bool runAnalysis;
@@ -34,6 +37,12 @@ class Household extends ChangeNotifier {
   final bool serverMode;
 
   static const _profilesFile = 'profiles.json';
+
+  /// The language for screens with no profile (design D4).
+  static const _languageFile = 'language.json';
+
+  /// Which language the interface shows.
+  final LanguageController language;
 
   /// State files that lived at the top level before profiles existed.
   static const _legacyFiles = [
@@ -90,6 +99,27 @@ class Household extends ChangeNotifier {
   /// Server mode: exported profiles analyze media one at a time.
   late final AnalysisQueue? analysisQueue = serverMode ? AnalysisQueue() : null;
 
+  void _saveLastLanguage(String? language) => unawaited(root.writeJson(_languageFile, {'language': language}));
+
+  /// Every change of who's watching, or of what they chose, reaches here.
+  @override
+  void notifyListeners() {
+    if (!serverMode) language.setProfile(active: _current != null, choice: _current?.language);
+    super.notifyListeners();
+  }
+
+  /// Sets [p]'s Language (null: Automatic), applying at once if [p] is on
+  /// screen. Only the choice changes, so playback and screens carry on.
+  Future<void> setLanguage(Profile p, String? choice) async {
+    p.language = choice;
+    if (_current?.id == p.id) _current!.language = choice;
+    await _save();
+    notifyListeners();
+  }
+
+  /// The language [p]'s off-screen work, such as its export, is written in.
+  String languageFor(Profile p) => language.resolve(p.language);
+
   bool get started => _started;
   List<Profile> get profiles => _profiles;
 
@@ -107,6 +137,10 @@ class Household extends ChangeNotifier {
     // A restore cut short by a crash or power cut is finished, or a staged
     // one that never began swapping is thrown away.
     await BackupRestorer.recover(root.root);
+    final saved = await root.readJson(_languageFile);
+    language
+      ..onLastChanged = _saveLastLanguage
+      ..restoreLast(saved is Map<String, Object?> ? saved['language'] as String? : null);
     final json = await root.readJson(_profilesFile);
     if (json is List) {
       _profiles = [for (final p in json.cast<Map<String, Object?>>()) Profile.fromJson(p)];
@@ -169,7 +203,7 @@ class Household extends ChangeNotifier {
       firstRun = !await _hasLegacySetup();
       final session = await root.readJson('session.json');
       final userName = session is Map<String, Object?> ? session['userName'] as String? : null;
-      final first = Profile(id: _newId(), name: _displayName(userName) ?? 'Me');
+      final first = Profile(id: _newId(), name: _displayName(userName) ?? tr.me);
       final storage = await storageFor(first);
       for (final f in _legacyFiles) {
         await storage.adopt(root, f);
@@ -387,7 +421,7 @@ class Household extends ChangeNotifier {
 
   /// Why deleting [p] isn't allowed, if it isn't.
   String? problemDeleting(Profile p) {
-    if (p.id == _current?.id) return 'Switch to another profile before deleting this one.';
+    if (p.id == _current?.id) return tr.switchToAnother;
     return problemIn([for (final x in _profiles) if (x.id != p.id) x]);
   }
 
@@ -395,7 +429,7 @@ class Household extends ChangeNotifier {
   /// backup before it's restored).
   static String? problemIn(List<Profile> profiles) {
     final grownUps = profiles.where((p) => !p.isKid).toList();
-    if (grownUps.isEmpty) return 'There has to be at least one grown-up profile.';
+    if (grownUps.isEmpty) return tr.thereHasTo;
     if (profiles.any((p) => p.isKid)) {
       final open = grownUps.where((p) => !p.hasPin).map((p) => p.name).toList();
       if (open.isNotEmpty) {
@@ -412,7 +446,7 @@ class Household extends ChangeNotifier {
     final problem = problemWith(draft);
     if (problem != null) throw StateError(problem);
     final old = _profiles.where((p) => p.id == draft.id).firstOrNull;
-    if (draft.name.trim().isEmpty) draft.name = draft.isKid ? 'Kids' : 'Guest';
+    if (draft.name.trim().isEmpty) draft.name = draft.isKid ? tr.kids : tr.guest;
     final limitChanged = old != null && old.maxRatingRank != draft.maxRatingRank;
     if (limitChanged) draft.needsRescan = true;
     _profiles = old == null

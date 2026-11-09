@@ -4,6 +4,7 @@ import '../jellyfin/jellyfin_client.dart';
 import 'emby_client.dart';
 import 'media_server.dart';
 import 'plex/plex_client.dart';
+import '../l10n/tr.dart';
 
 /// A client for the [kind] of server at [serverUrl], not signed in yet.
 MediaServer serverClient(ServerKind kind, String serverUrl,
@@ -39,7 +40,7 @@ List<String> candidateUrls(String input) {
 Future<({MediaServer client, ServerInfo info})> identifyServer(String input,
     {required String deviceId, required String deviceName}) async {
   final urls = candidateUrls(input);
-  if (urls.first == 'https://') throw ServerException('Enter your server address.');
+  if (urls.first == 'https://') throw ServerException(tr.enterYourServer);
   final attempts = <Future<({MediaServer client, ServerInfo info})?>>[];
   final clients = <MediaServer>[];
   String? reason;
@@ -59,7 +60,7 @@ Future<({MediaServer client, ServerInfo info})> identifyServer(String input,
           return (client: client, info: info);
         } on ServerException catch (e) {
           // The reason worth showing comes from the address as typed.
-          if (url == urls.first && kind == ServerKind.jellyfin) reason = e.message;
+          if (url == urls.first && kind == ServerKind.jellyfin) reason = e.cause ?? e.message;
           return null;
         }
       }());
@@ -91,8 +92,7 @@ Future<({MediaServer client, ServerInfo info})> identifyServer(String input,
   }
   if (match == null) {
     final address = urls.first.replaceFirst(RegExp('^https?://'), '');
-    throw ServerException('No Jellyfin, Emby or Plex server found at $address.'
-        '${reason == null ? '' : ' ${reason!.replaceFirst(RegExp(r'^No Jellyfin server found at \S+ '), '')}'}');
+    throw ServerException('${tr.noServerFoundAt(address)}${reason == null ? '' : ' $reason'}');
   }
   return match;
 }

@@ -144,6 +144,10 @@ void main() {
       await signIn();
       final summary = (await get('/api/v1/profiles/$id/library'))! as Map;
       expect((summary['signedIn'], summary['series'], summary['episodes'], summary['movies']), (true, 3, 20, 3));
+      // Movies 1991–1993; episodes go by their shows' year, 2000.
+      final catalog = (await get('/api/v1/profiles/$id/library/catalog'))! as Map;
+      expect(catalog['videoDecades'], [1990, 2000]);
+      expect(catalog['decades'], isEmpty, reason: 'the music decades');
       final refresh = await admin.post('/api/v1/profiles/$id/library/refresh');
       expect(refresh.status, 200);
       expect((refresh.json! as Map)['syncing'], isTrue);

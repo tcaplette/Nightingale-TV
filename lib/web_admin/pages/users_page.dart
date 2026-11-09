@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../api_client.dart';
 import '../app.dart';
 import '../widgets/common.dart';
+import '../../l10n/tr.dart';
 
 /// Users (admin): add, change role and profiles, turn off, set a password,
 /// remove. Accounts a restore added show "Needs a password".
@@ -22,11 +23,11 @@ class UsersPage extends StatelessWidget {
           final names = {for (final p in profiles) p['id']: p['name']};
           final me = context.session.me?['id'];
           return PageBody(
-            title: 'Users',
+            title: tr.users,
             actions: [
               FilledButton.icon(
                 icon: const Icon(Icons.person_add_alt),
-                label: const Text('Add user'),
+                label: Text(tr.addUser),
                 onPressed: () async {
                   final ok = await showDialog<bool>(context: context, builder: (_) => _UserDialog(profiles: profiles));
                   if (ok == true) await reload();
@@ -40,13 +41,13 @@ class UsersPage extends StatelessWidget {
                   child: ListTile(
                     title: Text('${u['name']}${u['id'] == me ? ' (you)' : ''}'),
                     subtitle: Text([
-                      u['role'] == 'admin' ? 'Admin' : 'User',
+                      u['role'] == 'admin' ? tr.admin : tr.user,
                       if (u['role'] != 'admin')
                         (u['profiles'] as List).isEmpty
-                            ? 'No profiles'
+                            ? tr.noProfiles
                             : (u['profiles'] as List).map((id) => names[id] ?? id).join(', '),
-                      if (u['disabled'] == true) 'Turned off',
-                      if (u['needsPassword'] == true) 'Needs a password',
+                      if (u['disabled'] == true) tr.turnedOff,
+                      if (u['needsPassword'] == true) tr.needsAPassword2,
                     ].join(' · ')),
                     trailing: const Icon(Icons.edit_outlined),
                     onTap: () async {
@@ -121,36 +122,36 @@ class _UserDialogState extends State<_UserDialog> {
   Widget build(BuildContext context) {
     final user = widget.user;
     return AlertDialog(
-      title: Text(user == null ? 'Add user' : 'Edit ${user['name']}'),
+      title: Text(user == null ? tr.addUser : tr.edit('${user['name']}')),
       scrollable: true,
       content: SizedBox(
         width: 420,
         child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          TextField(controller: _name, autofocus: user == null, decoration: const InputDecoration(labelText: 'User name')),
+          TextField(controller: _name, autofocus: user == null, decoration: InputDecoration(labelText: tr.userName)),
           const SizedBox(height: 12),
           TextField(
             controller: _password,
             obscureText: true,
             decoration: InputDecoration(
-              labelText: user == null ? 'Password' : 'New password',
+              labelText: user == null ? tr.password : tr.newPassword,
               helperText: user == null
-                  ? 'At least 8 characters.'
+                  ? tr.atLeast8
                   : user['needsPassword'] == true
-                      ? 'Needs a password before it can sign in.'
-                      : 'Leave empty to keep it. Setting one signs them out elsewhere.',
+                      ? tr.needsAPassword
+                      : tr.leaveEmptyToKeepIt,
             ),
           ),
           const SizedBox(height: 12),
           SegmentedButton<String>(
-            segments: const [
-              ButtonSegment(value: 'user', label: Text('User')),
-              ButtonSegment(value: 'admin', label: Text('Admin')),
+            segments: [
+              ButtonSegment(value: 'user', label: Text(tr.user)),
+              ButtonSegment(value: 'admin', label: Text(tr.admin)),
             ],
             selected: {_role},
             onSelectionChanged: (s) => setState(() => _role = s.single),
           ),
           const SizedBox(height: 8),
-          Text(_role == 'admin' ? 'Admins can do everything, on every profile.' : 'Users reach only the profiles below.'),
+          Text(_role == 'admin' ? tr.adminsCanDo : tr.usersReachOnly),
           if (_role == 'user') ...[
             const SizedBox(height: 8),
             for (final p in widget.profiles)
@@ -164,8 +165,8 @@ class _UserDialogState extends State<_UserDialog> {
           if (user != null && !widget.isMe)
             SwitchListTile(
               contentPadding: EdgeInsets.zero,
-              title: const Text('Turned off'),
-              subtitle: const Text("Can't sign in; signed out everywhere."),
+              title: Text(tr.turnedOff),
+              subtitle: Text(tr.cantSignIn),
               value: _disabled,
               onChanged: (v) => setState(() => _disabled = v),
             ),
@@ -179,13 +180,13 @@ class _UserDialogState extends State<_UserDialog> {
                 ? null
                 : () async {
                     final ok = await confirm(context,
-                        title: 'Remove ${user['name']}?', message: 'They are signed out and can\'t sign in again.', action: 'Remove');
+                        title: tr.remove3('${user['name']}'), message: tr.theyAreSigned, action: tr.remove);
                     if (ok && context.mounted) await _run(() => context.api.delete('users/${user['id']}'));
                   },
-            child: const Text('Remove'),
+            child: Text(tr.remove),
           ),
-        TextButton(onPressed: () => Navigator.of(context).pop(false), child: const Text('Cancel')),
-        FilledButton(onPressed: _busy ? null : _save, child: const Text('Save')),
+        TextButton(onPressed: () => Navigator.of(context).pop(false), child: Text(tr.cancel)),
+        FilledButton(onPressed: _busy ? null : _save, child: Text(tr.save)),
       ],
     );
   }
@@ -209,7 +210,7 @@ class _PasswordPageState extends State<PasswordPage> {
 
   Future<void> _save() async {
     if (_password.text != _again.text) {
-      setState(() => _error = "The new passwords don't match.");
+      setState(() => _error = tr.theNewPasswords);
       return;
     }
     setState(() {
@@ -222,7 +223,7 @@ class _PasswordPageState extends State<PasswordPage> {
       _current.clear();
       _password.clear();
       _again.clear();
-      showMessage(context, 'Password changed. Your other browsers are signed out.');
+      showMessage(context, tr.passwordChangedYour);
     } on ApiException catch (e) {
       if (mounted) setState(() => _error = e.message);
     } finally {
@@ -231,7 +232,7 @@ class _PasswordPageState extends State<PasswordPage> {
   }
 
   @override
-  Widget build(BuildContext context) => PageBody(title: 'Change password', children: [
+  Widget build(BuildContext context) => PageBody(title: tr.changePassword, children: [
         Section(children: [
           AutofillGroup(
             child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
@@ -239,7 +240,7 @@ class _PasswordPageState extends State<PasswordPage> {
                 controller: _current,
                 obscureText: true,
                 autofillHints: const [AutofillHints.password],
-                decoration: const InputDecoration(labelText: 'Current password'),
+                decoration: InputDecoration(labelText: tr.currentPassword),
                 textInputAction: TextInputAction.next,
               ),
               const SizedBox(height: 12),
@@ -247,7 +248,7 @@ class _PasswordPageState extends State<PasswordPage> {
                 controller: _password,
                 obscureText: true,
                 autofillHints: const [AutofillHints.newPassword],
-                decoration: const InputDecoration(labelText: 'New password', helperText: 'At least 8 characters.'),
+                decoration: InputDecoration(labelText: tr.newPassword, helperText: tr.atLeast8),
                 textInputAction: TextInputAction.next,
               ),
               const SizedBox(height: 12),
@@ -255,14 +256,14 @@ class _PasswordPageState extends State<PasswordPage> {
                 controller: _again,
                 obscureText: true,
                 autofillHints: const [AutofillHints.newPassword],
-                decoration: const InputDecoration(labelText: 'New password again'),
+                decoration: InputDecoration(labelText: tr.newPasswordAgain),
                 onSubmitted: (_) => _save(),
               ),
               ErrorText(_error),
               const SizedBox(height: 12),
               Align(
                 alignment: Alignment.centerLeft,
-                child: FilledButton(onPressed: _busy ? null : _save, child: const Text('Change password')),
+                child: FilledButton(onPressed: _busy ? null : _save, child: Text(tr.changePassword)),
               ),
             ]),
           ),

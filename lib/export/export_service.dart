@@ -16,6 +16,7 @@ import 'export_streams.dart';
 import 'hdhomerun.dart';
 import 'lineup_server.dart';
 import 'ssdp_responder.dart';
+import '../l10n/tr.dart';
 
 /// Why an exported profile isn't being served.
 enum ExportProblem {
@@ -201,8 +202,8 @@ class ExportService extends ChangeNotifier {
 
   /// Moves [profileId]'s export to [port]. Returns why not, if it can't.
   Future<String?> setPort(String profileId, int port) async {
-    if (port < 1024 || port > 65535) return 'Pick a port between 1024 and 65535.';
-    if (_settings.portTaken(port, except: profileId)) return 'Another profile already uses port $port.';
+    if (port < 1024 || port > 65535) return tr.pickAPort;
+    if (_settings.portTaken(port, except: profileId)) return tr.anotherProfileAlready(port);
     await _update(_settings.withPort(profileId, port));
     return null;
   }
@@ -353,6 +354,7 @@ class ExportService extends ChangeNotifier {
         profileId: id,
         appFor: () => household.appFor(id),
         profileName: () => household.profileById(id)?.name ?? '',
+        language: () => household.profileById(id) == null ? 'en' : household.languageFor(household.profileById(id)!),
         export: export,
         device: hdHomeRunEndpoints(tunerCount: () => streamLimit),
         logos: art,
@@ -391,11 +393,10 @@ class ExportService extends ChangeNotifier {
 
   /// The message the screen shows for [problemOf].
   String? problemText(String profileId) => switch (problemOf(profileId)) {
-        ExportProblem.portInUse => 'Port ${_settings.profiles[profileId]!.port} is in use by another program. '
-            'Pick another port, then update it in Plex or Jellyfin.',
+        ExportProblem.portInUse => tr.portIsIn(_settings.profiles[profileId]!.port),
         ExportProblem.signedOut => household.serverMode
-            ? 'Sign in to this profile here to export its channels.'
-            : 'Sign in to this profile on the TV to export its channels.',
+            ? tr.signInToThis
+            : tr.signInTo,
         null => null,
       };
 

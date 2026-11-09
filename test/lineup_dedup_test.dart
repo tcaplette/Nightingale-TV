@@ -16,50 +16,70 @@ import 'package:nightingale_tv/live/live_source.dart';
 import 'fixtures.dart';
 import 'lineup_fixture.dart';
 
-/// What breaks the lineup rules (lineup-dedup D8, cable-lineup): a show or
-/// movie on two generated channels other than All Shows and Movie Channel
-/// (a genre channel's generated [blocks] count as its), a show with its own
-/// channel on All Shows, an empty generated channel, a genre channel under
-/// its minimum, two generated channels with one name.
+/// What breaks the lineup rules (lineup-dedup D8, genre-decade-channels
+/// D4, D5): a show with its own channel anywhere else; a generated genre,
+/// decade or decade + genre channel (or a genre channel's generated Evening
+/// in [blocks]) not holding exactly the titles it matches; a show channel
+/// holding movies or a movie channel episodes; an empty generated channel;
+/// a channel under its minimum; two generated channels with one name.
 List<String> lineupProblems(LibraryIndex library, List<Channel> channels, [List<ProgramBlock> blocks = const []]) {
   const options = GeneratorOptions();
   final problems = <String>[];
-  final showOn = <String, String>{}, movieOn = <String, String>{}, names = <String, String>{};
+  final names = <String, String>{};
   final ownChannel = {
     for (final c in channels)
       if (c.auto && c.id.startsWith('auto:show:')) ...c.source.seriesKeys,
   };
+  bool matches(ChannelSource source, MediaEntry e) {
+    final tags = e.kind == MediaKind.movie ? e.genres : library.seriesByKey[e.seriesKey]?.genres ?? const <String>[];
+    return (source.genres.isEmpty || titleGenres(tags).any(source.genres.contains)) &&
+        (source.decades.isEmpty || source.decades.contains(itemDecade(library, e)));
+  }
+
+  Set<String> expected(ChannelSource source, {required bool movies}) => {
+        if (movies)
+          for (final m in library.movies)
+            if (matches(source, m)) m.id,
+        if (!movies)
+          for (final e in library.episodes)
+            if (!ownChannel.contains(e.seriesKey) && matches(source, e)) e.id,
+      };
+  void same(String what, Iterable<String> got, Set<String> want) {
+    final have = got.toSet();
+    final missing = want.difference(have), extra = have.difference(want);
+    if (missing.isNotEmpty) problems.add('$what lacks ${missing.take(3).join(', ')} (${missing.length})');
+    if (extra.isNotEmpty) problems.add('$what has ${extra.take(3).join(', ')} (${extra.length})');
+  }
+
   for (final c in channels.where((c) => c.auto && !c.isLive)) {
     if (names[c.name.toLowerCase()] case final other?) problems.add('"${c.name}" is ${c.id} and $other');
     names[c.name.toLowerCase()] = c.id;
     if (c.playlist.isEmpty) problems.add('${c.name} (${c.id}) is empty');
-    if (c.id == 'auto:all-shows') {
-      for (final s in {for (final id in c.playlist) ?library[id]?.seriesKey}.where(ownChannel.contains)) {
-        problems.add('$s has its own channel and is on All Shows');
-      }
-    }
-    if (c.id == 'auto:all-shows' || c.id == 'auto:movies') continue;
-    final generated = [for (final b in blocks) if (b.channelId == c.id && b.generated != null) ...b.playlist];
     final items = [for (final id in c.playlist) ?library[id]];
     final shows = {for (final e in items) ?e.seriesKey};
-    final movies = {
-      for (final e in [...items, for (final id in generated) ?library[id]])
-        if (e.kind == MediaKind.movie) e.id,
-    };
-    for (final s in shows) {
-      if (showOn[s] case final other?) problems.add('$s is on $other and ${c.name}');
-      showOn[s] = c.name;
+    if (c.id == 'auto:all-shows') {
+      same(c.name, c.playlist, expected(const ChannelSource(), movies: false));
+      continue;
     }
-    for (final m in movies) {
-      if (movieOn[m] case final other?) problems.add('$m is on $other and ${c.name}');
-      movieOn[m] = c.name;
+    if (!ChannelGenerator.isGroupChannel(c)) continue;
+    final pair = ChannelGenerator.isPairChannel(c);
+    if (c.id.startsWith('auto:movies:')) {
+      if (items.any((e) => e.kind != MediaKind.movie)) problems.add('${c.name} plays episodes');
+      same(c.name, c.playlist, expected(c.source, movies: true));
+      if (items.length < (pair ? options.minMoviesPerCombo : options.minMoviesPerMovieGenre)) {
+        problems.add('${c.name} has ${items.length} movies');
+      }
+    } else {
+      if (items.any((e) => e.kind == MediaKind.movie)) problems.add('${c.name} plays movies');
+      same(c.name, c.playlist, expected(c.source, movies: false));
+      if (shows.length < (pair ? options.minSeriesPerCombo : options.minSeriesPerGenre) ||
+          items.length < (pair ? options.minEpisodesPerCombo : options.minEpisodesPerGenre)) {
+        problems.add('${c.name} has ${shows.length} shows, ${items.length} episodes');
+      }
     }
-    if (c.id.startsWith('auto:genre:') &&
-        (shows.length < options.minSeriesPerGenre || items.length < options.minEpisodesPerGenre)) {
-      problems.add('${c.name} has ${shows.length} shows, ${items.length} episodes');
-    }
-    if (c.id.startsWith('auto:movies:') && movies.length < options.minMoviesPerMovieGenre) {
-      problems.add('${c.name} has ${movies.length} movies');
+    for (final b in blocks) {
+      if (b.channelId != c.id || b.generated != Daypart.evening) continue;
+      same('${c.name} Evening', b.playlist, expected(ChannelSource(genres: c.source.genres), movies: true));
     }
   }
   return problems;
@@ -104,7 +124,7 @@ void main() {
     });
   });
 
-  test('spreadTitles retires a genre channel left thin and shares its titles', () {
+  test('spreadTitles finds a genre channel left thin', () {
     final standard = FixtureLibrary.standard();
     final before = standard.index(ServerShape.jellyfin);
     final channels = ChannelGenerator(before, anchor: DateTime(2026)).generate();
@@ -115,13 +135,13 @@ void main() {
     final shows = {for (final id in first) before[id]!.seriesId};
     final left = shows.skip(1).toSet();
     final after = standard.copyWith(items: [for (final s in standard.items) if (!left.contains(s.id)) s]).index(ServerShape.jellyfin);
-    final thin = ChannelGenerator.spreadTitles(after, channels).thin;
+    final thin = ChannelGenerator.spreadTitles(after, channels);
     expect(thin, contains(genre.first.id));
     for (final c in channels) {
       c.playlist = buildPlaylist(after, c.source, c.order, seed: 1);
     }
-    expect(genre.first.playlist, isEmpty, reason: 'a thin channel never falls back to its whole genre');
-    expect(lineupProblems(after, [for (final c in channels) if (!thin.contains(c.id)) c]), isEmpty);
+    expect(lineupProblems(after, [for (final c in channels) if (!thin.contains(c.id) && c.playlist.isNotEmpty) c]),
+        isEmpty);
   });
 
   group('saved show keys follow merged shows', () {

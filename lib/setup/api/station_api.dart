@@ -1,3 +1,4 @@
+
 part of '../setup_server.dart';
 
 /// Channel groups and guide tabs, programming blocks, and commercials
@@ -30,7 +31,7 @@ extension _StationApi on SetupServer {
   // ---- Groups and tabs ---------------------------------------------------------
 
   ChannelGroup _groupOf(AppState app, String id) =>
-      app.settings.groups.where((g) => g.id == id).firstOrNull ?? (throw ApiError(HttpStatus.notFound, 'No such group.'));
+      app.settings.groups.where((g) => g.id == id).firstOrNull ?? (throw ApiError(HttpStatus.notFound, tr.noSuchGroup));
 
   Future<Object?> _groups(ApiRequest r) async {
     final app = await _app(r['id']);
@@ -59,7 +60,7 @@ extension _StationApi on SetupServer {
   Future<Object?> _renameGroup(ApiRequest r) async {
     final app = await _app(r['id']);
     final name = (await r.body()).string('name') ?? '';
-    if (name.trim().isEmpty) throw ApiError(HttpStatus.badRequest, 'Give the group a name.');
+    if (name.trim().isEmpty) throw ApiError(HttpStatus.badRequest, tr.giveTheGroup);
     await app.renameGroup(_groupOf(app, r['gid']), name);
     return _groups(r);
   }
@@ -74,7 +75,7 @@ extension _StationApi on SetupServer {
   /// one-at-a-time membership changes.
   Future<Object?> _setGroupChannels(ApiRequest r) async {
     final app = await _app(r['id']);
-    final ids = (await r.body()).strings('channelIds') ?? (throw ApiError(HttpStatus.badRequest, 'Send channelIds.'));
+    final ids = (await r.body()).strings('channelIds') ?? (throw ApiError(HttpStatus.badRequest, tr.sendChannelids));
     await _putInGroup(app, _groupOf(app, r['gid']), ids);
     return _groups(r);
   }
@@ -82,7 +83,7 @@ extension _StationApi on SetupServer {
   Future<void> _putInGroup(AppState app, ChannelGroup group, List<String> ids) async {
     final want = ids.toSet();
     for (final id in want) {
-      if (app.channelById(id) == null) throw ApiError(HttpStatus.badRequest, 'No such channel.');
+      if (app.channelById(id) == null) throw ApiError(HttpStatus.badRequest, tr.noSuchChannel);
     }
     for (final id in [...group.channelIds]) {
       final ch = app.channelById(id);
@@ -101,7 +102,7 @@ extension _StationApi on SetupServer {
     if (body.strings('order') case final order?) {
       final known = app.allTabIds;
       if (order.toSet().length != known.length || !order.toSet().containsAll(known)) {
-        throw ApiError(HttpStatus.badRequest, 'Send every tab once.');
+        throw ApiError(HttpStatus.badRequest, tr.sendEveryTab);
       }
       for (var i = 1; i < order.length; i++) {
         final at = app.allTabIds.indexOf(order[i]);
@@ -121,7 +122,7 @@ extension _StationApi on SetupServer {
   // ---- Blocks ---------------------------------------------------------------------
 
   ProgramBlock _blockOf(AppState app, String id) =>
-      app.blocks.where((b) => b.id == id).firstOrNull ?? (throw ApiError(HttpStatus.notFound, 'No such block.'));
+      app.blocks.where((b) => b.id == id).firstOrNull ?? (throw ApiError(HttpStatus.notFound, tr.noSuchBlock));
 
   Map<String, Object?> _blockJson(AppState app, ProgramBlock b) => {
         ...b.toJson(),
@@ -164,7 +165,7 @@ extension _StationApi on SetupServer {
     } on ApiError {
       rethrow;
     } on Object {
-      throw ApiError(HttpStatus.badRequest, "That isn't a programming block.");
+      throw ApiError(HttpStatus.badRequest, tr.thatIsntAProgramming);
     }
   }
 
@@ -250,7 +251,7 @@ extension _StationApi on SetupServer {
   // ---- Commercials ----------------------------------------------------------------
 
   CommercialPool _poolOf(AppState app, String id) =>
-      app.poolById(id) ?? (throw ApiError(HttpStatus.notFound, 'No such pool.'));
+      app.poolById(id) ?? (throw ApiError(HttpStatus.notFound, tr.noSuchPool));
 
   Future<Object?> _commercials(ApiRequest r) async {
     final app = await _app(r['id']);
@@ -266,24 +267,24 @@ extension _StationApi on SetupServer {
       'clips': app.catalog.clipsFor(null).length,
       'channels': [
         for (final c in app.allChannels)
-          if (!c.isLive) {'id': c.id, 'number': c.number, 'name': c.name, 'plan': c.commercialPlan?.toJson()},
+          if (!c.isLive) {'id': c.id, 'number': c.number, 'name': c.displayName, 'plan': c.commercialPlan?.toJson()},
       ],
     };
   }
 
   BreakPlan? _decodePlan(Object? json) {
     if (json == null) return null;
-    if (json is! Map<String, Object?>) throw ApiError(HttpStatus.badRequest, "That isn't a break plan.");
+    if (json is! Map<String, Object?>) throw ApiError(HttpStatus.badRequest, tr.thatIsntABreak);
     try {
       return BreakPlan.fromJson(json);
     } on Object {
-      throw ApiError(HttpStatus.badRequest, "That isn't a break plan.");
+      throw ApiError(HttpStatus.badRequest, tr.thatIsntABreak);
     }
   }
 
   Future<Object?> _setGlobalPlan(ApiRequest r) async {
     final app = await _app(r['id']);
-    final plan = _decodePlan((await r.body())['plan']) ?? (throw ApiError(HttpStatus.badRequest, 'Send a plan.'));
+    final plan = _decodePlan((await r.body())['plan']) ?? (throw ApiError(HttpStatus.badRequest, tr.sendAPlan));
     await app.setGlobalPlan(plan);
     return _commercials(r);
   }
@@ -291,8 +292,8 @@ extension _StationApi on SetupServer {
   /// A channel's own plan; `{"plan": null}` follows the main one again.
   Future<Object?> _setChannelPlan(ApiRequest r) async {
     final app = await _app(r['id']);
-    final ch = app.channelById(r['cid']) ?? (throw ApiError(HttpStatus.notFound, 'No such channel.'));
-    if (ch.isLive) throw ApiError(HttpStatus.badRequest, 'Live channels have no breaks.');
+    final ch = app.channelById(r['cid']) ?? (throw ApiError(HttpStatus.notFound, tr.noSuchChannel));
+    if (ch.isLive) throw ApiError(HttpStatus.badRequest, tr.liveChannelsHave);
     await app.setChannelPlan(ch, _decodePlan((await r.body())['plan']));
     return _commercials(r);
   }
@@ -310,10 +311,10 @@ extension _StationApi on SetupServer {
     final app = await _app(r['id']);
     final body = await r.body();
     final name = body['name'] == null && body['kind'] != null ? null : body.string('name') ?? '';
-    if (name != null && name.trim().isEmpty) throw ApiError(HttpStatus.badRequest, 'Give the pool a name.');
+    if (name != null && name.trim().isEmpty) throw ApiError(HttpStatus.badRequest, tr.giveThePool);
     final PoolKind? kind = switch (body['kind']) {
       null => null,
-      final k => PoolKind.values.asNameMap()[k] ?? (throw ApiError(HttpStatus.badRequest, "That isn't a pool type.")),
+      final k => PoolKind.values.asNameMap()[k] ?? (throw ApiError(HttpStatus.badRequest, tr.thatIsntAPool)),
     };
     final pool = _poolOf(app, r['pid']);
     if (name != null) await app.renamePool(pool, name);
@@ -332,12 +333,12 @@ extension _StationApi on SetupServer {
   Future<Object?> _setPoolRoots(ApiRequest r) async {
     final app = await _app(r['id']);
     final list = (await r.body())['roots'];
-    if (list is! List) throw ApiError(HttpStatus.badRequest, 'Send roots.');
+    if (list is! List) throw ApiError(HttpStatus.badRequest, tr.sendRoots);
     final List<PoolRoot> roots;
     try {
       roots = [for (final j in list.cast<Map<String, Object?>>()) PoolRoot.fromJson(j)];
     } on Object {
-      throw ApiError(HttpStatus.badRequest, "Those aren't pool folders.");
+      throw ApiError(HttpStatus.badRequest, tr.thoseArentPool);
     }
     await app.setPoolRoots(_poolOf(app, r['pid']), roots);
     return _commercials(r);

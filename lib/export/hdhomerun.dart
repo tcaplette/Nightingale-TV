@@ -77,7 +77,7 @@ Map<String, Object?> discoverJson(LineupServer server, ExportUrls urls, int tune
     };
 
 List<Map<String, Object?>> lineupJson(List<Channel> lineup, ExportUrls urls) => [
-      for (final c in lineup) {'GuideNumber': '${c.number}', 'GuideName': c.name, 'URL': '${urls.stream(c)}', 'HD': 1},
+      for (final c in lineup) {'GuideNumber': '${c.number}', 'GuideName': c.displayName, 'URL': '${urls.stream(c)}', 'HD': 1},
     ];
 
 const lineupStatus = {'ScanInProgress': 0, 'ScanPossible': 1, 'Source': 'Cable', 'SourceList': ['Cable']};

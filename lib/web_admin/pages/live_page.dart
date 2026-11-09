@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import '../api_client.dart';
 import '../app.dart';
 import '../widgets/common.dart';
+import '../../l10n/tr.dart';
 
 /// Live TV sources: the server's Live TV, M3U playlists with XMLTV guides
 /// by URL or uploaded file; refresh, edit, remove, choose channels.
@@ -28,12 +29,12 @@ class LivePage extends StatelessWidget {
         }
 
         return PageBody(
-          title: 'Live TV sources',
+          title: tr.liveTvSources,
           actions: [
             if (data['enabled'] == true)
               FilledButton.icon(
                 icon: const Icon(Icons.playlist_add),
-                label: const Text('M3U playlist'),
+                label: Text(tr.m3uPlaylist),
                 onPressed: () async {
                   final added = await showDialog<Map<String, Object?>>(
                       context: context, builder: (_) => _M3uDialog(profileId: profileId));
@@ -53,7 +54,7 @@ class LivePage extends StatelessWidget {
           children: [
             if (data['message'] != null) Text(data['message'] as String),
             if (server['canAdd'] != true && server['reason'] != null) Text(server['reason'] as String),
-            if (sources.isEmpty) const Text('No sources yet.'),
+            if (sources.isEmpty) Text(tr.noSourcesYet),
             for (final s in sources)
               _SourceCard(
                 profileId: profileId,
@@ -61,9 +62,9 @@ class LivePage extends StatelessWidget {
                 onRefresh: () => run(() => context.api.post('$base/${Uri.encodeComponent(s['id'] as String)}/refresh')),
                 onRemove: () async {
                   final ok = await confirm(context,
-                      title: 'Remove ${s['name']}?',
-                      message: 'Its channels leave the lineup, groups and favorites.',
-                      action: 'Remove');
+                      title: tr.remove3('${s['name']}'),
+                      message: tr.itsChannelsLeaveThe,
+                      action: tr.remove);
                   if (ok && context.mounted) await run(() => context.api.delete('$base/${Uri.encodeComponent(s['id'] as String)}'));
                 },
                 onEdit: () async {
@@ -93,28 +94,28 @@ class _SourceCard extends StatelessWidget {
     final m3u = source['kind'] == 'm3u';
     final last = DateTime.tryParse(view['lastRefresh'] as String? ?? '')?.toLocal();
     final status = view['refreshing'] == true
-        ? 'Refreshing…'
+        ? tr.refreshing
         : view['lastError'] != null
-            ? 'Last refresh failed: ${view['lastError']}'
+            ? tr.lastRefreshFailed('${view['lastError']}')
             : last != null
-                ? 'Refreshed ${MaterialLocalizations.of(context).formatShortDate(last)} ${TimeOfDay.fromDateTime(last).format(context)}'
-                : 'Not refreshed yet';
+                ? tr.refreshed2(MaterialLocalizations.of(context).formatShortDate(last), TimeOfDay.fromDateTime(last).format(context))
+                : tr.notRefreshedYet;
     return Section(title: source['name'] as String, children: [
-      Text('${m3u ? 'M3U playlist' : 'Server Live TV'} · ${view['chosen']} of ${view['channels']} channels'),
-      if (m3u) Text(source['playlistUrl'] as String? ?? 'Playlist file: ${source['playlistFile']}', style: Theme.of(context).textTheme.bodySmall),
+      Text(tr.kindChosenChannels(m3u ? tr.m3uPlaylist : tr.serverLiveTv, '${view['chosen']}', '${view['channels']}')),
+      if (m3u) Text(source['playlistUrl'] as String? ?? tr.playlistFile2('${source['playlistFile']}'), style: Theme.of(context).textTheme.bodySmall),
       if (m3u && (source['guideUrl'] ?? source['guideFile']) != null)
-        Text('Guide: ${source['guideUrl'] ?? source['guideFile']}', style: Theme.of(context).textTheme.bodySmall),
+        Text(tr.guide3('${source['guideUrl'] ?? source['guideFile']}'), style: Theme.of(context).textTheme.bodySmall),
       Text(status),
-      if (view['active'] == false) const Text("Its channels join while this profile is signed in to that server."),
+      if (view['active'] == false) Text(tr.itsChannelsJoin),
       const SizedBox(height: 8),
       Wrap(spacing: 8, runSpacing: 8, children: [
         FilledButton.tonal(
           onPressed: () => context.go('/profiles/$profileId/live/${Uri.encodeComponent(source['id'] as String)}'),
-          child: const Text('Choose channels'),
+          child: Text(tr.chooseChannels2),
         ),
-        OutlinedButton(onPressed: view['refreshing'] == true ? null : onRefresh, child: const Text('Refresh now')),
-        if (m3u) OutlinedButton(onPressed: onEdit, child: const Text('Edit')),
-        TextButton(onPressed: onRemove, child: const Text('Remove')),
+        OutlinedButton(onPressed: view['refreshing'] == true ? null : onRefresh, child: Text(tr.refreshNow)),
+        if (m3u) OutlinedButton(onPressed: onEdit, child: Text(tr.edit2)),
+        TextButton(onPressed: onRemove, child: Text(tr.remove)),
       ]),
     ]);
   }
@@ -141,12 +142,12 @@ class _M3uDialogState extends State<_M3uDialog> {
   String get _base => 'profiles/${widget.profileId}/live-sources';
 
   Future<(String, String)?> _uploadFile(List<String> extensions) async {
-    final file = await openFile(acceptedTypeGroups: [XTypeGroup(label: 'Files', extensions: extensions)]);
+    final file = await openFile(acceptedTypeGroups: [XTypeGroup(label: tr.files, extensions: extensions)]);
     if (file == null || !mounted) return null;
     setState(() => _busy = true);
     try {
       final bytes = await file.readAsBytes();
-      if (bytes.length > 32 << 20) throw ApiException(413, 'That file is too big (32 MB at most).');
+      if (bytes.length > 32 << 20) throw ApiException(413, tr.thatFileIsToo);
       if (!mounted) return null;
       final r = (await context.api.upload('$_base/files', bytes, query: {'name': file.name}))! as Map;
       return (r['upload'] as String, file.name);
@@ -162,7 +163,7 @@ class _M3uDialogState extends State<_M3uDialog> {
     final editing = widget.editing;
     final keepPlaylist = editing?['playlistFile'] != null && _playlistUpload == null && _playlist.text.trim().isEmpty;
     if (!keepPlaylist && _playlistUpload == null && _playlist.text.trim().isEmpty) {
-      setState(() => _error = "Enter the playlist's address, or choose a playlist file");
+      setState(() => _error = tr.enterThePlaylists);
       return;
     }
     setState(() {
@@ -194,27 +195,27 @@ class _M3uDialogState extends State<_M3uDialog> {
 
   @override
   Widget build(BuildContext context) => AlertDialog(
-        title: Text(widget.editing == null ? 'Add an M3U playlist' : 'Edit ${widget.editing!['name']}'),
+        title: Text(widget.editing == null ? tr.addAnM3u : tr.edit('${widget.editing!['name']}')),
         scrollable: true,
         content: SizedBox(
           width: 480,
           child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
             if (widget.editing != null)
-              TextField(controller: _name, decoration: const InputDecoration(labelText: 'Name')),
+              TextField(controller: _name, decoration: InputDecoration(labelText: tr.name)),
             TextField(
               controller: _playlist,
               enabled: _playlistUpload == null,
               keyboardType: TextInputType.url,
               decoration: InputDecoration(
-                labelText: 'Playlist address',
-                hintText: 'http://…/playlist.m3u',
-                helperText: widget.editing?['playlistFile'] != null ? 'Leave empty to keep the playlist file.' : null,
+                labelText: tr.playlistAddress,
+                hintText: tr.httpPlaylistM3u,
+                helperText: widget.editing?['playlistFile'] != null ? tr.leaveEmptyToKeep : null,
               ),
             ),
             Row(children: [
               TextButton.icon(
                 icon: const Icon(Icons.upload_file),
-                label: Text(_playlistFileName ?? 'Or choose a playlist file…'),
+                label: Text(_playlistFileName ?? tr.orChooseAPlaylist),
                 onPressed: _busy
                     ? null
                     : () async {
@@ -233,13 +234,13 @@ class _M3uDialogState extends State<_M3uDialog> {
               controller: _guide,
               enabled: _guideUpload == null,
               keyboardType: TextInputType.url,
-              decoration: const InputDecoration(
-                  labelText: 'Guide address (XMLTV, optional)', helperText: "Empty: the playlist's own guide, if it names one."),
+              decoration: InputDecoration(
+                  labelText: tr.guideAddressXmltv, helperText: tr.emptyThePlaylists),
             ),
             Row(children: [
               TextButton.icon(
                 icon: const Icon(Icons.upload_file),
-                label: Text(_guideFileName ?? 'Or choose a guide file…'),
+                label: Text(_guideFileName ?? tr.orChooseA),
                 onPressed: _busy
                     ? null
                     : () async {
@@ -253,13 +254,13 @@ class _M3uDialogState extends State<_M3uDialog> {
                       },
               ),
             ]),
-            if (_busy) const Padding(padding: EdgeInsets.only(top: 8), child: Busy(text: 'Reading the playlist…')),
+            if (_busy) Padding(padding: EdgeInsets.only(top: 8), child: Busy(text: tr.readingThePlaylist)),
             ErrorText(_error),
           ]),
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('Cancel')),
-          FilledButton(onPressed: _busy ? null : _save, child: Text(widget.editing == null ? 'Add' : 'Save')),
+          TextButton(onPressed: () => Navigator.of(context).pop(), child: Text(tr.cancel)),
+          FilledButton(onPressed: _busy ? null : _save, child: Text(widget.editing == null ? tr.add : tr.save)),
         ],
       );
 }
@@ -300,16 +301,16 @@ class _LiveChannelsPageState extends State<LiveChannelsPage> {
                 itemBuilder: (context, i) {
                   if (i == 0) {
                     return Wrap(spacing: 8, runSpacing: 8, crossAxisAlignment: WrapCrossAlignment.center, children: [
-                      Text('${(data['source'] as Map)['name']}: channels', style: Theme.of(context).textTheme.headlineSmall),
-                      Text('${chosen.length} of ${channels.length} chosen'),
-                      TextButton(onPressed: () => setState(() => chosen.addAll(shown.map((c) => c['key'] as String))), child: const Text('All shown')),
-                      TextButton(onPressed: () => setState(() => chosen.removeAll(shown.map((c) => c['key']))), child: const Text('None shown')),
+                      Text(tr.channels8('${(data['source'] as Map)['name']}'), style: Theme.of(context).textTheme.headlineSmall),
+                      Text(tr.ofChosen(chosen.length, channels.length)),
+                      TextButton(onPressed: () => setState(() => chosen.addAll(shown.map((c) => c['key'] as String))), child: Text(tr.allShown)),
+                      TextButton(onPressed: () => setState(() => chosen.removeAll(shown.map((c) => c['key']))), child: Text(tr.noneShown)),
                     ]);
                   }
                   if (i == 1) {
                     return TextField(
                       controller: _search,
-                      decoration: const InputDecoration(prefixIcon: Icon(Icons.search), labelText: 'Search'),
+                      decoration: InputDecoration(prefixIcon: Icon(Icons.search), labelText: tr.search),
                       onChanged: (_) => setState(() {}),
                     );
                   }
@@ -318,7 +319,7 @@ class _LiveChannelsPageState extends State<LiveChannelsPage> {
                   return CheckboxListTile(
                     value: chosen.contains(key),
                     title: Text('${c['number'] == null ? '' : '${c['number']}  '}${c['name']}'),
-                    subtitle: Text([if (c['group'] != null) c['group'], if (c['hasGuide'] != true) 'No guide'].join(' · ')),
+                    subtitle: Text([if (c['group'] != null) c['group'], if (c['hasGuide'] != true) tr.noGuide].join(' · ')),
                     onChanged: (on) => setState(() => on == true ? chosen.add(key) : chosen.remove(key)),
                   );
                 },
@@ -337,10 +338,10 @@ class _LiveChannelsPageState extends State<LiveChannelsPage> {
                       });
                       if (r != null && context.mounted) context.go('/profiles/${widget.profileId}/live');
                     },
-                    child: const Text('Save'),
+                    child: Text(tr.save),
                   ),
                   const SizedBox(width: 8),
-                  TextButton(onPressed: () => context.go('/profiles/${widget.profileId}/live'), child: const Text('Cancel')),
+                  TextButton(onPressed: () => context.go('/profiles/${widget.profileId}/live'), child: Text(tr.cancel)),
                 ]),
               ),
             ),

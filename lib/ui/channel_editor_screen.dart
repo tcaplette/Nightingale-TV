@@ -21,6 +21,7 @@ import 'widgets/channel_logo.dart';
 import 'widgets/adaptive.dart';
 import 'widgets/screen_layout.dart';
 import 'widgets/tv_focus.dart';
+import '../l10n/tr.dart';
 
 /// Rename, renumber, re-icon, reorder or hide channels.
 class ChannelEditorScreen extends StatefulWidget {
@@ -59,7 +60,7 @@ class _ChannelEditorScreenState extends State<ChannelEditorScreen> {
     if (_selectedId == ch.id) return;
     setState(() {
       _selectedId = ch.id;
-      _name.text = ch.name;
+      _name.text = ch.displayName;
     });
   }
 
@@ -70,7 +71,7 @@ class _ChannelEditorScreenState extends State<ChannelEditorScreen> {
     final channels = app.allChannels;
     if (_selectedId == null && channels.isNotEmpty) {
       _selectedId = channels.first.id;
-      _name.text = channels.first.name;
+      _name.text = channels.first.displayName;
     }
     final selected = channels.where((c) => c.id == _selectedId).firstOrNull;
     final layout = ScreenLayout.of(context);
@@ -85,18 +86,18 @@ class _ChannelEditorScreenState extends State<ChannelEditorScreen> {
           onPressed: () => app.setMainLogoMode(mode),
         ),
     ];
-    const logoHelp = 'The channel logo in the corner of the picture, on the TV and in Live TV export.';
+    final logoHelp = tr.theChannelLogo;
     // How far ahead the guide goes (guide-range).
     final guideRanges = [
       for (final hours in GuideRange.choices)
         TvToggle(
-          label: '$hours hours',
+          label: tr.hours(hours),
           radio: true,
           on: app.settings.guideRangeHours == hours,
           onPressed: () => app.setGuideRange(hours),
         ),
     ];
-    const rangeHelp = 'How far ahead the guide shows, from now.';
+    final rangeHelp = tr.howFarAhead;
     final rows = [
       for (final (i, ch) in channels.indexed)
         Padding(
@@ -137,11 +138,11 @@ class _ChannelEditorScreenState extends State<ChannelEditorScreen> {
                           style: g.display(38, weight: FontWeight.w800, color: g.accent),
                         ),
                       ),
-                      ChannelLogo(icon: ch.icon, size: 56, width: 90, fallbackText: ch.name),
+                      ChannelLogo(icon: ch.icon, size: 56, width: 90, fallbackText: ch.displayName),
                       const SizedBox(width: 18),
                       Expanded(
                         child: Text(
-                          ch.name,
+                          ch.displayName,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: g.display(30, weight: FontWeight.w600, color: fg),
@@ -166,13 +167,13 @@ class _ChannelEditorScreenState extends State<ChannelEditorScreen> {
         children: [
           // Upright, the main logo setting scrolls with the list, wrapping.
           if (portrait) ...[
-            Text('CHANNEL LOGO', style: g.display(24, weight: FontWeight.w800, color: g.accent)),
+            Text(tr.channelLogo, style: g.display(24, weight: FontWeight.w800, color: g.accent)),
             const SizedBox(height: 12),
             Wrap(spacing: 16, runSpacing: 16, children: logoModes),
             const SizedBox(height: 12),
             Text(logoHelp, style: g.body(22, color: g.textDim)),
             const SizedBox(height: 28),
-            Text('GUIDE RANGE', style: g.display(24, weight: FontWeight.w800, color: g.accent)),
+            Text(tr.guideRange, style: g.display(24, weight: FontWeight.w800, color: g.accent)),
             const SizedBox(height: 12),
             Wrap(spacing: 16, runSpacing: 16, children: guideRanges),
             const SizedBox(height: 12),
@@ -183,7 +184,7 @@ class _ChannelEditorScreenState extends State<ChannelEditorScreen> {
             alignment: Alignment.centerLeft,
             child: Padding(
               padding: const EdgeInsets.only(bottom: 16),
-              child: TvButton(label: 'New channel', icon: Icons.add, onPressed: () => _newChannel(context)),
+              child: TvButton(label: tr.newChannel, icon: Icons.add, onPressed: () => _newChannel(context)),
             ),
           ),
           ...rows,
@@ -192,8 +193,8 @@ class _ChannelEditorScreenState extends State<ChannelEditorScreen> {
     );
 
     return TvPage(
-      title: 'Channels & icons',
-      hints: '▲▼ Channels    ▶ Edit    OK Select    ESC Back',
+      title: tr.channelsIcons,
+      hints: tr.channelsEditOk,
       onBack: () => Navigator.of(context).pop(),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -214,7 +215,7 @@ class _ChannelEditorScreenState extends State<ChannelEditorScreen> {
                             // One label width, so both rows' toggles line up.
                             SizedBox(
                               width: 250,
-                              child: Text('CHANNEL LOGO', style: g.display(24, weight: FontWeight.w800, color: g.accent)),
+                              child: Text(tr.channelLogo, style: g.display(24, weight: FontWeight.w800, color: g.accent)),
                             ),
                             for (final toggle in logoModes) ...[toggle, const SizedBox(width: 16)],
                             Expanded(
@@ -227,7 +228,7 @@ class _ChannelEditorScreenState extends State<ChannelEditorScreen> {
                           children: [
                             SizedBox(
                               width: 250,
-                              child: Text('GUIDE RANGE', style: g.display(24, weight: FontWeight.w800, color: g.accent)),
+                              child: Text(tr.guideRange, style: g.display(24, weight: FontWeight.w800, color: g.accent)),
                             ),
                             for (final toggle in guideRanges) ...[toggle, const SizedBox(width: 16)],
                             Expanded(
@@ -251,7 +252,7 @@ class _ChannelEditorScreenState extends State<ChannelEditorScreen> {
               detail: (context) {
                 final ch = AppScope.read(context).allChannels.where((c) => c.id == _selectedId).firstOrNull;
                 return ch == null
-                    ? Center(child: Text('No channels yet', style: g.display(40)))
+                    ? Center(child: Text(tr.noChannelsYet, style: g.display(40)))
                     : FocusTraversalGroup(child: _details(context, ch));
               },
               tv: (context, list, detail) => Row(
@@ -286,18 +287,18 @@ class _ChannelEditorScreenState extends State<ChannelEditorScreen> {
       children: [
         Row(
           children: [
-            ChannelLogo(icon: ch.icon, size: portrait ? 96 : 150, width: portrait ? 150 : 240, fallbackText: ch.name),
+            ChannelLogo(icon: ch.icon, size: portrait ? 96 : 150, width: portrait ? 150 : 240, fallbackText: ch.displayName),
             SizedBox(width: portrait ? 24 : 32),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    'CHANNEL ${ch.number}',
+                    tr.channel2(ch.number),
                     style: g.display(30, weight: FontWeight.w800, color: g.accent),
                   ),
                   Text(
-                    ch.name,
+                    ch.displayName,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: g.display(portrait ? 40 : 56, weight: FontWeight.w800),
@@ -305,14 +306,14 @@ class _ChannelEditorScreenState extends State<ChannelEditorScreen> {
                   Text(
                     ch.isLive
                         ? [
-                            'Live',
+                            tr.liveLabel,
                             if (live != null) live.source.name,
-                            if (live?.info.number case final n?) 'channel $n there',
+                            if (live?.info.number case final n?) tr.channelThere(n),
                           ].join(' · ')
                         : [
-                      if (ch.blockOnly) 'Programming blocks only' else '${ch.playlist.length} programs',
-                      if (loop != null) 'repeats every ${_loopText(loop)}',
-                      if (blockCount > 0) '$blockCount programming block${blockCount == 1 ? '' : 's'}',
+                      if (ch.blockOnly) tr.programmingBlocksOnly else tr.programs(ch.playlist.length),
+                      if (loop != null) tr.repeatsEvery(_loopText(loop)),
+                      if (blockCount > 0) tr.programmingBlocks2(blockCount),
                     ].join(' · '),
                     style: g.body(24, color: g.textDim),
                   ),
@@ -325,10 +326,10 @@ class _ChannelEditorScreenState extends State<ChannelEditorScreen> {
         Row(
           children: [
             Expanded(
-              child: TvTextField(controller: _name, label: 'Channel name', onSubmitted: (_) => _saveName(ch)),
+              child: TvTextField(controller: _name, label: tr.channelName, onSubmitted: (_) => _saveName(ch)),
             ),
             const SizedBox(width: 16),
-            TvButton(label: 'Rename', icon: Icons.check, onPressed: () => _saveName(ch)),
+            TvButton(label: tr.rename, icon: Icons.check, onPressed: () => _saveName(ch)),
           ],
         ),
         const SizedBox(height: 24),
@@ -337,7 +338,7 @@ class _ChannelEditorScreenState extends State<ChannelEditorScreen> {
           runSpacing: 16,
           children: [
             TvButton(
-              label: 'Change icon',
+              label: tr.changeIcon,
               icon: Icons.image,
               onPressed: () async {
                 final icon = await Navigator.of(context)
@@ -347,17 +348,17 @@ class _ChannelEditorScreenState extends State<ChannelEditorScreen> {
             ),
             if (live != null)
               TvButton(
-                label: "Source's logo",
+                label: tr.sourcesLogo,
                 icon: Icons.settings_input_antenna,
                 onPressed: () => app.updateChannel(ch, icon: LiveTvManager.defaultIcon(live.info)),
               ),
             TvButton(
-              label: 'Number −',
+              label: tr.number2,
               icon: Icons.remove,
               onPressed: ch.number > 1 ? () => app.updateChannel(ch, number: ch.number - 1) : null,
             ),
             TvButton(
-              label: 'Number +',
+              label: tr.number,
               icon: Icons.add,
               onPressed: () => app.updateChannel(ch, number: ch.number + 1),
             ),
@@ -372,10 +373,10 @@ class _ChannelEditorScreenState extends State<ChannelEditorScreen> {
             runSpacing: 16,
             children: [
               if (ch.isCustom)
-                TvButton(label: 'Edit content', icon: Icons.video_library, onPressed: () => _editContent(context, ch)),
+                TvButton(label: tr.editContent, icon: Icons.video_library, onPressed: () => _editContent(context, ch)),
               if (app.canReshuffle(ch))
                 TvButton(
-                  label: 'Reshuffle',
+                  label: tr.reshuffle,
                   icon: Icons.shuffle,
                   onPressed: () async {
                     final tuner = AppScope.tunerOf(context);
@@ -384,7 +385,7 @@ class _ChannelEditorScreenState extends State<ChannelEditorScreen> {
                   },
                 ),
               if (ch.isCustom)
-                TvButton(label: 'Remove channel', icon: Icons.delete, onPressed: () => _remove(context, ch)),
+                TvButton(label: tr.removeChannel, icon: Icons.delete, onPressed: () => _remove(context, ch)),
             ],
           ),
         ],
@@ -410,39 +411,39 @@ class _ChannelEditorScreenState extends State<ChannelEditorScreen> {
         if (ch.playsPrograms) ..._slotControls(context, ch),
         if (!ch.isLive) ...[
         const SizedBox(height: 28),
-        Text('COMMERCIALS', style: g.display(24, weight: FontWeight.w800, color: g.accent)),
+        Text(tr.commercials2, style: g.display(24, weight: FontWeight.w800, color: g.accent)),
         const SizedBox(height: 10),
         Wrap(
           spacing: 16,
           runSpacing: 16,
           children: [
             TvToggle(
-              label: 'Main setting (${app.settings.commercialPlan.mode.label})',
+              label: tr.mainSetting(app.settings.commercialPlan.mode.label),
               radio: true,
               on: ch.commercialPlan == null,
               onPressed: () => _setPlan(context, ch, null),
             ),
             TvToggle(
-              label: 'Off',
+              label: tr.off,
               radio: true,
               on: ch.commercialPlan?.mode == BreakMode.off,
               onPressed: () => _setPlan(context, ch, BreakPlan.off),
             ),
             TvToggle(
-              label: 'Automatic',
+              label: tr.automatic,
               radio: true,
               on: ch.commercialPlan?.mode == BreakMode.automatic,
               onPressed: () => _setPlan(context, ch, BreakPlan.automatic),
             ),
             TvToggle(
-              label: 'Custom…',
+              label: tr.custom2,
               radio: true,
               on: ch.commercialPlan?.mode == BreakMode.custom,
               onPressed: () async {
                 // Starts from the channel's own settings, else the main ones.
                 final start = (ch.commercialPlan ?? app.settings.commercialPlan).roles;
                 final roles = await Navigator.of(context).push<CustomRoles>(MaterialPageRoute(
-                    builder: (_) => BreakPlanEditorScreen(initial: start, title: 'Breaks on ${ch.name}')));
+                    builder: (_) => BreakPlanEditorScreen(initial: start, title: tr.breaksOn(ch.displayName))));
                 if (roles != null && context.mounted) {
                   await _setPlan(context, ch, BreakPlan(mode: BreakMode.custom, roles: roles));
                 }
@@ -452,14 +453,14 @@ class _ChannelEditorScreenState extends State<ChannelEditorScreen> {
         ),
         ],
         const SizedBox(height: 28),
-        Text('CHANNEL LOGO', style: g.display(24, weight: FontWeight.w800, color: g.accent)),
+        Text(tr.channelLogo, style: g.display(24, weight: FontWeight.w800, color: g.accent)),
         const SizedBox(height: 10),
         Wrap(
           spacing: 16,
           runSpacing: 16,
           children: [
             TvToggle(
-              label: 'Main setting (${app.settings.logoMode.label})',
+              label: tr.mainSetting(app.settings.logoMode.label),
               radio: true,
               on: ch.logoMode == null,
               onPressed: () => app.setChannelLogoMode(ch, null),
@@ -476,7 +477,7 @@ class _ChannelEditorScreenState extends State<ChannelEditorScreen> {
         if (!ch.blockOnly && !ch.isMusic && !ch.isLive) ...[
           const SizedBox(height: 16),
           TvToggle(
-            label: 'New episode premieres',
+            label: tr.newEpisodePremieres,
             on: ch.premieres,
             onPressed: () async {
               final tuner = AppScope.tunerOf(context);
@@ -492,12 +493,12 @@ class _ChannelEditorScreenState extends State<ChannelEditorScreen> {
           runSpacing: 16,
           children: [
             TvButton(
-              label: ch.favorite ? 'Unfavorite' : 'Favorite',
+              label: ch.favorite ? tr.unfavorite : tr.favorite,
               icon: ch.favorite ? Icons.star : Icons.star_border,
               onPressed: () => app.updateChannel(ch, favorite: !ch.favorite),
             ),
             TvButton(
-              label: ch.hidden ? 'Show in guide' : 'Hide from guide',
+              label: ch.hidden ? tr.showInGuide : tr.hideFromGuide,
               icon: ch.hidden ? Icons.visibility : Icons.visibility_off,
               onPressed: () => app.updateChannel(ch, hidden: !ch.hidden),
             ),
@@ -514,19 +515,19 @@ class _ChannelEditorScreenState extends State<ChannelEditorScreen> {
     final app = AppScope.read(context);
     final g = context.guide;
     final rule = ch.slotRule;
-    final poolName = app.settings.commercialPools.where((p) => p.id == rule?.poolId).firstOrNull?.name ?? 'All pools';
+    final poolName = app.settings.commercialPools.where((p) => p.id == rule?.poolId).firstOrNull?.name ?? tr.allPools;
     return [
       const SizedBox(height: 28),
-      Text('SLOT LENGTH', style: g.display(24, weight: FontWeight.w800, color: g.accent)),
+      Text(tr.slotLength, style: g.display(24, weight: FontWeight.w800, color: g.accent)),
       const SizedBox(height: 10),
       Wrap(
         spacing: 16,
         runSpacing: 16,
         children: [
-          TvToggle(label: 'Off', radio: true, on: rule == null, onPressed: () => _setRule(context, ch, null)),
+          TvToggle(label: tr.off, radio: true, on: rule == null, onPressed: () => _setRule(context, ch, null)),
           for (final length in SlotRule.lengths)
             TvToggle(
-              label: '${length.inMinutes} min',
+              label: tr.min(length.inMinutes),
               radio: true,
               on: rule?.length == length,
               onPressed: () => _setRule(
@@ -536,7 +537,7 @@ class _ChannelEditorScreenState extends State<ChannelEditorScreen> {
       ),
       if (rule != null) ...[
         const SizedBox(height: 20),
-        Text('TAIL', style: g.display(24, weight: FontWeight.w800, color: g.accent)),
+        Text(tr.tail2, style: g.display(24, weight: FontWeight.w800, color: g.accent)),
         const SizedBox(height: 10),
         Wrap(
           spacing: 16,
@@ -558,19 +559,19 @@ class _ChannelEditorScreenState extends State<ChannelEditorScreen> {
           children: [
             if (rule.tail != TailMode.offline)
               TvButton(
-                label: 'Filler pool: $poolName',
+                label: tr.fillerPool(poolName),
                 icon: Icons.playlist_play,
                 onPressed: () => _nextPool(context, ch, rule),
               ),
             TvButton(
-              label: rule.offlineImage == null ? 'Offline image…' : 'Change offline image…',
+              label: rule.offlineImage == null ? tr.offlineImage2 : tr.changeOfflineImage,
               icon: Icons.image,
               focusNode: _offlineNode,
               onPressed: () => _pickOfflineImage(context, ch, rule),
             ),
             if (rule.offlineImage != null)
               TvButton(
-                label: 'Default card',
+                label: tr.defaultCard,
                 onPressed: () async {
                   await _setRule(context, ch, rule.copyWith(offlineImage: () => null));
                   _focusAfterBuild(_offlineNode);
@@ -611,7 +612,7 @@ class _ChannelEditorScreenState extends State<ChannelEditorScreen> {
       if (name == null || !context.mounted) return;
       await _setRule(context, ch, rule.copyWith(offlineImage: () => name));
     } on CustomIconException catch (e) {
-      if (context.mounted) await showMessage(context, title: 'Offline image', message: e.message);
+      if (context.mounted) await showMessage(context, title: tr.offlineImage, message: e.message);
     }
   }
 
@@ -619,7 +620,7 @@ class _ChannelEditorScreenState extends State<ChannelEditorScreen> {
   Future<void> _newChannel(BuildContext context) async {
     final created = await Navigator.of(context).push<Channel>(MaterialPageRoute(
       builder: (route) => SourcePickerScreen(
-        title: 'New channel',
+        title: tr.newChannel,
         initial: const ChannelSource(includeEpisodes: false),
         name: AppState.customChannelName,
         order: PlaybackOrder.random,
@@ -638,7 +639,7 @@ class _ChannelEditorScreenState extends State<ChannelEditorScreen> {
     if (created == null || !mounted) return;
     setState(() {
       _selectedId = created.id;
-      _name.text = created.name;
+      _name.text = created.displayName;
     });
     _focusAfterBuild(_row(created.id));
   }
@@ -648,7 +649,7 @@ class _ChannelEditorScreenState extends State<ChannelEditorScreen> {
     final tuner = AppScope.tunerOf(context);
     await Navigator.of(context).push<void>(MaterialPageRoute(
       builder: (route) => SourcePickerScreen(
-        title: 'Content of ${ch.name}',
+        title: tr.contentOf(ch.displayName),
         initial: ch.source,
         onDone: (source, _, _) async {
           final navigator = Navigator.of(route);
@@ -667,9 +668,9 @@ class _ChannelEditorScreenState extends State<ChannelEditorScreen> {
 
   Future<void> _remove(BuildContext context, Channel ch) async {
     final ok = await confirm(context,
-        title: 'Remove "${ch.name}"?',
-        message: 'The channel goes away, with its programming blocks and its places in channel groups.',
-        action: 'Remove');
+        title: tr.remove2(ch.displayName),
+        message: tr.theChannelGoesAway,
+        action: tr.remove);
     if (!ok || !context.mounted) return;
     final app = AppScope.read(context);
     final tuner = AppScope.tunerOf(context);
@@ -692,9 +693,11 @@ class _ChannelEditorScreenState extends State<ChannelEditorScreen> {
     }
     // A blank name isn't saved: the box goes back to the one that stands.
     if (_name.text.trim().isEmpty) {
-      _name.text = ch.name;
+      _name.text = ch.displayName;
       return;
     }
+    // The box shows a generated name translated; unchanged, it isn't a rename.
+    if (_name.text == ch.displayName) return;
     await AppScope.read(context).updateChannel(ch, name: _name.text);
   }
 
@@ -711,8 +714,8 @@ class _ChannelEditorScreenState extends State<ChannelEditorScreen> {
   }
 
   static String _loopText(Duration d) {
-    if (d.inHours >= 48) return '${(d.inHours / 24).toStringAsFixed(1)} days';
-    if (d.inHours >= 1) return '${d.inHours} hr ${d.inMinutes % 60} min';
-    return '${d.inMinutes} min';
+    if (d.inHours >= 48) return tr.days2((d.inHours / 24).toStringAsFixed(1));
+    if (d.inHours >= 1) return tr.hrMin(d.inHours, d.inMinutes % 60);
+    return tr.min(d.inMinutes);
   }
 }

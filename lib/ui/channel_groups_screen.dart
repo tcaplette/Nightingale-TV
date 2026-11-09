@@ -8,6 +8,7 @@ import 'widgets/channel_logo.dart';
 import 'widgets/adaptive.dart';
 import 'widgets/screen_layout.dart';
 import 'widgets/tv_focus.dart';
+import '../l10n/tr.dart';
 
 /// The guide's tabs (channel-groups): their order, which are shown, and the
 /// profile's own groups. Everything is a [TvButton], so the D-pad, the air
@@ -24,7 +25,7 @@ class _ChannelGroupsScreenState extends State<ChannelGroupsScreen> {
   String _shown = GuideTabs.all;
 
   Future<void> _newGroup() async {
-    final name = await askName(context, title: 'New group', action: 'Create');
+    final name = await askName(context, title: tr.newGroup, action: tr.create);
     if (name == null || !mounted) return;
     final group = await AppScope.read(context).createGroup(name);
     if (!mounted) return;
@@ -61,25 +62,25 @@ class _ChannelGroupsScreenState extends State<ChannelGroupsScreen> {
       final name = TvButton(
         label: [
           app.tabName(id),
-          if (groups.containsKey(id)) '· ${groups[id]!.channelIds.length} channels',
-          if (GuideTabs.isAutomatic(id) || id == GuideTabs.favorites) '· automatic',
+          if (groups.containsKey(id)) tr.channels4(groups[id]!.channelIds.length),
+          if (GuideTabs.isAutomatic(id) || id == GuideTabs.favorites) tr.automatic2,
         ].join('  '),
         icon: groups.containsKey(id) ? Icons.edit : Icons.auto_awesome,
         expand: true,
         onPressed: () => _open(id),
       );
       final up = TvButton(
-        label: 'Up',
+        label: tr.up,
         icon: Icons.arrow_upward,
         onPressed: i > 1 ? () => app.moveTab(id, -1) : null,
       );
       final down = TvButton(
-        label: 'Down',
+        label: tr.down,
         icon: Icons.arrow_downward,
         onPressed: i < order.length - 1 ? () => app.moveTab(id, 1) : null,
       );
       final shown = TvToggle(
-        label: 'Shown',
+        label: tr.shown,
         on: !hidden.contains(id),
         onPressed: () => app.setTabHidden(id, !hidden.contains(id)),
       );
@@ -124,10 +125,10 @@ class _ChannelGroupsScreenState extends State<ChannelGroupsScreen> {
                   style: g.display(28, weight: FontWeight.w800, color: g.accent),
                 ),
               ),
-              ChannelLogo(icon: c.icon, size: 40, width: 64, fallbackText: c.name),
+              ChannelLogo(icon: c.icon, size: 40, width: 64, fallbackText: c.displayName),
               const SizedBox(width: 12),
               Expanded(
-                child: Text(c.name, maxLines: 1, overflow: TextOverflow.ellipsis, style: g.body(26)),
+                child: Text(c.displayName, maxLines: 1, overflow: TextOverflow.ellipsis, style: g.body(26)),
               ),
             ],
           ),
@@ -135,22 +136,21 @@ class _ChannelGroupsScreenState extends State<ChannelGroupsScreen> {
     ];
 
     return TvPage(
-      title: 'Channel groups',
-      hints: '▲▼◀▶ Move    OK Select    ESC Back',
+      title: tr.channelGroups,
+      hints: tr.moveOkSelectEsc,
       onBack: () => Navigator.of(context).pop(),
       child: AdaptiveColumns(
         mainPadding: const EdgeInsets.fromLTRB(100, 32, 40, 40),
         sideWidth: 560,
         main: [
           Text(
-            'The tabs at the top of the guide, in this order. Hidden tabs and tabs with no channels '
-            "aren't shown.",
+            tr.theTabsAt,
             style: g.body(24, color: g.textDim),
           ),
           const SizedBox(height: 20),
           Align(
             alignment: Alignment.centerLeft,
-            child: TvButton(label: 'New group', icon: Icons.add, autofocus: true, onPressed: _newGroup),
+            child: TvButton(label: tr.newGroup, icon: Icons.add, autofocus: true, onPressed: _newGroup),
           ),
           const SizedBox(height: 24),
           for (final (i, id) in order.indexed)
@@ -177,10 +177,10 @@ class _ChannelGroupsScreenState extends State<ChannelGroupsScreen> {
                 style: g.display(30, weight: FontWeight.w800, color: g.accent),
               ),
               const SizedBox(height: 10),
-              Text(GuideTabs.rule(_shown) ?? 'Channels you picked.', style: g.body(24, color: g.textDim)),
+              Text(GuideTabs.rule(_shown) ?? tr.channelsYouPicked, style: g.body(24, color: g.textDim)),
               const SizedBox(height: 16),
               Text(
-                '${members.length} channel${members.length == 1 ? '' : 's'}',
+                tr.channels3(members.length),
                 style: g.display(40, weight: FontWeight.w800),
               ),
               const SizedBox(height: 12),
@@ -222,9 +222,9 @@ class _GroupEditorScreenState extends State<GroupEditorScreen> {
   Future<void> _delete() async {
     final ok = await confirm(
       context,
-      title: 'Delete "${widget.group.name}"?',
-      message: 'Its tab leaves the guide. The channels stay in your lineup.',
-      action: 'Delete',
+      title: tr.delete2(widget.group.name),
+      message: tr.itsTabLeaves,
+      action: tr.delete,
     );
     if (!ok || !mounted) return;
     await AppScope.read(context).deleteGroup(widget.group);
@@ -237,11 +237,11 @@ class _GroupEditorScreenState extends State<GroupEditorScreen> {
     final g = context.guide;
     final group = widget.group;
     final layout = ScreenLayout.of(context);
-    final rename = TvButton(label: 'Rename', icon: Icons.check, onPressed: _rename);
-    final delete = TvButton(label: 'Delete group', icon: Icons.delete, danger: true, onPressed: _delete);
+    final rename = TvButton(label: tr.rename, icon: Icons.check, onPressed: _rename);
+    final delete = TvButton(label: tr.deleteGroup, icon: Icons.delete, danger: true, onPressed: _delete);
     return TvPage(
-      title: 'Group: ${group.name}',
-      hints: '▲▼◀▶ Move    OK Select    ESC Back',
+      title: tr.group(group.name),
+      hints: tr.moveOkSelectEsc,
       onBack: () => Navigator.of(context).pop(),
       child: FocusTraversalGroup(
         child: ListView(
@@ -249,14 +249,14 @@ class _GroupEditorScreenState extends State<GroupEditorScreen> {
           children: [
             if (layout.isPortrait) ...[
               // Upright, the buttons go under the name.
-              TvTextField(controller: _name, label: 'Group name', onSubmitted: (_) => _rename()),
+              TvTextField(controller: _name, label: tr.groupName, onSubmitted: (_) => _rename()),
               const SizedBox(height: 16),
               Wrap(spacing: 16, runSpacing: 16, children: [rename, delete]),
             ] else
             Row(
               children: [
                 Expanded(
-                  child: TvTextField(controller: _name, label: 'Group name', onSubmitted: (_) => _rename()),
+                  child: TvTextField(controller: _name, label: tr.groupName, onSubmitted: (_) => _rename()),
                 ),
                 const SizedBox(width: 16),
                 rename,
@@ -266,7 +266,7 @@ class _GroupEditorScreenState extends State<GroupEditorScreen> {
             ),
             const SizedBox(height: 32),
             Text(
-              'CHANNELS',
+              tr.channels2,
               style: g.display(26, weight: FontWeight.w800, color: g.accent),
             ),
             const SizedBox(height: 12),
@@ -278,7 +278,7 @@ class _GroupEditorScreenState extends State<GroupEditorScreen> {
                   SizedBox(
                     width: layout.isPortrait ? double.infinity : 820,
                     child: TvToggle(
-                      label: '${c.number}   ${c.name}',
+                      label: '${c.number}   ${c.displayName}',
                       on: group.channelIds.contains(c.id),
                       autofocus: i == 0,
                       onPressed: () => app.setInGroup(group, c, !group.channelIds.contains(c.id)),
@@ -299,7 +299,7 @@ Future<String?> askName(
   BuildContext context, {
   required String title,
   String initial = '',
-  String action = 'OK',
+  String? action,
 }) async {
   // Not disposed here: the field still shows while the dialog animates out.
   final controller = TextEditingController(text: initial);
@@ -329,12 +329,12 @@ Future<String?> askName(
               children: [
                 Text(title, style: g.display(48, weight: FontWeight.w800)),
                 const SizedBox(height: 24),
-                TvTextField(controller: controller, label: 'Name', autofocus: true, onSubmitted: (_) => submit()),
+                TvTextField(controller: controller, label: tr.name, autofocus: true, onSubmitted: (_) => submit()),
                 const SizedBox(height: 40),
                 ButtonRow(
                   children: [
-                    TvButton(label: 'Cancel', onPressed: () => Navigator.pop(context)),
-                    TvButton(label: action, onPressed: submit),
+                    TvButton(label: tr.cancel, onPressed: () => Navigator.pop(context)),
+                    TvButton(label: action ?? tr.ok, onPressed: submit),
                   ],
                 ),
               ],

@@ -9,6 +9,7 @@ import '../../channels/channel.dart';
 import '../../theme/tv_theme.dart';
 import '../../server/media_server.dart';
 import 'nightingale_mark.dart';
+import '../../l10n/tr.dart';
 
 /// Renders any [ChannelIcon] kind, centered in a [width]×[size] box.
 class ChannelLogo extends StatelessWidget {
@@ -78,7 +79,7 @@ class ChannelLogo extends StatelessWidget {
   }
 
   Widget _fallback(BuildContext context) => StationBadge(
-        text: _initials(fallbackText ?? 'TV'),
+        text: _initials(fallbackText ?? tr.tv),
         shape: BadgeShape.roundedSquare,
         color: context.guide.accent,
         size: size,

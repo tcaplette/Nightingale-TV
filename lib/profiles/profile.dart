@@ -3,20 +3,32 @@ import 'dart:math';
 
 import 'package:crypto/crypto.dart';
 
+import '../l10n/tr.dart';
+
 enum ProfileKind { adult, kid }
 
 /// How much a kid profile is allowed to watch, as the highest rating rank
 /// it can see (see [ratingRank]).
 enum KidRating {
-  young(1, 'Young kids', 'TV-Y and TV-Y7'),
-  kids(2, 'Kids', 'Up to TV-G and G'),
-  older(3, 'Older kids', 'Up to TV-PG and PG');
+  young(1),
+  kids(2),
+  older(3);
 
-  const KidRating(this.maxRank, this.label, this.description);
+  const KidRating(this.maxRank);
 
   final int maxRank;
-  final String label;
-  final String description;
+
+  String get label => switch (this) {
+        KidRating.young => tr.kidRatingYoung,
+        KidRating.kids => tr.kidRatingKids,
+        KidRating.older => tr.kidRatingOlder,
+      };
+
+  String get description => switch (this) {
+        KidRating.young => tr.kidRatingYoungDescription,
+        KidRating.kids => tr.kidRatingKidsDescription,
+        KidRating.older => tr.kidRatingOlderDescription,
+      };
 }
 
 /// Orders content ratings from youngest to most mature (US TV and film, plus
@@ -57,9 +69,10 @@ class Profile {
     this.kind = ProfileKind.adult,
     this.rating = KidRating.kids,
     this.color = 0,
+    String? language,
     this._pinHash,
     this._pinSalt,
-  });
+  }) : language = supportedLanguage(language);
 
   final String id;
   String name;
@@ -70,6 +83,10 @@ class Profile {
 
   /// Index into the avatar palette.
   int color;
+
+  /// The interface language; null is Automatic, following the device
+  /// (app-languages).
+  String? language;
 
   /// A kid's rating limit was loosened; rescan the library next time.
   bool needsRescan = false;
@@ -109,6 +126,7 @@ class Profile {
         'kind': kind.name,
         if (isKid) 'rating': rating.name,
         'color': color,
+        if (language != null) 'language': language,
         if (needsRescan) 'needsRescan': true,
         if (_pinHash != null) 'pinHash': _pinHash,
         if (_pinSalt != null) 'pinSalt': _pinSalt,
@@ -120,6 +138,7 @@ class Profile {
         kind: ProfileKind.values.byName(j['kind'] as String? ?? 'adult'),
         rating: KidRating.values.byName(j['rating'] as String? ?? KidRating.kids.name),
         color: j['color'] as int? ?? 0,
+        language: j['language'] as String?,
         pinHash: j['pinHash'] as String?,
         pinSalt: j['pinSalt'] as String?,
       )..needsRescan = j['needsRescan'] as bool? ?? false;

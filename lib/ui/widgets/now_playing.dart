@@ -10,6 +10,7 @@ import '../../channels/schedule.dart';
 import '../../theme/tv_theme.dart';
 import 'channel_logo.dart';
 import 'nightingale_mark.dart';
+import '../../l10n/tr.dart';
 
 /// How far the art and text sit from their place at [t]: a few pixels,
 /// changing each minute, so nothing stays put on the screen for hours (the
@@ -111,12 +112,12 @@ class _NowPlayingCardState extends State<NowPlayingCard> {
                                 icon: widget.channel.icon,
                                 size: 64,
                                 width: 110,
-                                fallbackText: widget.channel.name,
+                                fallbackText: widget.channel.displayName,
                                 app: widget.app,
                                 alignment: Alignment.centerLeft),
                         const SizedBox(width: 20),
                         Expanded(
-                          child: Text('NOW PLAYING ON ${widget.channel.name.toUpperCase()}',
+                          child: Text(tr.nowPlayingOn(widget.channel.displayName.toUpperCase()),
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                               style: g.display(28, weight: FontWeight.w800, color: g.accent)),
@@ -155,7 +156,7 @@ class _NowPlayingCardState extends State<NowPlayingCard> {
                       const SizedBox(height: 36),
                     ],
                     if (next != null)
-                      Text('Up next: ${next.guideTitle}',
+                      Text(tr.upNext(next.guideTitle),
                           maxLines: 1, overflow: TextOverflow.ellipsis, style: g.body(30, color: g.textDim)),
                   ],
                 ),

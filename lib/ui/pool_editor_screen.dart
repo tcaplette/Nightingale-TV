@@ -9,6 +9,7 @@ import 'menu_screen.dart' show confirm;
 import 'widgets/adaptive.dart';
 import 'widgets/screen_layout.dart';
 import 'widgets/tv_focus.dart';
+import '../l10n/tr.dart';
 
 /// Rename a commercial pool, set its type, choose its folders, or delete it.
 class PoolEditorScreen extends StatefulWidget {
@@ -56,9 +57,9 @@ class _PoolEditorScreenState extends State<PoolEditorScreen> {
 
   Future<void> _delete() async {
     final ok = await confirm(context,
-        title: 'Delete "${_pool.name}"?',
-        message: 'Its videos go back to your regular channels. Breaks that drew from it use all pools instead.',
-        action: 'Delete');
+        title: tr.delete2(_pool.name),
+        message: tr.itsVideosGo,
+        action: tr.delete);
     if (!ok || !mounted) return;
     final app = AppScope.read(context);
     final tuner = AppScope.tunerOf(context);
@@ -79,8 +80,8 @@ class _PoolEditorScreenState extends State<PoolEditorScreen> {
     final bumpers = _pool.kind == PoolKind.bumpers;
 
     return TvPage(
-      title: 'Commercial pool',
-      hints: '▲▼◀▶ Move    OK Select    ESC Back',
+      title: tr.commercialPool,
+      hints: tr.moveOkSelectEsc,
       onBack: () => Navigator.of(context).pop(),
       child: AdaptiveColumns(
                 mainPadding: const EdgeInsets.fromLTRB(100, 32, 40, 40),
@@ -88,13 +89,13 @@ class _PoolEditorScreenState extends State<PoolEditorScreen> {
                 main: [
                   Row(
                     children: [
-                      Expanded(child: TvTextField(controller: _name, label: 'Pool name', onSubmitted: (_) => _rename())),
+                      Expanded(child: TvTextField(controller: _name, label: tr.poolName, onSubmitted: (_) => _rename())),
                       const SizedBox(width: 16),
-                      TvButton(label: 'Rename', icon: Icons.check, onPressed: _rename),
+                      TvButton(label: tr.rename, icon: Icons.check, onPressed: _rename),
                     ],
                   ),
                   const SizedBox(height: 36),
-                  Text('TYPE', style: g.display(26, weight: FontWeight.w800, color: g.accent)),
+                  Text(tr.type, style: g.display(26, weight: FontWeight.w800, color: g.accent)),
                   const SizedBox(height: 14),
                   Wrap(
                     spacing: 12,
@@ -110,18 +111,17 @@ class _PoolEditorScreenState extends State<PoolEditorScreen> {
                     ],
                   ),
                   const SizedBox(height: 36),
-                  Text('FOLDERS', style: g.display(26, weight: FontWeight.w800, color: g.accent)),
+                  Text(tr.folders2, style: g.display(26, weight: FontWeight.w800, color: g.accent)),
                   const SizedBox(height: 6),
                   Text(
-                    'Every video in these folders (and the folders inside them) '
-                    '${bumpers ? 'opens and closes breaks' : 'fills breaks'}, and never airs as a program.',
+                    bumpers ? tr.poolFoldersBumpers : tr.poolFoldersCommercials,
                     style: g.body(24, color: g.textDim),
                   ),
                   const SizedBox(height: 16),
                   if (_pool.roots.isEmpty)
                     Padding(
                       padding: const EdgeInsets.only(bottom: 16),
-                      child: Text('No folders yet.', style: g.body(28)),
+                      child: Text(tr.noFoldersYet, style: g.body(28)),
                     ),
                   for (final root in _pool.roots)
                     Padding(
@@ -131,10 +131,10 @@ class _PoolEditorScreenState extends State<PoolEditorScreen> {
                           Icon(root.isWholeLibrary ? Icons.video_library : Icons.folder, size: 36, color: g.accent),
                           const SizedBox(width: 16),
                           Expanded(
-                            child: Text(root.label.isEmpty ? 'Library' : app.rootLabel(root),
+                            child: Text(root.label.isEmpty ? tr.libraryLabel2 : app.rootLabel(root),
                                 maxLines: 1, overflow: TextOverflow.ellipsis, style: g.display(30, weight: FontWeight.w600)),
                           ),
-                          TvButton(label: 'Remove', icon: Icons.close, onPressed: () => _remove(root)),
+                          TvButton(label: tr.remove, icon: Icons.close, onPressed: () => _remove(root)),
                         ],
                       ),
                     ),
@@ -142,7 +142,7 @@ class _PoolEditorScreenState extends State<PoolEditorScreen> {
                   Align(
                     alignment: Alignment.centerLeft,
                     child: TvButton(
-                      label: 'Add folders…',
+                      label: tr.addFolders,
                       icon: Icons.create_new_folder,
                       autofocus: true,
                       onPressed: _addFolders,
@@ -152,13 +152,13 @@ class _PoolEditorScreenState extends State<PoolEditorScreen> {
                   const SizedBox(height: 48),
                   Align(
                     alignment: Alignment.centerLeft,
-                    child: TvButton(label: 'Delete pool', icon: Icons.delete, danger: true, onPressed: _delete),
+                    child: TvButton(label: tr.deletePool, icon: Icons.delete, danger: true, onPressed: _delete),
                   ),
                   const SizedBox(height: 24),
                   if (app.refreshing)
                     Text(app.syncStatus, style: g.body(26, weight: FontWeight.w600, color: g.accent))
                   else if (app.syncError != null)
-                    Text('Last scan failed: ${app.syncError}', style: g.body(24, color: g.nowLine)),
+                    Text(tr.lastScanFailed('${app.syncError}'), style: g.body(24, color: g.nowLine)),
                 ],
             side: Container(
               margin: portrait ? EdgeInsets.zero : const EdgeInsets.fromLTRB(0, 40, 80, 40),
@@ -168,39 +168,40 @@ class _PoolEditorScreenState extends State<PoolEditorScreen> {
                 borderRadius: BorderRadius.circular(g.radius * 2),
                 border: Border.all(color: g.cellBorder, width: 2),
               ),
-              child: Column(
+              // The help below can outgrow a TV screen in the longer languages.
+              child: SingleChildScrollView(
+                child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(_pool.name.toUpperCase(),
                       maxLines: 1, overflow: TextOverflow.ellipsis, style: g.display(30, weight: FontWeight.w800, color: g.accent)),
                   const SizedBox(height: 16),
-                  Text('${clips.length} clip${clips.length == 1 ? '' : 's'}', style: g.display(56, weight: FontWeight.w800)),
+                  Text(tr.clips3(clips.length), style: g.display(56, weight: FontWeight.w800)),
                   const SizedBox(height: 8),
                   Text(
                     [
-                      '${items.length} video${items.length == 1 ? '' : 's'} in its folders',
-                      if (reels.isNotEmpty) '${reels.length} long one${reels.length == 1 ? '' : 's'} split into clips',
-                      if (unsplit > 0) '$unsplit still to split',
+                      tr.videosInFolders(items.length),
+                      if (reels.isNotEmpty) tr.longOnesSplit(reels.length),
+                      if (unsplit > 0) tr.stillToSplit(unsplit),
                     ].join(' · '),
                     style: g.body(24, color: g.textDim),
                   ),
                   const SizedBox(height: 24),
                   for (final line in [
-                    if (bumpers) ...const [
-                      'A mid-roll opens and closes with a bumper, a post-roll opens with one, and a pre-roll closes '
-                          'with one. Commercials fill the rest.',
-                      'Bumpers take at most half of a break, except in a pre-roll. One too long for that is skipped.',
+                    if (bumpers) ...[
+                      tr.aMidRollOpens,
+                      tr.bumpersTakeAt,
                     ] else
-                      'Commercials fill breaks. Set the type to Bumpers for station idents and "we\'ll be right back" clips.',
-                    'Videos of 5 seconds to 3 minutes are one clip each.',
-                    'Longer videos (ad compilations) are split into their ads, at chapters or where the '
-                        'picture goes black and silent.',
+                      tr.commercialsFillBreaks,
+                    tr.videosOf5,
+                    tr.longerVideosAd,
                   ])
                     Padding(
                       padding: const EdgeInsets.only(bottom: 12),
                       child: Text('•  $line', style: g.body(24, color: g.textDim)),
                     ),
                 ],
+              ),
               ),
             ),
       ),

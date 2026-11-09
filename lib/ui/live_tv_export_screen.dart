@@ -10,16 +10,15 @@ import '../profiles/profile.dart';
 import '../theme/tv_theme.dart';
 import 'pin_dialog.dart';
 import 'widgets/tv_focus.dart';
+import '../l10n/tr.dart';
 
 /// Live TV export: serve profiles' lineups to Plex, Jellyfin and IPTV apps.
 class LiveTvExportScreen extends StatelessWidget {
   const LiveTvExportScreen({super.key});
 
-  static const intro = 'Watch your channels in Plex, Jellyfin or any IPTV app on your home network. '
-      'Nightingale TV has to stay open for them to play.';
-  static const homeNetworkNotice = 'Anyone on your home network can watch this lineup.';
-  static const discoveryUnavailable = "Automatic discovery isn't available on this PC. "
-      'Add the tuner in Plex or Jellyfin by its address.';
+  static String get intro => tr.watchYourChannels;
+  static String get homeNetworkNotice => tr.anyoneOnYour;
+  static String get discoveryUnavailable => tr.automaticDiscoveryIsnt;
 
   @override
   Widget build(BuildContext context) {
@@ -39,8 +38,8 @@ class LiveTvExportScreen extends StatelessWidget {
               child: TvToggle(label: label, radio: true, on: on, onPressed: onPressed),
             );
         return TvPage(
-          title: 'Live TV export',
-          hints: '▲▼ Move    OK Select    ESC Back',
+          title: tr.liveTvExport2,
+          hints: tr.moveOkSelectEscBack,
           onBack: () => Navigator.of(context).pop(),
           child: FocusTraversalGroup(
             child: ListView(
@@ -51,41 +50,41 @@ class LiveTvExportScreen extends StatelessWidget {
                 Align(
                   alignment: Alignment.centerLeft,
                   child: TvToggle(
-                    label: 'Live TV export',
+                    label: tr.liveTvExport2,
                     on: s.enabled,
                     autofocus: true,
                     onPressed: () => service.setEnabled(!s.enabled),
                   ),
                 ),
                 if (s.enabled) ...[
-                  heading('LINEUPS'),
+                  heading(tr.lineups),
                   for (final p in household.profiles) _ProfileExport(service: service, profile: p),
-                  heading('QUALITY'),
+                  heading(tr.quality),
                   Wrap(children: [
                     for (final q in ExportQuality.values) radio(q.label, s.quality == q, () => service.setQuality(q)),
                   ]),
-                  heading('STREAMS AT ONCE'),
+                  heading(tr.streamsAtOnce),
                   Wrap(children: [
-                    radio('Automatic', s.streamLimit == null, () => service.setStreamLimit(null)),
+                    radio(tr.automatic, s.streamLimit == null, () => service.setStreamLimit(null)),
                     for (final n in ExportSettings.streamLimitChoices)
                       radio('$n', s.streamLimit == n, () => service.setStreamLimit(n)),
                   ]),
-                  Text('Now: ${service.streamLimit} at once. Each channel being watched elsewhere is one stream.',
+                  Text(tr.nowAtOnce(service.streamLimit),
                       style: g.body(24, color: g.textDim)),
-                  heading('ENCODER'),
+                  heading(tr.encoder),
                   Wrap(children: [
-                    radio('Automatic', s.encoder == ExportEncoderChoice.automatic,
+                    radio(tr.automatic, s.encoder == ExportEncoderChoice.automatic,
                         () => service.setEncoder(ExportEncoderChoice.automatic)),
-                    radio('Processor only', s.encoder == ExportEncoderChoice.processorOnly,
+                    radio(tr.processorOnly, s.encoder == ExportEncoderChoice.processorOnly,
                         () => service.setEncoder(ExportEncoderChoice.processorOnly)),
                   ]),
-                  Text('Encoder in use: ${service.encoderInUse?.label ?? 'checking…'}',
+                  Text(tr.encoderInUse(service.encoderInUse?.label ?? tr.checking),
                       style: g.body(24, color: g.textDim)),
-                  heading('DISCOVERY'),
+                  heading(tr.discovery),
                   Align(
                     alignment: Alignment.centerLeft,
                     child: TvToggle(
-                      label: 'Let Plex find it automatically',
+                      label: tr.letPlexFind,
                       on: s.discovery,
                       onPressed: () => service.setDiscovery(!s.discovery),
                     ),
@@ -129,7 +128,7 @@ class _ProfileExportState extends State<_ProfileExport> {
   Future<void> _toggle(bool exported) async {
     final p = widget.profile;
     if (!exported && p.hasPin) {
-      final ok = await askPin(context, title: 'PIN for ${p.name}', check: p.checkPin);
+      final ok = await askPin(context, title: tr.pinFor(p.name), check: p.checkPin);
       if (!ok) return;
     }
     await widget.service.setProfileExported(p.id, !exported);
@@ -140,7 +139,7 @@ class _ProfileExportState extends State<_ProfileExport> {
   Future<void> _savePort() async {
     final port = int.tryParse(_port.text.trim());
     final problem = port == null
-        ? 'Enter a port number.'
+        ? tr.enterAPort
         : await widget.service.setPort(widget.profile.id, port);
     if (mounted) setState(() => _portError = problem);
   }
@@ -161,7 +160,7 @@ class _ProfileExportState extends State<_ProfileExport> {
             Flexible(child: Text('$url', style: g.body(24))),
             const SizedBox(width: 24),
             TvButton(
-              label: 'Copy',
+              label: tr.copyAction,
               icon: Icons.copy,
               onPressed: () => Clipboard.setData(ClipboardData(text: '$url')),
             ),
@@ -175,7 +174,7 @@ class _ProfileExportState extends State<_ProfileExport> {
           Align(
             alignment: Alignment.centerLeft,
             child: TvToggle(
-              label: '${p.name}${p.isKid ? ' (kid)' : ''}: export this lineup',
+              label: p.isKid ? tr.exportThisLineupKid(p.name) : tr.exportThisLineup(p.name),
               on: exported,
               onPressed: () => _toggle(exported),
             ),
@@ -198,25 +197,23 @@ class _ProfileExportState extends State<_ProfileExport> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      copy('Tuner', address),
+                      copy(tr.tuner, address),
                       copy('M3U', ExportUrls(address).m3u),
-                      copy('XMLTV', ExportUrls(address).xmltv),
+                      copy(tr.xmltv, ExportUrls(address).xmltv),
                       const SizedBox(height: 8),
                       Row(children: [
-                        SizedBox(width: 260, child: TvTextField(controller: _port, label: 'Port', onSubmitted: (_) => _savePort())),
+                        SizedBox(width: 260, child: TvTextField(controller: _port, label: tr.port, onSubmitted: (_) => _savePort())),
                         const SizedBox(width: 12),
-                        TvButton(label: 'Save port', onPressed: _savePort),
+                        TvButton(label: tr.savePort, onPressed: _savePort),
                       ]),
                       if (_portError != null)
                         Text(_portError!, style: g.body(22, weight: FontWeight.w600, color: g.nowLine)),
                       const SizedBox(height: 8),
                       Text(
                         running.isEmpty
-                            ? 'Not streaming. ${service.streams.running.length} of ${service.streamLimit} streams in use.'
-                            : 'Streaming channel${running.length > 1 ? 's' : ''} '
-                                '${running.map((r) => r.channel.number).join(', ')} to '
-                                '${running.fold(0, (n, r) => n + r.viewers)} viewer(s). '
-                                '${service.streams.running.length} of ${service.streamLimit} streams in use.',
+                            ? tr.notStreamingOf(service.streams.running.length, service.streamLimit)
+                            : tr.streamingChannels(running.length, running.map((r) => r.channel.number).join(', '),
+                                running.fold<int>(0, (n, r) => n + r.viewers), service.streams.running.length, service.streamLimit),
                         style: g.body(24, color: g.textDim),
                       ),
                     ],

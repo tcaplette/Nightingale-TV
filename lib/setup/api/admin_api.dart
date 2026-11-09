@@ -1,3 +1,4 @@
+
 part of '../setup_server.dart';
 
 /// Export settings and the server's saved backups (admin-api), admin-only.
@@ -12,7 +13,7 @@ extension _AdminApi on SetupServer {
       ];
 
   ExportService get _export =>
-      household.export ?? (throw ApiError(HttpStatus.notFound, 'Live TV export isn\'t running.'));
+      household.export ?? (throw ApiError(HttpStatus.notFound, tr.liveTvExport));
 
   Map<String, Object?> _exportJson() {
     final export = _export;
@@ -25,7 +26,7 @@ extension _AdminApi on SetupServer {
       'encoder': s.encoder.name,
       'encoders': [
         for (final e in ExportEncoderChoice.values)
-          {'id': e.name, 'label': e == ExportEncoderChoice.automatic ? 'Automatic' : 'Processor only'},
+          {'id': e.name, 'label': e == ExportEncoderChoice.automatic ? tr.automatic : tr.processorOnly},
       ],
       'encoderInUse': export.encoderInUse?.label,
       'discovery': s.discovery,
@@ -41,16 +42,16 @@ extension _AdminApi on SetupServer {
     final body = await r.body();
     if (body.string('quality') case final label?) {
       final q = ExportQuality.values.where((q) => q.label == label).firstOrNull ??
-          (throw ApiError(HttpStatus.badRequest, 'No such quality.'));
+          (throw ApiError(HttpStatus.badRequest, tr.noSuchQuality));
       if (q != export.settings.quality) await export.setQuality(q);
     }
     if (body.containsKey('streamLimit')) {
       final limit = body.integer('streamLimit');
-      if (limit != null && (limit < 1 || limit > 16)) throw ApiError(HttpStatus.badRequest, 'Allow 1 to 16 streams.');
+      if (limit != null && (limit < 1 || limit > 16)) throw ApiError(HttpStatus.badRequest, tr.allow1To);
       if (limit != export.settings.streamLimit) await export.setStreamLimit(limit);
     }
     if (body.string('encoder') case final name?) {
-      final e = ExportEncoderChoice.values.asNameMap()[name] ?? (throw ApiError(HttpStatus.badRequest, 'No such encoder.'));
+      final e = ExportEncoderChoice.values.asNameMap()[name] ?? (throw ApiError(HttpStatus.badRequest, tr.noSuchEncoder));
       if (e != export.settings.encoder) await export.setEncoder(e);
     }
     if (body.boolean('discovery') case final on? when on != export.settings.discovery) await export.setDiscovery(on);
@@ -59,11 +60,11 @@ extension _AdminApi on SetupServer {
 
   // ---- Saved backups ---------------------------------------------------------------
 
-  BackupStore get _store => household.backups?.store ?? (throw ApiError(HttpStatus.notFound, 'Backups are off.'));
+  BackupStore get _store => household.backups?.store ?? (throw ApiError(HttpStatus.notFound, tr.backupsAreOff));
 
   Future<StoredBackup> _saved(String name) async =>
       (await _store.list()).where((b) => b.name == name).firstOrNull ??
-      (throw ApiError(HttpStatus.notFound, 'No such backup.'));
+      (throw ApiError(HttpStatus.notFound, tr.noSuchBackup));
 
   Future<Object?> _backups() async => {
         'backups': [

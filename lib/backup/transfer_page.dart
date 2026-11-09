@@ -1,16 +1,18 @@
+import '../l10n/page_text.dart';
+import '../l10n/tr.dart';
 import '../ui/widgets/nightingale_mark.dart';
 
 /// The page a phone or computer opens to move a backup (backup-restore
 /// D12). Self-contained (no outside files or fonts), like the remote's, so
 /// it works on a home network with no internet. Its links are relative to
 /// the page's own tokened address.
-const transferPageHtml = r'''<!doctype html>
+const _template = r'''<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#0b1650">
-<title>Nightingale TV Backup</title>
+<title>@@title@@</title>
 <style>
   :root {
     --bg-top: #0e1d63; --bg-bottom: #050a24; --panel: #13236e; --cell: #1b3394;
@@ -49,22 +51,23 @@ const transferPageHtml = r'''<!doctype html>
 <body>
 <div class="wrap">
   <h1>''' + nightingaleMarkSvg + r'''Nightingale TV</h1>
-  <p>Move a backup between this TV and this device. Keep the TV's dialog open while you do.</p>
+  <p>@@intro@@</p>
   <div class="card">
-    <h2>Download backup</h2>
-    <p>A backup of the TV's setup as it is now: profiles, channels, blocks and settings.</p>
-    <a class="button" href="backup" download>Download backup</a>
+    <h2>@@download@@</h2>
+    <p>@@downloadHelp@@</p>
+    <a class="button" href="backup" download>@@download@@</a>
   </div>
   <div class="card">
-    <h2>Restore from a file</h2>
-    <p>Send a <b>.ntvbackup</b> file to the TV. Nothing changes until you confirm it on the TV.</p>
-    <label class="button secondary" for="file">Choose a backup file…</label>
+    <h2>@@restoreTitle@@</h2>
+    <p>@@restoreHelp@@</p>
+    <label class="button secondary" for="file">@@choose@@</label>
     <input id="file" type="file" accept=".ntvbackup,application/octet-stream,application/gzip">
     <div id="status" role="status" aria-live="polite"></div>
   </div>
-  <div class="foot">Only devices on your home network can open this page.</div>
+  <div class="foot">@@foot@@</div>
 </div>
 <script>
+  /*TEXTS*/
   const input = document.getElementById('file');
   const status = document.getElementById('status');
   function show(text, kind) { status.textContent = text; status.className = kind || ''; }
@@ -72,8 +75,8 @@ const transferPageHtml = r'''<!doctype html>
     const file = input.files && input.files[0];
     input.value = '';
     if (!file) return;
-    if (file.size > 32 * 1024 * 1024) { show('That file is too big to be a Nightingale TV backup.', 'err'); return; }
-    show('Sending ' + file.name + '…');
+    if (file.size > 32 * 1024 * 1024) { show(T.tooBig, 'err'); return; }
+    show(T.sending.replace('{name}', file.name));
     try {
       const r = await fetch('restore', {
         method: 'POST',
@@ -82,14 +85,35 @@ const transferPageHtml = r'''<!doctype html>
       });
       let body = {};
       try { body = await r.json(); } catch (_) {}
-      if (r.ok) show('Check your TV to finish.', 'ok');
-      else if (r.status === 404) show('The TV closed this page. Open it again from Backup & restore.', 'err');
-      else show(body.error || 'The TV couldn’t take that file.', 'err');
+      if (r.ok) show(T.checkTv, 'ok');
+      else if (r.status === 404) show(T.closed, 'err');
+      else show(body.error || T.couldntTake, 'err');
     } catch (_) {
-      show('Couldn’t reach the TV. Is it still showing the code?', 'err');
+      show(T.couldntReach, 'err');
     }
   });
 </script>
 </body>
 </html>
 ''';
+
+/// The page's text, in the language the TV is showing (design D9).
+Map<String, String> transferPageTexts() => {
+      'title': tr.transferPageTitle,
+      'intro': tr.transferIntro,
+      'download': tr.transferDownload,
+      'downloadHelp': tr.transferDownloadHelp,
+      'restoreTitle': tr.transferRestoreTitle,
+      'restoreHelp': tr.transferRestoreHelp('.ntvbackup'),
+      'choose': tr.transferChoose,
+      'foot': tr.transferFoot,
+      'tooBig': tr.thisFileIs,
+      'sending': tr.transferSending('{name}'),
+      'checkTv': tr.transferCheckTv,
+      'closed': tr.transferClosed,
+      'couldntTake': tr.transferCouldntTake,
+      'couldntReach': tr.transferCouldntReach,
+    };
+
+/// The page, in the language the TV is showing.
+String transferPageHtml() => fillPage(_template, transferPageTexts());

@@ -8,6 +8,7 @@ import '../api_client.dart';
 import '../app.dart';
 import '../session.dart';
 import '../widgets/common.dart';
+import '../../l10n/tr.dart';
 
 /// Profiles: the ones this account may use; admins add, edit (kind, rating
 /// limit, PIN) and remove them.
@@ -20,17 +21,17 @@ class ProfilesPage extends StatelessWidget {
     return ListenableBuilder(
       listenable: session,
       builder: (context, _) => PageBody(
-        title: 'Profiles',
+        title: tr.profiles,
         actions: [
           if (session.isAdmin)
             FilledButton.icon(
               icon: const Icon(Icons.person_add_alt),
-              label: const Text('Add profile'),
+              label: Text(tr.addProfile),
               onPressed: () => _edit(context, null),
             ),
         ],
         children: [
-          if (session.profiles.isEmpty) const Text('No profiles are assigned to you yet. Ask an admin.'),
+          if (session.profiles.isEmpty) Text(tr.noProfilesAre),
           for (final p in session.profiles) _ProfileCard(profile: p, onEdit: () => _edit(context, p)),
         ],
       ),
@@ -73,27 +74,27 @@ class _ProfileCard extends StatelessWidget {
               Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                 Text(p.name, style: Theme.of(context).textTheme.titleMedium),
                 Text([
-                  p.isKid ? 'Kid · ${rating?.label ?? ''}' : 'Grown-up',
-                  if (p.hasPin) 'PIN',
-                  if (p.exported) 'Exported',
+                  p.isKid ? tr.kid3(rating?.label ?? '') : tr.grownUp,
+                  if (p.hasPin) tr.pin,
+                  if (p.exported) tr.exported,
                 ].join(' · ')),
               ]),
             ]),
             Wrap(spacing: 8, children: [
-              TextButton(onPressed: () => context.go('/profiles/${p.id}/library'), child: const Text('Library')),
-              OutlinedButton(onPressed: onEdit, child: const Text('Edit')),
+              TextButton(onPressed: () => context.go('/profiles/${p.id}/library'), child: Text(tr.libraryLabel2)),
+              OutlinedButton(onPressed: onEdit, child: Text(tr.edit2)),
               if (session.isAdmin)
                 TextButton(
                   onPressed: () async {
                     final ok = await confirm(context,
-                        title: 'Remove ${p.name}?',
-                        message: 'Its channels, blocks and settings are deleted. A backup is saved first.',
-                        action: 'Remove');
+                        title: tr.remove3(p.name),
+                        message: tr.itsChannelsBlocks,
+                        action: tr.remove);
                     if (!ok || !context.mounted) return;
                     final done = await attempt(context, () => context.api.delete('profiles/${p.id}'));
                     if (done != null && context.mounted) await context.session.refresh();
                   },
-                  child: const Text('Remove'),
+                  child: Text(tr.remove),
                 ),
             ]),
           ],
@@ -121,6 +122,7 @@ class _ProfileDialogState extends State<_ProfileDialog> {
   late KidRating _rating = KidRating.values.asNameMap()[widget.profile?.json['rating']] ?? KidRating.kids;
   final _pin = TextEditingController();
   bool _removePin = false;
+  late String? _language = widget.profile?.json['language'] as String?;
   String? _error;
   bool _busy = false;
 
@@ -130,13 +132,14 @@ class _ProfileDialogState extends State<_ProfileDialog> {
     final body = <String, Object?>{
       'name': _name.text.trim(),
       'color': _color,
+      'language': _language,
       if (admin) 'kind': _kind.name,
       if (admin && _kind == ProfileKind.kid) 'rating': _rating.name,
       if (admin && _pin.text.isNotEmpty) 'pin': _pin.text,
       if (admin && _removePin && _pin.text.isEmpty) 'pin': null,
     };
     if (_pin.text.isNotEmpty && !RegExp(r'^\d{4}$').hasMatch(_pin.text)) {
-      setState(() => _error = 'A PIN is 4 digits.');
+      setState(() => _error = tr.aPinIs);
       return;
     }
     setState(() {
@@ -165,14 +168,14 @@ class _ProfileDialogState extends State<_ProfileDialog> {
     final admin = context.session.isAdmin;
     final p = widget.profile;
     return AlertDialog(
-      title: Text(p == null ? 'Add profile' : 'Edit ${p.name}'),
+      title: Text(p == null ? tr.addProfile : tr.edit(p.name)),
       scrollable: true,
       content: SizedBox(
         width: 400,
         child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          TextField(controller: _name, autofocus: true, decoration: const InputDecoration(labelText: 'Name')),
+          TextField(controller: _name, autofocus: true, decoration: InputDecoration(labelText: tr.name)),
           const SizedBox(height: 16),
-          Text('Colour', style: Theme.of(context).textTheme.labelLarge),
+          Text(tr.colour2, style: Theme.of(context).textTheme.labelLarge),
           const SizedBox(height: 8),
           Wrap(spacing: 8, children: [
             for (var i = 0; i < avatarColors.length; i++)
@@ -181,15 +184,26 @@ class _ProfileDialogState extends State<_ProfileDialog> {
                 avatar: CircleAvatar(backgroundColor: avatarColors[i]),
                 selected: _color == i,
                 onSelected: (_) => setState(() => _color = i),
-                tooltip: 'Colour ${i + 1}',
+                tooltip: tr.colour(i + 1),
               ),
           ]),
+          const SizedBox(height: 16),
+          DropdownButtonFormField<String?>(
+            initialValue: _language,
+            decoration: InputDecoration(labelText: tr.languageField),
+            items: [
+              DropdownMenuItem<String?>(value: null, child: Text(tr.languageAutomatic)),
+              for (final language in supportedLanguages)
+                DropdownMenuItem<String?>(value: language, child: Text(languageNativeNames[language]!)),
+            ],
+            onChanged: (v) => setState(() => _language = v),
+          ),
           if (admin) ...[
             const SizedBox(height: 16),
             SegmentedButton<ProfileKind>(
-              segments: const [
-                ButtonSegment(value: ProfileKind.adult, label: Text('Grown-up')),
-                ButtonSegment(value: ProfileKind.kid, label: Text('Kid')),
+              segments: [
+                ButtonSegment(value: ProfileKind.adult, label: Text(tr.grownUp)),
+                ButtonSegment(value: ProfileKind.kid, label: Text(tr.kid)),
               ],
               selected: {_kind},
               onSelectionChanged: (s) => setState(() => _kind = s.single),
@@ -213,22 +227,22 @@ class _ProfileDialogState extends State<_ProfileDialog> {
               maxLength: 4,
               inputFormatters: [FilteringTextInputFormatter.digitsOnly],
               decoration: InputDecoration(
-                labelText: p?.hasPin == true ? 'New PIN (leave empty to keep it)' : 'PIN (optional)',
+                labelText: p?.hasPin == true ? tr.newPinLeave : tr.pinOptional,
               ),
             ),
             if (p?.hasPin == true)
               CheckboxListTile(
                 value: _removePin,
                 onChanged: (v) => setState(() => _removePin = v ?? false),
-                title: const Text('Remove the PIN'),
+                title: Text(tr.removeThePin),
               ),
           ],
           ErrorText(_error),
         ]),
       ),
       actions: [
-        TextButton(onPressed: () => Navigator.of(context).pop(false), child: const Text('Cancel')),
-        FilledButton(onPressed: _busy ? null : _save, child: const Text('Save')),
+        TextButton(onPressed: () => Navigator.of(context).pop(false), child: Text(tr.cancel)),
+        FilledButton(onPressed: _busy ? null : _save, child: Text(tr.save)),
       ],
     );
   }
@@ -278,25 +292,23 @@ class _LibraryPageState extends State<LibraryPage> {
     final s = _summary;
     final name = context.session.profileById(widget.profileId)?.name ?? '';
     if (s == null) {
-      return PageBody(title: 'Library', children: [
+      return PageBody(title: tr.libraryLabel2, children: [
         if (_error == null) const Center(child: CircularProgressIndicator()) else ErrorText(_error),
       ]);
     }
     final fetched = DateTime.tryParse(s['fetchedAt'] as String? ?? '')?.toLocal();
-    return PageBody(title: '$name: library', children: [
+    return PageBody(title: tr.libraryLabel3(name), children: [
       Section(children: [
-        Text(s['signedIn'] == true ? 'From ${s['server']} as ${s['user']}.' : 'Not signed in.'),
+        Text(s['signedIn'] == true ? tr.fromAs('${s['server']}', '${s['user']}') : tr.notSignedIn),
         const SizedBox(height: 8),
-        Text('${s['series']} shows · ${s['episodes']} episodes · ${s['movies']} movies · ${s['songs']} songs · '
-            '${s['musicVideos']} music videos · ${s['commercials']} commercial videos'),
-        if (fetched != null) Text('Read ${MaterialLocalizations.of(context).formatMediumDate(fetched)} '
-            '${TimeOfDay.fromDateTime(fetched).format(context)}.'),
+        Text(tr.showsEpisodesMovies('${s['series']}', '${s['episodes']}', '${s['movies']}', '${s['songs']}', '${s['musicVideos']}', '${s['commercials']}')),
+        if (fetched != null) Text(tr.read(MaterialLocalizations.of(context).formatMediumDate(fetched), TimeOfDay.fromDateTime(fetched).format(context))),
         if (s['error'] != null) ErrorText(s['error'] as String),
         const SizedBox(height: 12),
         Row(children: [
           FilledButton.icon(
             icon: const Icon(Icons.sync),
-            label: const Text('Refresh library'),
+            label: Text(tr.refreshLibrary),
             onPressed: s['syncing'] == true || s['signedIn'] != true
                 ? null
                 : () async {
@@ -309,7 +321,7 @@ class _LibraryPageState extends State<LibraryPage> {
             Flexible(
               child: Padding(
                 padding: const EdgeInsets.only(left: 12),
-                child: Busy(text: (s['status'] as String?)?.isNotEmpty == true ? s['status'] as String : 'Refreshing…'),
+                child: Busy(text: (s['status'] as String?)?.isNotEmpty == true ? s['status'] as String : tr.refreshing),
               ),
             ),
         ]),

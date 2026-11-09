@@ -14,6 +14,7 @@ import '../media_server.dart';
 import 'plex_account.dart';
 import 'plex_library.dart';
 import 'plex_live_tv.dart';
+import '../../l10n/tr.dart';
 
 /// A Plex Media Server, reached at one of its addresses (design D6–D9).
 class PlexClient implements MediaServer {
@@ -94,16 +95,16 @@ class PlexClient implements MediaServer {
     try {
       response = await http.Response.fromStream(await _http.send(request).timeout(_timeout));
     } on TimeoutException {
-      throw ServerException('The server took too long to respond.');
+      throw ServerException(tr.theServerTook);
     } on Exception catch (e) {
-      throw ServerException('Could not reach the server ($e).');
+      throw ServerException(tr.couldNotReach(e));
     }
     if (response.statusCode == 401) {
-      throw ServerException('The Plex sign-in expired.', statusCode: 401);
+      throw ServerException(tr.thePlexSign, statusCode: 401);
     }
     if (response.statusCode >= 400) {
       final body = response.body;
-      throw ServerException('Server error ${response.statusCode} on $path.',
+      throw ServerException(tr.serverErrorOn(response.statusCode, path),
           statusCode: response.statusCode, detail: body.length > 400 ? body.substring(0, 400) : body);
     }
     if (response.body.isEmpty) return null;
@@ -139,12 +140,12 @@ class PlexClient implements MediaServer {
     try {
       c = await _container('/identity');
     } on ServerException catch (e) {
-      throw ServerException('No Plex server found at $serverUrl. ${e.message}');
+      throw ServerException(tr.noPlexServer(serverUrl, e.message));
     } on TypeError {
-      throw ServerException('$serverUrl did not answer like a Plex server.');
+      throw ServerException(tr.didNotAnswerLike(serverUrl));
     }
     final id = c['machineIdentifier'] as String?;
-    if (id == null) throw ServerException('$serverUrl did not answer like a Plex server.');
+    if (id == null) throw ServerException(tr.didNotAnswerLike(serverUrl));
     var name = 'Plex';
     if (accessToken != null) {
       try {
@@ -241,7 +242,7 @@ class PlexClient implements MediaServer {
     for (final pool in pools) {
       for (final root in pool.roots) {
         poolRoots.add(root.itemId);
-        onStatus?.call('Scanning ${pool.name}…');
+        onStatus?.call(tr.scanning(pool.name));
         for (final item in await _withChapters(await itemsUnder(root.itemId))) {
           final id = '${item['ratingKey']}';
           commercials[id] = item;
@@ -257,7 +258,7 @@ class PlexClient implements MediaServer {
     final musicVideos = <Map<String, Object?>>[];
     for (final lib in libraries) {
       if (poolRoots.contains(lib.id)) continue;
-      onStatus?.call('Scanning ${lib.name}…');
+      onStatus?.call(tr.scanning(lib.name));
       final scanStart = DateTime.now();
       final section = _section(lib.id);
       if (lib.isMusic) {
@@ -291,7 +292,7 @@ class PlexClient implements MediaServer {
           e.id: ?e.streamPath,
       });
     if (channelRoots.isEmpty) return index;
-    onStatus?.call('Scanning channel sources…');
+    onStatus?.call(tr.scanningChannelSources);
     final rootsStart = DateTime.now();
     final roots = await fetchRoots(this, channelRoots);
     PlaybackDiagnostics.note('SCAN', '${channelRoots.length} channel roots: '
@@ -486,7 +487,7 @@ class PlexClient implements MediaServer {
   @override
   Uri streamUri(String sourceId) {
     final path = partPath?.call(sourceId) ?? index?.call()[sourceId]?.streamPath ?? _scanned[sourceId];
-    if (path == null) throw ServerException('The server has no file for this item; refresh the library.');
+    if (path == null) throw ServerException(tr.theServerHasNo);
     return uri(path);
   }
 
@@ -600,7 +601,7 @@ class PlexClient implements MediaServer {
     }
     final code = (c['transcodeDecisionCode'] as num?)?.toInt();
     if (code == null || code >= 2000) {
-      throw ServerException('The server would not convert this item (${c['transcodeDecisionText'] ?? code}).');
+      throw ServerException(tr.theServerWouldNotConvert('${c['transcodeDecisionText'] ?? code}'));
     }
     // The decision describes the conversion; the original is the item's.
     final source = _list(

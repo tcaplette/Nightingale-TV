@@ -10,6 +10,7 @@ import 'pin_dialog.dart';
 import 'widgets/nightingale_mark.dart';
 import 'widgets/screen_layout.dart';
 import 'widgets/tv_focus.dart';
+import '../l10n/tr.dart';
 
 const avatarColors = [
   Color(0xFFE53935),
@@ -87,19 +88,19 @@ class _Badge extends StatelessWidget {
 Future<void> openProfile(BuildContext context, Profile p) async {
   final household = HouseholdScope.read(context);
   if (p.hasPin &&
-      !await askPin(context, title: 'Enter ${p.name}\'s PIN', check: p.checkPin)) {
+      !await askPin(context, title: tr.enterSPin(p.name), check: p.checkPin)) {
     return;
   }
   await household.select(p);
 }
 
 /// Grown-ups only, once there are kid profiles: asks for any grown-up's PIN.
-Future<bool> grownUpCheck(BuildContext context, {String title = 'Grown-ups only'}) async {
+Future<bool> grownUpCheck(BuildContext context, {String? title}) async {
   final household = HouseholdScope.read(context);
   if (!household.hasKids) return true;
   return askPin(context,
-      title: title,
-      message: 'Enter a grown-up\'s PIN.',
+      title: title ?? tr.grownUpsOnly,
+      message: tr.enterAGrownUps,
       check: (pin) => household.grownUpWithPin(pin) != null);
 }
 
@@ -115,7 +116,7 @@ class ProfilePickerScreen extends StatelessWidget {
     return TvPage(
       title: 'Nightingale TV',
       leading: NightingaleMark(height: layout.isPortrait ? 36 : 48, color: g.accent),
-      hints: '◀▶ Move    OK Choose',
+      hints: tr.moveOkChoose2,
       child: Center(
         child: SingleChildScrollView(
           // Upright, the profiles wrap at the screen's width and scroll.
@@ -123,7 +124,7 @@ class ProfilePickerScreen extends StatelessWidget {
           child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Text('Who\'s watching?',
+            Text(tr.whosWatching,
                 textAlign: TextAlign.center, style: g.display(layout.isPortrait ? 56 : 80, weight: FontWeight.w800)),
             SizedBox(height: layout.isPortrait ? 40 : 64),
             FocusTraversalGroup(
@@ -141,7 +142,7 @@ class ProfilePickerScreen extends StatelessWidget {
                       onPressed: () => openProfile(context, p),
                     ),
                   _ProfileTile(
-                    label: 'Add profile',
+                    label: tr.addProfile,
                     avatar: _AddAvatar(size: 160),
                     onPressed: () async {
                       if (!await grownUpCheck(context) || !context.mounted) return;
@@ -243,7 +244,7 @@ class ProfilesScreen extends StatelessWidget {
       if (p != null &&
           p.id != current?.id &&
           p.hasPin &&
-          !await askPin(context, title: 'Enter ${p.name}\'s PIN', check: p.checkPin)) {
+          !await askPin(context, title: tr.enterSPin(p.name), check: p.checkPin)) {
         return;
       }
       if (!context.mounted) return;
@@ -252,22 +253,21 @@ class ProfilesScreen extends StatelessWidget {
     }
 
     return TvPage(
-      title: 'Profiles',
-      hints: '▲▼ Move    OK Edit    ESC Back',
+      title: tr.profiles,
+      hints: tr.moveOkEdit,
       onBack: () => Navigator.of(context).pop(),
       child: FocusTraversalGroup(
         child: ListView(
           padding: ScreenLayout.of(context).pagePadding(const EdgeInsets.fromLTRB(120, 40, 120, 40)),
           children: [
             Text(
-              'Everyone gets their own server sign-in, channels and programming blocks. '
-              'Kid profiles only see shows and movies rated for their age.',
+              tr.everyoneGetsTheir,
               style: g.body(28, color: g.textDim),
             ),
             const SizedBox(height: 28),
             Align(
               alignment: Alignment.centerLeft,
-              child: TvButton(label: 'Add profile', icon: Icons.person_add, onPressed: () => edit(null)),
+              child: TvButton(label: tr.addProfile, icon: Icons.person_add, onPressed: () => edit(null)),
             ),
             const SizedBox(height: 28),
             for (final (i, p) in household.profiles.indexed)
@@ -296,19 +296,19 @@ class ProfilesScreen extends StatelessWidget {
                                   maxLines: 1, overflow: TextOverflow.ellipsis, style: g.display(38, weight: FontWeight.w800)),
                               Text(
                                 [
-                                  if (p.isKid) 'Kid · ${p.rating.label} (${p.rating.description})' else 'Grown-up',
-                                  p.hasPin ? 'PIN locked' : 'No PIN',
+                                  if (p.isKid) tr.kid2(p.rating.label, p.rating.description) else tr.grownUp,
+                                  p.hasPin ? tr.pinLocked : tr.noPin,
                                 ].join('  ·  '),
                                 style: g.body(24, color: g.textDim),
                               ),
                               // Upright, under the name: there's no room beside it.
                               if (p.id == current?.id && portrait)
-                                Text('Watching now', style: g.body(24, weight: FontWeight.w600, color: g.accent)),
+                                Text(tr.watchingNow, style: g.body(24, weight: FontWeight.w600, color: g.accent)),
                             ],
                           ),
                         ),
                         if (p.id == current?.id && !portrait)
-                          Text('Watching now', style: g.body(24, weight: FontWeight.w600, color: g.accent)),
+                          Text(tr.watchingNow, style: g.body(24, weight: FontWeight.w600, color: g.accent)),
                       ],
                     ),
                   ),
@@ -358,8 +358,8 @@ class _ProfileEditorScreenState extends State<ProfileEditorScreen> {
     final isCurrent = _draft.id == household.current?.id;
 
     return TvPage(
-      title: _isNew ? 'New profile' : 'Edit profile',
-      hints: '▲▼◀▶ Move    OK Select    ESC Cancel',
+      title: _isNew ? tr.newProfile : tr.editProfile,
+      hints: tr.moveOkSelectEscCancel,
       onBack: () => Navigator.of(context).pop(),
       child: FocusTraversalGroup(
         child: ListView(
@@ -372,14 +372,14 @@ class _ProfileEditorScreenState extends State<ProfileEditorScreen> {
                 Expanded(
                   child: TvTextField(
                     controller: _name,
-                    label: 'Name',
+                    label: tr.name,
                     autofocus: _isNew,
                     onSubmitted: (v) => _update(() => _draft.name = v),
                   ),
                 ),
               ],
             ),
-            _section(g, 'COLOR'),
+            _section(g, tr.color2),
             Wrap(
               spacing: 16,
               children: [
@@ -402,20 +402,20 @@ class _ProfileEditorScreenState extends State<ProfileEditorScreen> {
                   ),
               ],
             ),
-            _section(g, 'WHO IT\'S FOR'),
+            _section(g, tr.whoItsFor),
             Wrap(
               spacing: 12,
               runSpacing: 12,
               children: [
                 TvToggle(
-                  label: 'Grown-up',
+                  label: tr.grownUp,
                   radio: true,
                   autofocus: !_isNew,
                   on: !_draft.isKid,
                   onPressed: () => _update(() => _draft.kind = ProfileKind.adult),
                 ),
                 TvToggle(
-                  label: 'Kid',
+                  label: tr.kid,
                   radio: true,
                   on: _draft.isKid,
                   onPressed: () => _update(() => _draft.kind = ProfileKind.kid),
@@ -423,7 +423,7 @@ class _ProfileEditorScreenState extends State<ProfileEditorScreen> {
               ],
             ),
             if (_draft.isKid) ...[
-              _section(g, 'ALLOWED TO WATCH'),
+              _section(g, tr.allowedToWatch),
               Wrap(
                 spacing: 12,
                 runSpacing: 12,
@@ -438,13 +438,13 @@ class _ProfileEditorScreenState extends State<ProfileEditorScreen> {
                 ],
               ),
               const SizedBox(height: 10),
-              Text('Shows and movies with no rating are left out.', style: g.body(22, color: g.textDim)),
+              Text(tr.showsAndMoviesWith, style: g.body(22, color: g.textDim)),
             ],
-            _section(g, 'PIN'),
+            _section(g, tr.pin),
             Text(
               _draft.hasPin
-                  ? 'Locked. The PIN is needed to open this profile.'
-                  : 'No PIN. Anyone can open this profile.',
+                  ? tr.lockedThePin
+                  : tr.noPinAnyone,
               style: g.body(26, color: g.textDim),
             ),
             const SizedBox(height: 14),
@@ -453,15 +453,15 @@ class _ProfileEditorScreenState extends State<ProfileEditorScreen> {
               runSpacing: 12,
               children: [
                 TvButton(
-                  label: _draft.hasPin ? 'Change PIN' : 'Set a PIN',
+                  label: _draft.hasPin ? tr.changePin : tr.setAPin,
                   icon: Icons.pin,
                   onPressed: () async {
-                    final pin = await chooseNewPin(context, title: '${_name.text.trim().isEmpty ? 'New' : _name.text.trim()} PIN');
+                    final pin = await chooseNewPin(context, title: _name.text.trim().isEmpty ? tr.newPin : tr.namedPin(_name.text.trim()));
                     if (pin != null) _update(() => _draft.setPin(pin));
                   },
                 ),
                 if (_draft.hasPin)
-                  TvButton(label: 'Remove PIN', icon: Icons.lock_open, onPressed: () => _update(() => _draft.setPin(null))),
+                  TvButton(label: tr.removePin, icon: Icons.lock_open, onPressed: () => _update(() => _draft.setPin(null))),
               ],
             ),
             const SizedBox(height: 40),
@@ -473,10 +473,10 @@ class _ProfileEditorScreenState extends State<ProfileEditorScreen> {
               spacing: 16,
               runSpacing: 16,
               children: [
-                TvButton(label: 'Save', icon: Icons.check, onPressed: _save),
-                TvButton(label: 'Cancel', onPressed: () => Navigator.of(context).pop()),
+                TvButton(label: tr.save, icon: Icons.check, onPressed: _save),
+                TvButton(label: tr.cancel, onPressed: () => Navigator.of(context).pop()),
                 if (!_isNew && !isCurrent)
-                  TvButton(label: 'Delete profile', icon: Icons.delete, danger: true, onPressed: _delete),
+                  TvButton(label: tr.deleteProfile, icon: Icons.delete, danger: true, onPressed: _delete),
               ],
             ),
           ],
@@ -493,7 +493,7 @@ class _ProfileEditorScreenState extends State<ProfileEditorScreen> {
   Future<void> _save() async {
     _draft.name = _name.text.trim();
     if (_draft.name.isEmpty) {
-      setState(() => _error = 'Give the profile a name.');
+      setState(() => _error = tr.giveTheProfile);
       return;
     }
     final problem = _household.problemWith(_draft);
@@ -512,10 +512,9 @@ class _ProfileEditorScreenState extends State<ProfileEditorScreen> {
       return;
     }
     final ok = await confirm(context,
-        title: 'Delete ${widget.profile!.name}?',
-        message: 'Their channels, programming blocks and settings are deleted, and this TV is '
-            'signed out of their server.',
-        action: 'Delete');
+        title: tr.delete3(widget.profile!.name),
+        message: tr.theirChannelsProgramming,
+        action: tr.delete);
     if (!ok || !mounted) return;
     try {
       await _household.deleteProfile(widget.profile!);

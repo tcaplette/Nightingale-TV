@@ -6,6 +6,7 @@ import 'package:http/http.dart' as http;
 import '../../jellyfin/jellyfin_client.dart';
 import '../../platform/platform_info.dart';
 import '../media_server.dart';
+import '../../l10n/tr.dart';
 
 /// The headers Plex wants from every client, on plex.tv and on servers.
 Map<String, String> plexHeaders({required String clientId, required String deviceName, String? token}) => {
@@ -110,7 +111,7 @@ class PlexResource {
   final List<PlexConnection> connections;
 
   /// "Basement", or "Grandpa's Plex — Shared by gramps".
-  String get label => ownerName == null ? name : '$name — Shared by $ownerName';
+  String get label => ownerName == null ? name : tr.sharedBy(name, ownerName!);
 }
 
 /// A user of the account's Plex Home.
@@ -178,13 +179,13 @@ class PlexAccount {
     try {
       response = await http.Response.fromStream(await _http.send(request).timeout(_timeout));
     } on TimeoutException {
-      throw ServerException('plex.tv took too long to respond.');
+      throw ServerException(tr.plexTvTook);
     } on Exception catch (e) {
-      throw ServerException('Could not reach plex.tv ($e).');
+      throw ServerException(tr.couldNotReachPlex(e));
     }
     if (response.statusCode >= 400) {
       throw ServerException(
-          response.statusCode == 401 ? 'Your Plex sign-in expired.' : 'plex.tv error ${response.statusCode}.',
+          response.statusCode == 401 ? tr.yourPlexSign : tr.plexTvError(response.statusCode),
           statusCode: response.statusCode);
     }
     if (response.body.isEmpty) return null;
@@ -252,7 +253,7 @@ class PlexAccount {
       rethrow;
     }
     final t = (json as Map<String, Object?>?)?['authToken'] as String?;
-    if (t == null || t.isEmpty) throw ServerException('Plex did not switch users.');
+    if (t == null || t.isEmpty) throw ServerException(tr.plexDidNot);
     return t;
   }
 

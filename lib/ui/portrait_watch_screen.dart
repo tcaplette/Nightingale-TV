@@ -18,6 +18,7 @@ import 'widgets/new_tag.dart';
 import 'widgets/screen_layout.dart';
 import 'widgets/transport_bar.dart';
 import 'widgets/tv_focus.dart';
+import '../l10n/tr.dart';
 
 /// The TV screen and the guide in one, for a phone or tablet held upright
 /// (portrait-layout): the player on top, what's on, the channel group tabs
@@ -210,7 +211,7 @@ class PortraitWatchScreenState extends State<PortraitWatchScreen> {
             child: Stack(
               children: [
                 if (channels.isEmpty)
-                  Center(child: Text('No channels', style: g.display(36, color: g.textDim)))
+                  Center(child: Text(tr.noChannels, style: g.display(36, color: g.textDim)))
                 else
                   FocusTraversalGroup(
                     child: ListView.builder(
@@ -318,13 +319,13 @@ class PortraitWatchScreenState extends State<PortraitWatchScreen> {
                           mainAxisSize: MainAxisSize.min,
                           children: [
                             if (widget.onSleep case final onSleep?) ...[
-                              _PlayerButton(label: 'Sleep', icon: Icons.bedtime, onPressed: () {
+                              _PlayerButton(label: tr.sleep, icon: Icons.bedtime, onPressed: () {
                                 widget.onTouch?.call();
                                 onSleep();
                               }),
                               const SizedBox(width: 12),
                             ],
-                            _PlayerButton(label: 'Menu', icon: Icons.settings, onPressed: () {
+                            _PlayerButton(label: tr.menu, icon: Icons.settings, onPressed: () {
                               widget.onTouch?.call();
                               widget.onMenu();
                             }),
@@ -344,7 +345,7 @@ class PortraitWatchScreenState extends State<PortraitWatchScreen> {
                         bottom: 12,
                         right: 12,
                         child: _PlayerButton(
-                            label: 'Full screen', icon: Icons.fullscreen, onPressed: widget.onFullScreen),
+                            label: tr.fullScreen, icon: Icons.fullscreen, onPressed: widget.onFullScreen),
                       ),
                     ],
                   ),
@@ -450,10 +451,10 @@ class PortraitNowPanel extends StatelessWidget {
                 child: Text('${channel.number}', style: g.display(34, weight: FontWeight.w800, color: g.onFocus)),
               ),
               const SizedBox(width: 16),
-              ChannelLogo(icon: channel.icon, size: 48, width: 84, fallbackText: channel.name),
+              ChannelLogo(icon: channel.icon, size: 48, width: 84, fallbackText: channel.displayName),
               const SizedBox(width: 16),
               Expanded(
-                child: Text(channel.name.toUpperCase(),
+                child: Text(channel.displayName.toUpperCase(),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: g.display(26, weight: FontWeight.w700, color: g.accent)),
@@ -470,7 +471,7 @@ class PortraitNowPanel extends StatelessWidget {
             children: [
               if (p?.isPremiere ?? false) ...[const NewTag(size: 26), const SizedBox(width: 12)],
               Expanded(
-                child: Text(p?.title ?? 'Tuning…',
+                child: Text(p?.title ?? tr.tuning2,
                     maxLines: 1, overflow: TextOverflow.ellipsis, style: g.display(40, weight: FontWeight.w800)),
               ),
             ],
@@ -480,7 +481,7 @@ class PortraitNowPanel extends StatelessWidget {
               inBreak
                   ? commercialBreakLabel
                   : [
-                      if (p.blockTitle != null) p.blockTitle!.toUpperCase(),
+                      if (p.displayBlockTitle != null) p.displayBlockTitle!.toUpperCase(),
                       p.isMusicHour ? musicHourLine(p, now) : p.subtitle,
                       if (p.endsEarly) endsEarlyLabel,
                     ].join('  ·  '),
@@ -508,7 +509,7 @@ class PortraitNowPanel extends StatelessWidget {
             ),
             if (next != null) ...[
               const SizedBox(height: 8),
-              Text('Next: ${formatTime(next.start)} ${next.title}',
+              Text(tr.next(formatTime(next.start), next.title),
                   maxLines: 1, overflow: TextOverflow.ellipsis, style: g.body(22, color: g.textDim)),
             ],
           ],
@@ -570,7 +571,7 @@ class _ChannelRow extends StatelessWidget {
                       maxLines: 1,
                       style: g.display(34, weight: FontWeight.w800, color: focused ? g.onFocus : g.accent)),
                 ),
-                ChannelLogo(icon: channel.icon, size: 52, width: 84, fallbackText: channel.name),
+                ChannelLogo(icon: channel.icon, size: 52, width: 84, fallbackText: channel.displayName),
                 const SizedBox(width: 16),
                 Expanded(
                   child: Column(
@@ -580,7 +581,7 @@ class _ChannelRow extends StatelessWidget {
                       Row(
                         children: [
                           Expanded(
-                            child: Text(channel.name,
+                            child: Text(channel.displayName,
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
                                 style: g.display(22, weight: FontWeight.w600, color: dim)),
@@ -593,7 +594,7 @@ class _ChannelRow extends StatelessWidget {
                           if (p?.isPremiere ?? false) ...[const NewTag(size: 18), const SizedBox(width: 8)],
                           Expanded(
                             child: Text(
-                              p == null ? 'No programming' : (p.isMusicHour ? musicHourLine(p, now) : p.title),
+                              p == null ? tr.noProgramming : (p.isMusicHour ? musicHourLine(p, now) : p.title),
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                               style: g.display(28, weight: FontWeight.w700, color: fg),
@@ -655,10 +656,10 @@ class ChannelScheduleSheet extends StatelessWidget {
             children: [
               Row(
                 children: [
-                  ChannelLogo(icon: channel.icon, size: 48, width: 84, fallbackText: channel.name),
+                  ChannelLogo(icon: channel.icon, size: 48, width: 84, fallbackText: channel.displayName),
                   const SizedBox(width: 16),
                   Expanded(
-                    child: Text('${channel.number}  ${channel.name.toUpperCase()}',
+                    child: Text('${channel.number}  ${channel.displayName.toUpperCase()}',
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
                         style: g.display(30, weight: FontWeight.w800, color: g.accent)),
@@ -667,7 +668,7 @@ class ChannelScheduleSheet extends StatelessWidget {
               ),
               const SizedBox(height: 20),
               TvButton(
-                label: 'Watch',
+                label: tr.watch,
                 icon: Icons.play_arrow,
                 expand: true,
                 autofocus: true,
@@ -678,7 +679,7 @@ class ChannelScheduleSheet extends StatelessWidget {
                 child: programs.isEmpty
                     ? Padding(
                         padding: const EdgeInsets.symmetric(vertical: 24),
-                        child: Text('No programming', style: g.display(28, color: g.textDim)),
+                        child: Text(tr.noProgramming, style: g.display(28, color: g.textDim)),
                       )
                     : ListView(
                         shrinkWrap: true,
@@ -691,7 +692,7 @@ class ChannelScheduleSheet extends StatelessWidget {
                                 children: [
                                   SizedBox(
                                     width: 150,
-                                    child: Text(p.isOnAt(from) ? 'Now' : formatTime(p.start),
+                                    child: Text(p.isOnAt(from) ? tr.now : formatTime(p.start),
                                         style: g.display(26, weight: FontWeight.w700, color: g.accent)),
                                   ),
                                   Expanded(
@@ -711,8 +712,8 @@ class ChannelScheduleSheet extends StatelessWidget {
                                         ),
                                         Text(
                                           [
-                                            if (p.blockTitle != null) p.blockTitle!.toUpperCase(),
-                                            p.isMusicHour ? 'Music' : p.subtitle,
+                                            if (p.displayBlockTitle != null) p.displayBlockTitle!.toUpperCase(),
+                                            p.isMusicHour ? tr.music : p.subtitle,
                                           ].join('  ·  '),
                                           maxLines: 2,
                                           overflow: TextOverflow.ellipsis,

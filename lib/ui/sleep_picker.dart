@@ -4,26 +4,27 @@ import '../playback/sleep_timer.dart';
 import '../theme/tv_theme.dart';
 import 'format.dart';
 import 'widgets/tv_focus.dart';
+import '../l10n/tr.dart';
 
 /// The picker's label for [choice]; [programEnd] is when the program on
 /// screen ends, if known.
 String sleepChoiceLabel(SleepChoice choice, {DateTime? programEnd}) {
-  if (choice.isOff) return 'Off';
+  if (choice.isOff) return tr.off;
   if (choice.atProgramEnd) {
-    return programEnd == null ? 'End of this program' : 'End of this program · ${formatTime(programEnd)}';
+    return programEnd == null ? tr.endOfThisProgram : tr.endOfThis(formatTime(programEnd));
   }
-  return '${choice.minutes} min';
+  return tr.min('${choice.minutes}');
 }
 
 /// Said under "End of this program" when it can't be chosen.
-const sleepNoEndNote = "What's on now has no set end time.";
+String get sleepNoEndNote => tr.whatsOnNow;
 
 /// The sleep timer's line while one is set: "Sleep in 23 min" or "Sleep at
 /// end of program" (the banner, design D3). Null with no timer.
 String? sleepLine(SleepTimer? timer) {
   if (timer == null || !timer.armed) return null;
-  if (timer.choice.atProgramEnd && timer.phase == SleepPhase.armed) return 'Sleep at end of program';
-  return 'Sleep in ${timer.minutesLeft ?? 1} min';
+  if (timer.choice.atProgramEnd && timer.phase == SleepPhase.armed) return tr.sleepAtEnd;
+  return tr.sleepInMin(timer.minutesLeft ?? 1);
 }
 
 /// The sleep timer picker (design D2): Off, End of this program and the
@@ -55,7 +56,7 @@ Future<bool> showSleepPicker(BuildContext context, SleepTimer timer) async {
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(left == null ? 'Sleep timer' : 'Sleep timer · $left min left',
+                    Text(left == null ? tr.sleepTimer : tr.sleepTimerMin(left),
                         style: g.display(48, weight: FontWeight.w800)),
                     const SizedBox(height: 24),
                     for (final choice in SleepChoice.all) ...[

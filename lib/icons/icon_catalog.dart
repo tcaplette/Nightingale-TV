@@ -1,4 +1,18 @@
 import 'package:flutter/material.dart';
+import '../l10n/tr.dart';
+
+/// The picker's name for a group of [iconCatalog].
+String iconGroupName(String group) => switch (group) {
+      'TV & Movies' => tr.tvMovies,
+      'Kids & Family' => tr.kidsFamily,
+      'Genres' => tr.genres,
+      'Music' => tr.music,
+      'Sports' => tr.sports,
+      'News & Weather' => tr.newsWeather,
+      'Seasons & Holidays' => tr.seasonsHolidays,
+      'Other' => tr.other,
+      _ => group,
+    };
 
 /// Built-in channel icons, grouped for the picker. Channels store the key, so
 /// keys must never be renamed. (Referencing Icons.* constants directly keeps

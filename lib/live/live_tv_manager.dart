@@ -16,6 +16,7 @@ import 'live_schedule.dart';
 import 'live_source.dart';
 import 'live_source_files.dart';
 import 'live_source_client.dart';
+import '../l10n/tr.dart';
 
 /// The server a server Live TV source plays through, while signed in to it.
 typedef SignedIn = ({MediaServer client, ServerSession session});
@@ -366,7 +367,7 @@ class LiveTvManager extends ChangeNotifier {
       // source's row too, never on the TV.
       entry.state
         ..failures += 1
-        ..lastError = "Couldn't refresh ${source.name}"
+        ..lastError = tr.couldntRefresh(source.name)
         ..errorAt = now;
       debugPrint('Live TV refresh of ${source.id} failed: $e');
     } finally {

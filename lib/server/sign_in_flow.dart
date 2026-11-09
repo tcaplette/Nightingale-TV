@@ -9,6 +9,7 @@ import 'plex/plex_account.dart';
 import 'plex/plex_connections.dart';
 import 'server_clients.dart';
 import 'server_set.dart';
+import '../l10n/tr.dart';
 
 /// What the address step found: a client for the server, and its info.
 typedef IdentifiedServer = ({MediaServer client, ServerInfo info});
@@ -204,7 +205,7 @@ class SignInFlow {
   void _checkNotAdded(String? id, String name) {
     if (!adding && againKey == null) return;
     final other = app.servers.byServerId(id);
-    if (other != null && other.key != againKey) throw ServerException('$name is already in this profile');
+    if (other != null && other.key != againKey) throw ServerException(tr.isAlreadyIn(name));
   }
 
   Future<void> _run(Future<void> Function() task) async {
@@ -225,7 +226,7 @@ class SignInFlow {
   /// The address step: finds the server at [address]. Jellyfin goes to
   /// [then] (choosing Quick Connect or a password), Plex to a link code.
   Future<void> connect(String address, {SignInStage then = SignInStage.method}) => _run(() async {
-        if (address.trim().isEmpty) throw ServerException('Enter your server address.');
+        if (address.trim().isEmpty) throw ServerException(tr.enterYourServer);
         final found = await (identify?.call(address) ??
             identifyServer(address, deviceId: app.settings.installId, deviceName: app.deviceName));
         if (_disposed) {
@@ -257,7 +258,7 @@ class SignInFlow {
   void choosePassword() => _set(step.copyWith(stage: SignInStage.password));
 
   Future<void> signInWithPassword(String user, String password) => _run(() async {
-        if (user.trim().isEmpty) throw ServerException('Enter your username.');
+        if (user.trim().isEmpty) throw ServerException(tr.enterYourUsername);
         final session = await _client!.authenticateByName(user.trim(), password, serverName: step.info!.name);
         if (_disposed) return;
         final client = _client!;
@@ -287,7 +288,7 @@ class SignInFlow {
     } on ServerException catch (e) {
       _poll?.cancel();
       debugPrint('Quick Connect stopped: ${e.message}');
-      _set(step.copyWith(error: () => 'Quick Connect stopped: ${e.message}'));
+      _set(step.copyWith(error: () => tr.quickConnectStopped(e.message)));
     }
   }
 
@@ -421,9 +422,9 @@ class SignInFlow {
       servers: () => servers,
       stage: SignInStage.plexServers,
       error: servers.isEmpty
-          ? () => "This Plex account has no servers. Ask the server's owner to share it with you."
+          ? () => tr.thisPlexAccount
           : open.isEmpty
-              ? () => 'Every server on this Plex account is already in this profile.'
+              ? () => tr.everyServerOn
               : null,
     ));
   }
@@ -447,7 +448,7 @@ class SignInFlow {
       // The servers to choose from (this one again, to retry), not a code
       // that's already linked.
       _set(step.copyWith(servers: () => step.servers ?? [server], stage: SignInStage.plexServers));
-      throw ServerException('${server.name} is not answering at any of its addresses. Is it on?');
+      throw ServerException(tr.isNotAnswering(server.name));
     }
     final user = await _plex.user(_userToken!);
     if (_disposed) return;

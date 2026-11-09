@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../app.dart';
 import '../widgets/common.dart';
+import '../../l10n/tr.dart';
 
 /// Channel groups and the guide's tabs: make, rename, fill and delete
 /// groups; move and hide tabs (All stays first and shown).
@@ -35,25 +36,25 @@ class GroupsPage extends StatelessWidget {
         final hidden = {for (final t in tabs) if (t['hidden'] == true) t['id'] as String};
         final order = [for (final t in tabs) t['id'] as String];
         return PageBody(
-          title: 'Channel groups',
+          title: tr.channelGroups,
           actions: [
             FilledButton.icon(
               icon: const Icon(Icons.create_new_folder_outlined),
-              label: const Text('New group'),
+              label: Text(tr.newGroup),
               onPressed: () async {
-                final name = await askText(context, title: 'New group', label: 'Name', action: 'Make');
+                final name = await askText(context, title: tr.newGroup, label: tr.name, action: tr.make);
                 if (name != null && context.mounted) await run(() => context.api.post('$base/groups', {'name': name}));
               },
             ),
           ],
           children: [
-            Section(title: 'Guide tabs', children: [
-              const Text('The order of the tabs in the guide, and which are shown.'),
+            Section(title: tr.guideTabs, children: [
+              Text(tr.theOrderOf),
               for (final (i, t) in tabs.indexed)
                 ListTile(
                   contentPadding: EdgeInsets.zero,
                   title: Text(t['name'] as String),
-                  subtitle: t['group'] == true ? const Text('Your group') : null,
+                  subtitle: t['group'] == true ? Text(tr.yourGroup) : null,
                   leading: Checkbox(
                     value: t['hidden'] != true,
                     onChanged: t['id'] == 'all'
@@ -64,12 +65,12 @@ class GroupsPage extends StatelessWidget {
                       ? null
                       : Row(mainAxisSize: MainAxisSize.min, children: [
                           IconButton(
-                            tooltip: 'Move up',
+                            tooltip: tr.moveUp,
                             icon: const Icon(Icons.arrow_upward),
                             onPressed: i <= 1 ? null : () => putTabs(order: [...order]..insert(i - 1, order[i])..removeAt(i + 1)),
                           ),
                           IconButton(
-                            tooltip: 'Move down',
+                            tooltip: tr.moveDown,
                             icon: const Icon(Icons.arrow_downward),
                             onPressed: i >= order.length - 1
                                 ? null
@@ -82,28 +83,28 @@ class GroupsPage extends StatelessWidget {
               Section(
                 title: g['name'] as String,
                 trailing: PopupMenuButton<String>(
-                  tooltip: 'Group actions',
+                  tooltip: tr.groupActions,
                   onSelected: (action) async {
                     if (action == 'rename') {
-                      final name = await askText(context, title: 'Rename group', label: 'Name', initial: g['name'] as String);
+                      final name = await askText(context, title: tr.renameGroup, label: tr.name, initial: g['name'] as String);
                       if (name != null && context.mounted) {
                         await run(() => context.api.put('$base/groups/${Uri.encodeComponent(g['id'] as String)}', {'name': name}));
                       }
                     } else {
                       final ok = await confirm(context,
-                          title: 'Delete ${g['name']}?', message: 'Its channels stay in the lineup.', action: 'Delete');
+                          title: tr.delete3('${g['name']}'), message: tr.itsChannelsStay, action: tr.delete);
                       if (ok && context.mounted) {
                         await run(() => context.api.delete('$base/groups/${Uri.encodeComponent(g['id'] as String)}'));
                       }
                     }
                   },
-                  itemBuilder: (_) => const [
-                    PopupMenuItem(value: 'rename', child: Text('Rename')),
-                    PopupMenuItem(value: 'delete', child: Text('Delete')),
+                  itemBuilder: (_) => [
+                    PopupMenuItem(value: 'rename', child: Text(tr.rename)),
+                    PopupMenuItem(value: 'delete', child: Text(tr.delete)),
                   ],
                 ),
                 children: [
-                  Text('${(g['channelIds'] as List?)?.length ?? 0} channels'),
+                  Text(tr.channels7('${(g['channelIds'] as List?)?.length ?? 0}')),
                   const SizedBox(height: 8),
                   Align(
                     alignment: Alignment.centerLeft,
@@ -115,7 +116,7 @@ class GroupsPage extends StatelessWidget {
                               '$base/groups/${Uri.encodeComponent(g['id'] as String)}/channels', {'channelIds': picked}));
                         }
                       },
-                      child: const Text('Choose channels…'),
+                      child: Text(tr.chooseChannels3),
                     ),
                   ),
                 ],
@@ -134,7 +135,7 @@ class GroupsPage extends StatelessWidget {
       context: context,
       builder: (context) => StatefulBuilder(
         builder: (context, setState) => AlertDialog(
-          title: const Text('Channels in this group'),
+          title: Text(tr.channelsInThis),
           content: SizedBox(
             width: 420,
             height: 480,
@@ -152,10 +153,10 @@ class GroupsPage extends StatelessWidget {
             ),
           ),
           actions: [
-            TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('Cancel')),
+            TextButton(onPressed: () => Navigator.of(context).pop(), child: Text(tr.cancel)),
             FilledButton(
               onPressed: () => Navigator.of(context).pop([for (final c in channels) if (chosen.contains(c['id'])) c['id'] as String]),
-              child: const Text('Save'),
+              child: Text(tr.save),
             ),
           ],
         ),

@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
 import 'platform_info.dart';
+import '../l10n/tr.dart';
 
 /// Saving and opening backup files through the system's own dialogs
 /// (backup-restore D12): the file dialog on Linux and Windows, the document
@@ -13,7 +14,7 @@ import 'platform_info.dart';
 abstract final class BackupFiles {
   static const _channel = MethodChannel('nightingale_tv/files');
 
-  static const _types = [XTypeGroup(label: 'Nightingale TV backups', extensions: ['ntvbackup'])];
+  static List<XTypeGroup> get _types => [XTypeGroup(label: tr.nightingaleTvBackups, extensions: const ['ntvbackup'])];
 
   /// Pretends the device has (or hasn't) a file picker, in tests.
   @visibleForTesting

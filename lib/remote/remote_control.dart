@@ -12,6 +12,7 @@ import '../profiles/household.dart';
 import 'firewall_check.dart';
 import 'key_dispatch.dart';
 import 'remote_page.dart';
+import '../l10n/tr.dart';
 
 typedef KeyDispatcher = bool Function(LogicalKeyboardKey key, PhysicalKeyboardKey physical);
 
@@ -28,7 +29,7 @@ class RemotePairing {
 
   factory RemotePairing.fromJson(Map<String, Object?> json) => RemotePairing(
         id: json['id'] as String,
-        name: json['name'] as String? ?? 'Phone',
+        name: json['name'] as String? ?? tr.phone,
         keyHash: json['keyHash'] as String,
         paired: DateTime.tryParse(json['paired'] as String? ?? '') ?? DateTime.now(),
         lastUsed: DateTime.tryParse(json['lastUsed'] as String? ?? '') ?? DateTime.now(),
@@ -70,7 +71,7 @@ class RemoteControl extends ChangeNotifier {
   /// phone's key in this header.
   static const keyHeader = 'x-nightingale-remote-key';
 
-  static const pairingClosedMessage = 'Open Menu → Phone remote on the TV to pair';
+  static String get pairingClosedMessage => tr.openMenuPhone;
 
   /// Requests that change something must carry this header. Browsers won't
   /// let other websites add it without permission, which this server never
@@ -249,12 +250,12 @@ class RemoteControl extends ChangeNotifier {
         notifyListeners();
       }
       response.statusCode = HttpStatus.forbidden;
-      _json(response, {'error': 'That code doesn\'t match. Check the code on the TV.'});
+      _json(response, {'error': tr.thatCodeDoesnt});
       return;
     }
     final key = _random(32);
     var name = '${body['name'] ?? ''}'.trim();
-    if (name.isEmpty) name = 'Phone';
+    if (name.isEmpty) name = tr.phone;
     if (name.length > 40) name = name.substring(0, 40);
     final now = DateTime.now();
     while (_pairings.length >= maxPairings) {
@@ -273,7 +274,7 @@ class RemoteControl extends ChangeNotifier {
     final pairing = _pairingFor(request.headers.value(keyHeader));
     if (pairing == null) {
       request.response.statusCode = HttpStatus.unauthorized;
-      _json(request.response, {'error': 'Not paired'});
+      _json(request.response, {'error': tr.notPaired});
       return null;
     }
     final now = DateTime.now();
@@ -316,7 +317,7 @@ class RemoteControl extends ChangeNotifier {
     }
     final server = _server;
     if (server == null) {
-      error = 'Couldn\'t open a network port for the remote.';
+      error = tr.couldntOpenA;
       notifyListeners();
       return;
     }
@@ -433,7 +434,7 @@ class RemoteControl extends ChangeNotifier {
       final path = request.uri.path;
       if (request.method == 'GET' && (path == '/' || path == '/index.html')) {
         response.headers.contentType = ContentType.html;
-        response.write(remotePageHtml);
+        response.write(remotePageHtml());
       } else if (request.method == 'GET' && path == '/api/state') {
         if (await _authorize(request) == null) return;
         _json(response, state());
@@ -487,7 +488,7 @@ class RemoteControl extends ChangeNotifier {
   Map<String, Object?> state() {
     final app = household.app;
     final profile = household.current;
-    if (app == null || profile == null) return {'profile': null};
+    if (app == null || profile == null) return {'language': currentLanguage, 'profile': null};
     final now = DateTime.now();
     final channel = tuner?.channel;
     Map<String, Object?>? program;
@@ -498,21 +499,22 @@ class RemoteControl extends ChangeNotifier {
         'subtitle': p.subtitle,
         'start': p.start.toIso8601String(),
         'end': p.end.toIso8601String(),
-        if (p.blockTitle != null) 'block': p.blockTitle,
+        if (p.blockTitle != null) 'block': p.displayBlockTitle,
         'commercial': tuner?.inBreak ?? false,
       };
     }
     return {
+      'language': currentLanguage,
       'profile': profile.name,
       'kid': profile.isKid,
       'now': now.toIso8601String(),
-      if (channel != null) 'channel': {'number': channel.number, 'name': channel.name},
+      if (channel != null) 'channel': {'number': channel.number, 'name': channel.displayName},
       'program': program,
       'channels': [
         for (final c in app.channels)
           {
             'number': c.number,
-            'name': c.name,
+            'name': c.displayName,
             'now': app.scheduleFor(c)?.programAt(now).title,
           },
       ],

@@ -9,25 +9,26 @@ import '../server/media_server.dart';
 import '../theme/tv_theme.dart';
 import 'widgets/screen_layout.dart';
 import 'widgets/tv_focus.dart';
+import '../l10n/tr.dart';
 
 /// Said, disabled, when the program on screen has no subtitle tracks.
-const noSubtitlesRow = 'No subtitles for this program';
+String get noSubtitlesRow => tr.noSubtitlesFor;
 
 /// Said, disabled, while the program's tracks are asked for.
-const findingSubtitlesRow = 'Finding subtitles…';
+String get findingSubtitlesRow => tr.findingSubtitles;
 
 /// Over the sizes' place while the server draws the captions in.
-const burnedInCaptionsNote = "The server draws these captions into the picture, so their size can't change here.";
+String get burnedInCaptionsNote => tr.theServerDraws;
 
 /// The line drawn at the size captions appear on the picture.
-const captionSampleText = 'Sample caption';
+String get captionSampleText => tr.sampleCaption;
 
 /// The Captions button's label: "Captions" while off, "Captions: English"
 /// while on (the track showing, else On).
 String captionsButtonLabel(Tuner tuner) {
-  if (!tuner.captions) return 'Captions';
+  if (!tuner.captions) return tr.captions;
   final shown = tuner.shownSubtitle;
-  return 'Captions: ${shown == null ? 'On' : languageName(shown.language) ?? subtitleLabel(shown)}';
+  return tr.captionsValue(shown == null ? tr.onLabel2 : languageName(shown.language) ?? subtitleLabel(shown));
 }
 
 /// The captions picker (subtitles spec, "Captions picker"), modelled on the
@@ -95,13 +96,13 @@ class _CaptionsDialog extends StatelessWidget {
     void note(String text) => row(TvToggle(label: text, radio: true, on: false, onPressed: null));
 
     if (tuner.isLive) {
-      row(TvToggle(label: 'Off', radio: true, on: !on, autofocus: !on, onPressed: () => Navigator.pop(context, const _Off())));
-      row(TvToggle(label: 'On', radio: true, on: on, autofocus: on, onPressed: () => Navigator.pop(context, const _LiveOn())));
+      row(TvToggle(label: tr.off, radio: true, on: !on, autofocus: !on, onPressed: () => Navigator.pop(context, const _Off())));
+      row(TvToggle(label: tr.onLabel2, radio: true, on: on, autofocus: on, onPressed: () => Navigator.pop(context, const _LiveOn())));
     } else {
       final tracks = tuner.subtitleTracks;
       final shown = on ? tuner.shownSubtitle : null;
       row(TvToggle(
-        label: 'Off',
+        label: tr.off,
         radio: true,
         on: !on,
         // Focus on the current choice; Off when the track showing isn't listed.
@@ -148,9 +149,9 @@ class _CaptionsDialog extends StatelessWidget {
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text('Captions', style: g.display(48, weight: FontWeight.w800)),
+                  Text(tr.captions, style: g.display(48, weight: FontWeight.w800)),
                   const SizedBox(height: 24),
-                  Text('Size', style: g.display(30, weight: FontWeight.w700)),
+                  Text(tr.size, style: g.display(30, weight: FontWeight.w700)),
                   const SizedBox(height: 14),
                   if (tuner.captionsBurnedIn)
                     Text(burnedInCaptionsNote, style: g.body(26, color: g.textDim))

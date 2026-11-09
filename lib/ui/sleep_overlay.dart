@@ -8,6 +8,7 @@ import '../playback/sleep_timer.dart';
 import '../playback/still_watching.dart';
 import '../remote/key_dispatch.dart';
 import '../theme/tv_theme.dart';
+import '../l10n/tr.dart';
 
 /// The sleep timer over every screen (sleep-timer spec, design D4, D5): its
 /// toasts, the last-minute warning, and the sleep screen. In the warning, the
@@ -246,10 +247,10 @@ class StillWatchingPrompt extends StatelessWidget {
   final int seconds;
   final VoidCallback onKeepWatching;
 
-  static const question = 'Are you still watching?';
-  static const keepWatching = 'Keep watching';
+  static String get question => tr.areYouStill;
+  static String get keepWatching => tr.keepWatching;
 
-  static String countdown(int seconds) => 'Going to sleep in 0:${seconds.toString().padLeft(2, '0')}';
+  static String countdown(int seconds) => tr.goingToSleepIn0(seconds.toString().padLeft(2, '0'));
 
   @override
   Widget build(BuildContext context) {
@@ -308,7 +309,7 @@ class SleepWarning extends StatefulWidget {
   /// Seconds left; null while the sound fades.
   final int? seconds;
 
-  static const hint = 'Press any button to keep watching';
+  static String get hint => tr.pressAnyButton;
 
   @override
   State<SleepWarning> createState() => _SleepWarningState();
@@ -331,7 +332,7 @@ class _SleepWarningState extends State<SleepWarning> {
     final g = context.guide;
     return Semantics(
       liveRegion: _announce,
-      label: 'Going to sleep in 1 minute. ${SleepWarning.hint}',
+      label: tr.goingToSleepIn(SleepWarning.hint),
       child: ExcludeSemantics(
         child: Container(
           padding: const EdgeInsets.fromLTRB(44, 24, 44, 28),
@@ -350,7 +351,7 @@ class _SleepWarningState extends State<SleepWarning> {
                   children: [
                     Icon(Icons.bedtime, size: 40, color: g.accent),
                     const SizedBox(width: 18),
-                    Text(widget.seconds == null ? 'Going to sleep' : 'Going to sleep in ${widget.seconds}', style: g.display(44, weight: FontWeight.w800)),
+                    Text(widget.seconds == null ? tr.goingToSleep2 : tr.goingToSleep(widget.seconds!), style: g.display(44, weight: FontWeight.w800)),
                   ],
                 ),
               ),
@@ -391,7 +392,7 @@ class SleepToast extends StatelessWidget {
 class SleepScreen extends StatefulWidget {
   const SleepScreen({super.key});
 
-  static const message = 'Sleeping · Press any button to watch';
+  static String get message => tr.sleepingPressAny;
 
   @override
   State<SleepScreen> createState() => _SleepScreenState();

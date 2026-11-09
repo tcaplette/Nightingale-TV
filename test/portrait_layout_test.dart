@@ -28,12 +28,17 @@ import 'package:nightingale_tv/ui/sync_screen.dart';
 import 'package:nightingale_tv/ui/widgets/screen_layout.dart';
 import 'package:nightingale_tv/ui/widgets/tv_focus.dart';
 
+import 'language_arb_support.dart';
 import 'portrait_harness.dart';
 
 /// Opens what's checked, in an app showing [PortraitHarness.show].
 typedef Opener = Future<void> Function(WidgetTester tester, PortraitHarness h);
 
-void main() {
+void main() => layoutSweep();
+
+/// The sweep at [windows]; `language_fit_test.dart` also runs it in every
+/// language and on a TV.
+void layoutSweep({List<Size> windows = const [narrowPhone, pixel8, tabletUpright], bool television = false}) {
   TestWidgetsFlutterBinding.ensureInitialized();
 
   /// Lets real work (files, the fake server) and timers move on.
@@ -46,6 +51,7 @@ void main() {
 
   /// Scrolls the page until [target] is built and in view.
   Future<void> reveal(WidgetTester tester, Finder target) async {
+    if (target.hitTestable().evaluate().isNotEmpty) return;
     final page = find.byWidgetPredicate((w) => w is Scrollable && w.axisDirection == AxisDirection.down).first;
     await tester.scrollUntilVisible(target, 300, scrollable: page);
     await tester.pump();
@@ -75,8 +81,8 @@ void main() {
   /// [first], then taps [label] (scrolled into view) on what it shows.
   Opener thenTap(Opener first, String label) => (tester, h) async {
         await first(tester, h);
-        await reveal(tester, find.text(label));
-        await tester.tap(find.text(label).last);
+        await reveal(tester, find.text(translated(label)));
+        await tester.tap(find.text(translated(label)).last);
         await settle(tester);
       };
 
@@ -128,7 +134,7 @@ void main() {
       await screen((_) => const BlockEditorScreen())(tester, h);
       await tester.tap(find.byIcon(Icons.tv).first);
       await settle(tester);
-      expect(find.text('CHOOSE A CHANNEL'), findsOneWidget, reason: 'the picker is open');
+      expect(find.text(translated('Choose a channel').toUpperCase()), findsOneWidget, reason: 'the picker is open');
     },
     'new channel': screen((_) => const SourcePickerScreen(
         title: 'New channel', initial: ChannelSource(includeEpisodes: false), name: 'My Channel', order: PlaybackOrder.random)),
@@ -174,23 +180,23 @@ void main() {
     'backup actions': (tester, h) async {
       await tester.runAsync(() => h.household.backups!.backUp(BackupReason.manual));
       await screen((_) => const BackupScreen())(tester, h);
-      await reveal(tester, find.textContaining('Made by you · '));
-      await tester.tap(find.textContaining('Made by you · '));
+      await reveal(tester, find.textContaining(translated('Made by you')).first);
+      await tester.tap(find.textContaining(translated('Made by you')).first);
       await settle(tester);
-      expect(find.text('Restore'), findsOneWidget);
+      expect(find.text(translated('Restore')), findsOneWidget);
     },
     'transfer': push((_) => const _TransferHost()),
   };
 
-  for (final window in [narrowPhone, pixel8, tabletUpright]) {
+  for (final window in windows) {
     group('at ${window.width.toInt()}×${window.height.toInt()}', () {
       for (final MapEntry(key: name, value: open) in checks.entries) {
         testWidgets(name, (tester) async {
-          runAs(TargetPlatform.android);
+          runAs(TargetPlatform.android, television: television);
           setWindow(tester, window);
           final h = await PortraitHarness.start(tester);
           await open(tester, h);
-          expect(ScreenLayout.of(tester.element(find.byType(Material).last)).isPortrait, isTrue);
+          expect(ScreenLayout.of(tester.element(find.byType(Material).last)).isPortrait, !television);
           expect(tester.takeException(), isNull, reason: 'nothing overflows');
           expectNothingCutOff(tester, window);
           // Scrolled to the end, nothing overflows either.

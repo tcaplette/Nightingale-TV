@@ -8,6 +8,7 @@ import '../../ui/widgets/nightingale_mark.dart';
 import '../api_client.dart';
 import '../app.dart';
 import 'common.dart';
+import '../../l10n/tr.dart';
 
 /// A channel's icon as the TV draws it: built-in icons and badges drawn
 /// here, pictures (uploads, show logos, live source logos) from the setup
@@ -44,7 +45,7 @@ class ChannelIconView extends StatelessWidget {
     // On the TV's navy, as the guide shows them (yellow icons vanish on a
     // light page).
     return Semantics(
-      label: 'Icon',
+      label: tr.icon,
       child: Container(
         width: size * 1.6,
         height: size,
@@ -57,7 +58,7 @@ class ChannelIconView extends StatelessWidget {
 
   static String _initials(String name) {
     final words = name.split(RegExp(r'\s+')).where((w) => w.isNotEmpty).toList();
-    if (words.isEmpty) return 'TV';
+    if (words.isEmpty) return tr.tv;
     if (words.length == 1) return words.first.substring(0, words.first.length.clamp(0, 4));
     return words.take(3).map((w) => w[0]).join().toUpperCase();
   }
@@ -157,8 +158,8 @@ class _IconPickerState extends State<_IconPicker> {
   }
 
   Future<void> _upload() async {
-    final file = await openFile(acceptedTypeGroups: const [
-      XTypeGroup(label: 'Images', extensions: ['png', 'jpg', 'jpeg', 'webp', 'gif', 'bmp', 'svg'], mimeTypes: ['image/*']),
+    final file = await openFile(acceptedTypeGroups: [
+      XTypeGroup(label: tr.images, extensions: ['png', 'jpg', 'jpeg', 'webp', 'gif', 'bmp', 'svg'], mimeTypes: ['image/*']),
     ]);
     if (file == null) return;
     setState(() {
@@ -167,7 +168,7 @@ class _IconPickerState extends State<_IconPicker> {
     });
     try {
       final bytes = await file.readAsBytes();
-      if (bytes.length > 5 << 20) throw ApiException(413, 'That picture is too big (5 MB at most).');
+      if (bytes.length > 5 << 20) throw ApiException(413, tr.thatPictureIs);
       final r = (await api.upload('profiles/${widget.profileId}/icons', bytes, query: {'name': file.name}))! as Map;
       if (mounted) Navigator.of(context).pop(ChannelIcon(kind: ChannelIconKind.custom, value: r['name'] as String));
     } on ApiException catch (e) {
@@ -205,7 +206,7 @@ class _IconPickerState extends State<_IconPicker> {
   Widget _colors() => Wrap(spacing: 8, runSpacing: 8, children: [
         for (final c in iconColors)
           Semantics(
-            label: 'Colour',
+            label: tr.colour2,
             selected: c == _color,
             button: true,
             child: InkWell(
@@ -233,15 +234,15 @@ class _IconPickerState extends State<_IconPicker> {
         Padding(
           padding: const EdgeInsets.fromLTRB(24, 16, 8, 0),
           child: Row(children: [
-            Expanded(child: Text('Choose an icon', style: text.titleLarge)),
-            IconButton(tooltip: 'Close', icon: const Icon(Icons.close), onPressed: () => Navigator.of(context).pop()),
+            Expanded(child: Text(tr.chooseAnIcon, style: text.titleLarge)),
+            IconButton(tooltip: tr.close, icon: const Icon(Icons.close), onPressed: () => Navigator.of(context).pop()),
           ]),
         ),
-        const TabBar(isScrollable: true, tabs: [
-          Tab(text: 'Built-in'),
-          Tab(text: 'Badges'),
-          Tab(text: 'Show logos'),
-          Tab(text: 'My icons'),
+        TabBar(isScrollable: true, tabs: [
+          Tab(text: tr.builtIn),
+          Tab(text: tr.badges),
+          Tab(text: tr.showLogos),
+          Tab(text: tr.myIcons),
         ]),
         ErrorText(_error),
         Expanded(
@@ -250,7 +251,7 @@ class _IconPickerState extends State<_IconPicker> {
               _colors(),
               for (final group in iconCatalog.entries) ...[
                 const SizedBox(height: 16),
-                Text(group.key, style: text.titleSmall),
+                Text(iconGroupName(group.key), style: text.titleSmall),
                 const SizedBox(height: 8),
                 Wrap(spacing: 8, runSpacing: 8, children: [
                   for (final e in group.value.entries)
@@ -267,17 +268,17 @@ class _IconPickerState extends State<_IconPicker> {
               TextField(
                 controller: _badge,
                 maxLength: 5,
-                decoration: const InputDecoration(labelText: 'Call letters (up to 5)'),
+                decoration: InputDecoration(labelText: tr.callLettersUp),
                 onChanged: (_) => setState(() {}),
               ),
-              Text('Shape', style: text.titleSmall),
+              Text(tr.shape, style: text.titleSmall),
               const SizedBox(height: 8),
               Wrap(spacing: 8, runSpacing: 8, children: [
                 for (final s in BadgeShape.values)
                   _tile(
                     onTap: () => setState(() => _shape = s),
                     selected: s == _shape,
-                    child: StationBadge(text: 'TV', shape: s, color: Color(_color), size: 44),
+                    child: StationBadge(text: tr.tv, shape: s, color: Color(_color), size: 44),
                   ),
               ]),
               const SizedBox(height: 16),
@@ -285,16 +286,16 @@ class _IconPickerState extends State<_IconPicker> {
               const SizedBox(height: 16),
               Center(
                 child: StationBadge(
-                    text: _badge.text.trim().isEmpty ? 'TV' : _badge.text.trim(), shape: _shape, color: Color(_color), size: 120),
+                    text: _badge.text.trim().isEmpty ? tr.tv : _badge.text.trim(), shape: _shape, color: Color(_color), size: 120),
               ),
               const SizedBox(height: 16),
               Center(
                 child: FilledButton.icon(
                   icon: const Icon(Icons.check),
-                  label: const Text('Use this badge'),
+                  label: Text(tr.useThisBadge),
                   onPressed: () {
                     final typed = _badge.text.trim();
-                    final value = typed.isEmpty ? 'TV' : typed;
+                    final value = typed.isEmpty ? tr.tv : typed;
                     _choose(ChannelIcon(
                         kind: ChannelIconKind.badge,
                         value: value.length > 5 ? value.substring(0, 5) : value,
@@ -304,12 +305,12 @@ class _IconPickerState extends State<_IconPicker> {
                 ),
               ),
               const SizedBox(height: 8),
-              const Text('Generic badges only. Upload a real network logo under "My icons".', textAlign: TextAlign.center),
+              Text(tr.genericBadgesOnly, textAlign: TextAlign.center),
             ]),
             _shows == null
                 ? const Center(child: CircularProgressIndicator())
                 : _shows!.isEmpty
-                    ? const Center(child: Padding(padding: EdgeInsets.all(24), child: Text('None of your shows have a logo image on your server.')))
+                    ? Center(child: Padding(padding: EdgeInsets.all(24), child: Text(tr.noneOfYourShows)))
                     : ListView(padding: const EdgeInsets.all(16), children: [
                         Wrap(spacing: 8, runSpacing: 8, children: [
                           for (final s in _shows!)
@@ -325,12 +326,12 @@ class _IconPickerState extends State<_IconPicker> {
                         ]),
                       ]),
             ListView(padding: const EdgeInsets.all(16), children: [
-              const Text('PNG, JPG, WebP, GIF or SVG. Big images are shrunk to 512 px automatically.'),
+              Text(tr.pngJpgWebp),
               const SizedBox(height: 8),
               Row(children: [
                 FilledButton.icon(
-                    icon: const Icon(Icons.upload), label: const Text('Upload image…'), onPressed: _uploading ? null : _upload),
-                if (_uploading) const Padding(padding: EdgeInsets.only(left: 12), child: Busy(text: 'Uploading…')),
+                    icon: const Icon(Icons.upload), label: Text(tr.uploadImage), onPressed: _uploading ? null : _upload),
+                if (_uploading) Padding(padding: EdgeInsets.only(left: 12), child: Busy(text: tr.uploading)),
               ]),
               const SizedBox(height: 16),
               if (_custom != null)
@@ -345,15 +346,15 @@ class _IconPickerState extends State<_IconPicker> {
                       TextButton(
                         onPressed: () async {
                           final ok = await confirm(context,
-                              title: 'Delete this icon?',
-                              message: 'Channels using it go back to a built-in icon.',
-                              action: 'Delete');
+                              title: tr.deleteThisIcon,
+                              message: tr.channelsUsingItGo,
+                              action: tr.delete);
                           if (!ok || !context.mounted) return;
                           final r = await attempt(context, () => api.delete('profiles/${widget.profileId}/icons/$name'),
                               profileId: widget.profileId);
                           if (r is Map && mounted) setState(() => _custom = (r['icons'] as List).cast<String>());
                         },
-                        child: const Text('Delete'),
+                        child: Text(tr.delete),
                       ),
                     ]),
                 ]),

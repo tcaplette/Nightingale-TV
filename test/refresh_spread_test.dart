@@ -65,29 +65,29 @@ void main() {
 
   Set<String> showsOn(Channel c) => {for (final id in c.playlist) id.split('-e').first};
 
-  test('a refresh spreads an older lineup: no show on two genre channels', () async {
+  test('a refresh opens an older lineup up: every show on each genre channel it matches', () async {
     app = await signedInApp(dir, fakeLibrary(shows: shows, genres: genres, movies: 30), editChannels: (channels) {
-      // Saved by a version that let genre channels share shows.
+      // Saved by a version that gave each show one genre channel.
       for (final c in channels) {
-        (c['source'] as Map<String, Object?>).remove('excluded');
+        final source = c['source'] as Map<String, Object?>;
+        if (c['id'] == 'auto:genre:Comedy') source['excluded'] = ['A', 'B'];
+        if (c['id'] == 'auto:movies:Comedy') source['excluded'] = ['movie-1', 'movie-3'];
       }
     });
-    final genre = app.allChannels.where((c) => c.id.startsWith('auto:genre:')).toList();
-    expect(genre, hasLength(greaterThanOrEqualTo(2)));
-    expect(genre.every((c) => c.source.excluded.isEmpty), isTrue);
+    expect(app.channelById('auto:genre:Comedy')!.source.excluded, ['A', 'B']);
 
     app.client = server();
     await app.refreshLibrary(background: true);
-    final seen = <String, String>{};
-    for (final c in app.allChannels.where((c) => c.id.startsWith('auto:genre:'))) {
-      for (final show in showsOn(c)) {
-        expect(seen[show], isNull, reason: '$show is on ${seen[show]} and ${c.name}');
-        seen[show] = c.name;
-      }
+    expect(showsOn(app.channelById('auto:genre:Comedy')!), {'A', 'B', 'C', 'F'});
+    expect(showsOn(app.channelById('auto:genre:Family')!), {'A', 'B', 'D', 'G'});
+    for (final c in app.allChannels.where((c) => c.id.startsWith('auto:movies:'))) {
+      expect(c.source.excluded, isEmpty, reason: c.name);
+      final genre = c.source.genres.single;
+      expect(c.playlist.toSet(), {
+        for (final m in app.library.movies)
+          if (m.genres.contains(genre)) m.id,
+      }, reason: c.name);
     }
-    final movieGenre = app.allChannels.where((c) => c.id.startsWith('auto:movies:'));
-    final movies = [for (final c in movieGenre) ...c.playlist];
-    expect(movies.toSet(), hasLength(movies.length), reason: 'no movie on two movie genre channels');
   });
 
   test('a new movie airs next on the Movie Channel, and the refresh says what it found', () async {

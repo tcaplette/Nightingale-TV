@@ -4,6 +4,7 @@ import '../../channels/channel.dart';
 import '../../channels/retro.dart';
 import '../../theme/tv_theme.dart';
 import 'retro_frame.dart';
+import '../../l10n/tr.dart';
 
 /// The overlay theme on the TV screen (retro-presentation D9). Anything
 /// outside one, such as export's offscreen cards, stays Standard.
@@ -183,7 +184,7 @@ class OverlayStyle {
   String number(String n) {
     if (int.tryParse(n) == null) return n;
     return switch (theme) {
-      OverlayThemeName.vcr => 'CH ${n.padLeft(2, '0')}',
+      OverlayThemeName.vcr => tr.ch(n.padLeft(2, '0')),
       OverlayThemeName.cableBox => n.padLeft(3, '0'),
       _ => n,
     };

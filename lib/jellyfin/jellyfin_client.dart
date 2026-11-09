@@ -12,6 +12,7 @@ import '../server/languages.dart';
 import '../server/live_tv.dart';
 import '../server/media_server.dart';
 import 'jellyfin_live_tv.dart';
+import '../l10n/tr.dart';
 
 class QuickConnectRequest {
   const QuickConnectRequest({required this.secret, required this.code});
@@ -115,18 +116,18 @@ class JellyfinClient implements MediaServer {
     try {
       response = await http.Response.fromStream(await _http.send(request).timeout(_timeout));
     } on TimeoutException {
-      throw ServerException('The server took too long to respond.');
+      throw ServerException(tr.theServerTook);
     } on http.ClientException catch (e) {
-      throw ServerException('Could not reach the server (${e.message}).');
+      throw ServerException(tr.couldNotReach(e.message));
     } on Exception catch (e) {
-      throw ServerException('Could not reach the server ($e).');
+      throw ServerException(tr.couldNotReach(e));
     }
     if (response.statusCode == 401) {
-      throw ServerException('Wrong username or password, or the session expired.',
+      throw ServerException(tr.wrongUsernameOr,
           statusCode: 401);
     }
     if (response.statusCode >= 400) {
-      throw ServerException('Server error ${response.statusCode} on $path.',
+      throw ServerException(tr.serverErrorOn(response.statusCode, path),
           statusCode: response.statusCode, detail: _detail(response.body));
     }
     if (response.body.isEmpty) return null;
@@ -166,9 +167,9 @@ class JellyfinClient implements MediaServer {
     try {
       json = await getMap('/System/Info/Public');
     } on ServerException catch (e) {
-      throw ServerException('No Jellyfin server found at $serverUrl. ${e.message}');
+      throw ServerException(tr.noJellyfinServer(serverUrl, e.message), cause: e.message);
     } on TypeError {
-      throw ServerException('$serverUrl did not answer like a Jellyfin server.');
+      throw ServerException(tr.didNotAnswer(serverUrl));
     }
     // Emby answers the same request, but without Jellyfin's product name
     // ("Jellyfin Server") or its startup-wizard flag.
@@ -308,7 +309,7 @@ class JellyfinClient implements MediaServer {
     for (final pool in pools) {
       for (final root in pool.roots) {
         poolRoots.add(root.itemId);
-        onStatus?.call('Scanning ${pool.name}…');
+        onStatus?.call(tr.scanning(pool.name));
         final items = await itemsUnder(root.itemId);
         for (final item in items) {
           final id = item['Id'] as String;
@@ -327,7 +328,7 @@ class JellyfinClient implements MediaServer {
     const musicFields = 'Genres,ProductionYear,Artists,AlbumArtist,Album,AlbumId,OfficialRating,Etag,MediaSources';
     for (final lib in libraries) {
       if (poolRoots.contains(lib.id)) continue;
-      onStatus?.call('Scanning ${lib.name}…');
+      onStatus?.call(tr.scanning(lib.name));
       final scanStart = DateTime.now();
       final common = {'ParentId': lib.id, 'Recursive': 'true', 'ImageTypeLimit': 1};
       if (lib.isMusic) {
@@ -386,7 +387,7 @@ class JellyfinClient implements MediaServer {
       poolsByItem: poolsByItem,
     );
     if (channelRoots.isEmpty) return index;
-    onStatus?.call('Scanning channel sources…');
+    onStatus?.call(tr.scanningChannelSources);
     final rootsStart = DateTime.now();
     final roots = await fetchRoots(this, channelRoots);
     PlaybackDiagnostics.note('SCAN', '${channelRoots.length} channel roots: '
@@ -558,7 +559,7 @@ class JellyfinClient implements MediaServer {
         'ContainerProfiles': const [],
         'CodecProfiles': const [],
         'SubtitleProfiles': [
-          for (final format in const ['srt', 'subrip', 'ass', 'ssa', 'vtt']) {'Format': format, 'Method': 'External'},
+          for (final format in const ['srt', 'subrip', 'ass', 'ssa', 'vtt']) {'Format': format, 'Method': tr.externalLabel},
         ],
       };
 
@@ -591,10 +592,10 @@ class JellyfinClient implements MediaServer {
     }) as Map<String, Object?>;
     final sources = (json['MediaSources'] as List? ?? const []).cast<Map<String, Object?>>();
     final source = sources.where((s) => s['Id'] == itemId).firstOrNull ?? sources.firstOrNull;
-    if (source == null) throw ServerException('The server has no playable version of this item.');
+    if (source == null) throw ServerException(tr.theServerHas);
     final url = source['TranscodingUrl'] as String?;
     if (!forceTranscode && source['SupportsDirectPlay'] == true) return const PlaybackDecision.direct();
-    if (url == null) throw ServerException('The server would not convert this item.');
+    if (url == null) throw ServerException(tr.theServerWould);
     final template = transcodeTemplate(url);
     final video = (source['MediaStreams'] as List? ?? const [])
         .cast<Map<String, Object?>>()

@@ -1,14 +1,20 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 
 import '../../channels/channel.dart';
+import '../../channels/channel_generator.dart' show decadeName;
+import '../../l10n/generated_names.dart';
 import '../../commercials/commercial_pool.dart';
 import '../app.dart';
 import 'common.dart';
 import 'folder_nodes.dart';
+import '../../l10n/tr.dart';
 
 /// What a channel or block plays: collections, folders and single movies
 /// (dragged from the folder browser, or added with its Add buttons, for
-/// keyboard and touch), shows, genres and movies (custom-channels D12, D13).
+/// keyboard and touch), shows, genres, decades, and every show or movie of
+/// them (custom-channels D12, D13; genre-decade-channels D9).
 /// The browser lists only movies as videos: nothing else plays as a program.
 class SourceEditor extends StatefulWidget {
   const SourceEditor({
@@ -23,7 +29,7 @@ class SourceEditor extends StatefulWidget {
   final String profileId;
   final ChannelSource source;
 
-  /// `library/catalog`: shows, genres and the movie count.
+  /// `library/catalog`: shows, genres, video decades and the movie count.
   final Map<String, Object?> catalog;
   final ValueChanged<ChannelSource> onChanged;
 
@@ -50,15 +56,45 @@ class _SourceEditorState extends State<SourceEditor> {
 
   ChannelSource get _s => widget.source;
 
-  /// [_s] with these picks: episodes only when shows or genres are picked,
-  /// so nothing picked means nothing, not "every show".
-  void _change({List<String>? shows, List<String>? genres, bool? movies, List<PoolRoot>? roots}) {
-    final keys = shows ?? _s.seriesKeys, g = genres ?? _s.genres;
-    widget.onChanged(ChannelSource(
+  /// The Shows toggle: every show of the picked genres and decades. Picked
+  /// shows play only themselves.
+  late bool _everyShow = _everyShowOf(_s);
+
+  /// The source this editor last sent; another one comes from outside (a
+  /// block following its channel) and sets the Shows toggle again.
+  ChannelSource? _sent;
+
+  static bool _everyShowOf(ChannelSource s) => s.includeEpisodes && s.seriesKeys.isEmpty;
+
+  @override
+  void didUpdateWidget(SourceEditor old) {
+    super.didUpdateWidget(old);
+    if (identical(widget.source, old.source) || _sameAsSent(widget.source)) return;
+    _everyShow = _everyShowOf(_s);
+  }
+
+  /// Whether [s] is what this editor sent, whatever minimum rating the page
+  /// kept on it.
+  bool _sameAsSent(ChannelSource s) {
+    String picks(ChannelSource s) => jsonEncode(s.copyWith(ratingFloor: () => null).toJson());
+    return _sent != null && picks(s) == picks(_sent!);
+  }
+
+  /// [_s] with these picks: episodes only for picked shows or with Shows
+  /// on, so nothing picked means nothing, not "every show". Picking a
+  /// genre or decade with Shows and Movies both off turns Shows on.
+  void _change(
+      {List<String>? shows, List<String>? genres, List<int>? decades, bool? everyShow, bool? movies, List<PoolRoot>? roots}) {
+    final keys = shows ?? _s.seriesKeys, g = genres ?? _s.genres, d = decades ?? _s.decades;
+    final picked = g.length > _s.genres.length || d.length > _s.decades.length;
+    final withMovies = movies ?? _s.includeMovies;
+    _everyShow = everyShow ?? (picked && !_everyShow && !withMovies ? true : _everyShow);
+    widget.onChanged(_sent = _s.copyWith(
       seriesKeys: keys,
       genres: g,
-      includeEpisodes: keys.isNotEmpty || g.isNotEmpty,
-      includeMovies: movies ?? _s.includeMovies,
+      decades: d,
+      includeEpisodes: keys.isNotEmpty || _everyShow,
+      includeMovies: withMovies,
       roots: roots ?? _s.roots,
     ));
   }
@@ -77,7 +113,7 @@ class _SourceEditorState extends State<SourceEditor> {
       itemId: node['id'] as String,
       libraryId: library['id'] as String,
       label: node['type'] == 'BoxSet'
-          ? '${node['name']} (collection)'
+          ? tr.collection('${node['name']}')
           : [library['name'] as String, for (final n in [..._path, node]) n['name'] as String].join(' › '),
     );
   }
@@ -95,9 +131,9 @@ class _SourceEditorState extends State<SourceEditor> {
           borderRadius: BorderRadius.circular(8),
           child: Padding(padding: const EdgeInsets.all(12), child: Text(name)),
         ),
-        child: const MouseRegion(
+        child: MouseRegion(
           cursor: SystemMouseCursors.grab,
-          child: Padding(padding: EdgeInsets.all(8), child: Icon(Icons.drag_indicator, semanticLabel: 'Drag to add')),
+          child: Padding(padding: EdgeInsets.all(8), child: Icon(Icons.drag_indicator, semanticLabel: tr.dragToAdd)),
         ),
       ),
       title: Text(name, overflow: TextOverflow.ellipsis),
@@ -106,7 +142,7 @@ class _SourceEditorState extends State<SourceEditor> {
       trailing: Wrap(crossAxisAlignment: WrapCrossAlignment.center, spacing: 4, children: [
         TextButton(
           onPressed: added ? null : () => _addRoot(root),
-          child: Text(added ? 'Added' : 'Add', semanticsLabel: added ? '$name added' : 'Add $name'),
+          child: Text(added ? tr.added : tr.add, semanticsLabel: added ? tr.added2(name) : tr.add3(name)),
         ),
         if (onOpen != null) const Icon(Icons.chevron_right),
       ]),
@@ -146,7 +182,7 @@ class _SourceEditorState extends State<SourceEditor> {
                 overflow: TextOverflow.ellipsis),
             onTap: () => setState(() => _path.isEmpty ? _library = null : _path.removeLast()),
           ),
-          if (nodes.isEmpty) const ListTile(contentPadding: EdgeInsets.zero, title: Text('Nothing inside.')),
+          if (nodes.isEmpty) ListTile(contentPadding: EdgeInsets.zero, title: Text(tr.nothingInside2)),
           for (final n in nodes)
             _row(_rootOf(n), n['name'] as String,
                 detail: nodeDetail(n, programsOnly: true),
@@ -161,8 +197,10 @@ class _SourceEditorState extends State<SourceEditor> {
     final theme = Theme.of(context);
     final shows = (widget.catalog['shows'] as List).cast<Map<String, Object?>>();
     final genres = (widget.catalog['genres'] as List).cast<String>();
+    final decades = {...((widget.catalog['videoDecades'] as List?) ?? const []).cast<int>(), ..._s.decades}.toList()
+      ..sort();
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, mainAxisSize: MainAxisSize.min, children: [
-      Text('Collections and folders', style: theme.textTheme.labelLarge),
+      Text(tr.collectionsAndFolders, style: theme.textTheme.labelLarge),
       const SizedBox(height: 6),
       DragTarget<PoolRoot>(
         onAcceptWithDetails: (d) => _addRoot(d.data),
@@ -175,13 +213,13 @@ class _SourceEditorState extends State<SourceEditor> {
             borderRadius: BorderRadius.circular(8),
           ),
           child: _s.roots.isEmpty
-              ? const Text('Drag a collection, folder or movie here, or use its Add button.')
+              ? Text(tr.dragACollection)
               : Wrap(spacing: 6, runSpacing: 6, children: [
                   for (final r in _s.roots)
                     InputChip(
-                      label: Text(widget.missingRoots.contains(r.itemId) ? '${r.label} · Not found on the server' : r.label),
+                      label: Text(widget.missingRoots.contains(r.itemId) ? tr.notFoundOnThe(r.label) : r.label),
                       onDeleted: () => _change(roots: [for (final o in _s.roots) if (o.itemId != r.itemId) o]),
-                      deleteButtonTooltipMessage: 'Remove ${r.label}',
+                      deleteButtonTooltipMessage: tr.remove4(r.label),
                     ),
                 ]),
         ),
@@ -189,7 +227,7 @@ class _SourceEditorState extends State<SourceEditor> {
       const SizedBox(height: 8),
       SizedBox(height: 280, child: _browser()),
       const SizedBox(height: 12),
-      Text('Shows', style: theme.textTheme.labelLarge),
+      Text(tr.shows3, style: theme.textTheme.labelLarge),
       Wrap(spacing: 6, runSpacing: 6, children: [
         for (final s in shows)
           FilterChip(
@@ -199,21 +237,43 @@ class _SourceEditorState extends State<SourceEditor> {
           ),
       ]),
       const SizedBox(height: 12),
-      Text('Genres', style: theme.textTheme.labelLarge),
+      Wrap(spacing: 16, children: [
+        FilterChip(
+          key: const ValueKey('every-show'),
+          label: Text(tr.includeShows),
+          selected: _everyShow,
+          onSelected: (on) => _change(everyShow: on),
+        ),
+        FilterChip(
+          key: const ValueKey('every-movie'),
+          label: Text(tr.movies3('${widget.catalog['movies']}')),
+          selected: _s.includeMovies,
+          onSelected: (on) => _change(movies: on),
+        ),
+      ]),
+      const SizedBox(height: 12),
+      Text(tr.genres, style: theme.textTheme.labelLarge),
       Wrap(spacing: 6, runSpacing: 6, children: [
         for (final g in genres)
           FilterChip(
-            label: Text(g),
+            label: Text(displayGenre(g)),
             selected: _s.genres.contains(g),
             onSelected: (on) => _change(genres: _toggled(_s.genres, g, on)),
           ),
       ]),
-      CheckboxListTile(
-        contentPadding: EdgeInsets.zero,
-        title: Text('Movies (${widget.catalog['movies']})'),
-        value: _s.includeMovies,
-        onChanged: (v) => _change(movies: v ?? false),
-      ),
+      if (decades.isNotEmpty) ...[
+        const SizedBox(height: 12),
+        Text(tr.decades, style: theme.textTheme.labelLarge),
+        Wrap(spacing: 6, runSpacing: 6, children: [
+          for (final d in decades)
+            FilterChip(
+              label: Text(decadeName(d)),
+              selected: _s.decades.contains(d),
+              onSelected: (on) => _change(
+                  decades: ({..._s.decades}..removeWhere((v) => !on && v == d)..addAll([if (on) d])).toList()..sort()),
+            ),
+        ]),
+      ],
     ]);
   }
 }

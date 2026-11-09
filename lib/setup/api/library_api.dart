@@ -58,8 +58,15 @@ extension _LibraryApi on SetupServer {
           },
       ],
       'genres': ({
-        for (final s in library.series) ...s.genres.map(normalizeGenre),
-        for (final m in library.movies) ...m.genres.map(normalizeGenre),
+        for (final s in library.series) ...titleGenres(s.genres),
+        for (final m in library.movies) ...titleGenres(m.genres),
+      }.toList()
+        ..sort()),
+      // The decades of every movie and episode (an episode without a year
+      // goes by its show's), for the shows-and-movies Decades chips.
+      'videoDecades': ({
+        for (final m in library.movies) ?decadeOf(m.year),
+        for (final e in library.episodes) ?itemDecade(library, e),
       }.toList()
         ..sort()),
       'movies': library.movies.length,

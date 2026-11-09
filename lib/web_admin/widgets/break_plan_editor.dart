@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../commercials/break_plan.dart';
 import '../../commercials/commercial_pool.dart';
 import '../../ui/format.dart';
+import '../../l10n/tr.dart';
 
 /// The Custom break settings, with the same choices and wording as the
 /// TV's break plan editor. [pools] are the profile's pools (with their
@@ -33,15 +34,15 @@ class _BreakPlanEditorState extends State<_BreakPlanEditor> {
   late final _bumperPools = [for (final p in widget.pools) if (_isBumpers(p)) p];
 
   static String _length(Duration d) {
-    if (d == Duration.zero) return 'None';
+    if (d == Duration.zero) return tr.none;
     if (d.inSeconds < 60) return '${d.inSeconds} s';
-    return d.inSeconds % 60 == 0 ? '${d.inMinutes} min' : '${d.inMinutes}:${(d.inSeconds % 60).toString().padLeft(2, '0')}';
+    return d.inSeconds % 60 == 0 ? tr.min(d.inMinutes) : '${d.inMinutes}:${(d.inSeconds % 60).toString().padLeft(2, '0')}';
   }
 
   String _example(String name, int minutes) {
     final s = resolve(BreakPlan(mode: BreakMode.custom, roles: _roles), Duration(minutes: minutes));
-    if (!s.hasBreaks) return '$name: no breaks';
-    final mids = s.midCount == 0 ? '' : ', ${s.midCount} break${s.midCount == 1 ? '' : 's'} inside';
+    if (!s.hasBreaks) return tr.noBreaks(name);
+    final mids = s.midCount == 0 ? '' : tr.breaksInside(s.midCount);
     return '$name: ${formatMinutes(s.slotLength)}$mids';
   }
 
@@ -64,13 +65,13 @@ class _BreakPlanEditorState extends State<_BreakPlanEditor> {
       padding: const EdgeInsets.only(top: 8),
       child: DropdownButtonFormField<String?>(
         initialValue: _commercialPools.any((p) => p['id'] == current) ? current : null,
-        decoration: const InputDecoration(labelText: 'Clips from'),
+        decoration: InputDecoration(labelText: tr.clipsFrom2),
         items: [
-          const DropdownMenuItem(value: null, child: Text('All pools')),
+          DropdownMenuItem(value: null, child: Text(tr.allPools)),
           for (final p in _commercialPools)
             DropdownMenuItem(
               value: p['id'] as String,
-              child: Text('${p['name']}  ·  ${(p['view'] as Map?)?['clips'] ?? 0} clips'),
+              child: Text(tr.clips4('${p['name']}', '${(p['view'] as Map?)?['clips'] ?? 0}')),
             ),
         ],
         onChanged: enabled ? (id) => setState(() => _roles = _roles.withPool(role, id)) : null,
@@ -86,14 +87,14 @@ class _BreakPlanEditorState extends State<_BreakPlanEditor> {
             : _bumperPools.any((p) => p['id'] == _roles.bumperPool)
                 ? _roles.bumperPool
                 : _allBumpers,
-        decoration: const InputDecoration(labelText: 'Clips from'),
+        decoration: InputDecoration(labelText: tr.clipsFrom2),
         items: [
-          const DropdownMenuItem(value: _noBumpers, child: Text('None')),
-          const DropdownMenuItem(value: _allBumpers, child: Text('All bumper pools')),
+          DropdownMenuItem(value: _noBumpers, child: Text(tr.none)),
+          DropdownMenuItem(value: _allBumpers, child: Text(tr.allBumperPools)),
           for (final p in _bumperPools)
             DropdownMenuItem(
               value: p['id'] as String,
-              child: Text('${p['name']}  ·  ${(p['view'] as Map?)?['clips'] ?? 0} clips'),
+              child: Text(tr.clips4('${p['name']}', '${(p['view'] as Map?)?['clips'] ?? 0}')),
             ),
         ],
         onChanged: (v) => setState(() => _roles = switch (v) {
@@ -122,39 +123,39 @@ class _BreakPlanEditorState extends State<_BreakPlanEditor> {
               child: Padding(
                 padding: const EdgeInsets.all(12),
                 child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Text(_example('22-min sitcom', 22)),
-                  Text(_example('44-min drama', 44)),
-                  Text(_example('100-min movie', 100)),
+                  Text(_example(tr.n22MinSitcom, 22)),
+                  Text(_example(tr.n44MinDrama, 44)),
+                  Text(_example(tr.n100MinMovie, 100)),
                 ]),
               ),
             ),
-            _heading('Pre-roll', 'Before each program'),
-            _choices('Length', CustomRoles.preRollChoices, _roles.preRoll, _length, (v) => _roles.copyWith(preRoll: v)),
+            _heading(tr.preRoll, tr.beforeEachProgram),
+            _choices(tr.length, CustomRoles.preRollChoices, _roles.preRoll, _length, (v) => _roles.copyWith(preRoll: v)),
             _pool(BreakRole.pre, _roles.preRoll > Duration.zero),
-            _heading('Mid-roll', 'Breaks inside shows and movies, at act breaks when they can be found'),
-            _choices<Duration?>('Every', CustomRoles.midIntervalChoices, _roles.midInterval,
-                (v) => v == null ? 'Off' : '${v.inMinutes} min', (v) => _roles.copyWith(midInterval: () => v)),
-            _choices('Length', CustomRoles.midLengthChoices, _roles.midLength, _length, (v) => _roles.copyWith(midLength: v)),
+            _heading(tr.midRoll, tr.breaksInsideShows),
+            _choices<Duration?>(tr.every, CustomRoles.midIntervalChoices, _roles.midInterval,
+                (v) => v == null ? tr.off : tr.min(v.inMinutes), (v) => _roles.copyWith(midInterval: () => v)),
+            _choices(tr.length, CustomRoles.midLengthChoices, _roles.midLength, _length, (v) => _roles.copyWith(midLength: v)),
             _pool(BreakRole.mid, _roles.midInterval != null),
-            _heading('Post-roll', 'After each program'),
-            _choices('Length', CustomRoles.postRollChoices, _roles.postRoll, _length, (v) => _roles.copyWith(postRoll: v)),
+            _heading(tr.postRoll, tr.afterEachProgram),
+            _choices(tr.length, CustomRoles.postRollChoices, _roles.postRoll, _length, (v) => _roles.copyWith(postRoll: v)),
             _pool(BreakRole.post, _roles.postRoll > Duration.zero),
-            _heading('Tail', 'Pads each slot to the clock, so programs start on time'),
+            _heading(tr.tail, tr.padsEachSlot),
             _choices<Duration>(
-              'Pad',
+              tr.pad,
               CustomRoles.tailGridChoices,
               _roles.tailGrid,
-              (v) => v.inMinutes == 60 ? 'To the hour' : 'To the half hour',
+              (v) => v.inMinutes == 60 ? tr.toTheHour : tr.toTheHalf,
               (v) => _roles.copyWith(tailGrid: v),
             ),
             _pool(BreakRole.tail, true),
-            _heading('Bumpers', 'Open and close breaks, from pools set to Bumpers'),
+            _heading(tr.bumpers, tr.openAndClose),
             _bumpers(),
           ]),
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('Cancel')),
-          FilledButton(onPressed: () => Navigator.of(context).pop(_roles), child: const Text('Save')),
+          TextButton(onPressed: () => Navigator.of(context).pop(), child: Text(tr.cancel)),
+          FilledButton(onPressed: () => Navigator.of(context).pop(_roles), child: Text(tr.save)),
         ],
       );
 }

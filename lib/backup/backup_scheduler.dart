@@ -9,6 +9,7 @@ import '../playback/playback_diagnostics.dart';
 import '../profiles/household.dart';
 import 'backup_archive.dart';
 import 'backup_store.dart';
+import '../l10n/tr.dart';
 
 /// Makes the household's backups (D9): a daily one when something changed,
 /// and a safety backup right before anything that replaces a lot at once.
@@ -92,7 +93,7 @@ class BackupScheduler extends ChangeNotifier {
     try {
       return await backUp(reason, subject: subject, onlyIfChanged: true);
     } on Object catch (e) {
-      throw BackupException('Couldn\'t save a backup first: ${_plain(e)}');
+      throw BackupException(tr.couldntSaveA(_plain(e)));
     }
   }
 

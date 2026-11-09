@@ -4,6 +4,7 @@ import 'dart:typed_data';
 import 'package:crypto/crypto.dart';
 import 'package:file_selector/file_selector.dart';
 import 'package:image/image.dart' as img;
+import '../l10n/tr.dart';
 
 class CustomIconException implements Exception {
   CustomIconException(this.message);
@@ -49,7 +50,7 @@ class CustomIconStore {
   /// the user cancelled.
   Future<String?> pickAndImport() async {
     final file = await openFile(acceptedTypeGroups: [
-      const XTypeGroup(label: 'Images', extensions: _extensions),
+      XTypeGroup(label: tr.images, extensions: _extensions),
     ]);
     if (file == null) return null;
     return import(File(file.path));
@@ -63,14 +64,14 @@ class CustomIconStore {
   /// [import] for an image already read, named [fileName] (for its type).
   Future<String> importBytes(Uint8List bytes, String fileName) async {
     if (bytes.length > maxSourceBytes) {
-      throw CustomIconException('That image is over 20 MB. Please pick a smaller one.');
+      throw CustomIconException(tr.thatImageIs);
     }
     final hash = sha1.convert(bytes).toString().substring(0, 16);
     final ext = fileName.split('.').last.toLowerCase();
 
     if (ext == 'svg') {
       final head = String.fromCharCodes(bytes.take(2048));
-      if (!head.contains('<svg')) throw CustomIconException('That file is not a valid SVG.');
+      if (!head.contains('<svg')) throw CustomIconException(tr.thatFileIs);
       final name = '$hash.svg';
       await fileFor(name).writeAsBytes(bytes, flush: true);
       return name;
@@ -78,7 +79,7 @@ class CustomIconStore {
 
     final decoded = img.decodeImage(bytes);
     if (decoded == null) {
-      throw CustomIconException('Could not read that image. Try PNG, JPG, WebP or SVG.');
+      throw CustomIconException(tr.couldNotRead);
     }
     final frame = decoded.frames.first;
     final scaled = frame.width > _maxPixels || frame.height > _maxPixels
@@ -96,12 +97,12 @@ class CustomIconStore {
   /// fit 1920×1080 as PNG, SVGs as they are. Returns its file name.
   Future<String> importOfflineBytes(Uint8List bytes, String fileName) async {
     if (bytes.length > maxSourceBytes) {
-      throw CustomIconException('That image is over 20 MB. Please pick a smaller one.');
+      throw CustomIconException(tr.thatImageIs);
     }
     final hash = sha1.convert(bytes).toString().substring(0, 16);
     if (fileName.split('.').last.toLowerCase() == 'svg') {
       if (!String.fromCharCodes(bytes.take(2048)).contains('<svg')) {
-        throw CustomIconException('That file is not a valid SVG.');
+        throw CustomIconException(tr.thatFileIs);
       }
       final name = '$offlinePrefix$hash.svg';
       await fileFor(name).writeAsBytes(bytes, flush: true);
@@ -109,7 +110,7 @@ class CustomIconStore {
     }
     final decoded = img.decodeImage(bytes);
     if (decoded == null) {
-      throw CustomIconException('Could not read that image. Try PNG, JPG, WebP or SVG.');
+      throw CustomIconException(tr.couldNotRead);
     }
     final frame = decoded.frames.first;
     final scale = [1.0, _maxOfflineWidth / frame.width, _maxOfflineHeight / frame.height].reduce((a, b) => a < b ? a : b);
@@ -128,7 +129,7 @@ class CustomIconStore {
   /// Null if the user cancelled.
   Future<String?> pickAndImportOffline() async {
     final file = await openFile(acceptedTypeGroups: [
-      const XTypeGroup(label: 'Images', extensions: _extensions),
+      XTypeGroup(label: tr.images, extensions: _extensions),
     ]);
     if (file == null) return null;
     return importOfflineBytes(await File(file.path).readAsBytes(), file.path);

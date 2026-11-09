@@ -1,3 +1,4 @@
+
 part of '../setup_server.dart';
 
 /// Live TV sources (admin-api): the server's Live TV, M3U playlists and
@@ -21,10 +22,10 @@ extension _LiveApi on SetupServer {
 
   /// The most an uploaded playlist or guide may be.
   static const maxLiveFile = 32 << 20;
-  static const liveFileTooBig = 'That file is too big (32 MB at most).';
+  static String get liveFileTooBig => tr.thatFileIsToo;
 
   LiveSource _sourceOf(AppState app, String id) =>
-      app.live.sourceById(id) ?? (throw ApiError(HttpStatus.notFound, 'No such source.'));
+      app.live.sourceById(id) ?? (throw ApiError(HttpStatus.notFound, tr.noSuchSource));
 
   Map<String, Object?> _sourceJson(AppState app, LiveSource s) {
     final entry = app.live.entryFor(s);
@@ -62,13 +63,13 @@ extension _LiveApi on SetupServer {
         'key': s.key,
         'name': s.name,
         'canAdd': availability == LiveTvAvailability.available,
-        'reason': has ? '${s.name} Live TV is already added' : availability?.reason(s.name),
+        'reason': has ? tr.liveTvIsAlready(s.name) : availability?.reason(s.name),
       });
     }
     final main = servers.where((s) => s['key'] == ServerSet.mainKey).firstOrNull;
     return {
       'enabled': app.liveEnabled,
-      if (!app.liveEnabled) 'message': 'Kid profiles get no live channels.',
+      if (!app.liveEnabled) 'message': tr.kidProfilesGet,
       'sources': [for (final s in app.live.sources) _sourceJson(app, s)],
       // The main server's, as before; every server's in `servers`.
       'server': {
@@ -115,7 +116,7 @@ extension _LiveApi on SetupServer {
   PickedLiveFile? _picked(ApiRequest r, String? uploadId) {
     if (uploadId == null) return null;
     final upload = _liveUploads.remove(uploadId);
-    if (upload == null || upload.profile != r['id']) throw ApiError(HttpStatus.badRequest, 'Upload the file again.');
+    if (upload == null || upload.profile != r['id']) throw ApiError(HttpStatus.badRequest, tr.uploadTheFile);
     return (name: upload.name, path: null, bytes: upload.bytes);
   }
 
@@ -129,7 +130,7 @@ extension _LiveApi on SetupServer {
     final playlist = _picked(r, body.string('playlistUpload'));
     final url = body.string('playlistUrl')?.trim() ?? '';
     if (playlist == null && url.isEmpty) {
-      throw ApiError(HttpStatus.badRequest, "Enter the playlist's address, or choose a playlist file");
+      throw ApiError(HttpStatus.badRequest, tr.enterThePlaylists);
     }
     try {
       final source = await app.addM3uSource(
@@ -149,7 +150,7 @@ extension _LiveApi on SetupServer {
   static String _nameFor(String url, PickedLiveFile? file) {
     if (file != null) return file.name.replaceFirst(RegExp(r'\.[^.]*$'), '');
     final host = Uri.tryParse(url)?.host ?? '';
-    return host.isEmpty ? 'M3U playlist' : host;
+    return host.isEmpty ? tr.m3uPlaylist : host;
   }
 
   /// Changes an M3U source. A URL sent back as it was shown (masked) keeps
@@ -221,9 +222,9 @@ extension _LiveApi on SetupServer {
   Future<Object?> _chooseChannels(ApiRequest r) async {
     final app = await _app(r['id']);
     final source = _sourceOf(app, r['sid']);
-    final keys = (await r.body()).strings('keys') ?? (throw ApiError(HttpStatus.badRequest, 'Send keys.'));
+    final keys = (await r.body()).strings('keys') ?? (throw ApiError(HttpStatus.badRequest, tr.sendKeys));
     final known = {for (final c in app.live.entryFor(source).channels) c.key};
-    if (!known.containsAll(keys)) throw ApiError(HttpStatus.badRequest, 'No such channel.');
+    if (!known.containsAll(keys)) throw ApiError(HttpStatus.badRequest, tr.noSuchChannel);
     await app.chooseLiveChannels(source, keys.toSet());
     return _sourceChannels(r);
   }

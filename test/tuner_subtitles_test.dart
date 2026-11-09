@@ -5,9 +5,11 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:nightingale_tv/app_state.dart';
 import 'package:nightingale_tv/channels/channel.dart';
 import 'package:nightingale_tv/channels/schedule.dart';
+import 'package:nightingale_tv/l10n/tr.dart';
 import 'package:nightingale_tv/playback/caption_size.dart';
 import 'package:nightingale_tv/playback/subtitles.dart';
 import 'package:nightingale_tv/playback/tuner.dart';
+import 'package:nightingale_tv/server/languages.dart';
 import 'package:nightingale_tv/server/media_server.dart';
 
 import 'fake_playback.dart';
@@ -79,6 +81,26 @@ void main() {
     await settle();
     return seg;
   }
+
+  group('the app\'s language (app-languages D11)', () {
+    tearDown(() => activeLanguage = 'en');
+
+    test('with no caption language set, the app language picks the track', () {
+      const german = SubtitleTrack(id: '5', codec: 'subrip', language: 'ger', position: 3);
+      expect(chooseSubtitle(const [english, german], preferred: null, device: 'de'), german);
+      expect(chooseSubtitle(const [english, german], preferred: null, device: 'en'), english);
+      activeLanguage = 'de';
+      expect(Tuner(app, player: player, clock: () => now).deviceLanguage(), 'de');
+    });
+
+    test('language names follow the app language', () {
+      expect(languageName('ger'), 'German');
+      activeLanguage = 'fr';
+      expect(languageName('ger'), 'Allemand');
+      expect(languageName('de'), 'Allemand');
+      expect(languageName('zzz'), 'ZZZ');
+    });
+  });
 
   test('captions off: channel surfing asks for no subtitles at all', () async {
     client.subtitlesFor = (_) => const [english];

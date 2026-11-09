@@ -19,6 +19,7 @@ import 'widgets/channel_logo.dart';
 import 'widgets/nightingale_mark.dart';
 import 'widgets/new_tag.dart';
 import 'widgets/tv_focus.dart';
+import '../l10n/tr.dart';
 
 /// The program guide: info panel + live preview on top, channel grid below.
 class GuideView extends StatefulWidget {
@@ -516,10 +517,10 @@ class _GuideViewState extends State<GuideView> with SingleTickerProviderStateMix
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Text('▲▼ Channels     ▲ Tabs     ◀▶ Time     OK Watch     ', style: g.body(22, color: g.textDim)),
-                  _HintLink(text: 'ESC Back to TV', onTap: widget.onClose),
+                  Text(tr.channelsTabsTime, style: g.body(22, color: g.textDim)),
+                  _HintLink(text: tr.escBackTo, onTap: widget.onClose),
                   Text('     ', style: g.body(22)),
-                  _HintLink(text: 'M Menu', onTap: widget.onMenu),
+                  _HintLink(text: tr.mMenu, onTap: widget.onMenu),
                 ],
               ),
             ),
@@ -546,8 +547,8 @@ GuideTab shownGuideTab(List<GuideTab> tabs, String tabId) =>
 /// during it, else when it starts.
 String musicHourLine(ScheduledProgram hour, DateTime now) {
   final on = hour.songs?.where((s) => s.isOnAt(now)).firstOrNull;
-  if (on != null && hour.isOnAt(now)) return 'Now playing: ${on.title}';
-  return 'Music';
+  if (on != null && hour.isOnAt(now)) return tr.nowPlaying(on.title);
+  return tr.music;
 }
 
 /// The hour's songs from now (or from its start), as "Artist – Song".
@@ -605,7 +606,7 @@ class _InfoPanel extends StatelessWidget {
                   fit: BoxFit.scaleDown,
                   alignment: Alignment.centerLeft,
                   child: Text(
-                    'NIGHTINGALE TV GUIDE',
+                    tr.nightingaleTvGuide,
                     maxLines: 1,
                     style: g.display(30, weight: FontWeight.w800, color: g.accent),
                   ),
@@ -624,7 +625,7 @@ class _InfoPanel extends StatelessWidget {
               ),
               const SizedBox(width: 28),
               TvPointerButton(
-                  label: 'Menu',
+                  label: tr.menu,
                   icon: Icons.settings,
                   highlighted: headerFocus == 0,
                   onHover: () => onHover(0),
@@ -632,7 +633,7 @@ class _InfoPanel extends StatelessWidget {
               if (onSleep != null) ...[
                 const SizedBox(width: 16),
                 TvPointerButton(
-                    label: 'Sleep',
+                    label: tr.sleep,
                     icon: Icons.bedtime,
                     highlighted: headerFocus == 1,
                     onHover: () => onHover(1),
@@ -640,7 +641,7 @@ class _InfoPanel extends StatelessWidget {
               ],
               const SizedBox(width: 16),
               TvPointerButton(
-                  label: 'Back',
+                  label: tr.back,
                   icon: Icons.arrow_back,
                   highlighted: headerFocus == back,
                   onHover: () => onHover(back),
@@ -651,10 +652,10 @@ class _InfoPanel extends StatelessWidget {
           if (ch != null)
             Row(
               children: [
-                ChannelLogo(icon: ch.icon, size: 48, width: 84, fallbackText: ch.name),
+                ChannelLogo(icon: ch.icon, size: 48, width: 84, fallbackText: ch.displayName),
                 const SizedBox(width: 18),
                 Text(
-                  '${ch.number}  ${ch.name.toUpperCase()}',
+                  '${ch.number}  ${ch.displayName.toUpperCase()}',
                   style: g.display(30, weight: FontWeight.w600, color: g.textDim),
                 ),
               ],
@@ -677,7 +678,7 @@ class _InfoPanel extends StatelessWidget {
             const SizedBox(height: 6),
             Text(
               [
-                if (p.blockTitle != null) p.blockTitle!.toUpperCase(),
+                if (p.displayBlockTitle != null) p.displayBlockTitle!.toUpperCase(),
                 p.isMusicHour ? musicHourLine(p, now) : p.subtitle,
                 formatRange(p.start, p.end),
                 if (p.endsEarly) endsEarlyLabel,
@@ -697,7 +698,7 @@ class _InfoPanel extends StatelessWidget {
               ),
             ),
           ] else
-            Text('Nothing scheduled', style: g.display(48)),
+            Text(tr.nothingScheduled, style: g.display(48)),
         ],
       ),
     );
@@ -758,7 +759,7 @@ class _ProgressBar extends StatelessWidget {
         ),
         const SizedBox(width: 16),
         Text(
-          '${formatMinutes(program.end.difference(now))} left',
+          tr.left(formatMinutes(program.end.difference(now))),
           style: g.body(22, color: g.textDim),
         ),
       ],
@@ -813,10 +814,10 @@ class _Preview extends StatelessWidget {
                     ? const SizedBox.shrink()
                     : Center(
                         child: Text(switch (tuner.status) {
-                          TunerStatus.error => 'NO SIGNAL',
-                          TunerStatus.offAir => 'OFF AIR',
-                          TunerStatus.standby => 'PLEASE STAND BY',
-                          _ => 'TUNING…',
+                          TunerStatus.error => tr.noSignal,
+                          TunerStatus.offAir => tr.offAir2,
+                          TunerStatus.standby => tr.pleaseStandBy,
+                          _ => tr.tuning,
                         }, style: g.display(40, weight: FontWeight.w800, color: g.textDim)),
                       ),
               ),
@@ -959,7 +960,7 @@ class _TimeHeader extends StatelessWidget {
             width: channelColumnWidth,
             child: Center(
               child: Text(
-                isToday ? 'TODAY' : formatDate(windowStart),
+                isToday ? tr.today2 : formatDate(windowStart),
                 style: g.display(28, weight: FontWeight.w800, color: g.accent),
               ),
             ),
@@ -1036,7 +1037,7 @@ class _GuideRow extends StatelessWidget {
     // One labeled band across each programming block's time slot.
     final bands = <({String title, DateTime start, DateTime end})>[];
     for (final p in programs) {
-      final title = p.blockTitle;
+      final title = p.displayBlockTitle;
       if (title == null) continue;
       if (bands.isNotEmpty && bands.last.title == title && bands.last.end == p.start) {
         bands.last = (title: title, start: bands.last.start, end: p.end);
@@ -1070,12 +1071,12 @@ class _GuideRow extends StatelessWidget {
                       icon: channel.icon,
                       size: 52,
                       width: 84,
-                      fallbackText: channel.name,
+                      fallbackText: channel.displayName,
                     ),
                     const SizedBox(width: 12),
                     Expanded(
                       child: Text(
-                        channel.name,
+                        channel.displayName,
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
                         style: g.display(24, weight: FontWeight.w600, color: g.text),
@@ -1098,7 +1099,7 @@ class _GuideRow extends StatelessWidget {
                       color: g.cellAlt,
                       padding: const EdgeInsets.only(left: 20),
                       alignment: Alignment.centerLeft,
-                      child: Text('No programming', style: g.display(28, color: g.textDim)),
+                      child: Text(tr.noProgramming, style: g.display(28, color: g.textDim)),
                     ),
                   ),
                 if (shownEnd != null && shownEnd.isBefore(windowEnd))

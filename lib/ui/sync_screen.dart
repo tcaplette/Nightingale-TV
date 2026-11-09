@@ -6,6 +6,7 @@ import '../app_scope.dart';
 import '../theme/tv_theme.dart';
 import 'widgets/screen_layout.dart';
 import 'widgets/tv_focus.dart';
+import '../l10n/tr.dart';
 
 /// Shown while the first library scan runs (or if it failed).
 class SyncScreen extends StatelessWidget {
@@ -20,8 +21,8 @@ class SyncScreen extends StatelessWidget {
     final portrait = layout.isPortrait;
     final width = portrait ? min(1000.0, layout.canvas.width - 2 * layout.gutter) : 1000.0;
     final buttons = [
-      TvButton(label: 'Try again', icon: Icons.refresh, autofocus: true, onPressed: app.refreshLibrary),
-      TvButton(label: 'Sign out', icon: Icons.logout, onPressed: app.signOut),
+      TvButton(label: tr.tryAgain, icon: Icons.refresh, autofocus: true, onPressed: app.refreshLibrary),
+      TvButton(label: tr.signOut, icon: Icons.logout, onPressed: app.signOut),
     ];
     return DecoratedBox(
       decoration: g.backdrop,
@@ -33,7 +34,7 @@ class SyncScreen extends StatelessWidget {
             children: [
               Icon(failed ? Icons.signal_wifi_bad : Icons.satellite_alt, size: 120, color: g.accent),
               const SizedBox(height: 32),
-              Text(failed ? 'Couldn\'t load your library' : 'Setting up your channels',
+              Text(failed ? tr.couldntLoadYour : tr.settingUpYour,
                   textAlign: TextAlign.center, style: g.display(portrait ? 44 : 60, weight: FontWeight.w800)),
               const SizedBox(height: 20),
               Text(failed ? app.syncError! : app.syncStatus,

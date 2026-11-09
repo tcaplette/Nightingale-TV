@@ -40,6 +40,7 @@ import '../ui/format.dart';
 import 'accounts.dart';
 import 'api/routes.dart';
 import 'web_files.dart';
+import '../l10n/tr.dart';
 
 part 'api/core_api.dart';
 part 'api/accounts_api.dart';
@@ -88,8 +89,8 @@ class SetupServer {
   /// this long without a request for it (design D4).
   static const borrowIdle = Duration(minutes: 10);
 
-  static const conflictText = 'Changed in another window. Showing the latest.';
-  static const signedOutText = 'Sign in to this profile first.';
+  static String get conflictText => tr.changedInAnother;
+  static String get signedOutText => tr.signInToThisProfile;
 
   final Household household;
   final Accounts accounts;
@@ -142,7 +143,9 @@ class SetupServer {
     // Server backups carry the accounts.
     household.backups?.serverSection = accounts.backupSection;
     _reaper = Timer.periodic(const Duration(minutes: 1), (_) => unawaited(releaseIdle()));
-    server.listen((r) => unawaited(_handle(r)));
+    // Each request answers in its own language (design D3, D8): English
+    // when it names none we have.
+    server.listen((r) => unawaited(runInLanguage(languageFromHeader(r.headers.value(HttpHeaders.acceptLanguageHeader)) ?? 'en', () => _handle(r))));
   }
 
   Future<void> stop() async {
@@ -204,7 +207,7 @@ class SetupServer {
       debugPrint('Setup page request ${request.method} ${request.uri.path} failed: $e\n$st');
       try {
         response.statusCode = HttpStatus.internalServerError;
-        _json(response, {'error': 'Something went wrong: $e'});
+        _json(response, {'error': tr.somethingWentWrong(e)});
       } on Object {
         // Headers already sent.
       }
@@ -241,7 +244,7 @@ class SetupServer {
     _checkAccess(route, r);
     if (route.needsIfMatch) {
       final sent = request.headers.value(HttpHeaders.ifMatchHeader);
-      if (sent == null) throw ApiError(HttpStatus.preconditionRequired, 'Reload the page and try again.');
+      if (sent == null) throw ApiError(HttpStatus.preconditionRequired, tr.reloadThePage);
       if (sent != _etag(route, r)) await _conflict(path, r);
     }
     final result = await route.handler(r);
@@ -267,22 +270,22 @@ class SetupServer {
 
   // ---- Access (design D7) -------------------------------------------------------
 
-  static const pinText = "Enter this profile's PIN.";
-  static const grownUpText = "Enter a grown-up's PIN to change a kid profile's settings.";
-  static const notYoursText = "That profile isn't assigned to you.";
+  static String get pinText => tr.enterThisProfiles;
+  static String get grownUpText => tr.enterAGrown;
+  static String get notYoursText => tr.thatProfileIsnt;
 
   void _checkAccess(ApiRoute route, ApiRequest r) {
     if (route.access == Access.public) return;
-    final account = r.account ?? (throw ApiError(HttpStatus.unauthorized, 'Sign in first.'));
+    final account = r.account ?? (throw ApiError(HttpStatus.unauthorized, tr.signInFirst));
     switch (route.access) {
       case Access.public || Access.signedIn:
         return;
       case Access.admin:
-        if (!account.isAdmin) throw ApiError(HttpStatus.forbidden, 'Only an admin can do that.');
+        if (!account.isAdmin) throw ApiError(HttpStatus.forbidden, tr.onlyAnAdmin);
       case Access.profile || Access.profileSettings:
         final id = r['id'];
         if (!account.mayUse(id)) throw ApiError(HttpStatus.forbidden, notYoursText);
-        final profile = household.profileById(id) ?? (throw ApiError(HttpStatus.notFound, 'No such profile.'));
+        final profile = household.profileById(id) ?? (throw ApiError(HttpStatus.notFound, tr.noSuchProfile));
         if (account.isAdmin) return;
         if (profile.hasPin && !accounts.profileUnlocked(r.session, id)) {
           throw ApiError(HttpStatus.forbidden, pinText, {'needs': 'pin'});
@@ -348,7 +351,7 @@ class SetupServer {
   Future<AppState> _app(String id, {bool library = false}) async {
     if (household.appFor(id) == null) _borrowed[id] = clock();
     // An exported profile's state may still be loading: this waits for it.
-    final app = await household.appForSetup(id) ?? (throw ApiError(HttpStatus.notFound, 'No such profile.'));
+    final app = await household.appForSetup(id) ?? (throw ApiError(HttpStatus.notFound, tr.noSuchProfile));
     if (library && (app.phase == AppPhase.signedOut || app.session == null)) {
       throw ApiError(HttpStatus.serviceUnavailable, signedOutText);
     }
@@ -385,7 +388,7 @@ class SetupServer {
   }
 
   Profile _profile(String id) =>
-      household.profileById(id) ?? (throw ApiError(HttpStatus.notFound, 'No such profile.'));
+      household.profileById(id) ?? (throw ApiError(HttpStatus.notFound, tr.noSuchProfile));
 
   static String _urlHost(String host) => host.contains(':') && !host.startsWith('[') ? '[$host]' : host;
 

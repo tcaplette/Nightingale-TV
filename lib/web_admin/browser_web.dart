@@ -56,3 +56,52 @@ Future<bool> copyText(String text) async {
     area.remove();
   }
 }
+
+@JS('navigator.languages')
+external JSArray<JSString>? get _languages;
+
+@JS('localStorage.getItem')
+external JSString? _getItem(String key);
+
+@JS('localStorage.setItem')
+external void _setItem(String key, String value);
+
+@JS('localStorage.removeItem')
+external void _removeItem(String key);
+
+@JS('document.documentElement.setAttribute')
+external void _setRootAttribute(String name, String value);
+
+/// The browser's languages, in order of preference.
+List<String> browserLanguages() {
+  try {
+    return [for (final l in _languages?.toDart ?? const <JSString>[]) l.toDart];
+  } on Object {
+    return const [];
+  }
+}
+
+/// A value saved in this browser; null with private browsing or blocked storage.
+String? readStored(String key) {
+  try {
+    return _getItem(key)?.toDart;
+  } on Object {
+    return null;
+  }
+}
+
+/// Saves (or with null, clears) a value in this browser.
+void writeStored(String key, String? value) {
+  try {
+    if (value == null) {
+      _removeItem(key);
+    } else {
+      _setItem(key, value);
+    }
+  } on Object {
+    // Blocked storage: the choice lasts until the page reloads.
+  }
+}
+
+/// Declares the page's language (`<html lang>`).
+void setPageLanguage(String language) => _setRootAttribute('lang', language);

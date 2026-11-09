@@ -1,3 +1,5 @@
+import '../l10n/tr.dart';
+
 /// How a channel lays out commercial breaks: off, laid out by Nightingale TV
 /// broadcast-style, or set up role by role.
 enum BreakMode {
@@ -6,9 +8,9 @@ enum BreakMode {
   custom;
 
   String get label => switch (this) {
-        off => 'Off',
-        automatic => 'Automatic',
-        custom => 'Custom',
+        off => tr.off,
+        automatic => tr.automatic,
+        custom => tr.custom,
       };
 }
 
@@ -28,10 +30,10 @@ enum BreakRole {
   tail;
 
   String get label => switch (this) {
-        pre => 'Pre-roll',
-        mid => 'Mid-roll',
-        post => 'Post-roll',
-        tail => 'Tail',
+        pre => tr.preRoll,
+        mid => tr.midRoll,
+        post => tr.postRoll,
+        tail => tr.tail,
       };
 }
 

@@ -3,6 +3,9 @@
 /// code per language (639-2/B, as Jellyfin stores them), and their names.
 library;
 
+import '../l10n/language_names.dart';
+import '../l10n/tr.dart';
+
 /// 639-1 → 639-2/B.
 const _twoToThree = {
   'af': 'afr', 'am': 'amh', 'ar': 'ara', 'az': 'aze', 'be': 'bel', 'bg': 'bul', 'bn': 'ben', 'bo': 'tib',
@@ -59,10 +62,13 @@ String? normalizeLanguage(String? code) {
   return _terminologic[base] ?? base;
 }
 
-/// The language's English name ("English"); the code itself, upper case,
-/// for one not in the table; null for none.
+/// Every code [languageName] has a name for.
+Iterable<String> get namedLanguageCodes => _names.keys;
+
+/// The language's name in the current app language ("Allemand"); the code
+/// itself, upper case, for one not in the table; null for none.
 String? languageName(String? code) {
   final c = normalizeLanguage(code);
   if (c == null) return null;
-  return _names[c] ?? c.toUpperCase();
+  return languageNameMaps[currentLanguage]?[c] ?? _names[c] ?? c.toUpperCase();
 }

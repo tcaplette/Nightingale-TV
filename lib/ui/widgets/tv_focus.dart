@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import '../../platform/platform_info.dart';
 import '../../theme/tv_theme.dart';
 import 'screen_layout.dart';
+import '../../l10n/tr.dart';
 
 /// True for the keys a TV remote or air mouse sends for "back".
 bool isBackKey(LogicalKeyboardKey key) =>
@@ -652,7 +653,7 @@ class _BackButton extends StatelessWidget {
     final left = max(_margin - inset, _minEdge);
     return Semantics(
       button: true,
-      label: 'Back',
+      label: tr.back,
       excludeSemantics: true,
       onTap: onPressed,
       child: TvFocusable(
@@ -697,7 +698,7 @@ class _BackButton extends StatelessWidget {
                     children: [
                       Icon(Icons.arrow_back, size: 34, color: fg),
                       const SizedBox(width: 12),
-                      Text('Back', style: g.display(30, weight: FontWeight.w600, color: fg)),
+                      Text(tr.back, style: g.display(30, weight: FontWeight.w600, color: fg)),
                     ],
                   ),
                 ),

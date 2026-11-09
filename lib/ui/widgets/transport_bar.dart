@@ -6,6 +6,7 @@ import '../../platform/platform_info.dart';
 import '../../playback/tuner.dart';
 import '../format.dart';
 import 'overlay_style.dart';
+import '../../l10n/tr.dart';
 
 /// A phone or tablet: the canvas is scaled down, and fingers need room.
 bool get _touchSized => PlatformInfo.isAndroid && !PlatformInfo.isTelevision;
@@ -73,30 +74,30 @@ class _TransportBarState extends State<TransportBar> {
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
         _TransportButton(
-            label: 'Restart',
+            label: tr.restart,
             icon: Icons.skip_previous,
             compact: compact,
             focused: widget.focused == TransportFocus.restart,
             onPressed: () => _used(() => unawaited(tuner.restart()))),
         _TransportButton(
-            label: 'Back 10',
+            label: tr.back10,
             icon: Icons.replay_10,
             compact: compact,
             onPressed: () => _used(() => tuner.skip(const Duration(seconds: -10)))),
         _TransportButton(
-            label: tuner.paused ? 'Play' : 'Pause',
+            label: tuner.paused ? tr.play : tr.pause,
             icon: tuner.paused ? Icons.play_arrow : Icons.pause,
             compact: compact,
             onPressed: () => _used(() => unawaited(tuner.togglePause()))),
         _TransportButton(
-            label: 'Forward 30',
+            label: tr.forward30,
             icon: Icons.forward_30,
             compact: compact,
             onPressed: () => _used(() => tuner.skip(const Duration(seconds: 30)))),
         _TransportButton(
-            label: 'Live',
+            label: tr.live2,
             icon: Icons.circle,
-            word: 'LIVE',
+            word: tr.live,
             iconColor: atLive ? const Color(0xFFE53935) : null,
             compact: compact,
             focused: widget.focused == TransportFocus.live,
@@ -108,7 +109,7 @@ class _TransportBarState extends State<TransportBar> {
         style: g.body(size, color: g.textDim));
     // The now panel says "behind" in portrait, where this row is narrow.
     final left = atLive
-        ? Text('LIVE', style: g.display(size, weight: FontWeight.w800, color: g.accent))
+        ? Text(tr.live, style: g.display(size, weight: FontWeight.w800, color: g.accent))
         : Text(
             compact
                 ? '-${formatClockSpan(line.to.difference(line.position))}'
@@ -215,7 +216,7 @@ class _SeekBar extends StatelessWidget {
       final at = fraction(line.position) * width;
       final thumb = focused ? 32.0 : 24.0;
       return Semantics(
-        label: 'Seek bar',
+        label: tr.seekBar,
         slider: true,
         child: GestureDetector(
           key: const ValueKey('transport-seek'),
@@ -358,7 +359,7 @@ class PausedChip extends StatelessWidget {
           children: [
             Icon(Icons.pause, size: 36, color: g.accent),
             const SizedBox(width: 10),
-            Text('PAUSED', style: g.display(32, weight: FontWeight.w800)),
+            Text(tr.paused, style: g.display(32, weight: FontWeight.w800)),
           ],
         ),
       ),

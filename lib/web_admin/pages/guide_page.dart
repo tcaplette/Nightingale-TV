@@ -5,6 +5,7 @@ import '../../ui/format.dart';
 import '../app.dart';
 import '../widgets/channel_icon.dart';
 import '../widgets/common.dart';
+import '../../l10n/tr.dart';
 
 /// What airs on each channel, read-only, at most 24 hours ahead: channel
 /// rows over a time axis on wide screens, one channel's list on phones.
@@ -51,16 +52,16 @@ class _GuidePageState extends State<GuidePage> {
       child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
         Row(children: [
           Expanded(
-            child: Semantics(header: true, child: Text('Guide', style: Theme.of(context).textTheme.headlineSmall)),
+            child: Semantics(header: true, child: Text(tr.guide2, style: Theme.of(context).textTheme.headlineSmall)),
           ),
           IconButton(
-            tooltip: 'Earlier',
+            tooltip: tr.earlier,
             icon: const Icon(Icons.chevron_left),
             onPressed: _offset == 0 ? null : () => setState(() => _offset -= span),
           ),
           Text('${formatDate(from)}  ${formatRange(from, to)}'),
           IconButton(
-            tooltip: 'Later',
+            tooltip: tr.later,
             icon: const Icon(Icons.chevron_right),
             onPressed: _offset + span >= 24 ? null : () => setState(() => _offset += span),
           ),
@@ -150,14 +151,14 @@ class _GuidePageState extends State<GuidePage> {
   }
 
   Widget _list(BuildContext context, List<Map<String, Object?>> channels) {
-    if (channels.isEmpty) return const PageBody(title: 'Guide', children: [Text('No channels yet.')]);
+    if (channels.isEmpty) return PageBody(title: tr.guide2, children: [Text(tr.noChannelsYet2)]);
     final selected = channels.firstWhere((c) => c['id'] == _channel, orElse: () => channels.first);
     final airings = (selected['airings'] as List).cast<Map<String, Object?>>();
-    return PageBody(title: 'Guide', children: [
+    return PageBody(title: tr.guide2, children: [
       DropdownButtonFormField<String>(
         initialValue: selected['id'] as String,
         isExpanded: true,
-        decoration: const InputDecoration(labelText: 'Channel'),
+        decoration: InputDecoration(labelText: tr.channel3),
         items: [
           for (final c in channels)
             DropdownMenuItem(value: c['id'] as String, child: Text('${c['number']}  ${c['name']}', overflow: TextOverflow.ellipsis)),
@@ -186,9 +187,9 @@ class _GuidePageState extends State<GuidePage> {
       formatRange(start, end),
       if ((a['detail'] as String?)?.isNotEmpty == true) a['detail'] as String,
       if (a['block'] != null) a['block'] as String,
-      if (a['premiere'] == true) 'New episode',
-      if (a['songs'] != null) '${a['songs']} songs',
-      if (breaks != null) mids > 0 ? '$mids break${mids == 1 ? '' : 's'} inside' : 'Breaks between programs',
+      if (a['premiere'] == true) tr.newEpisode,
+      if (a['songs'] != null) tr.songs2('${a['songs']}'),
+      if (breaks != null) mids > 0 ? tr.breaksInside2(mids) : tr.breaksBetweenPrograms,
     ].join(' · ');
   }
 }

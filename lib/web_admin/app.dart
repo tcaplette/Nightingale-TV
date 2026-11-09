@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 
 import '../ui/widgets/nightingale_mark.dart';
 import 'api_client.dart';
+import 'language.dart';
 import 'pages/backups_page.dart';
 import 'pages/blocks_page.dart';
 import 'pages/channels_page.dart';
@@ -17,6 +19,7 @@ import 'pages/sign_in_page.dart';
 import 'pages/users_page.dart';
 import 'session.dart';
 import 'widgets/common.dart';
+import '../l10n/tr.dart';
 
 /// The web admin: the session, the router and the shell around the pages.
 class WebAdminApp extends StatefulWidget {
@@ -36,9 +39,27 @@ class _WebAdminAppState extends State<WebAdminApp> {
   @override
   void initState() {
     super.initState();
+    webLanguage.addListener(_languageChanged);
     widget.api.onSignedOut = () {
       if (session.signedIn) session.clear();
     };
+  }
+
+  @override
+  void dispose() {
+    webLanguage.removeListener(_languageChanged);
+    super.dispose();
+  }
+
+  /// Same as the TV: everything showing is rebuilt once, nothing recreated.
+  void _languageChanged() {
+    setState(() {});
+    void rebuild(Element element) {
+      element.markNeedsBuild();
+      element.visitChildren(rebuild);
+    }
+
+    context.visitChildElements(rebuild);
   }
 
   @override
@@ -49,6 +70,13 @@ class _WebAdminAppState extends State<WebAdminApp> {
         child: MaterialApp.router(
           title: 'Nightingale TV',
           debugShowCheckedModeBanner: false,
+          locale: Locale(webLanguage.language),
+          supportedLocales: [for (final l in supportedLanguages) Locale(l)],
+          localizationsDelegates: const [
+            GlobalMaterialLocalizations.delegate,
+            GlobalWidgetsLocalizations.delegate,
+            GlobalCupertinoLocalizations.delegate,
+          ],
           theme: webAdminTheme(Brightness.light),
           darkTheme: webAdminTheme(Brightness.dark),
           themeMode: ThemeMode.system,
@@ -196,7 +224,7 @@ class WebRouter extends RouterDelegate<Uri> with ChangeNotifier, PopNavigatorRou
       case ['password']:
         return const PasswordPage();
       case ['profiles', final id, ...final rest]:
-        if (session.profileById(id) == null) return const NotFound(text: "That profile isn't yours, or it's gone.");
+        if (session.profileById(id) == null) return NotFound(text: tr.thatProfileIsntYours);
         if (session.profileId != id) WidgetsBinding.instance.addPostFrameCallback((_) => session.select(id));
         final key = ValueKey('${segments.join('/')}?${location.query}');
         return ProfileGate(
@@ -235,22 +263,22 @@ class _Destination {
   final bool admin;
 }
 
-const _destinations = [
-  _Destination('Channels', null, 'channels', profile: true),
-  _Destination('Guide', Icons.view_timeline_outlined, 'guide', profile: true),
-  _Destination('Programming blocks', Icons.event_note_outlined, 'blocks', profile: true),
-  _Destination('Channel groups', Icons.folder_outlined, 'groups', profile: true),
-  _Destination('Commercials', Icons.campaign_outlined, 'commercials', profile: true),
-  _Destination('Live TV sources', Icons.settings_input_antenna, 'live', profile: true),
-  _Destination('Library', Icons.video_library_outlined, 'library', profile: true),
-  _Destination('Servers', Icons.dns_outlined, 'servers', profile: true),
-  _Destination('Profiles', Icons.people_outline, '/profiles'),
-  _Destination('Server and sign-in', Icons.dns_outlined, '/setup'),
-  _Destination('Live TV export', Icons.cast_outlined, '/export', admin: true),
-  _Destination('Backups', Icons.backup_outlined, '/backups', admin: true),
-  _Destination('Users', Icons.manage_accounts_outlined, '/users', admin: true),
-  _Destination('Change password', Icons.password, '/password'),
-];
+List<_Destination> get _destinations => [
+  _Destination(tr.channels5, null, 'channels', profile: true),
+  _Destination(tr.guide2, Icons.view_timeline_outlined, 'guide', profile: true),
+  _Destination(tr.programmingBlocks, Icons.event_note_outlined, 'blocks', profile: true),
+  _Destination(tr.channelGroups, Icons.folder_outlined, 'groups', profile: true),
+  _Destination(tr.commercials, Icons.campaign_outlined, 'commercials', profile: true),
+  _Destination(tr.liveTvSources, Icons.settings_input_antenna, 'live', profile: true),
+  _Destination(tr.libraryLabel2, Icons.video_library_outlined, 'library', profile: true),
+  _Destination(tr.servers, Icons.dns_outlined, 'servers', profile: true),
+  _Destination(tr.profiles, Icons.people_outline, '/profiles'),
+  _Destination(tr.serverAndSign, Icons.dns_outlined, '/setup'),
+  _Destination(tr.liveTvExport2, Icons.cast_outlined, '/export', admin: true),
+  _Destination(tr.backups2, Icons.backup_outlined, '/backups', admin: true),
+  _Destination(tr.users, Icons.manage_accounts_outlined, '/users', admin: true),
+  _Destination(tr.changePassword, Icons.password, '/password'),
+    ];
 
 /// The frame around every signed-in page: side navigation on wide
 /// screens, a menu on phones, the profile switcher, content at most 960 px
@@ -311,9 +339,10 @@ class Shell extends StatelessWidget {
                 ),
               ],
               const Divider(indent: 16, endIndent: 16),
+              const WebLanguageButton(asTile: true),
               ListTile(
                 leading: const Icon(Icons.logout),
-                title: Text('Sign out ${session.userName}'),
+                title: Text(tr.signOut3(session.userName)),
                 shape: const StadiumBorder(),
                 onTap: () async {
                   await session.signOut();

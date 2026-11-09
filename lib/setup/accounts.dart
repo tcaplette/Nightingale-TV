@@ -7,6 +7,7 @@ import 'package:crypto/crypto.dart';
 import 'package:flutter/foundation.dart';
 
 import 'server_db.dart';
+import '../l10n/tr.dart';
 
 enum Role { admin, user }
 
@@ -50,8 +51,11 @@ class Account {
 
 /// Why an account call was refused, with the status the API answers.
 class AccountException implements Exception {
-  AccountException(this.message, {this.status = HttpStatus.badRequest});
+  AccountException(this.message, {this.status = HttpStatus.badRequest, this.english});
   final String message;
+
+  /// [message] for the server's log, when it may be in a browser's language.
+  final String? english;
   final int status;
   @override
   String toString() => message;
@@ -87,10 +91,10 @@ class Accounts {
   static const maxFailures = 5;
   static const lockWindow = Duration(minutes: 1);
 
-  static const lastAdminText = 'Make someone else an admin first.';
-  static const setupLinkText = 'Open the setup link from the server\'s log.';
-  static const wrongText = 'Wrong user name or password.';
-  static const lockedText = 'Too many wrong passwords. Try again in a minute.';
+  static String get lastAdminText => tr.makeSomeoneElse;
+  static String get setupLinkText => tr.openTheSetup;
+  static String get wrongText => tr.wrongUserName;
+  static String get lockedText => tr.tooManyWrong;
 
   final ServerDb db;
   final DateTime Function() _clock;
@@ -186,13 +190,13 @@ class Accounts {
 
   /// Why [password] can't be used, if it can't.
   static String? problemWithPassword(String password) =>
-      password.length < minPasswordLength ? 'Use at least $minPasswordLength characters.' : null;
+      password.length < minPasswordLength ? tr.useAtLeast(minPasswordLength) : null;
 
   /// Why [name] can't be a user name, if it can't.
   static String? problemWithName(String name) {
     final n = name.trim();
-    if (n.isEmpty) return 'Enter a user name.';
-    if (n.length > maxNameLength) return 'Use at most $maxNameLength characters for the user name.';
+    if (n.isEmpty) return tr.enterAUser;
+    if (n.length > maxNameLength) return tr.useAtMost(maxNameLength);
     return null;
   }
 
@@ -220,7 +224,7 @@ class Accounts {
   Future<String> resetAdminPassword(String token, String userId, String password) async {
     _checkToken(token);
     final account = byId(userId);
-    if (account == null || !account.isAdmin) throw AccountException('Choose an admin account.');
+    if (account == null || !account.isAdmin) throw AccountException(tr.chooseAnAdmin);
     await setPassword(userId, password);
     if (account.disabled) db.db.execute('UPDATE users SET disabled = 0 WHERE id = ?', [userId]);
     setupToken = null;
@@ -257,7 +261,7 @@ class Accounts {
   /// Signs [name] in from address [from]. Returns a new session id, or
   /// throws [AccountException].
   Future<String> signIn(String name, String password, String from) async {
-    if (lockedOut(from, name)) throw AccountException(lockedText, status: HttpStatus.tooManyRequests);
+    if (lockedOut(from, name)) throw AccountException(lockedText, english: runInLanguage('en', () => lockedText), status: HttpStatus.tooManyRequests);
     final rows = db.db.select('SELECT * FROM users WHERE name = ? COLLATE NOCASE', [name.trim()]);
     final row = rows.firstOrNull;
     final hash = row?['pw_hash'] as String?;
@@ -267,9 +271,9 @@ class Accounts {
     final tried = base64.encode(await _hash(password, base64.decode(salt), rounds));
     if (row == null || hash == null || !_same(tried, hash)) {
       recordFailure(from, name);
-      throw AccountException(wrongText, status: HttpStatus.forbidden);
+      throw AccountException(wrongText, english: runInLanguage('en', () => wrongText), status: HttpStatus.forbidden);
     }
-    if (row['disabled'] == 1) throw AccountException('This account is turned off.', status: HttpStatus.forbidden);
+    if (row['disabled'] == 1) throw AccountException(tr.thisAccountIs, english: runInLanguage('en', () => tr.thisAccountIs), status: HttpStatus.forbidden);
     _failures.remove('a:$from');
     _failures.remove('n:${name.trim().toLowerCase()}');
     return _newSession(row['id'] as String);
@@ -355,7 +359,7 @@ class Accounts {
     if (password != null) {
       if (problemWithPassword(password) case final problem?) throw AccountException(problem);
     }
-    if (byName(name) != null) throw AccountException('There is already a user named ${name.trim()}.', status: HttpStatus.conflict);
+    if (byName(name) != null) throw AccountException(tr.thereIsAlready(name.trim()), status: HttpStatus.conflict);
     final id = _random(8);
     final hashed = password == null ? null : await _newHash(password);
     final now = _now();
@@ -372,14 +376,14 @@ class Accounts {
   /// Changes [userId]'s name, role, disabled state or profiles. Turning
   /// an account off ends its sessions. The last enabled admin stays one.
   Account updateUser(String userId, {String? name, Role? role, bool? disabled, Set<String>? profiles}) {
-    final account = byId(userId) ?? (throw AccountException('No such user.', status: HttpStatus.notFound));
+    final account = byId(userId) ?? (throw AccountException(tr.noSuchUser, status: HttpStatus.notFound));
     final losesAdmin = account.isAdmin && !account.disabled && ((role != null && role != Role.admin) || disabled == true);
     if (losesAdmin && _enabledAdmins().length <= 1) throw AccountException(lastAdminText, status: HttpStatus.conflict);
     if (name != null && name.trim() != account.name) {
       if (problemWithName(name) case final problem?) throw AccountException(problem);
       final other = byName(name);
       if (other != null && other.id != userId) {
-        throw AccountException('There is already a user named ${name.trim()}.', status: HttpStatus.conflict);
+        throw AccountException(tr.thereIsAlready(name.trim()), status: HttpStatus.conflict);
       }
     }
     db.transaction(() {
@@ -404,7 +408,7 @@ class Accounts {
   /// Sets [userId]'s password, ending its sessions but [keepSession].
   Future<void> setPassword(String userId, String password, {String? keepSession}) async {
     if (problemWithPassword(password) case final problem?) throw AccountException(problem);
-    if (byId(userId) == null) throw AccountException('No such user.', status: HttpStatus.notFound);
+    if (byId(userId) == null) throw AccountException(tr.noSuchUser, status: HttpStatus.notFound);
     final h = await _newHash(password);
     db.db.execute('UPDATE users SET pw_hash = ?, pw_salt = ?, pw_iter = ?, password_changed = ? WHERE id = ?',
         [h.hash, h.salt, h.rounds, _now(), userId]);
@@ -414,7 +418,7 @@ class Accounts {
   /// The signed-in user (session [sessionId]) changes their own password,
   /// giving [current]; their other sessions end.
   Future<void> changeOwnPassword(String sessionId, String current, String password, String from) async {
-    final account = accountFor(sessionId) ?? (throw AccountException('Sign in first.', status: HttpStatus.unauthorized));
+    final account = accountFor(sessionId) ?? (throw AccountException(tr.signInFirst, status: HttpStatus.unauthorized));
     if (lockedOut(from, account.name)) throw AccountException(lockedText, status: HttpStatus.tooManyRequests);
     final row = db.db.select('SELECT pw_hash, pw_salt, pw_iter FROM users WHERE id = ?', [account.id]).first;
     final hash = row['pw_hash'] as String?;
@@ -423,14 +427,14 @@ class Accounts {
         : base64.encode(await _hash(current, base64.decode(row['pw_salt'] as String), row['pw_iter'] as int));
     if (hash == null || !_same(tried, hash)) {
       recordFailure(from, account.name);
-      throw AccountException('Your current password is wrong.', status: HttpStatus.forbidden);
+      throw AccountException(tr.yourCurrentPassword, status: HttpStatus.forbidden);
     }
     await setPassword(account.id, password, keepSession: sessionId);
   }
 
   /// Removes [userId] and ends its sessions. Never the last enabled admin.
   void removeUser(String userId) {
-    final account = byId(userId) ?? (throw AccountException('No such user.', status: HttpStatus.notFound));
+    final account = byId(userId) ?? (throw AccountException(tr.noSuchUser, status: HttpStatus.notFound));
     if (account.isAdmin && !account.disabled && _enabledAdmins().length <= 1) {
       throw AccountException(lastAdminText, status: HttpStatus.conflict);
     }

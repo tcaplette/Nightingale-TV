@@ -6,6 +6,7 @@ import '../api_client.dart';
 import '../app.dart';
 import '../widgets/common.dart';
 import 'server_page.dart' show signInDialog;
+import '../../l10n/tr.dart';
 
 /// A profile's servers (multi-server): the TV's Servers screen in the
 /// browser. Each server's state and item counts, Add a server (the same
@@ -59,24 +60,23 @@ class _ServersPageState extends State<ServersPage> {
     final d = _data;
     final name = context.session.profileById(widget.profileId)?.name ?? '';
     if (d == null) {
-      return PageBody(title: 'Servers', children: [
+      return PageBody(title: tr.servers, children: [
         if (_error == null) const Center(child: CircularProgressIndicator()) else ErrorText(_error),
       ]);
     }
     final servers = (d['servers'] as List).cast<Map<String, Object?>>();
     final order = [for (final s in servers) s['key'] as String];
-    return PageBody(title: '$name: servers', children: [
+    return PageBody(title: tr.servers2(name), children: [
       Section(children: [
-        const Text('Programs from every server join one lineup. A title on several servers plays from the first one '
-            'in this list that answers (Play from); if it stops answering, the next one takes over.'),
+        Text(tr.programsFromEvery),
         const SizedBox(height: 12),
         Align(
           alignment: Alignment.centerLeft,
           child: FilledButton.icon(
             icon: const Icon(Icons.add),
-            label: const Text('Add a server'),
+            label: Text(tr.addAServer),
             onPressed: () async {
-              await signInDialog(context, widget.profileId, name, path: _base, title: 'Add a server to $name');
+              await signInDialog(context, widget.profileId, name, path: _base, title: tr.addAServerTo(name));
               await _load();
             },
           ),
@@ -89,7 +89,7 @@ class _ServersPageState extends State<ServersPage> {
           last: i == servers.length - 1,
           onSignIn: () async {
             await signInDialog(context, widget.profileId, name,
-                path: '$_base/${s['key']}/sign-in', title: 'Sign in to ${s['name']} again');
+                path: '$_base/${s['key']}/sign-in', title: tr.signInToAgain('${s['name']}'));
             await _load();
           },
           onMove: (delta) {
@@ -101,10 +101,9 @@ class _ServersPageState extends State<ServersPage> {
           onLimit: (kbps) => _change(() => context.api.patch('$_base/${s['key']}', {'qualityLimitKbps': kbps})),
           onRemove: () async {
             final ok = await confirm(context,
-                title: 'Remove ${s['name']}?',
-                message: 'Its programs leave the channels, which keep their numbers. Sources and commercial folders on '
-                    'it show as not found until you change them.',
-                action: 'Remove');
+                title: tr.remove3('${s['name']}'),
+                message: tr.itsProgramsLeaveThe,
+                action: tr.remove);
             if (!ok || !context.mounted) return;
             await _change(() => context.api.delete('$_base/${s['key']}'));
           },
@@ -132,7 +131,7 @@ class _ServerCard extends StatelessWidget {
 
   static const limits = <int?>[null, 20000, 12000, 8000, 4000, 2000];
 
-  static String _label(int? kbps) => kbps == null ? 'Same as the profile' : '${kbps ~/ 1000} Mbps';
+  static String _label(int? kbps) => kbps == null ? tr.sameAsThe : tr.mbps(kbps ~/ 1000);
 
   @override
   Widget build(BuildContext context) {
@@ -146,22 +145,25 @@ class _ServerCard extends StatelessWidget {
           style: TextStyle(color: state == 'ok' ? null : scheme.error, fontWeight: FontWeight.w600)),
       Text([
         if (server['url'] != null) server['url'],
-        if (server['user'] != null) 'Signed in as ${server['user']}',
+        if (server['user'] != null) tr.signedInAs('${server['user']}'),
       ].join(' · ')),
-      Text('${server['episodes']} episodes · ${server['movies']} movies'
-          '${server['songs'] == 0 ? '' : ' · ${server['songs']} songs'}'),
-      if (main) const Text('Signing out of this profile changes its main server.'),
+      Text([
+            tr.countEpisodes((server['episodes'] as num).toInt()),
+            tr.countMovies((server['movies'] as num).toInt()),
+            if (server['songs'] != 0) tr.countSongs((server['songs'] as num).toInt()),
+          ].join(' · ')),
+      if (main) Text(tr.signingOutOf),
       const SizedBox(height: 12),
       Wrap(spacing: 8, runSpacing: 8, crossAxisAlignment: WrapCrossAlignment.center, children: [
-        if (state == 'needsSignIn') FilledButton(onPressed: onSignIn, child: const Text('Sign in again')),
+        if (state == 'needsSignIn') FilledButton(onPressed: onSignIn, child: Text(tr.signInAgain)),
         if (!(first && last)) ...[
           OutlinedButton.icon(
-              icon: const Icon(Icons.arrow_upward), label: const Text('Move up'), onPressed: first ? null : () => onMove(-1)),
+              icon: const Icon(Icons.arrow_upward), label: Text(tr.moveUp), onPressed: first ? null : () => onMove(-1)),
           OutlinedButton.icon(
-              icon: const Icon(Icons.arrow_downward), label: const Text('Move down'), onPressed: last ? null : () => onMove(1)),
+              icon: const Icon(Icons.arrow_downward), label: Text(tr.moveDown), onPressed: last ? null : () => onMove(1)),
         ],
         DropdownMenu<int?>(
-          label: const Text('Quality limit'),
+          label: Text(tr.qualityLimit2),
           initialSelection: limit,
           onSelected: (v) => onLimit(v),
           dropdownMenuEntries: [for (final l in limits) DropdownMenuEntry(value: l, label: _label(l))],
@@ -169,7 +171,7 @@ class _ServerCard extends StatelessWidget {
         if (!main)
           TextButton.icon(
               icon: Icon(Icons.delete_outline, color: scheme.error),
-              label: Text('Remove', style: TextStyle(color: scheme.error)),
+              label: Text(tr.remove, style: TextStyle(color: scheme.error)),
               onPressed: onRemove),
       ]),
     ]);

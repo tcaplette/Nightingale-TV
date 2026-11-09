@@ -7,6 +7,7 @@ import '../theme/tv_theme.dart';
 import 'widgets/screen_layout.dart';
 import 'widgets/tv_focus.dart';
 import '../server/media_server.dart';
+import '../l10n/tr.dart';
 
 /// Pick the folders a pool draws from, or what a channel plays: libraries
 /// on the left, the folders and videos of the opened library (or folder) on
@@ -93,7 +94,7 @@ class _FolderPickerScreenState extends State<FolderPickerScreen> {
 
   Future<List<FolderNode>> _treeOf(ServerLibrary lib) => _trees.putIfAbsent(lib.id, () async {
         final client = AppScope.read(context).clientOf(lib.id);
-        if (client == null) throw ServerException('Not signed in.');
+        if (client == null) throw ServerException(tr.notSignedIn);
         final tree = await client.folderTree(lib.id);
         if (!widget.forChannel) return tree;
         void note(List<FolderNode> nodes) {
@@ -175,11 +176,11 @@ class _FolderPickerScreenState extends State<FolderPickerScreen> {
     final g = context.guide;
     return TvPage(
       title: widget.forChannel
-          ? 'Choose what plays on this channel'
+          ? tr.chooseWhatPlays
           : widget.poolName == null
-              ? 'Choose folders'
-              : 'Folders for ${widget.poolName}',
-      hints: '▲▼ Move    OK Tick    ▶ Open    ◀ Back up    ESC Cancel',
+              ? tr.chooseFolders
+              : tr.foldersFor('${widget.poolName}'),
+      hints: tr.moveOkTick,
       onBack: _back,
       child: FutureBuilder<List<ServerLibrary>>(
         future: _libraries,
@@ -187,11 +188,11 @@ class _FolderPickerScreenState extends State<FolderPickerScreen> {
           if (snapshot.hasError) return _error(g, snapshot.error!);
           final libraries = snapshot.data;
           if (libraries == null) {
-            return Center(child: Text('Loading libraries…', style: g.body(30, color: g.textDim)));
+            return Center(child: Text(tr.loadingLibraries, style: g.body(30, color: g.textDim)));
           }
           final layout = ScreenLayout.of(context);
           final librariesColumn = [
-                      Text('LIBRARIES', style: g.display(26, weight: FontWeight.w800, color: g.accent)),
+                      Text(tr.libraries, style: g.display(26, weight: FontWeight.w800, color: g.accent)),
                       const SizedBox(height: 12),
                       for (final (i, lib) in libraries.indexed)
                         Padding(
@@ -200,7 +201,7 @@ class _FolderPickerScreenState extends State<FolderPickerScreen> {
                             focusNode: _nodeFor('lib:${lib.id}'),
                             autofocus: i == 0,
                             label: lib.name,
-                            detail: 'Whole library',
+                            detail: tr.wholeLibrary,
                             ticked: _picked.containsKey(lib.id),
                             opened: _library?.id == lib.id,
                             canOpen: true,
@@ -214,17 +215,17 @@ class _FolderPickerScreenState extends State<FolderPickerScreen> {
                       const SizedBox(height: 24),
                       Text(
                         _picked.isEmpty
-                            ? 'Nothing ticked yet. Tick a library to use all of it, or ▶ to pick what\'s in it.'
-                            : '${_picked.length} ticked',
+                            ? tr.nothingTickedYet
+                            : tr.ticked(_picked.length),
                         style: g.body(24, color: g.textDim),
                       ),
                       const SizedBox(height: 16),
                       // Done is what ▼ from the libraries lands on.
                       Row(
                         children: [
-                          Expanded(child: TvButton(label: 'Done', icon: Icons.check, expand: true, onPressed: _done)),
+                          Expanded(child: TvButton(label: tr.done, icon: Icons.check, expand: true, onPressed: _done)),
                           const SizedBox(width: 16),
-                          TvButton(label: 'Cancel', onPressed: () => Navigator.of(context).pop()),
+                          TvButton(label: tr.cancel, onPressed: () => Navigator.of(context).pop()),
                         ],
                       ),
           ];
@@ -267,7 +268,7 @@ class _FolderPickerScreenState extends State<FolderPickerScreen> {
     if (lib == null) {
       return Padding(
         padding: inline ? EdgeInsets.zero : const EdgeInsets.fromLTRB(24, 56, 100, 32),
-        child: Text('Press ▶ on a library to see what\'s in it.', style: g.body(26, color: g.textDim)),
+        child: Text(tr.pressOnA, style: g.body(26, color: g.textDim)),
       );
     }
     return FutureBuilder<List<FolderNode>>(
@@ -278,7 +279,7 @@ class _FolderPickerScreenState extends State<FolderPickerScreen> {
         if (top == null) {
           return Padding(
             padding: inline ? EdgeInsets.zero : const EdgeInsets.fromLTRB(24, 56, 100, 32),
-            child: Text('Loading folders…', style: g.body(26, color: g.textDim)),
+            child: Text(tr.loadingFolders, style: g.body(26, color: g.textDim)),
           );
         }
         final folders = _path.isEmpty ? top : _path.last.children;
@@ -290,7 +291,7 @@ class _FolderPickerScreenState extends State<FolderPickerScreen> {
                 style: g.display(26, weight: FontWeight.w800, color: g.accent)),
             const SizedBox(height: 12),
             if (folders.isEmpty)
-              Text('Nothing inside.', style: g.body(26, color: g.textDim)),
+              Text(tr.nothingInside2, style: g.body(26, color: g.textDim)),
             for (final node in folders)
               Padding(
                 // A row keeps its focus highlight in its state: opening a
@@ -300,7 +301,7 @@ class _FolderPickerScreenState extends State<FolderPickerScreen> {
                 child: _FolderRow(
                   focusNode: _nodeFor('f:${node.id}'),
                   label: node.name,
-                  detail: covered && !_picked.containsKey(node.id) ? 'Included' : _detail(node),
+                  detail: covered && !_picked.containsKey(node.id) ? tr.included : _detail(node),
                   ticked: _picked.containsKey(node.id) || covered,
                   dim: covered && !_picked.containsKey(node.id),
                   canOpen: node.children.isNotEmpty,
@@ -310,7 +311,7 @@ class _FolderPickerScreenState extends State<FolderPickerScreen> {
                             itemId: node.id,
                             libraryId: lib.id,
                             label: widget.forChannel && node.type == 'BoxSet'
-                                ? '${node.name} (collection)'
+                                ? tr.collection(node.name)
                                 : _label(lib, [..._path, node]),
                           )),
                   onOpen: () => _openFolder(node),
@@ -330,17 +331,17 @@ class _FolderPickerScreenState extends State<FolderPickerScreen> {
 
   /// What a row says of [node]: a video's kind, or what a folder holds.
   String _detail(FolderNode node) {
-    if (node.isVideo) return node.type == FolderNode.movieType ? 'Movie' : 'Video';
-    if (node.children.isNotEmpty) return '${node.children.length} inside';
-    return _hiddenOnly.contains(node.id) ? 'No movies' : 'Nothing inside';
+    if (node.isVideo) return node.type == FolderNode.movieType ? tr.movie : tr.video;
+    if (node.children.isNotEmpty) return tr.inside(node.children.length);
+    return _hiddenOnly.contains(node.id) ? tr.noMovies : tr.nothingInside;
   }
 
   Widget _error(GuideTheme g, Object error) {
     _focusWhenBuilt(_nodeFor('try-again'), onlyIfIdle: true);
     final layout = ScreenLayout.of(context);
     final buttons = [
-      TvButton(label: 'Try again', icon: Icons.refresh, focusNode: _nodeFor('try-again'), onPressed: _retry),
-      TvButton(label: 'Cancel', onPressed: () => Navigator.of(context).pop()),
+      TvButton(label: tr.tryAgain, icon: Icons.refresh, focusNode: _nodeFor('try-again'), onPressed: _retry),
+      TvButton(label: tr.cancel, onPressed: () => Navigator.of(context).pop()),
     ];
     return Center(
         child: SingleChildScrollView(
@@ -350,12 +351,12 @@ class _FolderPickerScreenState extends State<FolderPickerScreen> {
           children: [
             Icon(Icons.cloud_off, size: 110, color: g.accent),
             const SizedBox(height: 20),
-            Text('Couldn\'t reach the server',
+            Text(tr.couldntReachTheServer,
                 textAlign: TextAlign.center, style: g.display(layout.isPortrait ? 40 : 52, weight: FontWeight.w800)),
             const SizedBox(height: 10),
             SizedBox(
               width: 1000,
-              child: Text(widget.forChannel ? '$error  Nothing has changed.' : '$error  The pool hasn\'t changed.',
+              child: Text(widget.forChannel ? tr.nothingHasChanged(error) : tr.thePoolHasnt(error),
                   textAlign: TextAlign.center, style: g.body(26, color: g.textDim)),
             ),
             const SizedBox(height: 28),

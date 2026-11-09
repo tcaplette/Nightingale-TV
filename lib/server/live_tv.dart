@@ -1,5 +1,6 @@
 import '../live/live_data.dart';
 import 'media_server.dart';
+import '../l10n/tr.dart';
 
 /// Whether a server's Live TV can be a source, and why not.
 enum LiveTvAvailability {
@@ -13,9 +14,9 @@ enum LiveTvAvailability {
 
   /// What Add source says, for [serverName].
   String reason(String serverName) => switch (this) {
-        available => '$serverName Live TV',
-        noChannels => '$serverName has no Live TV channels',
-        noAccess => "Your $serverName account can't watch Live TV",
+        available => tr.liveTv(serverName),
+        noChannels => tr.hasNoLive(serverName),
+        noAccess => tr.yourAccountCantWatch(serverName),
       };
 }
 

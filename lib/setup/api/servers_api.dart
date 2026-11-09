@@ -1,3 +1,4 @@
+
 part of '../setup_server.dart';
 
 /// A profile's servers (multi-server, admin-api): the list with state and
@@ -54,7 +55,7 @@ extension _ServersApi on SetupServer {
   Future<Object?> _serverSignInStep(ApiRequest r) {
     final id = r['id'], key = r['key'];
     return _signInStepIn(r, '$id/again/$key', (app) async {
-      if (app.servers.byKey(key) == null) throw ApiError(HttpStatus.notFound, 'No such server.');
+      if (app.servers.byKey(key) == null) throw ApiError(HttpStatus.notFound, tr.noSuchServer);
       final flow = serverSignInFlow?.call(app, key) ?? SignInFlow(app, againKey: key);
       return (flow: flow, onStep: (_SignIn s) => _onServerSignIn(id, s));
     });
@@ -75,8 +76,8 @@ extension _ServersApi on SetupServer {
 
   Future<Object?> _removeServer(ApiRequest r) async {
     final app = await _app(r['id'], library: true);
-    final server = app.servers.byKey(r['key']) ?? (throw ApiError(HttpStatus.notFound, 'No such server.'));
-    if (server.isMain) throw ApiError(HttpStatus.conflict, 'Sign out of the profile to change its main server.');
+    final server = app.servers.byKey(r['key']) ?? (throw ApiError(HttpStatus.notFound, tr.noSuchServer));
+    if (server.isMain) throw ApiError(HttpStatus.conflict, tr.signOutOf);
     await app.removeServer(server.key);
     return _serversJson(app);
   }
@@ -84,9 +85,9 @@ extension _ServersApi on SetupServer {
   /// `{"order": ["s2", "main"]}`: every key, in Play from order.
   Future<Object?> _orderServers(ApiRequest r) async {
     final app = await _app(r['id'], library: true);
-    final order = (await r.body()).strings('order') ?? (throw ApiError(HttpStatus.badRequest, '"order" is missing.'));
+    final order = (await r.body()).strings('order') ?? (throw ApiError(HttpStatus.badRequest, tr.orderIsMissing));
     if (order.length != app.servers.order.length || !order.toSet().containsAll(app.servers.order)) {
-      throw ApiError(HttpStatus.badRequest, '"order" should name every server once.');
+      throw ApiError(HttpStatus.badRequest, tr.orderShouldName);
     }
     for (final (i, key) in order.indexed) {
       await app.moveServer(key, i - app.servers.order.indexOf(key));
@@ -97,11 +98,11 @@ extension _ServersApi on SetupServer {
   /// `{"qualityLimitKbps": 2000}`, or null for the profile's.
   Future<Object?> _editServer(ApiRequest r) async {
     final app = await _app(r['id'], library: true);
-    final server = app.servers.byKey(r['key']) ?? (throw ApiError(HttpStatus.notFound, 'No such server.'));
+    final server = app.servers.byKey(r['key']) ?? (throw ApiError(HttpStatus.notFound, tr.noSuchServer));
     final body = await r.body();
     if (body.containsKey('qualityLimitKbps')) {
       final kbps = body.integer('qualityLimitKbps');
-      if (kbps != null && kbps < 500) throw ApiError(HttpStatus.badRequest, 'A quality limit is at least 500 kbps.');
+      if (kbps != null && kbps < 500) throw ApiError(HttpStatus.badRequest, tr.aQualityLimit);
       await app.setServerQualityLimit(server.key, kbps);
     }
     return _serversJson(app);

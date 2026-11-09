@@ -404,7 +404,7 @@ class _ProxyCore {
       up.abort();
       await cache.drop(entry.source);
       emit((kind: 'cache', data: {'what': 'stale', 'source': entry.source}));
-      throw const HttpException('cached file changed');
+      throw HttpException('cached file changed');
     }
     await _copy(up, response, from: at, open: open);
     await _settleTee(open);
@@ -570,7 +570,7 @@ class _ProxyCore {
     var requests = 0;
 
     Future<Uint8List> get(int from, int to) async {
-      if (_tuning) throw const HttpException('a stream is opening');
+      if (_tuning) throw HttpException('a stream is opening');
       requests++;
       final up = await pool.request('GET', url, {...headers, HttpHeaders.rangeHeader: 'bytes=$from-${to - 1}'});
       final total = _totalSize(up.response);
@@ -592,7 +592,7 @@ class _ProxyCore {
             break;
           }
           out.add(chunk);
-          if (_tuning) throw const HttpException('a stream is opening');
+          if (_tuning) throw HttpException('a stream is opening');
           if (rate != null && rate > 0) {
             final due = Duration(microseconds: (out.length / rate * 1e6).round());
             if (due > pace.elapsed) await Future<void>.delayed(due - pace.elapsed);

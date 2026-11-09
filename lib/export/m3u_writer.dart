@@ -22,11 +22,11 @@ String buildM3u(
   final out = StringBuffer('#EXTM3U url-tvg="${urls.xmltv}" x-tvg-url="${urls.xmltv}"\n');
   final fallback = profileGroup(profileName);
   for (final c in channels) {
-    final name = _attr(c.name);
+    final name = _attr(c.displayName);
     final group = _attr(groupOf?.call(c) ?? fallback);
     out
       ..write('#EXTINF:-1 tvg-id="${c.number}" tvg-chno="${c.number}" tvg-name="$name" ')
-      ..write('tvg-logo="${urls.logo(c)}" group-title="$group",${_title(c.name)}\n')
+      ..write('tvg-logo="${urls.logo(c)}" group-title="$group",${_title(c.displayName)}\n')
       ..write('${urls.stream(c)}\n');
   }
   return out.toString();

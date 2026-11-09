@@ -3,6 +3,8 @@
 /// admin, so plain Dart.
 library;
 
+import '../l10n/tr.dart';
+
 /// How the picture sits on the screen.
 enum PictureShape {
   original,
@@ -14,9 +16,9 @@ enum PictureShape {
   fit43;
 
   String get label => switch (this) {
-        original => 'Original',
-        fill43 => '4:3 fill',
-        fit43 => '4:3 fit',
+        original => tr.original,
+        fill43 => tr.n43Fill,
+        fit43 => tr.n43Fit,
       };
 
   bool get isTube => this != original;
@@ -36,10 +38,10 @@ enum Surround {
   image;
 
   String get label => switch (this) {
-        black => 'Black',
-        charcoal => 'Charcoal',
-        channel => 'Channel color',
-        image => 'Image',
+        black => tr.black,
+        charcoal => tr.charcoal,
+        channel => tr.channelColor,
+        image => tr.image,
       };
 
   static Surround? parse(Object? name) => values.where((v) => v.name == name).firstOrNull;
@@ -53,10 +55,10 @@ enum CrtLevel {
   high;
 
   String get label => switch (this) {
-        off => 'Off',
-        low => 'Low',
-        medium => 'Medium',
-        high => 'High',
+        off => tr.off,
+        low => tr.low,
+        medium => tr.medium,
+        high => tr.high,
       };
 
   static CrtLevel? parse(Object? name) => values.where((v) => v.name == name).firstOrNull;
@@ -69,10 +71,10 @@ enum CrtColor {
   vivid;
 
   String get label => switch (this) {
-        natural => 'Natural',
-        warm => 'Warm',
-        faded => 'Faded',
-        vivid => 'Vivid',
+        natural => tr.natural,
+        warm => tr.warm,
+        faded => tr.faded,
+        vivid => tr.vivid,
       };
 
   static CrtColor? parse(Object? name) => values.where((v) => v.name == name).firstOrNull;
@@ -150,13 +152,13 @@ class CrtValues {
 
   /// What's wrong with [json] as a set of values, for the admin API.
   static String? problemIn(Object? json) {
-    if (json is! Map) return "That isn't a Custom style.";
+    if (json is! Map) return tr.thatIsntA;
     for (final key in const ['scanlines', 'mask', 'vignette', 'curvature', 'glow']) {
-      if (json[key] != null && CrtLevel.parse(json[key]) == null) return 'Custom $key is off, low, medium or high.';
+      if (json[key] != null && CrtLevel.parse(json[key]) == null) return tr.customIsOff(key);
     }
-    if (json['lines'] != null && !lineCounts.contains(json['lines'])) return 'Custom lines is 240 or 480.';
+    if (json['lines'] != null && !lineCounts.contains(json['lines'])) return tr.customLinesIs;
     if (json['color'] != null && CrtColor.parse(json['color']) == null) {
-      return 'Custom color is natural, warm, faded or vivid.';
+      return tr.customColorIs;
     }
     return null;
   }
@@ -188,12 +190,12 @@ enum CrtStyle {
   custom;
 
   String get label => switch (this) {
-        off => 'Off',
-        softTube => 'Soft tube',
-        livingRoom => 'Living room',
-        arcade => 'Arcade',
-        studioMonitor => 'Studio monitor',
-        custom => 'Custom',
+        off => tr.off,
+        softTube => tr.softTube,
+        livingRoom => tr.livingRoom,
+        arcade => tr.arcade,
+        studioMonitor => tr.studioMonitor,
+        custom => tr.custom,
       };
 
   /// Where Custom starts: Living room.
@@ -235,10 +237,10 @@ enum OverlayThemeName {
   stationIdent;
 
   String get label => switch (this) {
-        standard => 'Standard',
-        vcr => 'VCR',
-        cableBox => 'Cable box',
-        stationIdent => 'Station ident',
+        standard => tr.standard,
+        vcr => tr.vcr,
+        cableBox => tr.cableBox,
+        stationIdent => tr.stationIdent,
       };
 
   static OverlayThemeName? parse(Object? name) => values.where((v) => v.name == name).firstOrNull;
@@ -250,8 +252,8 @@ enum OverlayAccent {
   channel;
 
   String get label => switch (this) {
-        theme => 'Theme',
-        channel => 'Channel color',
+        theme => tr.theme,
+        channel => tr.channelColor,
       };
 
   static OverlayAccent? parse(Object? name) => values.where((v) => v.name == name).firstOrNull;
@@ -317,19 +319,19 @@ class ChannelRetro {
   /// when every value in it is a known one.
   static String? problemIn(Object? json) {
     if (json == null) return null;
-    if (json is! Map) return "Those aren't retro settings.";
+    if (json is! Map) return tr.thoseArentRetro;
     if (json['shape'] != null && PictureShape.parse(json['shape']) == null) {
-      return 'The picture shape is original, fill43 or fit43.';
+      return tr.thePictureShape;
     }
     if (json['surround'] != null && Surround.parse(json['surround']) == null) {
-      return 'The surround is black, charcoal, channel or image.';
+      return tr.theSurroundIs;
     }
-    if (json['surroundImage'] != null && json['surroundImage'] is! String) return 'The surround image is a file name.';
+    if (json['surroundImage'] != null && json['surroundImage'] is! String) return tr.theSurroundImage;
     if (json['crt'] != null && CrtStyle.parse(json['crt']) == null) {
-      return 'The CRT effect is off, softTube, livingRoom, arcade, studioMonitor or custom.';
+      return tr.theCrtEffect;
     }
     if (json['overlay'] != null && OverlayThemeName.parse(json['overlay']) == null) {
-      return 'The overlay theme is standard, vcr, cableBox or stationIdent.';
+      return tr.theOverlayTheme;
     }
     return null;
   }
@@ -422,17 +424,17 @@ class RetroSettings {
 
   /// What's wrong with [json] as main settings, for the admin API.
   static String? problemIn(Object? json) {
-    if (json is! Map) return "Those aren't retro settings.";
+    if (json is! Map) return tr.thoseArentRetro;
     if (ChannelRetro.problemIn(json) case final problem?) return problem;
     if (json['custom'] != null) {
       if (CrtValues.problemIn(json['custom']) case final problem?) return problem;
     }
     final accents = json['accents'];
     if (accents != null) {
-      if (accents is! Map) return 'The accents are a theme and theme or channel for each.';
+      if (accents is! Map) return tr.theAccentsAre;
       for (final e in accents.entries) {
         if (OverlayThemeName.parse(e.key) == null || OverlayAccent.parse(e.value) == null) {
-          return 'The accents are a theme and theme or channel for each.';
+          return tr.theAccentsAre;
         }
       }
     }

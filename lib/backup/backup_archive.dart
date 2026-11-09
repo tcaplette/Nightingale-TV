@@ -18,6 +18,7 @@ import '../profiles/household.dart';
 import '../profiles/profile.dart';
 import '../server/media_server.dart';
 import '../server/server_set.dart';
+import '../l10n/tr.dart';
 
 /// Why a backup couldn't be made, read or restored, as one plain sentence.
 class BackupException implements Exception {
@@ -78,12 +79,10 @@ class BackupSummary {
 
   /// "3 profiles · 42 channels · 5 blocks".
   String get line => [
-        _count(profiles.length, 'profile'),
-        _count(channels, 'channel'),
-        _count(blocks, 'block'),
+        tr.countProfilesWord(profiles.length),
+        tr.countChannelsWord(channels),
+        tr.countBlocksWord(blocks),
       ].join(' · ');
-
-  static String _count(int n, String noun) => '$n $noun${n == 1 ? '' : 's'}';
 
   Map<String, Object?> toJson() => {'profiles': profiles, 'channels': channels, 'blocks': blocks, 'logos': logos};
 }
@@ -205,9 +204,9 @@ class BackupArchive {
   /// The most a backup may hold once uncompressed (against gzip bombs).
   static const maxBytes = 64 * 1024 * 1024;
 
-  static const damaged = 'This file isn\'t a Nightingale TV backup, or it\'s damaged.';
-  static const newer = 'This backup was made by a newer version of Nightingale TV.';
-  static const tooBig = 'This file is too big to be a Nightingale TV backup.';
+  static String get damaged => tr.thisFileIsnt;
+  static String get newer => tr.thisBackupWas;
+  static String get tooBig => tr.thisFileIs;
 
   /// Logo names the logo store makes, so no other name is ever written.
   /// Channel offline images share the folder as `offline-<hash>.png`.
@@ -384,14 +383,14 @@ class BackupArchive {
     try {
       household = [for (final p in archive.householdProfiles) Profile.fromJson(p as Map<String, Object?>)];
     } on Object {
-      throw BackupException('This backup is damaged: its profiles can\'t be read.');
+      throw BackupException(tr.thisBackupIsDamagedIts);
     }
     final ids = {for (final p in household) p.id};
     if (household.isEmpty || ids.length != household.length || !ids.every(profileId.hasMatch)) {
-      throw BackupException('This backup is damaged: its profiles can\'t be read.');
+      throw BackupException(tr.thisBackupIsDamagedIts);
     }
     if (Household.problemIn(household) case final problem?) {
-      throw BackupException('This backup can\'t be restored. $problem');
+      throw BackupException(tr.thisBackupCant(problem));
     }
     for (final p in household) {
       final part = archive.profiles[p.id];
@@ -409,29 +408,29 @@ class BackupArchive {
         for (final b in part.blocks ?? const []) {
           ProgramBlock.fromJson(b as Map<String, Object?>);
         }
-        what = 'Live TV sources';
+        what = tr.liveTvSources;
         if (part.liveSources case final live?) {
           for (final s in live['sources'] as List? ?? const []) {
             LiveSource.fromJson(s as Map<String, Object?>);
           }
         }
         for (final name in part.liveFiles.keys) {
-          if (!ProfileBackup.liveFileName.hasMatch(name)) throw const FormatException('live file');
+          if (!ProfileBackup.liveFileName.hasMatch(name)) throw FormatException('live file');
         }
       } on Object {
-        throw BackupException('This backup is damaged: ${p.name}\'s $what can\'t be read.');
+        throw BackupException(tr.thisBackupIsDamagedS(p.name, what));
       }
     }
     if (archive.export case final Map<String, Object?> export) {
       try {
         ExportSettings.fromJson(export);
       } on Object {
-        throw BackupException('This backup is damaged: its Live TV export settings can\'t be read.');
+        throw BackupException(tr.thisBackupIsDamaged);
       }
     }
     for (final e in archive.logos.entries) {
       if (!logoName.hasMatch(e.key) || !_logoDecodes(e.key, e.value)) {
-        throw BackupException('This backup is damaged: one of its channel logos can\'t be read.');
+        throw BackupException(tr.thisBackupIs);
       }
     }
     return archive;

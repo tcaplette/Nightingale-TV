@@ -22,12 +22,31 @@ void main() {
       expect(normalizeMusicGenre('Synthwave'), 'Synthwave');
     });
 
-    test('decades are named 50s to 90s, then 2000s', () {
+    test('decades run from the 1900s: 1900s, 1910s, 20s to 90s, then 2000s', () {
       expect(decadeOf(1987), 1980);
-      expect(decadeOf(1949), isNull);
-      expect(decadeOf(2031), isNull);
-      expect([for (final d in [1950, 1980, 1990, 2000, 2010, 2020]) decadeName(d)],
-          ['50s', '80s', '90s', '2000s', '2010s', '2020s']);
+      expect(decadeOf(1927), 1920);
+      expect(decadeName(decadeOf(1927)!), '20s');
+      expect(decadeOf(1949), 1940);
+      expect((decadeOf(1989), decadeOf(1990)), (1980, 1990));
+      expect(decadeOf(1899), isNull);
+      expect(decadeOf(2100), isNull);
+      expect(decadeOf(null), isNull);
+      expect([for (final d in [1900, 1910, 1920, 1950, 1980, 1990, 2000, 2010, 2020, 2090]) decadeName(d)],
+          ['1900s', '1910s', '20s', '50s', '80s', '90s', '2000s', '2010s', '2020s', '2090s']);
+    });
+
+    test("an episode's decade is its own year's, else its show's", () {
+      final library = LibraryIndex(
+          series: const [SeriesEntry(key: 's', id: 's', name: 'S', year: 1994)],
+          episodes: [
+            MediaEntry(id: 'e1', kind: MediaKind.episode, title: 'e1', runtime: const Duration(minutes: 22), seriesKey: 's', year: 1989),
+            MediaEntry(id: 'e2', kind: MediaKind.episode, title: 'e2', runtime: const Duration(minutes: 22), seriesKey: 's'),
+          ],
+          movies: [MediaEntry(id: 'm', kind: MediaKind.movie, title: 'm', runtime: const Duration(minutes: 90))],
+          fetchedAt: DateTime(2026));
+      expect(itemDecade(library, library['e1']!), 1980);
+      expect(itemDecade(library, library['e2']!), 1990);
+      expect(itemDecade(library, library['m']!), isNull);
     });
   });
 

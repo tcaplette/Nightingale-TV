@@ -4,6 +4,7 @@ import '../../live/live_data.dart';
 import '../live_tv.dart';
 import '../media_server.dart';
 import 'plex_client.dart';
+import '../../l10n/tr.dart';
 
 /// Plex's Live TV (DVRs on the server), sent as Plex Web sends it (design:
 /// "Confirmed server behavior").
@@ -140,7 +141,7 @@ class PlexLiveTv implements LiveTv {
   Future<LiveStream> open(String channelId,
       {int? maxBitrate, bool forceTranscode = false, Map<String, Object?>? profile}) async {
     final where = await _whereIs(channelId);
-    if (where == null) throw LiveTvException(LiveFailure.other, 'Channel $channelId is not on any DVR.');
+    if (where == null) throw LiveTvException(LiveFailure.other, tr.channelIsNot(channelId));
     final session = _session('live');
     final Map<String, Object?> tuned;
     try {

@@ -19,6 +19,7 @@ import 'install_switching.dart';
 import 'menu_screen.dart' show confirm, showMessage;
 import 'widgets/screen_layout.dart';
 import 'widgets/tv_focus.dart';
+import '../l10n/tr.dart';
 
 /// Menu → Backup & restore (backup-restore D11): Back up now, opening a
 /// file, the phone or computer page, and every backup, newest first, each
@@ -87,7 +88,7 @@ class _BackupScreenState extends State<BackupScreen> {
     } on BackupException catch (e) {
       if (mounted) setState(() => _error = e.message);
     } on Object catch (e) {
-      if (mounted) setState(() => _error = 'That didn\'t work: $e');
+      if (mounted) setState(() => _error = tr.thatDidntWork(e));
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -99,7 +100,7 @@ class _BackupScreenState extends State<BackupScreen> {
         } on BackupException {
           rethrow;
         } on Object catch (e) {
-          throw BackupException('Couldn\'t save the backup: $e');
+          throw BackupException(tr.couldntSaveThe(e));
         }
         await _reload();
       });
@@ -137,9 +138,9 @@ class _BackupScreenState extends State<BackupScreen> {
         });
       case _Action.delete:
         final ok = await confirm(context,
-            title: 'Delete this backup?',
-            message: '${formatMoment(b.createdAt.toLocal())} · ${b.kindLabel}. It can\'t be brought back.',
-            action: 'Delete');
+            title: tr.deleteThisBackup,
+            message: tr.itCantBe(formatMoment(b.createdAt.toLocal()), b.kindLabel),
+            action: tr.delete);
         if (!ok || !mounted) return;
         await _run(() async => _store.delete(b));
         _backups.changed();
@@ -180,14 +181,13 @@ class _BackupScreenState extends State<BackupScreen> {
                 AboutThisInstall(info: install, onMove: () => _moveSetup(install), onBring: () => _bringSetup(install)),
               Text(
                 last == null
-                    ? (list == null ? ' ' : 'No backups yet.')
-                    : 'Last backup: ${formatRecent(last.createdAt.toLocal())} (${_lower(last.kindLabel)}).',
+                    ? (list == null ? ' ' : tr.noBackupsYet)
+                    : tr.lastBackup(formatRecent(last.createdAt.toLocal()), last.kindInSentence),
                 style: g.body(30, weight: FontWeight.w600),
               ),
               const SizedBox(height: 8),
               Text(
-                'A backup holds every profile with its channels, blocks, commercials and settings, '
-                'and is made every day something changes. Sign-in passwords are never in it.',
+                tr.aBackupHolds,
                 style: g.body(24, color: g.textDim),
               ),
               const SizedBox(height: 28),
@@ -195,9 +195,9 @@ class _BackupScreenState extends State<BackupScreen> {
                 spacing: 16,
                 runSpacing: 16,
                 children: [
-                  TvButton(label: 'Back up now', icon: Icons.backup, autofocus: true, onPressed: _backUpNow),
-                  if (_files) TvButton(label: 'Open a backup file', icon: Icons.file_open, onPressed: _openFile),
-                  TvButton(label: 'Use your phone or computer', icon: Icons.qr_code_2, onPressed: _useOtherDevice),
+                  TvButton(label: tr.backUpNow, icon: Icons.backup, autofocus: true, onPressed: _backUpNow),
+                  if (_files) TvButton(label: tr.openABackup, icon: Icons.file_open, onPressed: _openFile),
+                  TvButton(label: tr.useYourPhone, icon: Icons.qr_code_2, onPressed: _useOtherDevice),
                 ],
               ),
               SizedBox(
@@ -211,12 +211,12 @@ class _BackupScreenState extends State<BackupScreen> {
                           : Text(_error!, style: g.body(26, weight: FontWeight.w600, color: g.nowLine)),
                 ),
               ),
-              Text('BACKUPS', style: g.display(26, weight: FontWeight.w800, color: g.accent)),
+              Text(tr.backups, style: g.display(26, weight: FontWeight.w800, color: g.accent)),
               const SizedBox(height: 12),
     ];
     return TvPage(
-      title: 'Backup & restore',
-      hints: '▲▼◀▶ Move    OK Select    ESC Back',
+      title: tr.backupRestore,
+      hints: tr.moveOkSelectEsc,
       onBack: () => Navigator.of(context).pop(),
       // Upright, and below About this install, everything scrolls together.
       child: layout.isPortrait || install != null
@@ -247,7 +247,6 @@ class _BackupScreenState extends State<BackupScreen> {
   }
 }
 
-String _lower(String s) => s.isEmpty ? s : s[0].toLowerCase() + s.substring(1);
 
 /// One backup in the list: when, what kind, what's in it.
 class _BackupRow extends StatelessWidget {
@@ -321,22 +320,22 @@ Future<_Action?> _showActions(BuildContext context, StoredBackup b, {required bo
             Text(formatMoment(b.createdAt.toLocal()), style: g.display(48, weight: FontWeight.w800)),
             const SizedBox(height: 8),
             Text('${b.kindLabel} · ${b.summary.line}', style: g.body(28, color: g.textDim)),
-            if (b.archive.device.isNotEmpty) Text('Made on ${b.archive.device}', style: g.body(24, color: g.textDim)),
+            if (b.archive.device.isNotEmpty) Text(tr.madeOn(b.archive.device), style: g.body(24, color: g.textDim)),
             const SizedBox(height: 40),
             Wrap(
               spacing: 20,
               runSpacing: 20,
               children: [
                 TvButton(
-                    label: 'Restore',
+                    label: tr.restore,
                     icon: Icons.settings_backup_restore,
                     autofocus: true,
                     onPressed: () => Navigator.pop(context, _Action.restore)),
                 if (canSave)
-                  TvButton(label: 'Save to file', icon: Icons.save_alt, onPressed: () => Navigator.pop(context, _Action.save)),
+                  TvButton(label: tr.saveToFile, icon: Icons.save_alt, onPressed: () => Navigator.pop(context, _Action.save)),
                 TvButton(
-                    label: 'Delete', icon: Icons.delete, danger: true, onPressed: () => Navigator.pop(context, _Action.delete)),
-                TvButton(label: 'Cancel', onPressed: () => Navigator.pop(context)),
+                    label: tr.delete, icon: Icons.delete, danger: true, onPressed: () => Navigator.pop(context, _Action.delete)),
+                TvButton(label: tr.cancel, onPressed: () => Navigator.pop(context)),
               ],
             ),
           ],
@@ -352,23 +351,22 @@ Future<bool> confirmRestore(BuildContext context, StoredBackup b, RestorePlan pl
   final need = plan.needPassword;
   return confirm(
     context,
-    title: 'Restore the backup from ${formatMoment(b.createdAt.toLocal())}?',
+    title: tr.restoreTheBackup(formatMoment(b.createdAt.toLocal())),
     message: [
-      '${s.profiles.join(', ')} · ${s.channels} channel${s.channels == 1 ? '' : 's'} · '
-          '${s.blocks} block${s.blocks == 1 ? '' : 's'}.',
+      tr.backupProfilesChannelsBlocks(s.profiles.join(', '), tr.countChannelsWord(s.channels), tr.countBlocksWord(s.blocks)),
       if (plan.backsUpFirst)
-        'It replaces everything on this TV. Your current setup is backed up first.'
+        tr.itReplacesEverything
       else
-        'It sets up this TV as the backup has it.',
-      if (need.isNotEmpty) '${_list(need)} will need to sign in to their server again.',
-      if (plan.exportMoves) 'Live TV export moves to this device; turn it off on the old one.',
+        tr.itSetsUp,
+      if (need.isNotEmpty) tr.willNeedTo(_list(need)),
+      if (plan.exportMoves) tr.liveTvExportMoves,
     ].join('\n\n'),
-    action: 'Restore',
+    action: tr.restore,
   );
 }
 
 String _list(List<String> names) =>
-    names.length <= 1 ? names.join() : '${names.sublist(0, names.length - 1).join(', ')} and ${names.last}';
+    names.length <= 1 ? names.join() : tr.and(names.sublist(0, names.length - 1).join(', '), names.last);
 
 class _Panel extends StatelessWidget {
   const _Panel({required this.children, this.width = 980});
@@ -425,7 +423,7 @@ class _TransferDialogState extends State<_TransferDialog> {
       if (mounted) Navigator.of(context).pop(b);
     },
     onIdle: () {
-      if (mounted) setState(() => _error = 'The page stopped after 15 minutes with nothing to do. Close this and open it again.');
+      if (mounted) setState(() => _error = tr.thePageStopped);
     },
   );
   Uri? _url;
@@ -437,7 +435,7 @@ class _TransferDialogState extends State<_TransferDialog> {
     _server.start().then((url) {
       if (mounted) setState(() => _url = url);
     }, onError: (Object e) {
-      if (mounted) setState(() => _error = 'Couldn\'t open a network port for the page.');
+      if (mounted) setState(() => _error = tr.couldntOpenANetwork);
     });
   }
 
@@ -456,15 +454,14 @@ class _TransferDialogState extends State<_TransferDialog> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          'On a phone, tablet or computer on the same Wi-Fi as this TV, scan the code or open:',
+          tr.onAPhone,
           style: g.body(28, color: g.textDim),
         ),
         const SizedBox(height: 16),
         if (url != null) Text('$url', style: g.display(40, weight: FontWeight.w800)),
         const SizedBox(height: 16),
         Text(
-          'There you can download a backup of this TV, or send one to restore here. '
-          'Anything sent is confirmed on this TV first. The page closes with this window.',
+          tr.thereYouCan,
           style: g.body(26, color: g.textDim),
         ),
         if (_error != null) ...[
@@ -472,7 +469,7 @@ class _TransferDialogState extends State<_TransferDialog> {
           Text(_error!, style: g.body(26, weight: FontWeight.w600, color: g.nowLine)),
         ],
         const SizedBox(height: 32),
-        TvButton(label: 'Close', autofocus: true, onPressed: () => Navigator.pop(context)),
+        TvButton(label: tr.close, autofocus: true, onPressed: () => Navigator.pop(context)),
       ],
     );
     Widget code(double size) => Container(
@@ -483,7 +480,7 @@ class _TransferDialogState extends State<_TransferDialog> {
     return _Panel(
       width: 1300,
       children: [
-        Text('Use your phone or computer', style: g.display(48, weight: FontWeight.w800)),
+        Text(tr.useYourPhone, style: g.display(48, weight: FontWeight.w800)),
         const SizedBox(height: 24),
         if (portrait) ...[
           // Upright: the code under the words.
@@ -516,11 +513,10 @@ Future<void> restoreOnFirstRun(BuildContext context) async {
       final g = context.guide;
       return _Panel(
         children: [
-          Text('Restore from a backup', style: g.display(48, weight: FontWeight.w800)),
+          Text(tr.restoreFromA, style: g.display(48, weight: FontWeight.w800)),
           const SizedBox(height: 16),
           Text(
-            'Set up this TV from a Nightingale TV backup: your profiles, channels, blocks and settings. '
-            'Each profile signs in to its server once.',
+            tr.setUpThis,
             style: g.body(28, color: g.textDim),
           ),
           const SizedBox(height: 40),
@@ -530,16 +526,16 @@ Future<void> restoreOnFirstRun(BuildContext context) async {
             children: [
               if (files)
                 TvButton(
-                    label: 'Open a backup file',
+                    label: tr.openABackup,
                     icon: Icons.file_open,
                     autofocus: true,
                     onPressed: () => Navigator.pop(context, 'file')),
               TvButton(
-                  label: 'Use your phone or computer',
+                  label: tr.useYourPhone,
                   icon: Icons.qr_code_2,
                   autofocus: !files,
                   onPressed: () => Navigator.pop(context, 'phone')),
-              TvButton(label: 'Cancel', onPressed: () => Navigator.pop(context)),
+              TvButton(label: tr.cancel, onPressed: () => Navigator.pop(context)),
             ],
           ),
         ],
@@ -565,7 +561,7 @@ Future<void> restoreOnFirstRun(BuildContext context) async {
     if (!context.mounted || !await confirmRestore(context, stored, plan) || !context.mounted) return;
     await BackupRestorer(household).restore(bytes);
   } on BackupException catch (e) {
-    if (context.mounted) await showMessage(context, title: 'Couldn\'t restore', message: e.message);
+    if (context.mounted) await showMessage(context, title: tr.couldntRestore, message: e.message);
   }
 }
 
@@ -609,15 +605,15 @@ class _WelcomeBackScreenState extends State<WelcomeBackScreen> {
     final layout = ScreenLayout.of(context);
     final portrait = layout.isPortrait;
     final restore = TvButton(
-      label: 'Restore it',
+      label: tr.restoreIt,
       icon: Icons.settings_backup_restore,
       autofocus: true,
       onPressed: () => _go((h) async => BackupRestorer(h).restore(await h.backups!.store.read(b))),
     );
-    final fresh = TvButton(label: 'Start fresh', onPressed: () => _go((h) => h.startFresh()));
+    final fresh = TvButton(label: tr.startFresh, onPressed: () => _go((h) => h.startFresh()));
     return TvPage(
       title: 'Nightingale TV',
-      hints: '◀▶ Move    OK Select',
+      hints: tr.moveOkSelect,
       child: Center(
         child: SingleChildScrollView(
           // Upright, between the gutters, scrolling if it must.
@@ -629,22 +625,21 @@ class _WelcomeBackScreenState extends State<WelcomeBackScreen> {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('Welcome back', style: g.display(portrait ? 56 : 80, weight: FontWeight.w800)),
+                Text(tr.welcomeBack, style: g.display(portrait ? 56 : 80, weight: FontWeight.w800)),
                 const SizedBox(height: 24),
-                Text('There\'s a backup of your setup on this device:', style: g.body(30, color: g.textDim)),
+                Text(tr.theresABackup, style: g.body(30, color: g.textDim)),
                 const SizedBox(height: 16),
                 Text(
                   [if (device.isNotEmpty) device, formatMoment(b.createdAt.toLocal())].join(' · '),
                   style: g.display(44, weight: FontWeight.w700),
                 ),
                 Text(
-                  '${b.summary.profiles.join(', ')} · ${b.summary.channels} channel${b.summary.channels == 1 ? '' : 's'}',
+                  tr.channels(b.summary.profiles.join(', '), b.summary.channels),
                   style: g.body(30),
                 ),
                 const SizedBox(height: 20),
                 Text(
-                  'Restoring brings back your profiles, channels, blocks and settings. '
-                  'Each profile signs in to its server once.',
+                  tr.restoringBringsBack,
                   style: g.body(26, color: g.textDim),
                 ),
                 const SizedBox(height: 40),

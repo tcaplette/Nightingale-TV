@@ -26,6 +26,8 @@ import 'sleep_picker.dart';
 import 'widgets/adaptive.dart';
 import 'widgets/screen_layout.dart';
 import 'widgets/tv_focus.dart';
+import '../l10n/tr.dart';
+import 'language_picker.dart';
 
 class MenuScreen extends StatefulWidget {
   const MenuScreen({super.key});
@@ -55,18 +57,18 @@ class _MenuScreenState extends State<MenuScreen> {
     final locked = (profile?.isKid ?? false) && !_unlocked;
     VoidCallback guard(FutureOr<void> Function() action) => () async {
           if (locked) {
-            if (!await grownUpCheck(context, title: 'Parental controls') || !mounted) return;
+            if (!await grownUpCheck(context, title: tr.parentalControls) || !mounted) return;
             setState(() => _unlocked = true);
           }
           await action();
         };
 
     final buttons = <Widget>[
-      TvButton(label: 'Back to TV', icon: Icons.tv, expand: true, autofocus: focusFirst, onPressed: back),
+      TvButton(label: tr.backToTv, icon: Icons.tv, expand: true, autofocus: focusFirst, onPressed: back),
       if (AppScope.sleepOf(context) case final sleep?) ...[
         const SizedBox(height: 18),
         TvButton(
-          label: 'Sleep timer',
+          label: tr.sleepTimer,
           icon: Icons.bedtime,
           expand: true,
           // A choice goes back to the TV.
@@ -75,10 +77,19 @@ class _MenuScreenState extends State<MenuScreen> {
           },
         ),
       ],
+      if (profile != null) ...[
+        const SizedBox(height: 18),
+        TvButton(
+          label: tr.languageTitle,
+          icon: Icons.language,
+          expand: true,
+          onPressed: () => showLanguagePicker(context, profile),
+        ),
+      ],
       if (household.profiles.length > 1) ...[
         const SizedBox(height: 18),
         TvButton(
-          label: 'Switch profile',
+          label: tr.switchProfile,
           icon: Icons.switch_account,
           expand: true,
           onPressed: () {
@@ -89,7 +100,7 @@ class _MenuScreenState extends State<MenuScreen> {
       ],
       const SizedBox(height: 18),
       TvButton(
-        label: 'Channels & icons',
+        label: tr.channelsIcons,
         icon: locked ? Icons.lock : Icons.format_list_numbered,
         expand: true,
         onPressed: guard(() => Navigator.of(context).push(
@@ -97,7 +108,7 @@ class _MenuScreenState extends State<MenuScreen> {
       ),
       const SizedBox(height: 18),
       TvButton(
-        label: 'Channel groups',
+        label: tr.channelGroups,
         icon: locked ? Icons.lock : Icons.tab,
         expand: true,
         onPressed: guard(() => Navigator.of(context).push(
@@ -107,7 +118,7 @@ class _MenuScreenState extends State<MenuScreen> {
       if (!(profile?.isKid ?? false)) ...[
         const SizedBox(height: 18),
         TvButton(
-          label: 'Live TV sources',
+          label: tr.liveTvSources,
           icon: Icons.settings_input_antenna,
           expand: true,
           onPressed: guard(() => Navigator.of(context)
@@ -116,7 +127,7 @@ class _MenuScreenState extends State<MenuScreen> {
       ],
       const SizedBox(height: 18),
       TvButton(
-        label: 'Programming blocks',
+        label: tr.programmingBlocks,
         icon: locked ? Icons.lock : Icons.event_note,
         expand: true,
         onPressed: guard(() => Navigator.of(context)
@@ -124,7 +135,7 @@ class _MenuScreenState extends State<MenuScreen> {
       ),
       const SizedBox(height: 18),
       TvButton(
-        label: 'Commercials',
+        label: tr.commercials,
         icon: locked ? Icons.lock : Icons.campaign,
         expand: true,
         onPressed: guard(() => Navigator.of(context)
@@ -132,7 +143,7 @@ class _MenuScreenState extends State<MenuScreen> {
       ),
       const SizedBox(height: 18),
       TvButton(
-        label: 'Playback',
+        label: tr.playback,
         icon: locked ? Icons.lock : Icons.high_quality,
         expand: true,
         onPressed: guard(() => Navigator.of(context)
@@ -140,7 +151,7 @@ class _MenuScreenState extends State<MenuScreen> {
       ),
       const SizedBox(height: 18),
       TvButton(
-        label: 'Retro look',
+        label: tr.retroLook,
         icon: locked ? Icons.lock : Icons.filter_vintage,
         expand: true,
         onPressed: guard(() => Navigator.of(context)
@@ -148,7 +159,7 @@ class _MenuScreenState extends State<MenuScreen> {
       ),
       const SizedBox(height: 18),
       TvButton(
-        label: 'Profiles',
+        label: tr.profiles,
         icon: locked ? Icons.lock : Icons.people,
         expand: true,
         onPressed: guard(() => Navigator.of(context)
@@ -157,7 +168,7 @@ class _MenuScreenState extends State<MenuScreen> {
       if (household.backups != null) ...[
         const SizedBox(height: 18),
         TvButton(
-          label: 'Backup & restore',
+          label: tr.backupRestore,
           icon: locked ? Icons.lock : Icons.settings_backup_restore,
           expand: true,
           onPressed: guard(() => Navigator.of(context)
@@ -167,7 +178,7 @@ class _MenuScreenState extends State<MenuScreen> {
       if (household.export != null) ...[
         const SizedBox(height: 18),
         TvButton(
-          label: 'Live TV export',
+          label: tr.liveTvExport2,
           icon: locked ? Icons.lock : Icons.cast_connected,
           expand: true,
           onPressed: guard(() => Navigator.of(context)
@@ -177,7 +188,7 @@ class _MenuScreenState extends State<MenuScreen> {
       if (household.remote != null) ...[
         const SizedBox(height: 18),
         TvButton(
-          label: 'Phone remote',
+          label: tr.phoneRemote,
           icon: locked ? Icons.lock : Icons.phone_android,
           expand: true,
           onPressed: guard(() => Navigator.of(context)
@@ -186,7 +197,7 @@ class _MenuScreenState extends State<MenuScreen> {
       ],
       const SizedBox(height: 18),
       TvButton(
-        label: 'Servers',
+        label: tr.servers,
         icon: locked ? Icons.lock : Icons.dns,
         expand: true,
         onPressed: guard(() => Navigator.of(context)
@@ -194,7 +205,7 @@ class _MenuScreenState extends State<MenuScreen> {
       ),
       const SizedBox(height: 18),
       TvButton(
-        label: app.refreshing ? 'Refreshing library…' : 'Refresh library',
+        label: app.refreshing ? tr.refreshingLibrary : tr.refreshLibrary,
         icon: locked ? Icons.lock : Icons.sync,
         expand: true,
         onPressed: guard(() async {
@@ -208,22 +219,20 @@ class _MenuScreenState extends State<MenuScreen> {
       ),
       const SizedBox(height: 18),
       TvButton(
-        label: 'Reset channel lineup',
+        label: tr.resetChannelLineup2,
         icon: locked ? Icons.lock : Icons.restart_alt,
         expand: true,
         onPressed: guard(() async {
           final ok = await confirm(context,
-              title: 'Reset channel lineup?',
-              message: 'Rebuilds the default channels from your library. '
-                  'Names, icons and numbers you changed are reset. Channels you added are kept. A backup is saved first, '
-                  'so you can bring them back in Backup & restore.',
-              action: 'Reset');
+              title: tr.resetChannelLineup,
+              message: tr.rebuildsTheDefault,
+              action: tr.reset);
           if (!ok || !context.mounted) return;
           try {
             await app.resetChannels();
           } on BackupException catch (e) {
             // No backup could be saved first: nothing was reset.
-            if (context.mounted) await showMessage(context, title: 'Nothing was reset', message: e.message);
+            if (context.mounted) await showMessage(context, title: tr.nothingWasReset, message: e.message);
             return;
           }
           if (context.mounted) back();
@@ -232,7 +241,7 @@ class _MenuScreenState extends State<MenuScreen> {
       if (PlatformInfo.isDesktop) ...[
         const SizedBox(height: 18),
         TvButton(
-          label: 'Full screen on/off (F11)',
+          label: tr.fullScreenOn,
           icon: Icons.fullscreen,
           expand: true,
           onPressed: () async =>
@@ -241,15 +250,15 @@ class _MenuScreenState extends State<MenuScreen> {
       ],
       const SizedBox(height: 18),
       TvButton(
-        label: 'Sign out',
+        label: tr.signOut,
         icon: locked ? Icons.lock : Icons.logout,
         expand: true,
         danger: true,
         onPressed: guard(() async {
           final ok = await confirm(context,
-              title: 'Sign out?',
-              message: 'Your channel lineup is cleared. Custom icons are kept.',
-              action: 'Sign out');
+              title: tr.signOut2,
+              message: tr.yourChannelLineup,
+              action: tr.signOut);
           if (!ok || !context.mounted) return;
           await AppScope.tunerOf(context).stop();
           if (!context.mounted) return;
@@ -259,7 +268,7 @@ class _MenuScreenState extends State<MenuScreen> {
       ),
       const SizedBox(height: 18),
       TvButton(
-        label: 'Exit Nightingale TV',
+        label: tr.exitNightingaleTv,
         icon: locked ? Icons.lock : Icons.power_settings_new,
         expand: true,
         danger: true,
@@ -272,7 +281,7 @@ class _MenuScreenState extends State<MenuScreen> {
     final counts = app.servers.multiple ? app.serverCounts() : const <String, ({int episodes, int movies, int songs})>{};
     final summary = <Widget>[
       if (profile != null) ...[
-        Text('WATCHING', style: g.display(30, weight: FontWeight.w800, color: g.accent)),
+        Text(tr.watching, style: g.display(30, weight: FontWeight.w800, color: g.accent)),
         const SizedBox(height: 12),
         Row(
           children: [
@@ -290,65 +299,73 @@ class _MenuScreenState extends State<MenuScreen> {
         ),
         const SizedBox(height: 48),
       ],
-      Text('ACCOUNT', style: g.display(30, weight: FontWeight.w800, color: g.accent)),
+      Text(tr.account, style: g.display(30, weight: FontWeight.w800, color: g.accent)),
       const SizedBox(height: 12),
       if (session != null) ...[
         Text(session.userName, style: g.display(48, weight: FontWeight.w700)),
         Text('${session.serverName} · ${session.serverUrl}', style: g.body(24, color: g.textDim)),
       ],
       const SizedBox(height: 48),
-      Text('LIBRARY', style: g.display(30, weight: FontWeight.w800, color: g.accent)),
+      Text(tr.libraryLabel, style: g.display(30, weight: FontWeight.w800, color: g.accent)),
       const SizedBox(height: 12),
       Text(
-        '${app.library.series.length} shows · ${app.library.episodes.length} episodes · '
-        '${app.library.movies.length} movies'
-        '${app.library.songs.isEmpty ? '' : ' · ${app.library.songs.length} songs'}'
-        '${app.library.musicVideos.isEmpty ? '' : ' · ${app.library.musicVideos.length} music videos'}',
+        [
+          tr.countShows(app.library.series.length),
+          tr.countEpisodes(app.library.episodes.length),
+          tr.countMovies(app.library.movies.length),
+          if (app.library.songs.isNotEmpty) tr.countSongs(app.library.songs.length),
+          if (app.library.musicVideos.isNotEmpty) tr.countMusicVideos(app.library.musicVideos.length),
+        ].join(' · '),
         style: g.body(28),
       ),
       // A line per server (multi-server).
       for (final s in app.servers.multiple ? app.servers.ordered : const <ProfileServer>[])
         Text(
-          '${s.name}: ${counts[s.key]?.episodes ?? 0} episodes · ${counts[s.key]?.movies ?? 0} movies'
-          '${(counts[s.key]?.songs ?? 0) == 0 ? '' : ' · ${counts[s.key]!.songs} songs'}'
-          '${s.state == ServerState.ok ? '' : ' · ${s.state.label}'}',
+          tr.perServerStats(s.name, [
+            tr.countEpisodes(counts[s.key]?.episodes ?? 0),
+            tr.countMovies(counts[s.key]?.movies ?? 0),
+            if ((counts[s.key]?.songs ?? 0) != 0) tr.countSongs(counts[s.key]!.songs),
+            if (s.state != ServerState.ok) s.state.label,
+          ].join(' · ')),
           style: g.body(24, color: s.state == ServerState.ok ? g.textDim : g.nowLine),
         ),
       Text(
         app.refreshing
             ? app.syncStatus
             : app.syncError != null
-                ? 'Last refresh failed: ${app.syncError}'
-                : 'Updated ${formatDate(app.library.fetchedAt)} at ${formatTime(app.library.fetchedAt)}',
+                ? tr.lastRefreshFailed('${app.syncError}')
+                : tr.updatedAt(formatDate(app.library.fetchedAt), formatTime(app.library.fetchedAt)),
         style: g.body(24, color: app.refreshing ? g.accent : app.syncError != null ? g.nowLine : g.textDim),
       ),
       const SizedBox(height: 48),
-      Text('CHANNELS', style: g.display(30, weight: FontWeight.w800, color: g.accent)),
+      Text(tr.channels2, style: g.display(30, weight: FontWeight.w800, color: g.accent)),
       const SizedBox(height: 12),
       Text(
-        '${app.channels.length} on the air'
-        '${app.allChannels.length > app.channels.length ? ' · ${app.allChannels.length - app.channels.length} hidden' : ''}'
-        '${app.blocks.isEmpty ? '' : ' · ${app.blocks.length} programming block${app.blocks.length == 1 ? '' : 's'}'}',
+        [
+          tr.countOnTheAir(app.channels.length),
+          if (app.allChannels.length > app.channels.length) tr.countHidden(app.allChannels.length - app.channels.length),
+          if (app.blocks.isNotEmpty) tr.countProgrammingBlocks(app.blocks.length),
+        ].join(' · '),
         style: g.body(28),
       ),
       const SizedBox(height: 48),
-      Text('COMMERCIALS', style: g.display(30, weight: FontWeight.w800, color: g.accent)),
+      Text(tr.commercials2, style: g.display(30, weight: FontWeight.w800, color: g.accent)),
       const SizedBox(height: 12),
       Text(
         [
           app.settings.commercialPlan.mode.label,
           if (app.settings.commercialPools.isEmpty)
-            'no pools yet'
+            tr.noPoolsYet
           else
-            '${app.catalog.clipsFor(null).length} clip${app.catalog.clipsFor(null).length == 1 ? '' : 's'}',
+            tr.clips3(app.catalog.clipsFor(null).length),
         ].join(' · '),
         style: g.body(28),
       ),
     ];
 
     return TvPage(
-      title: 'Menu',
-      hints: '▲▼ Move    OK Select    ESC Back to TV',
+      title: tr.menu,
+      hints: tr.moveOkSelectEscBackTo,
       onBack: back,
       child: ScreenLayout.of(context).isPortrait
           // Upright: who's watching and what's set up, then the buttons
@@ -373,10 +390,13 @@ class _MenuScreenState extends State<MenuScreen> {
               ),
             ),
             const SizedBox(width: 100),
+            // Longer languages can need more than one screen's height.
             Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: summary,
+              child: SingleChildScrollView(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: summary,
+                ),
               ),
             ),
           ],
@@ -391,26 +411,23 @@ class _MenuScreenState extends State<MenuScreen> {
 /// why it failed.
 (String, String) refreshReport(
     String? error, ({int shows, int episodes, int movies, int songs, int channels})? found, String? serverName) {
-  if (error != null) return ('Refresh failed', error);
-  if (found == null) return ('Library refreshed', 'Your channels are up to date.');
-  String count(int n, String what) => '$n new $what${n == 1 ? '' : 's'}';
+  if (error != null) return (tr.refreshFailed, error);
+  if (found == null) return (tr.libraryRefreshed, tr.yourChannelsAre);
   final parts = [
-    if (found.shows > 0) count(found.shows, 'show'),
-    if (found.episodes > 0) count(found.episodes, 'episode'),
-    if (found.movies > 0) count(found.movies, 'movie'),
-    if (found.songs > 0) count(found.songs, 'song'),
-    if (found.channels > 0) count(found.channels, 'channel'),
+    if (found.shows > 0) tr.newShows(found.shows),
+    if (found.episodes > 0) tr.newEpisodes(found.episodes),
+    if (found.movies > 0) tr.newMovies(found.movies),
+    if (found.songs > 0) tr.newSongs(found.songs),
+    if (found.channels > 0) tr.newChannels(found.channels),
   ];
   if (parts.isEmpty) {
     return (
-      'Nothing new',
-      '${serverName ?? 'Your server'} has nothing new since the last refresh. '
-          'New files show up here once the server has scanned them: if you just added some, '
-          'scan the library on the server first, then refresh again.'
+      tr.nothingNew,
+      serverName == null ? tr.yourServerHasNothingNew : tr.serverHasNothingNew(serverName),
     );
   }
-  final list = parts.length == 1 ? parts.first : '${parts.take(parts.length - 1).join(', ')} and ${parts.last}';
-  return ('Library refreshed', 'Found $list. New programs start airing on their channels right after what\'s on now.');
+  final list = parts.length == 1 ? parts.first : tr.and(parts.take(parts.length - 1).join(', '), parts.last);
+  return (tr.libraryRefreshed, tr.foundNewPrograms(list));
 }
 
 Future<void> showMessage(BuildContext context, {required String title, required String message}) => showDialog<void>(
@@ -438,7 +455,7 @@ Future<void> showMessage(BuildContext context, {required String title, required 
                   const SizedBox(height: 40),
                   Align(
                     alignment: Alignment.centerRight,
-                    child: TvButton(label: 'OK', autofocus: true, onPressed: () => Navigator.pop(context)),
+                    child: TvButton(label: tr.ok, autofocus: true, onPressed: () => Navigator.pop(context)),
                   ),
                 ],
               )),
@@ -476,7 +493,7 @@ Future<bool> confirm(BuildContext context,
                 const SizedBox(height: 40),
                 ButtonRow(
                   children: [
-                    TvButton(label: 'Cancel', autofocus: true, onPressed: () => Navigator.pop(context, false)),
+                    TvButton(label: tr.cancel, autofocus: true, onPressed: () => Navigator.pop(context, false)),
                     TvButton(label: action, danger: true, onPressed: () => Navigator.pop(context, true)),
                   ],
                 ),

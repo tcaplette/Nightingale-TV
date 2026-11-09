@@ -336,10 +336,10 @@ void main() {
       final channels = ChannelGenerator(library, anchor: DateTime(2026)).generate();
       final names = channels.map((c) => c.name).toList();
       expect(names.first, 'All Shows');
-      // Animation and Kids cover the same two shows: only one of them, which
-      // Toons and Mystery Kids list first. That leaves Comedy with one show:
-      // too few for a genre channel. Three shows have no room for a marathon.
-      expect(names, ['All Shows', 'Toon TV', 'Movie Channel']);
+      // Comedy (Toons and Sitcom) is biggest. Animation and Kids cover the
+      // same two shows: only one of them. Family and Mystery have one show
+      // each. Three shows have no room for a marathon.
+      expect(names, ['All Shows', 'Laugh Track', 'Toon TV', 'Movie Channel']);
       // Numbers are unique and sequential from 1.
       expect(channels.map((c) => c.number), [for (var i = 0; i < channels.length; i++) i + 1]);
     });
@@ -378,7 +378,7 @@ void main() {
       expect(seen.keys.toSet(), {'Archer', 'Simpsons', 'Monk', 'Psych'});
     });
 
-    test('each movie airs on one movie genre channel', () {
+    test('each movie genre channel holds every movie of its genre', () {
       final library = LibraryIndex.fromJellyfinItems(seriesItems: const [], episodeItems: const [], movieItems: [
         for (var i = 1; i <= 60; i++)
           {
@@ -391,22 +391,18 @@ void main() {
       final channels = ChannelGenerator(library, anchor: DateTime(2026)).generate();
       expect(channels.firstWhere((c) => c.id == 'auto:movies').playlist, hasLength(60));
       final genre = channels.where((c) => c.id.startsWith('auto:movies:')).toList();
-      // Every even movie lists Comedy first, so Drama is left too few and
-      // Thriller none: Comedy and Action.
-      expect(genre.map((c) => c.name), ['Action & Adventure Movies', 'Comedy Movies']);
-      final seen = <String>{};
+      // Biggest first; no cap, and a movie airs on every channel of its genres.
+      expect(genre.map((c) => c.name), ['Action Movies', 'Comedy Movies', 'Drama Movies', 'Thriller & Mystery Movies']);
       for (final c in genre) {
-        expect(c.playlist.length, greaterThanOrEqualTo(12), reason: c.name);
-        for (final id in c.playlist) {
-          expect(seen.add(id), isTrue, reason: '$id is on two movie genre channels');
-          // On the channel of its first listed genre that has one.
-          final first = normalizeGenre(library[id]!.genres.firstWhere((g) => ['Comedy', 'Action'].contains(g)));
-          expect(c.source.genres, [first], reason: id);
-        }
+        final g = c.source.genres.single;
+        expect(c.playlist.toSet(), {
+          for (final m in library.movies)
+            if (titleGenres(m.genres).contains(g)) m.id,
+        }, reason: c.name);
       }
     });
 
-    test('spreadTitles shares titles again after a channel is hidden', () {
+    test('a show with two genres airs on both genre channels', () {
       final library = fakeLibrary(
         shows: {'A': 40, 'B': 40, 'C': 40, 'D': 40, 'E': 40},
         genres: {
@@ -420,14 +416,13 @@ void main() {
       final channels = ChannelGenerator(library, anchor: DateTime(2026)).generate();
       final comedy = channels.firstWhere((c) => c.id == 'auto:genre:Comedy');
       final family = channels.firstWhere((c) => c.id == 'auto:genre:Family');
-      Set<String> shows(Channel c) =>
-          buildPlaylist(library, c.source, c.order, seed: 1).map((id) => id.split('-e').first).toSet();
-      expect(shows(comedy).intersection(shows(family)), isEmpty);
-      expect(shows(family), {'A', 'B', 'D'}, reason: 'each show on its first genre');
-      expect(shows(comedy), {'C', 'E'});
+      Set<String> shows(Channel c) => c.playlist.map((id) => id.split('-e').first).toSet();
+      expect(shows(family), {'A', 'B', 'D'});
+      expect(shows(comedy), {'A', 'B', 'C', 'E'});
       family.hidden = true;
-      ChannelGenerator.spreadTitles(library, channels);
-      expect(shows(comedy), {'A', 'B', 'C', 'E'}, reason: 'Comedy takes what hidden Family had');
+      expect(ChannelGenerator.spreadTitles(library, channels), isEmpty);
+      expect(buildPlaylist(library, comedy.source, comedy.order, seed: 1).map((id) => id.split('-e').first).toSet(),
+          {'A', 'B', 'C', 'E'});
     });
   });
 
@@ -442,10 +437,28 @@ void main() {
       expect(spliceNew(const [], ['n1'], 0), ['n1']);
     });
 
-    test('normalizes genre spellings', () {
-      expect(normalizeGenre('Science Fiction'), 'Sci-Fi & Fantasy');
-      expect(normalizeGenre('Action'), 'Action & Adventure');
-      expect(normalizeGenre('Kids'), 'Kids');
+    test('maps genre spellings to the 12 major genres', () {
+      expect(genresOf('Science Fiction'), {'Sci-Fi'});
+      expect(genresOf('Sci-Fi'), {'Sci-Fi'});
+      expect(genresOf('Fantasy'), {'Fantasy'});
+      expect(genresOf('Sci-Fi & Fantasy'), {'Sci-Fi', 'Fantasy'});
+      expect(genresOf('Action'), {'Action'});
+      expect(genresOf('Adventure'), {'Adventure'});
+      expect(genresOf('Action & Adventure'), {'Action', 'Adventure'});
+      expect(genresOf('action and adventure'), {'Action', 'Adventure'});
+      for (final tag in ['Thriller', 'Mystery', 'Suspense']) {
+        expect(genresOf(tag), {'Thriller & Mystery'}, reason: tag);
+      }
+      expect(genresOf('Sitcom'), {'Comedy'});
+      expect(genresOf('Anime'), {'Animation'});
+      for (final g in ['Drama', 'Horror', 'Romance', 'Western', 'Documentary']) {
+        expect(genresOf(g), {g});
+      }
+      expect(genresOf('Children'), {'Kids'});
+      expect(genresOf('Crime'), {'Crime'});
+      expect(genresOf('Bollywood'), {'Bollywood'});
+      expect(titleGenres(['Mystery', 'Action & Adventure', 'Thriller']).toList(),
+          ['Thriller & Mystery', 'Action', 'Adventure']);
     });
   });
 

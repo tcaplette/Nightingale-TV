@@ -12,6 +12,7 @@ import 'export_settings.dart';
 import 'm3u_writer.dart';
 import 'xmltv_writer.dart';
 import '../server/media_server.dart';
+import '../l10n/tr.dart';
 
 /// Plays a channel as one continuous stream (channel-streaming spec).
 abstract interface class ChannelStreamer {
@@ -35,6 +36,7 @@ class LineupServer {
     required this.appFor,
     required this.profileName,
     required this.export,
+    this.language,
     this.streamer,
     this.logos,
     this.device,
@@ -47,6 +49,10 @@ class LineupServer {
   /// screen, or is reloaded).
   final AppState? Function() appFor;
   final String Function() profileName;
+
+  /// The profile's language: its streams and guide text use it, whichever
+  /// profile is on screen (design D3, D10).
+  final String Function()? language;
 
   /// Port and tuner identity.
   ProfileExport export;
@@ -65,7 +71,7 @@ class LineupServer {
   Future<void> start({int? port}) async {
     if (_server != null) return;
     final server = await HttpServer.bind(InternetAddress.anyIPv4, port ?? export.port);
-    server.listen((r) => unawaited(_handle(r)));
+    server.listen((r) => unawaited(runInLanguage(language?.call(), () => _handle(r))));
     _server = server;
   }
 
@@ -165,7 +171,7 @@ class LineupServer {
 
   static const _emptyGuide = '<?xml version="1.0" encoding="UTF-8"?>\n<tv generator-info-name="Nightingale TV">\n</tv>\n';
 
-  ({AppState app, DateTime hour, String host, String doc})? _cachedGuide;
+  ({AppState app, DateTime hour, String host, String language, String doc})? _cachedGuide;
   AppState? _guideApp;
 
   /// The guide, cached until the profile changes anything or the hour
@@ -175,14 +181,14 @@ class LineupServer {
     final hour = DateTime(now.year, now.month, now.day, now.hour);
     final host = '${urls.base}';
     final cached = _cachedGuide;
-    if (cached != null && identical(cached.app, app) && cached.hour == hour && cached.host == host) return cached.doc;
+    if (cached != null && identical(cached.app, app) && cached.hour == hour && cached.host == host && cached.language == currentLanguage) return cached.doc;
     if (!identical(_guideApp, app)) {
       _guideApp?.removeListener(_dropCachedGuide);
       _guideApp = app..addListener(_dropCachedGuide);
     }
     final doc = buildXmltv(
         channels: lineupOf(app), scheduleFor: app.scheduleFor, library: app.library, urls: urls, now: now);
-    _cachedGuide = (app: app, hour: hour, host: host, doc: doc);
+    _cachedGuide = (app: app, hour: hour, host: host, language: currentLanguage, doc: doc);
     return doc;
   }
 

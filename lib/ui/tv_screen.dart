@@ -38,6 +38,7 @@ import 'widgets/screen_layout.dart';
 import 'widgets/transport_bar.dart';
 import 'widgets/tv_focus.dart';
 import '../server/media_server.dart';
+import '../l10n/tr.dart';
 
 /// Main screen: full-screen TV with channel banner and number entry; the
 /// guide opens on top of it.
@@ -45,13 +46,13 @@ class TvScreen extends StatefulWidget {
   const TvScreen({super.key});
 
   /// Android: shown after Back on the TV screen.
-  static const exitPrompt = 'Press Back again to exit';
+  static String get exitPrompt => tr.pressBackAgain;
 
   /// Shown once when curvature and glow turn off by themselves.
-  static const effectsFallback = "Curvature and glow are off: this device can't keep up";
+  static String get effectsFallback => tr.curvatureAndGlow;
 
   /// A media key on a live channel.
-  static const liveCantPause = "Live channels can't be paused";
+  static String get liveCantPause => tr.liveChannelsCant;
 
   /// Paused this long, the picture dims (timeshift D13).
   static const dimAfter = Duration(minutes: 10);
@@ -363,7 +364,7 @@ class _TvScreenState extends State<TvScreen> {
       _bar = false;
       _showChannel();
     } else {
-      _showToast('There is no channel $number');
+      _showToast(tr.thereIsNo(number));
     }
   }
 
@@ -562,13 +563,13 @@ class _TvScreenState extends State<TvScreen> {
 
   /// The on-screen button row, left to right.
   List<({String label, IconData icon, VoidCallback onPressed})> _rowButtons() => [
-        (label: 'Guide', icon: Icons.grid_view, onPressed: _openGuide),
-        (label: 'Menu', icon: Icons.settings, onPressed: _openMenu),
-        if (_sleep != null) (label: 'Sleep', icon: Icons.bedtime, onPressed: _openSleep),
+        (label: tr.guide2, icon: Icons.grid_view, onPressed: _openGuide),
+        (label: tr.menu, icon: Icons.settings, onPressed: _openMenu),
+        if (_sleep != null) (label: tr.sleep, icon: Icons.bedtime, onPressed: _openSleep),
         // After Sleep, so the D-pad paths to Menu and Sleep stay as they were.
         (label: captionsButtonLabel(AppScope.tunerOf(context)), icon: Icons.closed_caption, onPressed: _openCaptions),
         if (FullScreen.instance.isOn && !PlatformInfo.isTelevision)
-          (label: 'Exit full screen', icon: Icons.fullscreen_exit, onPressed: _exitFullScreen),
+          (label: tr.exitFullScreen, icon: Icons.fullscreen_exit, onPressed: _exitFullScreen),
       ];
 
   /// The D-pad on the on-screen button row (dpad-buttons D3). Up reaches it
@@ -951,15 +952,15 @@ class TvPicture extends StatelessWidget {
                 ),
               ),
           if (tuner.isLive && tuner.status == TunerStatus.standby)
-            _CanvasCard(child: StatusCard(icon: Icons.sensors, title: 'PLEASE STAND BY', message: tuner.liveMessage))
+            _CanvasCard(child: StatusCard(icon: Icons.sensors, title: tr.pleaseStandBy, message: tuner.liveMessage))
           else if (tuner.status == TunerStatus.standby)
             _CanvasCard(
               child: StatusCard(
                 icon: Icons.schedule,
-                title: 'PLEASE STAND BY',
+                title: tr.pleaseStandBy,
                 message: tuner.program == null
                     ? null
-                    : 'Up next at ${formatTime((tuner.segment ?? tuner.program!).end.add(tuner.behind))}',
+                    : tr.upNextAt(formatTime((tuner.segment ?? tuner.program!).end.add(tuner.behind))),
               ),
             ),
           if (tuner.channel case final ch? when tuner.status == TunerStatus.offAir && tuner.segment?.offline == true)
@@ -968,9 +969,9 @@ class TvPicture extends StatelessWidget {
             _CanvasCard(
               child: StatusCard(
                 icon: Icons.tv_off,
-                title: 'OFF THE AIR',
+                title: tr.offTheAir,
                 message: switch (_backOnAir(context, tuner)) {
-                  final b? => 'Back on the air ${b.when} with ${b.title}',
+                  final b? => tr.backOnThe(b.when, b.title),
                   null => tuner.error,
                 },
               ),
@@ -979,7 +980,7 @@ class TvPicture extends StatelessWidget {
             _CanvasCard(
               child: StatusCard(
                 icon: Icons.signal_cellular_connected_no_internet_0_bar,
-                title: 'NO SIGNAL',
+                title: tr.noSignal,
                 message: tuner.liveMessage ?? tuner.error,
               ),
             )
@@ -987,11 +988,11 @@ class TvPicture extends StatelessWidget {
             _CanvasCard(
               child: StatusCard(
                 icon: Icons.signal_cellular_connected_no_internet_0_bar,
-                title: 'NO SIGNAL',
+                title: tr.noSignal,
                 message: [
                   if (tuner.error != null) tuner.error!,
                   if (tuner.program != null)
-                    'Trying again at ${formatTime((tuner.segment ?? tuner.program!).end)}',
+                    tr.tryingAgainAt(formatTime((tuner.segment ?? tuner.program!).end)),
                 ].join('\n'),
               ),
             ),
@@ -1002,7 +1003,7 @@ class TvPicture extends StatelessWidget {
               segment: tuner.segment,
               hidden: bannerUp,
               blackouts: [?_upNextWindowOf(context, tuner)],
-              fallbackText: ch.name,
+              fallbackText: ch.displayName,
               clock: tuner.viewNow,
             ),
           if ((tuner.status == TunerStatus.playing ? tuner.schedule : null)
@@ -1104,7 +1105,7 @@ Widget offlineCardFor(AppState app, Channel ch, {DateTime? backAt}) {
         : name!.endsWith('.svg')
             ? SvgPicture.file(file, fit: BoxFit.contain)
             : Image.file(file, fit: BoxFit.contain, errorBuilder: (_, _, _) => const SizedBox.shrink()),
-    logo: ChannelLogo(icon: ch.icon, size: 300, width: 520, fallbackText: ch.name, app: app),
+    logo: ChannelLogo(icon: ch.icon, size: 300, width: 520, fallbackText: ch.displayName, app: app),
     backAt: backAt,
   );
 }
@@ -1129,7 +1130,7 @@ List<ImageProvider> albumArt(AppState app, MediaEntry song) {
 }
 
 /// What the banner says during a break.
-const commercialBreakLabel = 'Commercial break';
+String get commercialBreakLabel => tr.commercialBreak;
 
 /// A live channel's own number at its source ("2.1"), when it isn't its
 /// lineup number.
@@ -1202,8 +1203,8 @@ class ChannelBanner extends StatelessWidget {
               children: [
                 Text(
                     [
-                      [channel.name, ?liveNumber(channel)].join('  '),
-                      if (p?.blockTitle != null) p!.blockTitle!,
+                      [channel.displayName, ?liveNumber(channel)].join('  '),
+                      if (p?.displayBlockTitle != null) p!.displayBlockTitle!,
                     ].join('   ·   ').toUpperCase(),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
@@ -1213,7 +1214,7 @@ class ChannelBanner extends StatelessWidget {
                     if (channel.isLive) ...[const LiveTag(size: 32), const SizedBox(width: 18)],
                     if (p?.isPremiere ?? false) ...[const NewTag(size: 32), const SizedBox(width: 18)],
                     Expanded(
-                      child: Text(p?.title ?? 'Tuning…',
+                      child: Text(p?.title ?? tr.tuning2,
                           maxLines: 1, overflow: TextOverflow.ellipsis, style: g.display(60, weight: FontWeight.w800)),
                     ),
                   ],
@@ -1271,10 +1272,10 @@ class ChannelBanner extends StatelessWidget {
                   ],
                   Text(
                     p.isOffAir
-                        ? (backOnAir == null ? 'Off the air' : 'Back on $backOnAir')
+                        ? (backOnAir == null ? tr.offTheAir2 : tr.backOn(backOnAir!))
                         : next == null
-                            ? '${formatMinutes(p.end.difference(now))} left'
-                            : 'Next ${formatTime(next!.start)}: ${next!.title}',
+                            ? tr.left(formatMinutes(p.end.difference(now)))
+                            : tr.next2(formatTime(next!.start), next!.title),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: g.body(24, color: g.textDim),
@@ -1374,7 +1375,7 @@ class _UpNextCardState extends State<UpNextCard> {
   Widget build(BuildContext context) {
     final g = OverlayStyle.of(context);
     final n = widget.next;
-    final block = n?.blockTitle != null && n!.blockTitle != widget.program.blockTitle ? n.blockTitle : null;
+    final block = n?.blockTitle != null && n!.blockTitle != widget.program.blockTitle ? n.displayBlockTitle : null;
     return IgnorePointer(
       child: AnimatedSlide(
         offset: _visible ? Offset.zero : const Offset(1.3, 0),
@@ -1393,7 +1394,7 @@ class _UpNextCardState extends State<UpNextCard> {
                     mainAxisSize: MainAxisSize.min,
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text('UP NEXT  ·  ${formatTime(n.start)}',
+                      Text(tr.upNext2(formatTime(n.start)),
                           style: g.display(24, weight: FontWeight.w800, color: g.accent)),
                       const SizedBox(height: 4),
                       Row(
@@ -1408,7 +1409,7 @@ class _UpNextCardState extends State<UpNextCard> {
                         ],
                       ),
                       Text(
-                        block != null ? 'Starting with ${n.title}' : n.subtitle,
+                        block != null ? tr.startingWith(n.title) : n.subtitle,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: g.body(24, color: g.textDim),
@@ -1427,16 +1428,16 @@ class _UpNextCardState extends State<UpNextCard> {
   final left = (notice.at.difference(now).inMicroseconds / Duration.microsecondsPerSecond).ceil().clamp(1, 1 << 30);
   switch (notice.kind) {
     case BreakNoticeKind.breakStarts:
-      return (headline: '$commercialBreakLabel in $left', detail: null);
+      return (headline: tr.inLabel(commercialBreakLabel, left), detail: null);
     case BreakNoticeKind.resumes:
       final r = notice.resumes;
       return (
-        headline: 'Programming resumes in $left',
+        headline: tr.programmingResumesIn(left),
         detail: r == null
             ? null
             : notice.continues
-                ? 'Back to ${r.title}'
-                : 'Up next: ${notice.opensBlock ?? r.title}',
+                ? tr.backTo(r.title)
+                : tr.upNext(notice.opensBlock ?? r.title),
       );
   }
 }

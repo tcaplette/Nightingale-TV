@@ -23,6 +23,7 @@ import '../ui/widgets/tv_canvas.dart';
 import 'lineup_server.dart';
 import 'offscreen_renderer.dart';
 import '../server/media_server.dart';
+import '../l10n/tr.dart';
 
 /// A full-screen card an exported stream shows (design D6).
 sealed class BroadcastCard {
@@ -37,7 +38,7 @@ class TuningCardSpec extends BroadcastCard {
   const TuningCardSpec(this.channel);
   final Channel channel;
   @override
-  String get key => 'tuning|${channel.number}|${channel.name}';
+  String get key => 'tuning|${channel.number}|${channel.name}|$currentLanguage';
 }
 
 /// Between segments while a source is late.
@@ -64,9 +65,9 @@ class OffAirCard extends BroadcastCard {
     return OffAirCard(next: (when: when, title: next.title));
   }
 
-  String? get message => next == null ? null : 'Back on the air ${next!.when} with ${next!.title}';
+  String? get message => next == null ? null : tr.backOnThe(next!.when, next!.title);
   @override
-  String get key => 'offair|$message';
+  String get key => 'offair|$message|$currentLanguage';
 }
 
 /// A channel's offline card, during a slot's tail (slot-duration): as the
@@ -80,19 +81,22 @@ class OfflineCardSpec extends BroadcastCard {
   final DateTime backAt;
 
   @override
-  String get key => 'offline|${channel.id}|${channel.name}|${jsonEncode(channel.icon.toJson())}|'
+  String get key => 'offline|${channel.id}|$currentLanguage|${channel.name}|${jsonEncode(channel.icon.toJson())}|'
       '${channel.slotRule?.offlineImage}|${formatTime(backAt)}';
 }
 
 /// PLEASE STAND BY: "Up next at …" when a file ends early, "We'll be right
 /// back" when a segment can't play.
 class StandByCard extends BroadcastCard {
-  StandByCard.upNext(DateTime at) : text = 'Up next at ${formatTime(at)}';
-  const StandByCard.rightBack() : text = "We'll be right back";
+  StandByCard.upNext(DateTime at) : _upNext = formatTime(at);
+  const StandByCard.rightBack() : _upNext = null;
 
-  final String text;
+  final String? _upNext;
+
+  String get text => _upNext == null ? tr.wellBeRight : tr.upNextAt(_upNext);
+
   @override
-  String get key => 'standby|$text';
+  String get key => 'standby|$text|$currentLanguage';
 }
 
 /// Draws the cards and channel logos Live TV export uses, and keeps them:
@@ -137,7 +141,7 @@ class BroadcastArt implements LogoSource {
   /// exported stream (channel-streaming). Drawn once per song.
   Future<File> nowPlayingPng(AppState app, Channel channel, ScheduledProgram song, ScheduledProgram? next, int height) async {
     final item = song.item!;
-    final key = '${channel.number}|${channel.name}|${jsonEncode(channel.icon.toJson())}|${item.id}|${next?.item?.id}|$height';
+    final key = '$currentLanguage|${channel.number}|${channel.name}|${jsonEncode(channel.icon.toJson())}|${item.id}|${next?.item?.id}|$height';
     final file = File('${cacheDir.path}/song-${md5.convert(utf8.encode(key))}.png');
     if (await file.exists()) return file;
     await cacheDir.create(recursive: true);
@@ -217,8 +221,8 @@ class BroadcastArt implements LogoSource {
   Widget _cardWidget(BroadcastCard card) => switch (card) {
         TuningCardSpec(:final channel) => TuningCard(channel: channel),
         BlackCard() => const ColoredBox(color: Colors.black),
-        OffAirCard() => StatusCard(icon: Icons.tv_off, title: 'OFF THE AIR', message: card.message),
-        StandByCard() => StatusCard(icon: Icons.schedule, title: 'PLEASE STAND BY', message: card.text),
+        OffAirCard() => StatusCard(icon: Icons.tv_off, title: tr.offTheAir, message: card.message),
+        StandByCard() => StatusCard(icon: Icons.schedule, title: tr.pleaseStandBy, message: card.text),
         // Drawn by [_offlineWidget].
         OfflineCardSpec() => const ColoredBox(color: Colors.black),
       };
@@ -234,7 +238,7 @@ class BroadcastArt implements LogoSource {
     } on Object catch (e) {
       debugPrint('Couldn\'t draw the logo of channel ${channel.number}: $e');
     }
-    png ??= await _badge(_initials(channel.name), BadgeShape.roundedSquare, GuideTheme.cableGuide.accent);
+    png ??= await _badge(_initials(channel.displayName), BadgeShape.roundedSquare, GuideTheme.cableGuide.accent);
     if (_logos.length >= _logoCacheSize) _logos.remove(_logos.keys.first);
     return _logos[key] = png;
   }
@@ -261,7 +265,7 @@ class BroadcastArt implements LogoSource {
         return _svg(SvgStringLoader(nightingaleTvSvg(Color(icon.color))));
       case ChannelIconKind.builtin || ChannelIconKind.badge:
         return OffscreenRenderer.renderPng(
-          ChannelLogo(icon: icon, size: logoSize, fallbackText: channel.name, app: app),
+          ChannelLogo(icon: icon, size: logoSize, fallbackText: channel.displayName, app: app),
           logicalSize: const Size.square(logoSize),
         );
       case ChannelIconKind.custom:

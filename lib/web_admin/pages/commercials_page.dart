@@ -6,6 +6,7 @@ import '../app.dart';
 import '../widgets/break_plan_editor.dart';
 import '../widgets/common.dart';
 import '../widgets/folder_nodes.dart';
+import '../../l10n/tr.dart';
 
 /// Commercials: pools with the library folders they draw from, the main
 /// break plan and channels' own plans, as on the TV.
@@ -31,20 +32,20 @@ class CommercialsPage extends StatelessWidget {
 
         Future<void> setPlan(BreakPlan p) => run(() => context.api.put('$base/commercials/plan', {'plan': p.toJson()}));
 
-        return PageBody(title: 'Commercials', children: [
-          Section(title: 'Breaks', children: [
-            Text('${data['clips']} clips in all commercial pools.'),
+        return PageBody(title: tr.commercials, children: [
+          Section(title: tr.breaks, children: [
+            Text(tr.clipsInAll('${data['clips']}')),
             RadioGroup<BreakMode>(
               groupValue: plan.mode,
               onChanged: (mode) async {
                 if (mode != BreakMode.custom) return setPlan(plan.withMode(mode!));
-                final roles = await editBreakPlan(context, title: 'Breaks', initial: plan.roles, pools: pools);
+                final roles = await editBreakPlan(context, title: tr.breaks, initial: plan.roles, pools: pools);
                 if (roles != null) await setPlan(BreakPlan(mode: BreakMode.custom, roles: roles));
               },
               child: Column(children: [
                 for (final mode in BreakMode.values)
                   RadioListTile<BreakMode>(
-                      contentPadding: EdgeInsets.zero, value: mode, title: Text(mode == BreakMode.custom ? 'Custom…' : mode.label)),
+                      contentPadding: EdgeInsets.zero, value: mode, title: Text(mode == BreakMode.custom ? tr.custom2 : mode.label)),
               ]),
             ),
             if (plan.mode == BreakMode.custom)
@@ -52,34 +53,33 @@ class CommercialsPage extends StatelessWidget {
                 alignment: Alignment.centerLeft,
                 child: TextButton(
                   onPressed: () async {
-                    final roles = await editBreakPlan(context, title: 'Breaks', initial: plan.roles, pools: pools);
+                    final roles = await editBreakPlan(context, title: tr.breaks, initial: plan.roles, pools: pools);
                     if (roles != null) await setPlan(BreakPlan(mode: BreakMode.custom, roles: roles));
                   },
-                  child: const Text('Edit custom breaks…'),
+                  child: Text(tr.editCustomBreaks),
                 ),
               ),
           ]),
           Section(
-            title: 'Pools',
+            title: tr.pools2,
             trailing: TextButton.icon(
               icon: const Icon(Icons.add),
-              label: const Text('New pool'),
+              label: Text(tr.newPool),
               onPressed: () => run(() => context.api.post('$base/pools')),
             ),
             children: [
-              if (pools.isEmpty) const Text('A pool is a set of library folders whose videos fill breaks instead of airing. '
-                    "A pool's type says whether its clips play as commercials or as bumpers, which open and close breaks."),
+              if (pools.isEmpty) Text(tr.aPoolIs),
               for (final p in pools) ...[
                 ListTile(
                   contentPadding: EdgeInsets.zero,
                   title: Text(p['name'] as String),
                   subtitle: Text([
                     kindOf(p).label,
-                    '${(p['view'] as Map)['clips']} clips',
+                    tr.clips2('${(p['view'] as Map)['clips']}'),
                     for (final r in (p['roots'] as List).cast<Map>()) r['label'] as String,
                   ].join(' · ')),
                   trailing: PopupMenuButton<String>(
-                    tooltip: 'Pool actions',
+                    tooltip: tr.poolActions,
                     onSelected: (action) async {
                       final path = '$base/pools/${Uri.encodeComponent(p['id'] as String)}';
                       switch (action) {
@@ -89,34 +89,34 @@ class CommercialsPage extends StatelessWidget {
                             await run(() => context.api.put('$path/roots', {'roots': [for (final r in roots) r.toJson()]}));
                           }
                         case 'rename':
-                          final name = await askText(context, title: 'Rename pool', label: 'Name', initial: p['name'] as String);
+                          final name = await askText(context, title: tr.renamePool, label: tr.name, initial: p['name'] as String);
                           if (name != null && context.mounted) await run(() => context.api.put(path, {'name': name}));
                         case 'kind':
                           final kind = kindOf(p) == PoolKind.bumpers ? PoolKind.commercials : PoolKind.bumpers;
                           await run(() => context.api.put(path, {'kind': kind.name}));
                         case 'delete':
                           final ok = await confirm(context,
-                              title: 'Delete ${p['name']}?',
-                              message: 'Plans that drew from it use all pools instead, and its videos rejoin the channels.',
-                              action: 'Delete');
+                              title: tr.delete3('${p['name']}'),
+                              message: tr.plansThatDrew,
+                              action: tr.delete);
                           if (ok && context.mounted) await run(() => context.api.delete(path));
                       }
                     },
                     itemBuilder: (_) => [
-                      const PopupMenuItem(value: 'folders', child: Text('Choose folders…')),
-                      const PopupMenuItem(value: 'rename', child: Text('Rename')),
+                      PopupMenuItem(value: 'folders', child: Text(tr.chooseFolders2)),
+                      PopupMenuItem(value: 'rename', child: Text(tr.rename)),
                       PopupMenuItem(
                         value: 'kind',
-                        child: Text(kindOf(p) == PoolKind.bumpers ? 'Set type: Commercials' : 'Set type: Bumpers'),
+                        child: Text(kindOf(p) == PoolKind.bumpers ? tr.setTypeCommercials : tr.setTypeBumpers),
                       ),
-                      const PopupMenuItem(value: 'delete', child: Text('Delete')),
+                      PopupMenuItem(value: 'delete', child: Text(tr.delete)),
                     ],
                   ),
                 ),
               ],
             ],
           ),
-          Section(title: "Channels' own plans", children: [
+          Section(title: tr.channelsOwnPlans, children: [
             for (final c in channels)
               _ChannelPlanRow(
                 channel: c,
@@ -154,16 +154,16 @@ class _ChannelPlanRow extends StatelessWidget {
           DropdownButton<String>(
             value: own == null ? 'main' : own.mode.name,
             items: [
-              DropdownMenuItem(value: 'main', child: Text('Main setting (${mainPlan.mode.label})')),
+              DropdownMenuItem(value: 'main', child: Text(tr.mainSetting(mainPlan.mode.label))),
               for (final m in BreakMode.values)
-                DropdownMenuItem(value: m.name, child: Text(m == BreakMode.custom ? 'Custom…' : m.label)),
+                DropdownMenuItem(value: m.name, child: Text(m == BreakMode.custom ? tr.custom2 : m.label)),
             ],
             onChanged: (v) async {
               if (v == 'main') return onSet(null);
               final mode = BreakMode.values.byName(v!);
               if (mode != BreakMode.custom) return onSet(BreakPlan(mode: mode));
               final roles = await editBreakPlan(context,
-                  title: 'Breaks on ${channel['name']}', initial: (own ?? mainPlan).roles, pools: pools);
+                  title: tr.breaksOn('${channel['name']}'), initial: (own ?? mainPlan).roles, pools: pools);
               if (roles != null) await onSet(BreakPlan(mode: BreakMode.custom, roles: roles));
             },
           ),
@@ -219,7 +219,7 @@ class _FolderPickerState extends State<_FolderPicker> {
   Widget build(BuildContext context) {
     final library = _library;
     return AlertDialog(
-      title: Text('Folders for ${widget.pool['name']}'),
+      title: Text(tr.foldersFor('${widget.pool['name']}')),
       content: SizedBox(
         width: 520,
         height: 520,
@@ -254,7 +254,7 @@ class _FolderPickerState extends State<_FolderPicker> {
                       title: Text(_label(_path)),
                       onTap: () => setState(() => _path.isEmpty ? _library = null : _path.removeLast()),
                     ),
-                    if (nodes.isEmpty) const ListTile(title: Text('Nothing inside.')),
+                    if (nodes.isEmpty) ListTile(title: Text(tr.nothingInside2)),
                     for (final n in nodes)
                       () {
                         void toggle() => _toggle(
@@ -282,8 +282,8 @@ class _FolderPickerState extends State<_FolderPicker> {
               ),
       ),
       actions: [
-        TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('Cancel')),
-        FilledButton(onPressed: () => Navigator.of(context).pop(_picked.values.toList()), child: const Text('Done')),
+        TextButton(onPressed: () => Navigator.of(context).pop(), child: Text(tr.cancel)),
+        FilledButton(onPressed: () => Navigator.of(context).pop(_picked.values.toList()), child: Text(tr.done)),
       ],
     );
   }

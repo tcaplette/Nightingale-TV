@@ -1,3 +1,4 @@
+
 part of '../setup_server.dart';
 
 /// The docker-server-core endpoints: status, restore, start fresh, signing
@@ -58,7 +59,7 @@ extension _CoreApi on SetupServer {
           'xmltv': '$base/xmltv.xml',
         },
         'problem': exported
-            ? (export?.problemText(p.id) ?? (signIn.signedIn ? null : 'Sign in to this profile here to export its channels.'))
+            ? (export?.problemText(p.id) ?? (signIn.signedIn ? null : tr.signInToThis))
             : null,
       });
     }
@@ -74,7 +75,7 @@ extension _CoreApi on SetupServer {
       'streamLimit': export?.streamLimit,
       'discovery': export == null || !export.discoveryUnavailable,
       'discoveryMessage': export != null && export.discoveryUnavailable
-          ? 'Discovery is off, so add the tuner by address. Run the container with host networking to turn it on.'
+          ? tr.discoveryIsOff
           : null,
     };
   }
@@ -145,7 +146,7 @@ extension _CoreApi on SetupServer {
 
   Future<Object?> _restoreUpload(ApiRequest r, String id) async {
     final upload = _upload;
-    if (upload == null || upload.id != id) throw ApiError(HttpStatus.notFound, 'Upload the backup again.');
+    if (upload == null || upload.id != id) throw ApiError(HttpStatus.notFound, tr.uploadTheBackup);
     await _restoreBytes(upload.bytes, by: r.account);
     _upload = null;
     return _status(r);
@@ -155,7 +156,7 @@ extension _CoreApi on SetupServer {
   /// core restore path, then its accounts (design D9), keeping [by] an
   /// admin.
   Future<void> _restoreBytes(Uint8List bytes, {Account? by}) async {
-    if (_restoring) throw ApiError(HttpStatus.conflict, 'A restore is already running.');
+    if (_restoring) throw ApiError(HttpStatus.conflict, tr.aRestoreIs);
     _restoring = true;
     try {
       for (final s in _signIns.values) {
@@ -170,7 +171,7 @@ extension _CoreApi on SetupServer {
       ServerLog.info('Restored the backup from ${formatMoment(archive.createdAt.toLocal())} '
           '(${archive.device}): ${archive.summary.profiles.join(', ')}.');
     } on BackupException catch (e) {
-      ServerLog.info('Couldn\'t restore the backup: ${e.message}');
+      ServerLog.info("Couldn't restore the backup: ${e.message}");
       throw ApiError(HttpStatus.badRequest, e.message);
     } finally {
       _restoring = false;
@@ -204,7 +205,7 @@ extension _CoreApi on SetupServer {
   Future<Object?> _setExport(ApiRequest r) async {
     final id = r['id'];
     _profile(id);
-    final export = household.export ?? (throw ApiError(HttpStatus.notFound, 'Live TV export isn\'t running.'));
+    final export = household.export ?? (throw ApiError(HttpStatus.notFound, tr.liveTvExport));
     final body = await r.body();
     final on = body.boolean('exported');
     if (on != null && on != export.settings.isExported(id)) {
@@ -280,7 +281,7 @@ extension _CoreApi on SetupServer {
       if (flow.hint != null) await flow.startFromHint();
       return _signInJson(id);
     }
-    if (s == null) throw ApiError(HttpStatus.conflict, 'Start signing in first.');
+    if (s == null) throw ApiError(HttpStatus.conflict, tr.startSigningIn);
     final flow = s.flow;
     switch (action) {
       case 'connect':
@@ -297,13 +298,13 @@ extension _CoreApi on SetupServer {
         await flow.startPlex();
       case 'homeUser':
         final user = flow.step.homeUsers.where((u) => u.id == body['id']).firstOrNull;
-        if (user == null) throw ApiError(HttpStatus.badRequest, 'No such user.');
+        if (user == null) throw ApiError(HttpStatus.badRequest, tr.noSuchUser);
         await flow.pickUser(user);
       case 'homePin':
         await flow.enterHomePin(body.string('pin') ?? '');
       case 'server':
         final server = (flow.step.servers ?? const []).where((r) => r.clientIdentifier == body['id']).firstOrNull;
-        if (server == null) throw ApiError(HttpStatus.badRequest, 'No such server.');
+        if (server == null) throw ApiError(HttpStatus.badRequest, tr.noSuchServer);
         await flow.pickServer(server);
       case 'back':
         flow.back();
@@ -311,7 +312,7 @@ extension _CoreApi on SetupServer {
         _signIns.remove(id);
         flow.dispose();
       default:
-        throw ApiError(HttpStatus.badRequest, 'Unknown action.');
+        throw ApiError(HttpStatus.badRequest, tr.unknownAction);
     }
     return _signInJson(id);
   }

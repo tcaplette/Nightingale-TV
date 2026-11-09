@@ -1,3 +1,4 @@
+
 part of '../setup_server.dart';
 
 /// Profiles (admin-api): the list each account may see, editing through
@@ -13,7 +14,7 @@ extension _ProfilesApi on SetupServer {
         ApiRoute('DELETE', 'profiles/{id}', Access.admin, _deleteProfile, revision: Revision.household),
       ];
 
-  static const adminOnlyText = 'Only an admin can change that.';
+  static String get adminOnlyText => tr.onlyAnAdminCan;
 
   Future<List<Map<String, Object?>>> _profiles(ApiRequest r) async => [
         for (final p in household.profiles)
@@ -28,6 +29,7 @@ extension _ProfilesApi on SetupServer {
       'kind': p.kind.name,
       if (p.isKid) 'rating': p.rating.name,
       'color': p.color,
+      'language': p.language,
       'hasPin': p.hasPin,
       'exported': household.export?.settings.isExported(p.id) ?? false,
       'signedIn': (await _signInState(p)).signedIn,
@@ -41,14 +43,19 @@ extension _ProfilesApi on SetupServer {
     if (body.string('name') case final name?) draft.name = name.trim();
     if (body.integer('color') case final color?) draft.color = color;
     if (body.string('kind') case final kind?) {
-      draft.kind = ProfileKind.values.asNameMap()[kind] ?? (throw ApiError(HttpStatus.badRequest, 'No such kind.'));
+      draft.kind = ProfileKind.values.asNameMap()[kind] ?? (throw ApiError(HttpStatus.badRequest, tr.noSuchKind));
     }
     if (body.string('rating') case final rating?) {
-      draft.rating = KidRating.values.asNameMap()[rating] ?? (throw ApiError(HttpStatus.badRequest, 'No such rating.'));
+      draft.rating = KidRating.values.asNameMap()[rating] ?? (throw ApiError(HttpStatus.badRequest, tr.noSuchRating));
+    }
+    if (body.containsKey('language')) {
+      final language = body.string('language');
+      if (language != null && supportedLanguage(language) != language) throw ApiError(HttpStatus.badRequest, tr.noSuchLanguage);
+      draft.language = language;
     }
     if (body.containsKey('pin')) {
       final pin = body.string('pin');
-      if (pin != null && !Profile.isValidPin(pin)) throw ApiError(HttpStatus.badRequest, 'A PIN is 4 digits.');
+      if (pin != null && !Profile.isValidPin(pin)) throw ApiError(HttpStatus.badRequest, tr.aPinIs);
       draft.setPin(pin);
     }
   }
@@ -83,7 +90,7 @@ extension _ProfilesApi on SetupServer {
       profile = household.profiles.single;
       if (name.isNotEmpty) profile.name = name;
     } else {
-      profile = household.newProfile()..name = name.isEmpty ? 'Me' : name;
+      profile = household.newProfile()..name = name.isEmpty ? tr.me : name;
     }
     final problem = household.problemWith(profile);
     if (problem != null) throw ApiError(HttpStatus.conflict, problem);

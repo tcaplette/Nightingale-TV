@@ -12,6 +12,7 @@ import 'backup_screen.dart';
 import 'widgets/nightingale_mark.dart';
 import 'widgets/screen_layout.dart';
 import 'widgets/tv_focus.dart';
+import '../l10n/tr.dart';
 
 /// What the address step found: a client for the server, and its info.
 export '../server/sign_in_flow.dart' show IdentifiedServer;
@@ -159,13 +160,13 @@ class _LoginScreenState extends State<LoginScreen> {
     final again = widget.againKey == null ? null : AppScope.read(context).servers.byKey(widget.againKey!);
     return TvPage(
       title: widget.adding
-          ? 'Add a server'
+          ? tr.addAServer
           : again != null
-              ? 'Sign in to ${again.name} again'
+              ? tr.signInToAgain(again.name)
               : shared && profile != null
-                  ? 'Sign in for ${profile.name}'
-                  : 'Welcome to Nightingale TV',
-      hints: '▲▼ Move    OK Select    ESC Back',
+                  ? tr.signInFor(profile.name)
+                  : tr.welcomeToNightingale,
+      hints: tr.moveOkSelectEscBack,
       // On the first step, Back returns to "Who's watching?" (or Servers).
       onBack: _s.stage != SignInStage.server
           ? _flow.back
@@ -221,11 +222,10 @@ class _LoginScreenState extends State<LoginScreen> {
         children: [
           NightingaleTv(height: compact ? 96 : 140, swoosh: true),
           SizedBox(height: compact ? 20 : 32),
-          Text('Your library.\nOn the air, 24/7.', style: g.display(compact ? 56 : 84, weight: FontWeight.w800)),
+          Text(tr.yourLibraryOn, style: g.display(compact ? 56 : 84, weight: FontWeight.w800)),
           SizedBox(height: compact ? 16 : 24),
           Text(
-            'Nightingale TV turns your Jellyfin, Emby or Plex library into always-on '
-            'channels with a program guide. Flip around and catch whatever is on.',
+            tr.nightingaleTvTurns,
             style: g.body(28, color: g.textDim),
           ),
         ],
@@ -295,23 +295,23 @@ class _LoginScreenState extends State<LoginScreen> {
     switch (_s.stage) {
       case SignInStage.server:
         return [
-          Text('Connect to your server', style: g.display(44)),
+          Text(tr.connectToYour, style: g.display(44)),
           const SizedBox(height: 32),
           TvTextField(
             // Keyed by step, so a field never takes over another's focus.
             key: const ValueKey('server'),
             controller: _server,
-            label: 'Server address',
+            label: tr.serverAddress,
             hint: 'https://media.example.org:8920',
             autofocus: true,
             keyboardType: TextInputType.url,
             onSubmitted: (_) => _connect(),
           ),
           const SizedBox(height: 28),
-          TvButton(label: 'Connect', icon: Icons.arrow_forward, expand: true, onPressed: _s.busy ? null : _connect),
+          TvButton(label: tr.connect, icon: Icons.arrow_forward, expand: true, onPressed: _s.busy ? null : _connect),
           const SizedBox(height: 20),
           TvButton(
-            label: 'Sign in with Plex',
+            label: tr.signInWith,
             icon: Icons.play_circle_outline,
             expand: true,
             onPressed: _s.busy ? null : () => _flow.startPlex(),
@@ -320,7 +320,7 @@ class _LoginScreenState extends State<LoginScreen> {
           if (_offerRestore) ...[
             const SizedBox(height: 20),
             TvButton(
-              label: 'Restore from a backup',
+              label: tr.restoreFromA,
               icon: Icons.settings_backup_restore,
               expand: true,
               onPressed: _s.busy ? null : () => restoreOnFirstRun(context),
@@ -334,7 +334,7 @@ class _LoginScreenState extends State<LoginScreen> {
           const SizedBox(height: 40),
           if (_s.quickConnectAvailable) ...[
             TvButton(
-              label: 'Quick Connect (use your phone)',
+              label: tr.quickConnectUse,
               icon: Icons.phonelink_lock,
               expand: true,
               autofocus: true,
@@ -343,73 +343,72 @@ class _LoginScreenState extends State<LoginScreen> {
             const SizedBox(height: 20),
           ],
           TvButton(
-            label: 'Sign in with password',
+            label: tr.signInWithPassword,
             icon: Icons.password,
             expand: true,
             autofocus: !_s.quickConnectAvailable,
             onPressed: _flow.choosePassword,
           ),
           const SizedBox(height: 20),
-          TvButton(label: 'Different server', icon: Icons.arrow_back, expand: true, onPressed: _flow.back),
+          TvButton(label: tr.differentServer, icon: Icons.arrow_back, expand: true, onPressed: _flow.back),
         ];
       case SignInStage.password:
         return [
-          Text('Sign in to ${_s.info!.name}', style: g.display(44)),
+          Text(tr.signInTo2(_s.info!.name), style: g.display(44)),
           if (!_s.quickConnectAvailable)
             Text('${_s.kind.label} ${_s.info!.version} · ${_s.info!.url}', style: g.body(24, color: g.textDim)),
           const SizedBox(height: 32),
-          TvTextField(key: const ValueKey('user'), controller: _user, label: 'Username', autofocus: _user.text.isEmpty),
+          TvTextField(key: const ValueKey('user'), controller: _user, label: tr.username, autofocus: _user.text.isEmpty),
           const SizedBox(height: 20),
           TvTextField(
             key: const ValueKey('password'),
             controller: _password,
-            label: 'Password',
+            label: tr.password,
             obscure: true,
             autofocus: _user.text.isNotEmpty,
             onSubmitted: (_) => _signInWithPassword(),
           ),
           const SizedBox(height: 28),
           TvButton(
-              label: 'Sign in', icon: Icons.login, expand: true, onPressed: _s.busy ? null : _signInWithPassword),
+              label: tr.signIn, icon: Icons.login, expand: true, onPressed: _s.busy ? null : _signInWithPassword),
           const SizedBox(height: 20),
-          TvButton(label: 'Back', icon: Icons.arrow_back, expand: true, onPressed: _flow.back),
+          TvButton(label: tr.back, icon: Icons.arrow_back, expand: true, onPressed: _flow.back),
         ];
       case SignInStage.quickConnect:
         return [
-          Text('Quick Connect', style: g.display(44)),
+          Text(tr.quickConnect, style: g.display(44)),
           const SizedBox(height: 16),
           Text(
-            'On your phone or computer, open ${_s.kind.label} → your profile → Quick Connect, '
-            'and enter this code:',
+            tr.onYourPhone(_s.kind.label),
             style: g.body(26, color: g.textDim),
           ),
           const SizedBox(height: 28),
           _codeBox(g, _s.quickConnectCode!),
           const SizedBox(height: 20),
-          Text('Waiting for approval…', style: g.body(24, color: g.textDim)),
+          Text(tr.waitingForApproval, style: g.body(24, color: g.textDim)),
           const SizedBox(height: 28),
-          TvButton(label: 'Cancel', icon: Icons.close, expand: true, autofocus: true, onPressed: _flow.back),
+          TvButton(label: tr.cancel, icon: Icons.close, expand: true, autofocus: true, onPressed: _flow.back),
         ];
       case SignInStage.plexCode:
         return [
-          Text('Sign in with Plex', style: g.display(44)),
+          Text(tr.signInWith, style: g.display(44)),
           const SizedBox(height: 16),
-          Text('Go to plex.tv/link on your phone or computer and enter this code.',
+          Text(tr.goToPlex,
               style: g.body(26, color: g.textDim)),
           const SizedBox(height: 28),
           if (_s.plexCode != null) _codeBox(g, _s.plexCode!),
           const SizedBox(height: 20),
-          Text('Waiting for the code to be linked…', style: g.body(24, color: g.textDim)),
+          Text(tr.waitingForThe, style: g.body(24, color: g.textDim)),
           const SizedBox(height: 28),
           if (PlatformInfo.hasTouch) ...[
-            TvButton(label: 'Open plex.tv/link', icon: Icons.open_in_new, expand: true, onPressed: _openLink),
+            TvButton(label: tr.openPlexTv, icon: Icons.open_in_new, expand: true, onPressed: _openLink),
             const SizedBox(height: 20),
           ],
-          TvButton(label: 'Cancel', icon: Icons.close, expand: true, autofocus: true, onPressed: _flow.back),
+          TvButton(label: tr.cancel, icon: Icons.close, expand: true, autofocus: true, onPressed: _flow.back),
         ];
       case SignInStage.plexUsers:
         return [
-          Text("Who's signing in?", style: g.display(44)),
+          Text(tr.whosSigningIn, style: g.display(44)),
           const SizedBox(height: 28),
           Wrap(
             spacing: 20,
@@ -420,11 +419,11 @@ class _LoginScreenState extends State<LoginScreen> {
             ],
           ),
           const SizedBox(height: 28),
-          TvButton(label: 'Back', icon: Icons.arrow_back, expand: true, onPressed: _flow.back),
+          TvButton(label: tr.back, icon: Icons.arrow_back, expand: true, onPressed: _flow.back),
         ];
       case SignInStage.plexPin:
         return [
-          Text('PIN for ${_s.homeUser?.title ?? ''}', style: g.display(44)),
+          Text(tr.pinFor(_s.homeUser?.title ?? ''), style: g.display(44)),
           const SizedBox(height: 20),
           Text(
             [for (var i = 0; i < 4; i++) i < _pinDigits.length ? '●' : '○'].join('  '),
@@ -461,12 +460,12 @@ class _LoginScreenState extends State<LoginScreen> {
               ),
             ),
           const SizedBox(height: 8),
-          TvButton(label: 'Back', icon: Icons.arrow_back, expand: true, onPressed: _flow.back),
+          TvButton(label: tr.back, icon: Icons.arrow_back, expand: true, onPressed: _flow.back),
         ];
       case SignInStage.plexServers:
         final servers = _s.servers ?? const [];
         return [
-          Text('Choose a server', style: g.display(44)),
+          Text(tr.chooseAServer, style: g.display(44)),
           const SizedBox(height: 28),
           for (final s in servers) ...[
             // Servers already in the profile show as added (multi-server).
@@ -480,7 +479,7 @@ class _LoginScreenState extends State<LoginScreen> {
             const SizedBox(height: 16),
           ],
           const SizedBox(height: 12),
-          TvButton(label: 'Back', icon: Icons.arrow_back, expand: true, autofocus: servers.isEmpty, onPressed: _flow.back),
+          TvButton(label: tr.back, icon: Icons.arrow_back, expand: true, autofocus: servers.isEmpty, onPressed: _flow.back),
         ];
     }
   }
@@ -593,7 +592,7 @@ class _ServerRow extends StatelessWidget {
               const SizedBox(width: 20),
               Expanded(child: Text(server.label, style: g.body(28, color: fg))),
               const SizedBox(width: 16),
-              Text(added ? 'Added' : server.online ? 'Online' : 'Offline',
+              Text(added ? tr.added : server.online ? tr.online : tr.offline,
                   style: g.body(22, color: focused ? g.onFocus : (server.online ? g.accent : g.textDim))),
             ],
           ),

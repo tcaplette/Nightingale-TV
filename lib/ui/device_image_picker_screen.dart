@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../platform/device_images.dart';
 import '../theme/tv_theme.dart';
 import 'widgets/tv_focus.dart';
+import '../l10n/tr.dart';
 
 /// The device's pictures in a grid, newest first, for a custom channel icon
 /// where Android has no document picker (TVs). The D-pad, an air mouse and
@@ -54,8 +55,8 @@ class _DeviceImagePickerScreenState extends State<DeviceImagePickerScreen> {
   Widget build(BuildContext context) {
     final g = context.guide;
     return TvPage(
-      title: 'Choose a picture',
-      hints: '◀▶▲▼ Move    OK Choose    ESC Cancel',
+      title: tr.chooseAPicture,
+      hints: tr.moveOkChooseEsc,
       onBack: () => Navigator.of(context).pop(),
       child: FutureBuilder<List<DeviceImage>>(
         future: _images,
@@ -64,12 +65,10 @@ class _DeviceImagePickerScreenState extends State<DeviceImagePickerScreen> {
           final images = snapshot.data;
           final String? message = switch ((error, images)) {
             (DeviceImagesDenied(), _) =>
-              'Nightingale TV isn\'t allowed to see the pictures on this device. Allow "Photos and videos" '
-                  'for it in Android\'s Settings › Apps › Nightingale TV › Permissions, then try again.',
-            (Object(), _) => 'Couldn\'t read the pictures on this device.',
-            (_, null) => 'Looking for pictures…',
-            (_, []) => 'No pictures on this device yet. Copy a PNG or JPG to its Download folder or onto a USB '
-                'drive, then try again.',
+              tr.nightingaleTvIsnt,
+            (Object(), _) => tr.couldntReadThePictures,
+            (_, null) => tr.lookingForPictures,
+            (_, []) => tr.noPicturesOn,
             _ => null,
           };
           if (message != null) {
@@ -83,7 +82,7 @@ class _DeviceImagePickerScreenState extends State<DeviceImagePickerScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('Pictures on this device, newest first. Big ones are shrunk to 512 px.',
+                Text(tr.picturesOnThis,
                     style: g.body(24, color: g.textDim)),
                 const SizedBox(height: 16),
                 Expanded(

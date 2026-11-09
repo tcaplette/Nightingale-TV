@@ -14,6 +14,7 @@ import 'backup_screen.dart' show confirmRestore;
 import 'menu_screen.dart' show confirm, showMessage;
 import 'profiles_screen.dart' show grownUpCheck;
 import 'widgets/tv_focus.dart';
+import '../l10n/tr.dart';
 
 /// Moving a setup between the official app and the own build on one device
 /// (install-switching D5, D6).
@@ -30,22 +31,22 @@ Future<void> moveSetupTo(Household household, InstallInfo info) async {
     } on BackupException {
       rethrow;
     } on Object catch (e) {
-      throw BackupException('Couldn\'t save the backup: $e');
+      throw BackupException(tr.couldntSaveThe(e));
     }
   }();
   if (stored == null) throw BackupException(_nothingToMove);
   if (!await InstallSwitching.moveSetup(await backups.store.read(stored))) {
-    throw BackupException('Couldn\'t open ${info.counterpartName}.');
+    throw BackupException(tr.couldntOpen(info.counterpartName));
   }
-  household.notice.value = 'Your setup is on its way to ${info.counterpartName}';
+  household.notice.value = tr.yourSetupIs(info.counterpartName);
 }
 
-const _nothingToMove = 'Nothing is set up here yet, so there\'s no setup to move.';
+String get _nothingToMove => tr.nothingIsSet;
 
 /// "Bring my setup here from …": opens the other app on "Send your setup
 /// to …?".
 Future<void> bringSetupFrom(InstallInfo info) async {
-  if (!await InstallSwitching.askForSetup()) throw BackupException('Couldn\'t open ${info.counterpartName}.');
+  if (!await InstallSwitching.askForSetup()) throw BackupException(tr.couldntOpen(info.counterpartName));
 }
 
 /// A setup the other app handed over: checked like an opened backup file,
@@ -79,7 +80,7 @@ class AboutThisInstall extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text('ABOUT THIS INSTALL', style: g.display(26, weight: FontWeight.w800, color: g.accent)),
+        Text(tr.aboutThisInstall, style: g.display(26, weight: FontWeight.w800, color: g.accent)),
         const SizedBox(height: 12),
         Text(info.sourceLine, style: g.body(30, weight: FontWeight.w600)),
         const SizedBox(height: 8),
@@ -93,9 +94,9 @@ class AboutThisInstall extends StatelessWidget {
             runSpacing: 16,
             children: [
               TvButton(
-                  label: 'Move my setup to ${info.counterpartName}', icon: Icons.move_up, maxLines: 2, onPressed: onMove),
+                  label: tr.moveMySetup(info.counterpartName), icon: Icons.move_up, maxLines: 2, onPressed: onMove),
               TvButton(
-                  label: 'Bring my setup here from ${info.counterpartName}',
+                  label: tr.bringMySetup(info.counterpartName),
                   icon: Icons.move_down,
                   maxLines: 2,
                   onPressed: onBring),
@@ -134,20 +135,19 @@ Future<_NoticeChoice?> _showBothInstalled(BuildContext context, InstallInfo info
                     mainAxisSize: MainAxisSize.min,
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text('${info.counterpartName} is also on this device', style: g.display(48, weight: FontWeight.w800)),
+                      Text(tr.isAlsoOn(info.counterpartName), style: g.display(48, weight: FontWeight.w800)),
                       const SizedBox(height: 16),
                       if (info.ownBuild) ...[
-                        Text('Thank you for supporting Nightingale TV!', style: g.body(28, weight: FontWeight.w600)),
+                        Text(tr.thankYouFor, style: g.body(28, weight: FontWeight.w600)),
                         const SizedBox(height: 12),
                       ],
                       Text(
-                        '${info.appName} and ${info.counterpartName} are separate apps, '
-                        'each with its own profiles, channels and settings.',
+                        tr.andAreSeparate(info.appName, info.counterpartName),
                         style: g.body(28, color: g.textDim),
                       ),
                       const SizedBox(height: 12),
                       Text(
-                        'Uninstalling either one before moving the setup you want to keep deletes that setup.',
+                        tr.uninstallingEitherOne,
                         style: g.body(28, weight: FontWeight.w600, color: g.nowLine),
                       ),
                       const SizedBox(height: 40),
@@ -156,16 +156,16 @@ Future<_NoticeChoice?> _showBothInstalled(BuildContext context, InstallInfo info
                         runSpacing: 20,
                         children: [
                           TvButton(
-                              label: 'Move my setup to ${info.counterpartName}',
+                              label: tr.moveMySetup(info.counterpartName),
                               maxLines: 2,
                               icon: Icons.move_up,
                               onPressed: () => Navigator.pop(context, _NoticeChoice.move)),
                           TvButton(
-                              label: 'Bring my setup here from ${info.counterpartName}',
+                              label: tr.bringMySetup(info.counterpartName),
                               maxLines: 2,
                               icon: Icons.move_down,
                               onPressed: () => Navigator.pop(context, _NoticeChoice.bring)),
-                          TvButton(label: 'Not now', autofocus: true, onPressed: () => Navigator.pop(context)),
+                          TvButton(label: tr.notNow, autofocus: true, onPressed: () => Navigator.pop(context)),
                         ],
                       ),
                     ],
@@ -279,7 +279,7 @@ class _InstallSwitchingHostState extends State<InstallSwitchingHost> {
 
   /// Grown-ups only on a kid profile, as for Backup & restore.
   Future<bool> _unlocked(BuildContext context) async =>
-      !(_household.current?.isKid ?? false) || await grownUpCheck(context, title: 'Parental controls');
+      !(_household.current?.isKid ?? false) || await grownUpCheck(context, title: tr.parentalControls);
 
   Future<void> _handlePending() async {
     final handover = InstallSwitching.pending.value;
@@ -301,14 +301,13 @@ class _InstallSwitchingHostState extends State<InstallSwitchingHost> {
         case SetupRequested():
           if (!await _unlocked(context) || !context.mounted) return;
           final ok = await confirm(context,
-              title: 'Send your setup to ${info.counterpartName}?',
-              message: 'This backs up your profiles, channels and settings now and opens them in '
-                  '${info.counterpartName}, which asks before restoring them. Nothing changes here.',
-              action: 'Send');
+              title: tr.sendYourSetup(info.counterpartName),
+              message: tr.thisBacksUp(info.counterpartName),
+              action: tr.send);
           if (ok) await moveSetupTo(_household, info);
       }
     } on BackupException catch (e) {
-      final title = handover is SetupReceived ? 'Couldn\'t restore' : 'Couldn\'t move the setup';
+      final title = handover is SetupReceived ? tr.couldntRestore : tr.couldntMoveThe;
       if (context.mounted) await showMessage(context, title: title, message: e.message);
     } finally {
       _busy = false;
@@ -338,7 +337,7 @@ class _InstallSwitchingHostState extends State<InstallSwitchingHost> {
           await bringSetupFrom(info);
       }
     } on BackupException catch (e) {
-      if (context.mounted) await showMessage(context, title: 'Couldn\'t move the setup', message: e.message);
+      if (context.mounted) await showMessage(context, title: tr.couldntMoveThe, message: e.message);
     } finally {
       _busy = false;
     }

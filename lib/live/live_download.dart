@@ -6,6 +6,7 @@ import 'dart:typed_data';
 import 'package:http/http.dart' as http;
 
 import 'url_privacy.dart';
+import '../l10n/tr.dart';
 
 /// A playlist or guide that couldn't be fetched; [message] is shown on the
 /// source's row as it is.
@@ -59,34 +60,34 @@ class LiveDownloader {
   }
 
   Future<void> _fetch(Uri url, String what, int maxBytes, Map<String, String> headers, void Function(List<int>) add) async {
-    if (url.scheme != 'http' && url.scheme != 'https') throw LiveSourceException("The $what's address isn't a web address");
+    if (url.scheme != 'http' && url.scheme != 'https') throw LiveSourceException(tr.theSAddress(what));
     final request = http.Request('GET', url)..headers.addAll(headers);
     final http.StreamedResponse response;
     try {
       response = await _http.send(request).timeout(idleTimeout);
     } on TimeoutException {
-      throw LiveSourceException("Couldn't reach the $what", detail: 'no answer');
+      throw LiveSourceException(tr.couldntReachThe(what), detail: 'no answer');
     } on Exception catch (e) {
-      throw LiveSourceException("Couldn't reach the $what", detail: scrubUrlsIn('$e'));
+      throw LiveSourceException(tr.couldntReachThe(what), detail: scrubUrlsIn('$e'));
     }
     if (response.statusCode >= 400) {
       await response.stream.drain<void>().catchError((Object _) {});
-      throw LiveSourceException("Couldn't reach the $what", detail: 'HTTP ${response.statusCode}');
+      throw LiveSourceException(tr.couldntReachThe(what), detail: 'HTTP ${response.statusCode}');
     }
     if ((response.contentLength ?? 0) > maxBytes) {
-      throw LiveSourceException('The $what is too big');
+      throw LiveSourceException(tr.theIsToo(what));
     }
     var size = 0;
     try {
       await for (final chunk in response.stream.timeout(idleTimeout)) {
         size += chunk.length;
-        if (size > maxBytes) throw LiveSourceException('The $what is too big');
+        if (size > maxBytes) throw LiveSourceException(tr.theIsToo(what));
         add(chunk);
       }
     } on TimeoutException {
-      throw LiveSourceException("Couldn't reach the $what", detail: 'it stopped sending');
+      throw LiveSourceException(tr.couldntReachThe(what), detail: 'it stopped sending');
     } on http.ClientException catch (e) {
-      throw LiveSourceException("Couldn't reach the $what", detail: scrubUrlsIn(e.message));
+      throw LiveSourceException(tr.couldntReachThe(what), detail: scrubUrlsIn(e.message));
     }
   }
 

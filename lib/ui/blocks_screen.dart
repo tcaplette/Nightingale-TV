@@ -15,12 +15,13 @@ import 'widgets/new_tag.dart';
 import 'widgets/adaptive.dart';
 import 'widgets/screen_layout.dart';
 import 'widgets/tv_focus.dart';
+import '../l10n/tr.dart';
 
 String _clock(int minute) => formatClockMinute(minute);
 
 /// "8:00 PM · Every day · On"
 String describePremieres(PremiereSettings p) =>
-    [_clock(p.startMinute), describeDays(p.days), p.enabled ? 'On' : 'Off'].join('  ·  ');
+    [_clock(p.startMinute), describeDays(p.days), p.enabled ? tr.onLabel2 : tr.off].join('  ·  ');
 
 /// When [b] next starts (or the airing in progress), within about a year.
 DateTime? nextAiring(ProgramBlock b, DateTime now) {
@@ -49,19 +50,18 @@ class BlocksScreen extends StatelessWidget {
         );
 
     final portrait = ScreenLayout.of(context).isPortrait;
-    final premiereCaption = Text('Newly added episodes, on their show\'s channel',
+    final premiereCaption = Text(tr.newlyAddedEpisodes,
         style: g.body(24, weight: FontWeight.w600, color: g.accent));
     return TvPage(
-      title: 'Programming blocks',
-      hints: '▲▼ Move    OK Edit    ESC Back',
+      title: tr.programmingBlocks,
+      hints: tr.moveOkEdit,
       onBack: () => Navigator.of(context).pop(),
       child: FocusTraversalGroup(
         child: ListView(
           padding: ScreenLayout.of(context).pagePadding(const EdgeInsets.fromLTRB(120, 40, 120, 40)),
           children: [
             Text(
-              'Blocks take over a channel on the days and times you choose, like Saturday morning '
-              'cartoons. Each airing picks up where the last one left off.',
+              tr.blocksTakeOver,
               style: g.body(28, color: g.textDim),
             ),
             const SizedBox(height: 28),
@@ -70,7 +70,7 @@ class BlocksScreen extends StatelessWidget {
               runSpacing: 16,
               children: [
                 TvButton(
-                  label: 'New programming block',
+                  label: tr.newProgrammingBlock,
                   icon: Icons.add,
                   autofocus: app.blocks.isEmpty,
                   onPressed: () => edit(null),
@@ -78,7 +78,7 @@ class BlocksScreen extends StatelessWidget {
                 // Kid profiles get no late-night shortcut (late-night-drift D6).
                 if (app.maxRatingRank == null)
                   TvButton(
-                    label: 'New late-night block',
+                    label: tr.newLateNight,
                     icon: Icons.nightlight_round,
                     onPressed: () => edit(null, lateNight: true),
                   ),
@@ -163,14 +163,14 @@ class _BlockRow extends StatelessWidget {
     final ch = channel;
     final portrait = ScreenLayout.of(context).isPortrait;
     final status = !block.enabled
-        ? 'Turned off'
+        ? tr.turnedOff
         : ch == null
-            ? 'Its channel is gone. Pick a new one.'
+            ? tr.itsChannelIs
             : next == null
-                ? 'No upcoming airings'
+                ? tr.noUpcomingAirings
                 : next!.isBefore(DateTime.now())
-                    ? 'On the air now'
-                    : 'Next: ${formatDate(next!)} ${formatTime(next!)}';
+                    ? tr.onTheAirNow2
+                    : tr.next(formatDate(next!), formatTime(next!));
     final statusText = Text(status,
         style: g.body(24, weight: FontWeight.w600, color: ch == null && block.enabled ? g.nowLine : g.accent));
     return TvFocusable(
@@ -191,7 +191,7 @@ class _BlockRow extends StatelessWidget {
                 width: 80,
                 child: Text('${ch.number}', style: g.display(40, weight: FontWeight.w800, color: g.accent)),
               ),
-              ChannelLogo(icon: ch.icon, size: 60, width: 100, fallbackText: ch.name),
+              ChannelLogo(icon: ch.icon, size: 60, width: 100, fallbackText: ch.displayName),
               const SizedBox(width: 24),
             ],
             Expanded(
@@ -207,7 +207,7 @@ class _BlockRow extends StatelessWidget {
                     [
                       if (block.generated != null) fromTheLineupLabel,
                       describeBlock(block),
-                      if (ch != null && ch.name != block.title) ch.name,
+                      if (ch != null && ch.displayName != block.title) ch.displayName,
                     ].join('  ·  '),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
@@ -321,8 +321,8 @@ class _BlockEditorScreenState extends State<BlockEditorScreen> {
     final preview = hasContent ? app.previewBlock(_draft, _newChannel ? null : _draft.channelId) : null;
 
     return TvPage(
-      title: !_isNew ? 'Edit programming block' : widget.lateNight ? 'New late-night block' : 'New programming block',
-      hints: '▲▼◀▶ Move    OK Select    ESC Cancel',
+      title: !_isNew ? tr.editProgrammingBlock : widget.lateNight ? tr.newLateNight : tr.newProgrammingBlock,
+      hints: tr.moveOkSelectEscCancel,
       onBack: () => Navigator.of(context).pop(),
       // Upright, what the block will air comes first.
       child: AdaptiveColumns(
@@ -333,33 +333,33 @@ class _BlockEditorScreenState extends State<BlockEditorScreen> {
                 main: [
                   TvTextField(
                     controller: _title,
-                    label: 'Title',
-                    hint: 'Saturday Morning Cartoons',
+                    label: tr.title,
+                    hint: tr.saturdayMorningCartoons,
                     autofocus: _isNew,
                     onSubmitted: (_) => setState(() {}),
                   ),
-                  _section(g, 'CHANNEL'),
+                  _section(g, tr.channel),
                   Align(
                     alignment: Alignment.centerLeft,
                     child: TvButton(
                       label: _newChannel
-                          ? 'A new channel just for this block'
+                          ? tr.aNewChannelJust
                           : channel == null
-                              ? 'Choose a channel'
-                              : '${channel.number}  ${channel.name}',
+                              ? tr.chooseAChannel2
+                              : '${channel.number}  ${channel.displayName}',
                       icon: Icons.tv,
                       autofocus: !_isNew,
                       onPressed: _pickChannel,
                     ),
                   ),
-                  _section(g, 'DAYS'),
+                  _section(g, tr.days),
                   Wrap(
                     spacing: 12,
                     runSpacing: 12,
                     children: [
                       for (var d = 1; d <= 7; d++)
                         TvToggle(
-                          label: const ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'][d - 1],
+                          label: weekdayName(d),
                           on: _draft.days.contains(d),
                           onPressed: () => _update(() {
                             _draft.days = {..._draft.days};
@@ -367,39 +367,39 @@ class _BlockEditorScreenState extends State<BlockEditorScreen> {
                           }),
                         ),
                       const SizedBox(width: 12),
-                      TvButton(label: 'Weekdays', onPressed: () => _update(() => _draft.days = {1, 2, 3, 4, 5})),
-                      TvButton(label: 'Weekends', onPressed: () => _update(() => _draft.days = {6, 7})),
+                      TvButton(label: tr.weekdays, onPressed: () => _update(() => _draft.days = {1, 2, 3, 4, 5})),
+                      TvButton(label: tr.weekends, onPressed: () => _update(() => _draft.days = {6, 7})),
                       TvButton(
-                          label: 'Every day', onPressed: () => _update(() => _draft.days = {1, 2, 3, 4, 5, 6, 7})),
+                          label: tr.everyDay, onPressed: () => _update(() => _draft.days = {1, 2, 3, 4, 5, 6, 7})),
                     ],
                   ),
-                  _section(g, 'TIME'),
+                  _section(g, tr.time),
                   Wrap(
                     spacing: 48,
                     runSpacing: 16,
                     children: [
                       _Stepper(
-                        label: 'Starts',
+                        label: tr.starts,
                         value: _clock(_draft.startMinute),
                         onMinus: () => _update(() => _draft.startMinute = _wrap(_draft.startMinute - _step)),
                         onPlus: () => _update(() => _draft.startMinute = _wrap(_draft.startMinute + _step)),
                       ),
                       _Stepper(
-                        label: 'Ends',
+                        label: tr.ends,
                         value: _clock(_draft.endMinute) +
-                            (_draft.endMinute <= _draft.startMinute ? ' (next day)' : ''),
+                            (_draft.endMinute <= _draft.startMinute ? tr.nextDay : ''),
                         onMinus: () => _update(() => _draft.endMinute = _wrap(_draft.endMinute - _step)),
                         onPlus: () => _update(() => _draft.endMinute = _wrap(_draft.endMinute + _step)),
                       ),
                     ],
                   ),
-                  _section(g, 'DATES'),
+                  _section(g, tr.dates),
                   Wrap(
                     spacing: 12,
                     runSpacing: 12,
                     children: [
                       TvToggle(
-                        label: 'All year',
+                        label: tr.allYear,
                         on: !_draft.hasSeason,
                         radio: true,
                         onPressed: () => _update(() {
@@ -408,7 +408,7 @@ class _BlockEditorScreenState extends State<BlockEditorScreen> {
                         }),
                       ),
                       TvToggle(
-                        label: 'Only between dates',
+                        label: tr.onlyBetweenDates,
                         on: _draft.hasSeason,
                         radio: true,
                         onPressed: () => _update(() {
@@ -421,34 +421,33 @@ class _BlockEditorScreenState extends State<BlockEditorScreen> {
                   if (_draft.hasSeason) ...[
                     const SizedBox(height: 16),
                     _DateStepper(
-                      label: 'From',
+                      label: tr.from,
                       value: _draft.seasonStart!,
                       onChanged: (v) => _update(() => _draft.seasonStart = v),
                     ),
                     const SizedBox(height: 12),
                     _DateStepper(
-                      label: 'To',
+                      label: tr.to,
                       value: _draft.seasonEnd!,
                       onChanged: (v) => _update(() => _draft.seasonEnd = v),
                     ),
                     const SizedBox(height: 8),
-                    Text('Repeats every year.', style: g.body(22, color: g.textDim)),
+                    Text(tr.repeatsEveryYear, style: g.body(22, color: g.textDim)),
                   ],
-                  _section(g, 'WHAT IT PLAYS'),
+                  _section(g, tr.whatItPlays),
                   Wrap(
                     spacing: 12,
                     runSpacing: 12,
                     children: [
-                      TvToggle(label: 'A mix', on: !_lineupMode, radio: true, onPressed: () => _setLineupMode(false)),
-                      TvToggle(label: 'A lineup', on: _lineupMode, radio: true, onPressed: () => _setLineupMode(true)),
+                      TvToggle(label: tr.aMix, on: !_lineupMode, radio: true, onPressed: () => _setLineupMode(false)),
+                      TvToggle(label: tr.aLineup, on: _lineupMode, radio: true, onPressed: () => _setLineupMode(true)),
                     ],
                   ),
                   const SizedBox(height: 10),
                   Text(
                     _lineupMode
-                        ? 'Your shows in this order, each playing its next episode every airing. '
-                            'If time is left, the lineup starts over.'
-                        : 'Shows and movies you choose, in order or shuffled.',
+                        ? tr.yourShowsIn
+                        : tr.showsAndMovies,
                     style: g.body(22, color: g.textDim),
                   ),
                   const SizedBox(height: 16),
@@ -460,7 +459,7 @@ class _BlockEditorScreenState extends State<BlockEditorScreen> {
                       runSpacing: 12,
                       children: [
                         TvButton(
-                          label: 'Choose shows & movies',
+                          label: tr.chooseShowsMovies,
                           icon: Icons.video_library,
                           onPressed: _pickContent,
                         ),
@@ -478,7 +477,7 @@ class _BlockEditorScreenState extends State<BlockEditorScreen> {
                     ),
                   if (!_lineupMode && app.maxRatingRank == null) ...[
                     const SizedBox(height: 20),
-                    Text('Minimum rating', style: g.body(24, weight: FontWeight.w600)),
+                    Text(tr.minimumRating, style: g.body(24, weight: FontWeight.w600)),
                     const SizedBox(height: 10),
                     Wrap(
                       spacing: 12,
@@ -486,7 +485,7 @@ class _BlockEditorScreenState extends State<BlockEditorScreen> {
                       children: [
                         for (final floor in <RatingFloor?>[null, ...RatingFloor.values])
                           TvToggle(
-                            label: floor?.label ?? 'Any rating',
+                            label: floor?.label ?? tr.anyRating,
                             on: _draft.source.ratingFloor == floor,
                             radio: true,
                             onPressed: () =>
@@ -496,13 +495,13 @@ class _BlockEditorScreenState extends State<BlockEditorScreen> {
                     ),
                     if (_draft.source.ratingFloor != null) ...[
                       const SizedBox(height: 10),
-                      Text('Only shows and movies rated this or higher. Unrated ones are left out.',
+                      Text(tr.onlyShowsAnd,
                           style: g.body(22, color: g.textDim)),
                     ],
                   ],
-                  _section(g, 'ON THE AIR'),
+                  _section(g, tr.onTheAir),
                   TvToggle(
-                    label: _draft.enabled ? 'Block is on' : 'Block is off',
+                    label: _draft.enabled ? tr.blockIsOn : tr.blockIsOff,
                     on: _draft.enabled,
                     onPressed: () => _update(() => _draft.enabled = !_draft.enabled),
                   ),
@@ -515,10 +514,10 @@ class _BlockEditorScreenState extends State<BlockEditorScreen> {
                     spacing: 16,
                     runSpacing: 16,
                     children: [
-                      TvButton(label: 'Save', icon: Icons.check, onPressed: _save),
-                      TvButton(label: 'Cancel', onPressed: () => Navigator.of(context).pop()),
+                      TvButton(label: tr.save, icon: Icons.check, onPressed: _save),
+                      TvButton(label: tr.cancel, onPressed: () => Navigator.of(context).pop()),
                       if (!_isNew)
-                        TvButton(label: 'Delete block', icon: Icons.delete, danger: true, onPressed: _delete),
+                        TvButton(label: tr.deleteBlock, icon: Icons.delete, danger: true, onPressed: _delete),
                     ],
                   ),
                 ],
@@ -559,7 +558,7 @@ class _BlockEditorScreenState extends State<BlockEditorScreen> {
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
             color: g.accent,
             child: Text(
-              (title.isEmpty ? 'Untitled block' : title).toUpperCase(),
+              (title.isEmpty ? tr.untitledBlock : title).toUpperCase(),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: g.display(26, weight: FontWeight.w800, color: g.onFocus),
@@ -574,29 +573,29 @@ class _BlockEditorScreenState extends State<BlockEditorScreen> {
           ],
           Text(
             _newChannel
-                ? 'On a new channel (off the air at other times)'
+                ? tr.onANew
                 : channel == null
-                    ? 'No channel chosen'
-                    : 'On ${channel.number} ${channel.name}',
+                    ? tr.noChannelChosen
+                    : tr.onLabel(channel.number, channel.displayName),
             style: g.body(24, color: g.textDim),
           ),
           const SizedBox(height: 32),
-          Text('PLAYS', style: g.display(24, weight: FontWeight.w800, color: g.accent)),
+          Text(tr.plays, style: g.display(24, weight: FontWeight.w800, color: g.accent)),
           const SizedBox(height: 8),
           if (playlist.isEmpty)
-            Text(_lineupMode ? 'Nothing yet. Add shows to the lineup.' : 'Nothing yet. Choose shows or movies.',
+            Text(_lineupMode ? tr.nothingYetAdd : tr.nothingYetChoose,
                 style: g.body(26, color: g.textDim))
           else ...[
             Text(
               _lineupMode
                   ? [
-                      '${_draft.lineup.length} slot${_draft.lineup.length == 1 ? '' : 's'}',
-                      '${shows.length} show${shows.length == 1 ? '' : 's'}',
+                      tr.countSlots(_draft.lineup.length),
+                      tr.shows(shows.length),
                     ].join(' · ')
                   : [
-                      if (shows.isNotEmpty) '${shows.length} show${shows.length == 1 ? '' : 's'}',
-                      if (movies > 0) '$movies movie${movies == 1 ? '' : 's'}',
-                      '${formatMinutes(runtime)} in all',
+                      if (shows.isNotEmpty) tr.shows(shows.length),
+                      if (movies > 0) tr.movies2(movies),
+                      tr.inAll(formatMinutes(runtime)),
                     ].join(' · '),
               style: g.body(26),
             ),
@@ -615,8 +614,8 @@ class _BlockEditorScreenState extends State<BlockEditorScreen> {
             const SizedBox(height: 28),
             Text(
               preview.airing.start.isAfter(DateTime.now())
-                  ? 'NEXT AIRING · ${formatDate(preview.airing.start)}'
-                  : 'ON THE AIR NOW',
+                  ? tr.nextAiring(formatDate(preview.airing.start))
+                  : tr.onTheAirNow,
               style: g.display(24, weight: FontWeight.w800, color: g.accent),
             ),
             const SizedBox(height: 8),
@@ -643,10 +642,10 @@ class _BlockEditorScreenState extends State<BlockEditorScreen> {
     final last = programs.last;
     final cutOff = last.end == preview.airing.end && last.duration < (last.item?.runtime ?? Duration.zero);
     if (programs.length < perPass || (programs.length == perPass && cutOff)) {
-      return 'Longer than the block: it ends at ${formatTime(preview.airing.end)}, cutting off ${last.title}.';
+      return tr.longerThanThe(formatTime(preview.airing.end), last.title);
     }
-    if (programs.length == perPass) return 'Fills the block.';
-    return 'Runs ${formatMinutes(programs[perPass - 1].end.difference(preview.airing.start))}, then starts over.';
+    if (programs.length == perPass) return tr.fillsTheBlock;
+    return tr.runsThenStarts(formatMinutes(programs[perPass - 1].end.difference(preview.airing.start)));
   }
 
   /// The lineup's slots, each with its episode count and moves, then
@@ -681,7 +680,7 @@ class _BlockEditorScreenState extends State<BlockEditorScreen> {
           padding: const EdgeInsets.only(bottom: 10),
           child: _LineupRow(
             number: i + 1,
-            name: app.library.seriesByKey[slot.seriesKey]?.name ?? 'Missing show',
+            name: app.library.seriesByKey[slot.seriesKey]?.name ?? tr.missingShow,
             count: slot.count,
             focus: _rowFocus[i],
             // At a limit a button turns off; focus moves to its partner.
@@ -708,7 +707,7 @@ class _BlockEditorScreenState extends State<BlockEditorScreen> {
       Align(
         alignment: Alignment.centerLeft,
         child: TvButton(
-          label: slots.isEmpty ? 'Add a show' : 'Add another show',
+          label: slots.isEmpty ? tr.addAShow2 : tr.addAnotherShow,
           icon: Icons.add,
           focusNode: _addFocus,
           onPressed: _addShow,
@@ -794,9 +793,9 @@ class _BlockEditorScreenState extends State<BlockEditorScreen> {
 
   Future<void> _delete() async {
     final ok = await confirm(context,
-        title: 'Delete "${widget.block!.title}"?',
-        message: 'The channel goes back to its regular programming at these times.',
-        action: 'Delete');
+        title: tr.delete2(widget.block!.title),
+        message: tr.theChannelGoes,
+        action: tr.delete);
     if (!ok || !mounted) return;
     final app = AppScope.read(context);
     final tuner = AppScope.tunerOf(context);
@@ -812,7 +811,7 @@ class _BlockEditorScreenState extends State<BlockEditorScreen> {
 class PremiereEditorScreen extends StatefulWidget {
   const PremiereEditorScreen({super.key});
 
-  static const title = 'New episode premieres';
+  static String get title => tr.newEpisodePremieres;
 
   @override
   State<PremiereEditorScreen> createState() => _PremiereEditorScreenState();
@@ -835,7 +834,7 @@ class _PremiereEditorScreenState extends State<PremiereEditorScreen> {
 
   Future<void> _save() async {
     if (_draft.enabled && _draft.days.isEmpty) {
-      setState(() => _error = 'Pick at least one day.');
+      setState(() => _error = tr.pickAtLeast);
       return;
     }
     final app = AppScope.read(context);
@@ -851,50 +850,48 @@ class _PremiereEditorScreenState extends State<PremiereEditorScreen> {
     final g = context.guide;
     return TvPage(
       title: PremiereEditorScreen.title,
-      hints: '▲▼◀▶ Move    OK Select    ESC Cancel',
+      hints: tr.moveOkSelectEscCancel,
       onBack: () => Navigator.of(context).pop(),
       child: FocusTraversalGroup(
         child: ListView(
           padding: ScreenLayout.of(context).pagePadding(const EdgeInsets.fromLTRB(100, 32, 100, 40)),
           children: [
             Text(
-              'Episodes added to your server in the last two weeks premiere in a nightly slot on their show\'s '
-              'channel: one new episode per show each night, for up to two hours, marked NEW. Programming '
-              'blocks come first.',
+              tr.episodesAddedTo,
               style: g.body(26, color: g.textDim),
             ),
-            _BlockEditorScreenState._section(g, 'ON THE AIR'),
+            _BlockEditorScreenState._section(g, tr.onTheAir),
             Align(
               alignment: Alignment.centerLeft,
               child: TvToggle(
-                label: _draft.enabled ? 'Premieres are on' : 'Premieres are off',
+                label: _draft.enabled ? tr.premieresAreOn : tr.premieresAreOff,
                 on: _draft.enabled,
                 autofocus: true,
                 onPressed: () => _update(_draft.copyWith(enabled: !_draft.enabled)),
               ),
             ),
-            _BlockEditorScreenState._section(g, 'TIME'),
+            _BlockEditorScreenState._section(g, tr.time),
             _Stepper(
-              label: 'Starts',
+              label: tr.starts,
               value: _clock(_draft.startMinute),
               onMinus: () => _update(_draft.copyWith(startMinute: _BlockEditorScreenState._wrap(_draft.startMinute - 15))),
               onPlus: () => _update(_draft.copyWith(startMinute: _BlockEditorScreenState._wrap(_draft.startMinute + 15))),
             ),
-            _BlockEditorScreenState._section(g, 'DAYS'),
+            _BlockEditorScreenState._section(g, tr.days),
             Wrap(
               spacing: 12,
               runSpacing: 12,
               children: [
                 for (var d = 1; d <= 7; d++)
                   TvToggle(
-                    label: const ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'][d - 1],
+                    label: weekdayName(d),
                     on: _draft.days.contains(d),
                     onPressed: () => _toggleDay(d),
                   ),
                 const SizedBox(width: 12),
-                TvButton(label: 'Weekdays', onPressed: () => _update(_draft.copyWith(days: {1, 2, 3, 4, 5}))),
-                TvButton(label: 'Weekends', onPressed: () => _update(_draft.copyWith(days: {6, 7}))),
-                TvButton(label: 'Every day', onPressed: () => _update(_draft.copyWith(days: PremiereSettings.everyDay))),
+                TvButton(label: tr.weekdays, onPressed: () => _update(_draft.copyWith(days: {1, 2, 3, 4, 5}))),
+                TvButton(label: tr.weekends, onPressed: () => _update(_draft.copyWith(days: {6, 7}))),
+                TvButton(label: tr.everyDay, onPressed: () => _update(_draft.copyWith(days: PremiereSettings.everyDay))),
               ],
             ),
             const SizedBox(height: 40),
@@ -906,8 +903,8 @@ class _PremiereEditorScreenState extends State<PremiereEditorScreen> {
               spacing: 16,
               runSpacing: 16,
               children: [
-                TvButton(label: 'Save', icon: Icons.check, onPressed: _save),
-                TvButton(label: 'Cancel', onPressed: () => Navigator.of(context).pop()),
+                TvButton(label: tr.save, icon: Icons.check, onPressed: _save),
+                TvButton(label: tr.cancel, onPressed: () => Navigator.of(context).pop()),
               ],
             ),
           ],
@@ -989,11 +986,11 @@ class _DateStepper extends StatelessWidget {
             runSpacing: 12,
             crossAxisAlignment: WrapCrossAlignment.center,
             children: [
-              TvButton(label: '− Month', onPressed: () => onChanged(value.addMonths(-1))),
-              TvButton(label: '− Day', onPressed: () => onChanged(value.addDays(-1))),
+              TvButton(label: tr.month2, onPressed: () => onChanged(value.addMonths(-1))),
+              TvButton(label: tr.day2, onPressed: () => onChanged(value.addDays(-1))),
               Text('$value', style: g.display(32, weight: FontWeight.w700)),
-              TvButton(label: '+ Day', onPressed: () => onChanged(value.addDays(1))),
-              TvButton(label: '+ Month', onPressed: () => onChanged(value.addMonths(1))),
+              TvButton(label: tr.day, onPressed: () => onChanged(value.addDays(1))),
+              TvButton(label: tr.month, onPressed: () => onChanged(value.addMonths(1))),
             ],
           ),
         ],
@@ -1002,16 +999,16 @@ class _DateStepper extends StatelessWidget {
     return Row(
       children: [
         SizedBox(width: 110, child: Text(label, style: g.display(30, weight: FontWeight.w600))),
-        TvButton(label: '− Month', onPressed: () => onChanged(value.addMonths(-1))),
+        TvButton(label: tr.month2, onPressed: () => onChanged(value.addMonths(-1))),
         const SizedBox(width: 12),
-        TvButton(label: '− Day', onPressed: () => onChanged(value.addDays(-1))),
+        TvButton(label: tr.day2, onPressed: () => onChanged(value.addDays(-1))),
         SizedBox(
           width: 220,
           child: Text('$value', textAlign: TextAlign.center, style: g.display(36, weight: FontWeight.w700)),
         ),
-        TvButton(label: '+ Day', onPressed: () => onChanged(value.addDays(1))),
+        TvButton(label: tr.day, onPressed: () => onChanged(value.addDays(1))),
         const SizedBox(width: 12),
-        TvButton(label: '+ Month', onPressed: () => onChanged(value.addMonths(1))),
+        TvButton(label: tr.month, onPressed: () => onChanged(value.addMonths(1))),
       ],
     );
   }
@@ -1057,7 +1054,7 @@ class _LineupRow extends StatelessWidget {
           TvButton(label: '−', focusNode: focus.fewer, onPressed: onFewer),
           SizedBox(
             width: 170,
-            child: Text('$count episode${count == 1 ? '' : 's'}',
+            child: Text(tr.episodes2(count),
                 textAlign: TextAlign.center, style: g.body(24, weight: FontWeight.w600)),
           ),
           TvButton(label: '+', focusNode: focus.more, onPressed: onMore),
@@ -1066,7 +1063,7 @@ class _LineupRow extends StatelessWidget {
           const SizedBox(width: 8),
           TvButton(label: '▼', focusNode: focus.down, onPressed: onDown),
           const SizedBox(width: 8),
-          TvButton(label: 'Remove', icon: Icons.close, focusNode: focus.remove, onPressed: onRemove),
+          TvButton(label: tr.remove, icon: Icons.close, focusNode: focus.remove, onPressed: onRemove),
         ],
       ),
     );
@@ -1095,12 +1092,12 @@ class _LineupRow extends StatelessWidget {
               crossAxisAlignment: WrapCrossAlignment.center,
               children: [
                 TvButton(label: '−', focusNode: focus.fewer, onPressed: onFewer),
-                Text('$count episode${count == 1 ? '' : 's'}', style: g.body(24, weight: FontWeight.w600)),
+                Text(tr.episodes2(count), style: g.body(24, weight: FontWeight.w600)),
                 TvButton(label: '+', focusNode: focus.more, onPressed: onMore),
                 const SizedBox(width: 16),
                 TvButton(label: '▲', focusNode: focus.up, onPressed: onUp),
                 TvButton(label: '▼', focusNode: focus.down, onPressed: onDown),
-                TvButton(label: 'Remove', icon: Icons.close, focusNode: focus.remove, onPressed: onRemove),
+                TvButton(label: tr.remove, icon: Icons.close, focusNode: focus.remove, onPressed: onRemove),
               ],
             ),
           ],
@@ -1153,8 +1150,8 @@ class _ShowPickerScreen extends StatelessWidget {
         if (library.episodesBySeries[s.key]?.isNotEmpty ?? false) s,
     ]..sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
     return TvPage(
-      title: 'Add a show',
-      hints: '▲▼ Move    OK Add    ESC Back',
+      title: tr.addAShow2,
+      hints: tr.moveOkAdd,
       onBack: () => Navigator.of(context).pop(),
       child: FocusTraversalGroup(
         child: ListView(
@@ -1183,7 +1180,7 @@ class _ShowPickerScreen extends StatelessWidget {
                               overflow: TextOverflow.ellipsis,
                               style: g.display(30, weight: FontWeight.w600)),
                         ),
-                        Text('${library.episodesBySeries[s.key]!.length} episodes',
+                        Text(tr.episodes(library.episodesBySeries[s.key]!.length),
                             style: g.body(22, color: g.textDim)),
                       ],
                     ),
@@ -1213,8 +1210,8 @@ class _ChannelPickerScreen extends StatelessWidget {
     final channels = app.allChannels;
     final selectedIndex = channels.indexWhere((c) => c.id == selectedId);
     return TvPage(
-      title: 'Choose a channel',
-      hints: '▲▼ Move    OK Choose    ESC Back',
+      title: tr.chooseAChannel2,
+      hints: tr.moveOkChoose,
       onBack: () => Navigator.of(context).pop(),
       child: FocusTraversalGroup(
         child: ListView(
@@ -1223,14 +1220,14 @@ class _ChannelPickerScreen extends StatelessWidget {
             Align(
               alignment: Alignment.centerLeft,
               child: TvButton(
-                label: 'A new channel just for this block',
+                label: tr.aNewChannelJust,
                 icon: Icons.add,
                 autofocus: selectedIndex < 0,
                 onPressed: () => Navigator.of(context).pop(newChannel),
               ),
             ),
             const SizedBox(height: 8),
-            Text('A new channel is off the air outside the block, like a channel that signs off at night.',
+            Text(tr.aNewChannel,
                 style: g.body(24, color: g.textDim)),
             const SizedBox(height: 28),
             for (final (i, ch) in channels.indexed)
@@ -1255,10 +1252,10 @@ class _ChannelPickerScreen extends StatelessWidget {
                           child: Text('${ch.number}',
                               style: g.display(38, weight: FontWeight.w800, color: g.accent)),
                         ),
-                        ChannelLogo(icon: ch.icon, size: 56, width: 90, fallbackText: ch.name),
+                        ChannelLogo(icon: ch.icon, size: 56, width: 90, fallbackText: ch.displayName),
                         const SizedBox(width: 18),
                         Expanded(
-                          child: Text(ch.name,
+                          child: Text(ch.displayName,
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                               style: g.display(30, weight: FontWeight.w600)),

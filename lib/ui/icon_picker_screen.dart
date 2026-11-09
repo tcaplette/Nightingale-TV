@@ -14,15 +14,22 @@ import 'widgets/channel_logo.dart';
 import 'widgets/nightingale_mark.dart';
 import 'widgets/screen_layout.dart';
 import 'widgets/tv_focus.dart';
+import '../l10n/tr.dart';
 
 enum _Tab {
-  builtin('Built-in', Icons.apps),
-  badges('Badges', Icons.badge),
-  shows('Show logos', null),
-  mine('My icons', Icons.upload_file);
+  builtin(Icons.apps),
+  badges(Icons.badge),
+  shows(null),
+  mine(Icons.upload_file);
 
-  const _Tab(this.label, this.icon);
-  final String label;
+  const _Tab(this.icon);
+
+  String get label => switch (this) {
+        _Tab.builtin => tr.builtIn,
+        _Tab.badges => tr.badges,
+        _Tab.shows => tr.showLogos,
+        _Tab.mine => tr.myIcons,
+      };
 
   /// Null: the app's TV with the bird.
   final IconData? icon;
@@ -98,7 +105,7 @@ class _IconPickerScreenState extends State<IconPickerScreen> {
     try {
       bytes = await DeviceImages.read(image, limit: CustomIconStore.maxSourceBytes);
     } on PlatformException {
-      throw CustomIconException('Couldn\'t read that picture. Try another one.');
+      throw CustomIconException(tr.couldntReadThat);
     }
     return icons.importBytes(bytes, image.name);
   }
@@ -127,8 +134,8 @@ class _IconPickerScreenState extends State<IconPickerScreen> {
       ],
     );
     return TvPage(
-      title: 'Icon for ${widget.channel.name}',
-      hints: '◀▶▲▼ Move    OK Choose    ESC Cancel',
+      title: tr.iconFor(widget.channel.displayName),
+      hints: tr.moveOkChooseEsc,
       onBack: () => Navigator.of(context).pop(),
       child: Padding(
         padding: layout.isPortrait
@@ -162,7 +169,7 @@ class _IconPickerScreenState extends State<IconPickerScreen> {
             _ColorRow(selected: _color, onSelected: (c) => setState(() => _color = c)),
             for (final group in iconCatalog.entries) ...[
               const SizedBox(height: 20),
-              _SectionTitle(group.key),
+              _SectionTitle(iconGroupName(group.key)),
               _TileWrap(children: [
                 for (final entry in group.value.entries)
                   _IconTile(
@@ -188,15 +195,15 @@ class _IconPickerScreenState extends State<IconPickerScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      TvTextField(controller: _badgeText, label: 'Call letters (up to 5)'),
+                      TvTextField(controller: _badgeText, label: tr.callLettersUp),
                       const SizedBox(height: 24),
-                      _SectionTitle('Shape'),
+                      _SectionTitle(tr.shape),
                       Wrap(spacing: 14, runSpacing: 14, children: [
                         for (final s in BadgeShape.values)
                           _IconTile(
                             selected: s == _shape,
                             onPressed: () => setState(() => _shape = s),
-                            child: StationBadge(text: 'TV', shape: s, color: Color(_color), size: 96),
+                            child: StationBadge(text: tr.tv, shape: s, color: Color(_color), size: 96),
                           ),
                       ]),
                       const SizedBox(height: 24),
@@ -209,12 +216,12 @@ class _IconPickerScreenState extends State<IconPickerScreen> {
                   fit: portrait ? FlexFit.loose : FlexFit.tight,
                   child: Column(
                     children: [
-                      _SectionTitle('Preview'),
+                      _SectionTitle(tr.preview),
                       const SizedBox(height: 12),
                       ListenableBuilder(
                         listenable: _badgeText,
                         builder: (context, _) => StationBadge(
-                          text: _badgeText.text.trim().isEmpty ? 'TV' : _badgeText.text.trim(),
+                          text: _badgeText.text.trim().isEmpty ? tr.tv : _badgeText.text.trim(),
                           shape: _shape,
                           color: Color(_color),
                           size: 280,
@@ -222,11 +229,11 @@ class _IconPickerScreenState extends State<IconPickerScreen> {
                       ),
                       const SizedBox(height: 40),
                       TvButton(
-                        label: 'Use this badge',
+                        label: tr.useThisBadge,
                         icon: Icons.check,
                         onPressed: () {
                           final typed = _badgeText.text.trim();
-                          final text = typed.isEmpty ? 'TV' : typed;
+                          final text = typed.isEmpty ? tr.tv : typed;
                           _choose(ChannelIcon(
                             kind: ChannelIconKind.badge,
                             value: text.length > 5 ? text.substring(0, 5) : text,
@@ -236,7 +243,7 @@ class _IconPickerScreenState extends State<IconPickerScreen> {
                         },
                       ),
                       const SizedBox(height: 16),
-                      Text('Generic badges only. Upload a real network logo under "My icons".',
+                      Text(tr.genericBadgesOnly,
                           textAlign: TextAlign.center, style: g.body(22, color: g.textDim)),
                     ],
                   ),
@@ -251,7 +258,7 @@ class _IconPickerScreenState extends State<IconPickerScreen> {
           ..sort((a, b) => a.name.compareTo(b.name));
         if (shows.isEmpty) {
           final kind = app.session?.kind;
-          return _Empty('None of your shows have a logo image on your ${kind == null ? '' : '${kind.label} '}server.');
+          return _Empty(kind == null ? tr.noneOfYourShows : tr.noShowLogosOn(kind.label));
         }
         return ListView(children: [
           _TileWrap(children: [
@@ -272,12 +279,12 @@ class _IconPickerScreenState extends State<IconPickerScreen> {
         final app = AppScope.read(context);
         final g = context.guide;
         return ListView(children: [
-          Text('PNG, JPG, WebP, GIF or SVG. Big images are shrunk to 512 px automatically.',
+          Text(tr.pngJpgWebp,
               style: g.body(24, color: g.textDim)),
           const SizedBox(height: 20),
           _TileWrap(children: [
             _IconTile(
-              label: 'Upload image…',
+              label: tr.uploadImage,
               onPressed: _upload,
               child: Icon(Icons.add_photo_alternate, size: 76, color: g.accent),
             ),
@@ -296,9 +303,9 @@ class _IconPickerScreenState extends State<IconPickerScreen> {
                   TvFocusable(
                     onPressed: () async {
                       final ok = await confirm(context,
-                          title: 'Delete this icon?',
-                          message: 'Channels using it go back to a default icon.',
-                          action: 'Delete');
+                          title: tr.deleteThisIcon,
+                          message: tr.channelsUsingIt,
+                          action: tr.delete);
                       if (!ok) return;
                       await app.deleteCustomIcon(name);
                       await _loadCustom();
@@ -312,7 +319,7 @@ class _IconPickerScreenState extends State<IconPickerScreen> {
                       child: Row(mainAxisSize: MainAxisSize.min, children: [
                         Icon(Icons.delete_outline, size: 22, color: focused ? Colors.white : g.textDim),
                         const SizedBox(width: 6),
-                        Text('Delete', style: g.body(20, color: focused ? Colors.white : g.textDim)),
+                        Text(tr.delete, style: g.body(20, color: focused ? Colors.white : g.textDim)),
                       ]),
                     ),
                   ),
@@ -437,7 +444,7 @@ class _ColorRow extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const _SectionTitle('Color'),
+        _SectionTitle(tr.color),
         Wrap(spacing: 12, runSpacing: 12, children: [
           for (final c in iconColors)
             TvFocusable(

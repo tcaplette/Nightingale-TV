@@ -3,6 +3,8 @@
 /// D2, D3).
 library;
 
+import '../../l10n/tr.dart';
+
 /// A movie or another video: picked, never opened.
 bool isVideoNode(Map<String, Object?> node) => node['type'] == 'Movie' || node['type'] == 'Video';
 
@@ -26,6 +28,6 @@ bool opensNode(Map<String, Object?> node, {required bool programsOnly}) =>
 String nodeDetail(Map<String, Object?> node, {required bool programsOnly}) {
   if (isVideoNode(node)) return node['type'] == 'Movie' ? 'Movie' : 'Video';
   final shown = shownChildren(node, programsOnly: programsOnly).length;
-  if (shown > 0) return '$shown inside';
-  return _children(node).isEmpty ? 'Nothing inside' : 'No movies';
+  if (shown > 0) return tr.inside(shown);
+  return _children(node).isEmpty ? tr.nothingInside : tr.noMovies;
 }

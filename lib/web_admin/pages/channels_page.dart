@@ -12,6 +12,7 @@ import '../widgets/break_plan_editor.dart';
 import '../widgets/channel_icon.dart';
 import '../widgets/common.dart';
 import '../widgets/source_editor.dart';
+import '../../l10n/tr.dart';
 
 /// A profile's channels: search, open one to edit, add custom, block and
 /// music channels, reset the lineup; the main logo mode and premieres.
@@ -70,7 +71,7 @@ class _ChannelsPageState extends State<ChannelsPage> {
   Widget build(BuildContext context) {
     final data = _data;
     if (data == null) {
-      return PageBody(title: 'Channels', children: [
+      return PageBody(title: tr.channels5, children: [
         if (_error == null) const Center(child: CircularProgressIndicator()) else ErrorText(_error),
       ]);
     }
@@ -88,30 +89,29 @@ class _ChannelsPageState extends State<ChannelsPage> {
         alignment: WrapAlignment.spaceBetween,
         crossAxisAlignment: WrapCrossAlignment.center,
         children: [
-          Semantics(header: true, child: Text('Channels', style: Theme.of(context).textTheme.headlineSmall)),
+          Semantics(header: true, child: Text(tr.channels5, style: Theme.of(context).textTheme.headlineSmall)),
           Wrap(spacing: 8, runSpacing: 8, children: [
-            FilledButton.icon(icon: const Icon(Icons.add), label: const Text('New channel'), onPressed: _addCustom),
+            FilledButton.icon(icon: const Icon(Icons.add), label: Text(tr.newChannel), onPressed: _addCustom),
             FilledButton.tonalIcon(
               icon: const Icon(Icons.add),
-              label: const Text('Block channel'),
+              label: Text(tr.blockChannel2),
               onPressed: () async {
-                final name = await askText(context, title: 'New block channel', label: 'Name', action: 'Add');
+                final name = await askText(context, title: tr.newBlockChannel, label: tr.name, action: tr.add);
                 if (name != null && mounted) {
                   await _do(() => context.api.post('$_base/channels', {'kind': 'block', 'name': name}));
                 }
               },
             ),
-            FilledButton.tonalIcon(icon: const Icon(Icons.music_note), label: const Text('Music channel'), onPressed: _addMusic),
+            FilledButton.tonalIcon(icon: const Icon(Icons.music_note), label: Text(tr.musicChannel), onPressed: _addMusic),
             OutlinedButton(
               onPressed: () async {
                 final ok = await confirm(context,
-                    title: 'Reset channel lineup?',
-                    message: 'Every channel edit is discarded and the default lineup is made again. Channels you added are '
-                        'kept. A backup is saved first.',
-                    action: 'Reset');
+                    title: tr.resetChannelLineup,
+                    message: tr.everyChannelEdit,
+                    action: tr.reset);
                 if (ok && context.mounted) await _do(() => context.api.post('$_base/channels/reset'));
               },
-              child: const Text('Reset lineup'),
+              child: Text(tr.resetLineup),
             ),
           ]),
         ],
@@ -121,11 +121,11 @@ class _ChannelsPageState extends State<ChannelsPage> {
       const SizedBox(height: 12),
       TextField(
         controller: _search,
-        decoration: const InputDecoration(prefixIcon: Icon(Icons.search), labelText: 'Search channels'),
+        decoration: InputDecoration(prefixIcon: Icon(Icons.search), labelText: tr.searchChannels),
         onChanged: (_) => setState(() {}),
       ),
       const SizedBox(height: 8),
-      Text('${shown.length} of ${channels.length} channels', style: Theme.of(context).textTheme.bodySmall),
+      Text(tr.ofChannels2(shown.length, channels.length), style: Theme.of(context).textTheme.bodySmall),
     ];
     return ListView.builder(
       padding: EdgeInsets.fromLTRB(narrow ? 16 : 24, 16, narrow ? 16 : 24, 48),
@@ -146,15 +146,15 @@ class _ChannelsPageState extends State<ChannelsPage> {
             subtitle: Text(
               [
                 if (now != null) now['title'] as String,
-                if (view['live'] != null) 'Live · ${(view['live'] as Map)['source']}',
-                if (c['blockOnly'] == true) 'Block channel',
-                if (view['music'] == true) 'Music',
-                if (c['hidden'] == true) 'Hidden',
+                if (view['live'] != null) tr.live3('${(view['live'] as Map)['source']}'),
+                if (c['blockOnly'] == true) tr.blockChannel2,
+                if (view['music'] == true) tr.music,
+                if (c['hidden'] == true) tr.hidden,
               ].join(' · '),
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
             ),
-            trailing: c['favorite'] == true ? const Icon(Icons.star, semanticLabel: 'Favorite') : null,
+            trailing: c['favorite'] == true ? Icon(Icons.star, semanticLabel: tr.favorite) : null,
             onTap: () => context.go('/profiles/${widget.profileId}/channels/${Uri.encodeComponent(c['id'] as String)}'),
           ),
         );
@@ -190,7 +190,7 @@ class _RetroDropdown<T> extends StatelessWidget {
   }
 }
 
-const _retroNote = "These settings apply on screens running the app. They don't apply to Live TV export.";
+String get _retroNote => tr.theseSettingsApply;
 
 /// The main retro look and the Custom CRT style.
 class _MainRetro extends StatelessWidget {
@@ -215,63 +215,63 @@ class _MainRetro extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text('Retro look', style: Theme.of(context).textTheme.labelLarge),
+        Text(tr.retroLook, style: Theme.of(context).textTheme.labelLarge),
         const SizedBox(height: 4),
-        const Text(_retroNote),
+        Text(_retroNote),
         const SizedBox(height: 12),
         _RetroDropdown<PictureShape>(
-            title: 'Picture shape',
+            title: tr.pictureShape2,
             values: PictureShape.values,
             value: retro.shape,
             label: (v) => v.label,
             onChanged: (v) => put({'shape': v.name})),
         _RetroDropdown<Surround>(
-            title: 'Surround',
+            title: tr.surround2,
             values: [for (final s in Surround.values) if (s != Surround.image || retro.surroundImage != null) s],
             value: retro.surround,
             label: (v) => v.label,
             onChanged: (v) => put({'surround': v.name})),
         Align(
           alignment: Alignment.centerLeft,
-          child: TextButton(onPressed: onChooseImage, child: const Text('Choose surround image…')),
+          child: TextButton(onPressed: onChooseImage, child: Text(tr.chooseSurroundImage)),
         ),
         _RetroDropdown<CrtStyle>(
-            title: 'CRT effect',
+            title: tr.crtEffect2,
             values: CrtStyle.values,
             value: retro.crt,
             label: (v) => v.label,
             onChanged: (v) => put({'crt': v.name})),
         _RetroDropdown<OverlayThemeName>(
-            title: 'Overlay theme',
+            title: tr.overlayTheme2,
             values: OverlayThemeName.values,
             value: retro.overlay,
             label: (v) => v.label,
             onChanged: (v) => put({'overlay': v.name})),
         _RetroDropdown<OverlayAccent>(
-            title: 'Accent (${retro.overlay.label})',
+            title: tr.accent2(retro.overlay.label),
             values: OverlayAccent.values,
             value: retro.accentOf(retro.overlay),
             label: (v) => v.label,
             onChanged: (v) => put({
                   'accents': {retro.overlay.name: v.name}
                 })),
-        Text('Custom CRT style', style: Theme.of(context).textTheme.labelLarge),
+        Text(tr.customCrtStyle2, style: Theme.of(context).textTheme.labelLarge),
         const SizedBox(height: 12),
-        level('Scanlines', custom.scanlines, 'scanlines'),
+        level(tr.scanlines2, custom.scanlines, 'scanlines'),
         _RetroDropdown<int>(
-            title: 'Lines',
+            title: tr.lines2,
             values: CrtValues.lineCounts,
             value: custom.lines,
             label: (v) => '$v',
             onChanged: (v) => put({
                   'custom': {'lines': v}
                 })),
-        level('Mask', custom.mask, 'mask'),
-        level('Vignette', custom.vignette, 'vignette'),
-        level('Curvature', custom.curvature, 'curvature'),
-        level('Glow', custom.glow, 'glow'),
+        level(tr.mask2, custom.mask, 'mask'),
+        level(tr.vignette2, custom.vignette, 'vignette'),
+        level(tr.curvature2, custom.curvature, 'curvature'),
+        level(tr.glow2, custom.glow, 'glow'),
         _RetroDropdown<CrtColor>(
-            title: 'Color',
+            title: tr.color,
             values: CrtColor.values,
             value: custom.color,
             label: (v) => v.label,
@@ -302,12 +302,12 @@ class _MainSettings extends StatelessWidget {
     }
 
     return ExpansionTile(
-      title: const Text('Main settings'),
-      subtitle: Text('Logo ${mode.label.toLowerCase()} · Premieres ${premieres.enabled ? formatClockMinute(premieres.startMinute) : 'off'}'),
+      title: Text(tr.mainSettings),
+      subtitle: Text(tr.logoAndPremieres(mode.label.toLowerCase(), premieres.enabled ? formatClockMinute(premieres.startMinute) : tr.offLower)),
       childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
       expandedCrossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text('Channel logo', style: Theme.of(context).textTheme.labelLarge),
+        Text(tr.channelLogo2, style: Theme.of(context).textTheme.labelLarge),
         const SizedBox(height: 8),
         SegmentedButton<LogoMode>(
           segments: [for (final m in LogoMode.values) ButtonSegment(value: m, label: Text(m.label))],
@@ -326,14 +326,14 @@ class _MainSettings extends StatelessWidget {
         const SizedBox(height: 16),
         SwitchListTile(
           contentPadding: EdgeInsets.zero,
-          title: const Text('New episode premieres'),
-          subtitle: const Text("A nightly slot for shows' newest episodes, on each show's home channel."),
+          title: Text(tr.newEpisodePremieres),
+          subtitle: Text(tr.aNightlySlot),
           value: premieres.enabled,
           onChanged: (on) => put('premieres', {'premieres': premieres.copyWith(enabled: on).toJson()}),
         ),
         if (premieres.enabled) ...[
           MinuteField(
-            label: 'Starts',
+            label: tr.starts,
             minute: premieres.startMinute,
             onChanged: (m) => put('premieres', {'premieres': premieres.copyWith(startMinute: m ~/ 15 * 15).toJson()}),
           ),
@@ -361,7 +361,7 @@ class _CustomChannelDialog extends StatefulWidget {
 }
 
 class _CustomChannelDialogState extends State<_CustomChannelDialog> {
-  final _name = TextEditingController(text: 'My Channel');
+  final _name = TextEditingController(text: tr.myChannel);
   ChannelSource _source = const ChannelSource(includeEpisodes: false);
   PlaybackOrder _order = PlaybackOrder.random;
   bool _saving = false;
@@ -385,14 +385,14 @@ class _CustomChannelDialogState extends State<_CustomChannelDialog> {
 
   @override
   Widget build(BuildContext context) => AlertDialog(
-        title: const Text('New channel'),
+        title: Text(tr.newChannel),
         scrollable: true,
         content: SizedBox(
           width: 640,
           child: DataView<Map<String, Object?>>(
             load: () async => (await context.api.get('profiles/${widget.profileId}/library/catalog'))! as Map<String, Object?>,
             builder: (context, catalog, _) => Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-              TextField(controller: _name, decoration: const InputDecoration(labelText: 'Name')),
+              TextField(controller: _name, decoration: InputDecoration(labelText: tr.name)),
               const SizedBox(height: 12),
               SourceEditor(
                 profileId: widget.profileId,
@@ -412,10 +412,10 @@ class _CustomChannelDialogState extends State<_CustomChannelDialog> {
           ),
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('Cancel')),
+          TextButton(onPressed: () => Navigator.of(context).pop(), child: Text(tr.cancel)),
           FilledButton(
             onPressed: !_source.hasPicks || _saving ? null : _add,
-            child: const Text('Add'),
+            child: Text(tr.add),
           ),
         ],
       );
@@ -439,26 +439,26 @@ class _MusicChannelDialogState extends State<_MusicChannelDialog> {
 
   @override
   Widget build(BuildContext context) => AlertDialog(
-        title: const Text('New music channel'),
+        title: Text(tr.newMusicChannel),
         scrollable: true,
         content: SizedBox(
           width: 440,
           child: DataView<Map<String, Object?>>(
             load: () async => (await context.api.get('profiles/${widget.profileId}/library/catalog'))! as Map<String, Object?>,
             builder: (context, catalog, _) => Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-              TextField(controller: _name, autofocus: true, decoration: const InputDecoration(labelText: 'Name')),
+              TextField(controller: _name, autofocus: true, decoration: InputDecoration(labelText: tr.name)),
               CheckboxListTile(
                 value: _songs,
                 onChanged: (v) => setState(() => _songs = v ?? false),
-                title: Text('Songs (${catalog['songs']})'),
+                title: Text(tr.songs('${catalog['songs']}')),
               ),
               CheckboxListTile(
                 value: _videos,
                 onChanged: (v) => setState(() => _videos = v ?? false),
-                title: Text('Music videos (${catalog['musicVideos']})'),
+                title: Text(tr.musicVideos('${catalog['musicVideos']}')),
               ),
               if ((catalog['musicGenres'] as List).isNotEmpty) ...[
-                Text('Genres (none: any)', style: Theme.of(context).textTheme.labelLarge),
+                Text(tr.genresNoneAny, style: Theme.of(context).textTheme.labelLarge),
                 Wrap(spacing: 6, runSpacing: 6, children: [
                   for (final g in (catalog['musicGenres'] as List).cast<String>())
                     FilterChip(
@@ -470,7 +470,7 @@ class _MusicChannelDialogState extends State<_MusicChannelDialog> {
               ],
               if ((catalog['decades'] as List).isNotEmpty) ...[
                 const SizedBox(height: 12),
-                Text('Decades (none: any)', style: Theme.of(context).textTheme.labelLarge),
+                Text(tr.decadesNoneAny, style: Theme.of(context).textTheme.labelLarge),
                 Wrap(spacing: 6, runSpacing: 6, children: [
                   for (final d in (catalog['decades'] as List).cast<int>())
                     FilterChip(
@@ -484,7 +484,7 @@ class _MusicChannelDialogState extends State<_MusicChannelDialog> {
           ),
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('Cancel')),
+          TextButton(onPressed: () => Navigator.of(context).pop(), child: Text(tr.cancel)),
           FilledButton(
             onPressed: !_songs && !_videos
                 ? null
@@ -499,7 +499,7 @@ class _MusicChannelDialogState extends State<_MusicChannelDialog> {
                         decades: _decades.toList()..sort(),
                       ).toJson(),
                     }),
-            child: const Text('Add'),
+            child: Text(tr.add),
           ),
         ],
       );
@@ -572,7 +572,7 @@ class _ChannelEditorPageState extends State<ChannelEditorPage> {
   Widget build(BuildContext context) {
     final c = _c;
     if (c == null) {
-      return PageBody(title: 'Channel', children: [
+      return PageBody(title: tr.channel3, children: [
         if (_error == null) const Center(child: CircularProgressIndicator()) else ErrorText(_error),
       ]);
     }
@@ -594,24 +594,24 @@ class _ChannelEditorPageState extends State<ChannelEditorPage> {
       actions: [
         TextButton.icon(
           icon: const Icon(Icons.arrow_back),
-          label: const Text('Channels'),
+          label: Text(tr.channels5),
           onPressed: () => context.go('/profiles/${widget.profileId}/channels'),
         ),
       ],
       children: [
-        if (isLive) Text('Live from ${live['source']}${live['number'] == null ? '' : ' · ${live['number']}'}'),
-        Section(title: 'Name and number', children: [
+        if (isLive) Text([tr.liveFrom('${live['source']}'), if (live['number'] != null) '${live['number']}'].join(' · ')),
+        Section(title: tr.nameAndNumber, children: [
           TextField(
             controller: _name,
-            decoration: const InputDecoration(labelText: 'Name'),
+            decoration: InputDecoration(labelText: tr.name),
             onSubmitted: (v) => _put({'name': v}),
           ),
           const SizedBox(height: 12),
           TextField(
             controller: _number,
             keyboardType: TextInputType.number,
-            decoration: const InputDecoration(
-                labelText: 'Number', helperText: 'A channel already on that number swaps into this one\'s place.'),
+            decoration: InputDecoration(
+                labelText: tr.number3, helperText: tr.aChannelAlready),
             onSubmitted: (v) {
               final n = int.tryParse(v.trim());
               if (n != null) _put({'number': n});
@@ -625,11 +625,11 @@ class _ChannelEditorPageState extends State<ChannelEditorPage> {
                 final n = int.tryParse(_number.text.trim());
                 _put({'name': _name.text, 'number': ?n});
               },
-              child: const Text('Save name and number'),
+              child: Text(tr.saveNameAnd),
             ),
           ),
         ]),
-        Section(title: 'Icon', children: [
+        Section(title: tr.icon, children: [
           Row(children: [
             ChannelIconView(
                 icon: icon, profileId: widget.profileId, channelId: widget.channelId, size: 64, fallbackText: c['name'] as String),
@@ -641,10 +641,10 @@ class _ChannelEditorPageState extends State<ChannelEditorPage> {
                     final chosen = await pickIcon(context, profileId: widget.profileId, current: icon);
                     if (chosen != null) await _put({'icon': chosen.toJson()});
                   },
-                  child: const Text('Choose icon…'),
+                  child: Text(tr.chooseIcon),
                 ),
                 if (isLive && live['sourceIcon'] != null)
-                  OutlinedButton(onPressed: () => _put({'icon': live['sourceIcon']}), child: const Text("Source's logo")),
+                  OutlinedButton(onPressed: () => _put({'icon': live['sourceIcon']}), child: Text(tr.sourcesLogo)),
               ]),
             ),
           ]),
@@ -652,27 +652,27 @@ class _ChannelEditorPageState extends State<ChannelEditorPage> {
         Section(children: [
           SwitchListTile(
             contentPadding: EdgeInsets.zero,
-            title: const Text('Favorite'),
+            title: Text(tr.favorite),
             value: c['favorite'] == true,
             onChanged: (v) => _put({'favorite': v}),
           ),
           SwitchListTile(
             contentPadding: EdgeInsets.zero,
-            title: const Text('Hidden from the guide'),
+            title: Text(tr.hiddenFromThe),
             value: c['hidden'] == true,
             onChanged: (v) => _put({'hidden': v}),
           ),
           if (!blockOnly && !music && !isLive)
             SwitchListTile(
               contentPadding: EdgeInsets.zero,
-              title: const Text('New episode premieres'),
-              subtitle: const Text("Can be a show's home channel for its newest episodes."),
+              title: Text(tr.newEpisodePremieres),
+              subtitle: Text(tr.canBeA),
               value: c['premieres'] != false,
               onChanged: (v) => _put({'premieres': v}),
             ),
         ]),
         if (view['custom'] == true && catalog != null)
-          Section(title: 'What it plays', children: [
+          Section(title: tr.whatItPlays2, children: [
             SourceEditor(
               profileId: widget.profileId,
               source: _source ?? saved,
@@ -689,13 +689,13 @@ class _ChannelEditorPageState extends State<ChannelEditorPage> {
                         await _put({'source': _source!.toJson()});
                         if (mounted) setState(() => _source = null);
                       },
-                child: const Text('Save what it plays'),
+                child: Text(tr.saveWhatIt),
               ),
             ),
           ]),
         if (!blockOnly && !isLive)
-          Section(title: 'Play order', children: [
-            if (music) const Text('Music channels only shuffle, never the same artist twice in a row.'),
+          Section(title: tr.playOrder2, children: [
+            if (music) Text(tr.musicChannelsOnlyShuffle),
             RadioGroup<PlaybackOrder>(
               groupValue: order,
               onChanged: (v) => _put({'order': v!.name}),
@@ -710,7 +710,7 @@ class _ChannelEditorPageState extends State<ChannelEditorPage> {
                 alignment: Alignment.centerLeft,
                 child: OutlinedButton.icon(
                   icon: const Icon(Icons.shuffle),
-                  label: const Text('Reshuffle'),
+                  label: Text(tr.reshuffle),
                   onPressed: () async {
                     final r = await attempt(context, () => context.api.post('$_path/reshuffle'),
                         profileId: widget.profileId, onConflict: _load);
@@ -721,7 +721,7 @@ class _ChannelEditorPageState extends State<ChannelEditorPage> {
           ]),
         if (view['playsPrograms'] == true) _slotSection(c, pools),
         if (!isLive)
-          Section(title: 'Commercials', children: [
+          Section(title: tr.commercials, children: [
             RadioGroup<String>(
               groupValue: ownPlan == null ? 'main' : ownPlan.mode.name,
               onChanged: (v) async {
@@ -729,17 +729,17 @@ class _ChannelEditorPageState extends State<ChannelEditorPage> {
                 final mode = BreakMode.values.byName(v!);
                 if (mode != BreakMode.custom) return _put({'commercialPlan': BreakPlan(mode: mode).toJson()});
                 final roles = await editBreakPlan(context,
-                    title: 'Breaks on ${c['name']}', initial: (ownPlan ?? mainPlan).roles, pools: pools);
+                    title: tr.breaksOn('${c['name']}'), initial: (ownPlan ?? mainPlan).roles, pools: pools);
                 if (roles != null) await _put({'commercialPlan': BreakPlan(mode: BreakMode.custom, roles: roles).toJson()});
               },
               child: Column(children: [
                 RadioListTile<String>(
-                    contentPadding: EdgeInsets.zero, value: 'main', title: Text('Main setting (${mainPlan.mode.label})')),
+                    contentPadding: EdgeInsets.zero, value: 'main', title: Text(tr.mainSetting(mainPlan.mode.label))),
                 for (final mode in BreakMode.values)
                   RadioListTile<String>(
                       contentPadding: EdgeInsets.zero,
                       value: mode.name,
-                      title: Text(mode == BreakMode.custom ? 'Custom…' : mode.label)),
+                      title: Text(mode == BreakMode.custom ? tr.custom2 : mode.label)),
               ]),
             ),
             if (ownPlan?.mode == BreakMode.custom)
@@ -748,14 +748,14 @@ class _ChannelEditorPageState extends State<ChannelEditorPage> {
                 child: TextButton(
                   onPressed: () async {
                     final roles = await editBreakPlan(context,
-                        title: 'Breaks on ${c['name']}', initial: ownPlan!.roles, pools: pools);
+                        title: tr.breaksOn('${c['name']}'), initial: ownPlan!.roles, pools: pools);
                     if (roles != null) await _put({'commercialPlan': BreakPlan(mode: BreakMode.custom, roles: roles).toJson()});
                   },
-                  child: const Text('Edit custom breaks…'),
+                  child: Text(tr.editCustomBreaks),
                 ),
               ),
           ]),
-        Section(title: 'Channel logo', children: [
+        Section(title: tr.channelLogo2, children: [
           RadioGroup<String>(
             groupValue: logoMode?.name ?? 'main',
             onChanged: (v) => _put({'logoMode': v == 'main' ? null : v}),
@@ -763,25 +763,25 @@ class _ChannelEditorPageState extends State<ChannelEditorPage> {
               RadioListTile<String>(
                   contentPadding: EdgeInsets.zero,
                   value: 'main',
-                  title: Text('Main setting (${LogoMode.parse(view['logoMode'])?.label ?? ''})')),
+                  title: Text(tr.mainSetting(LogoMode.parse(view['logoMode'])?.label ?? ''))),
               for (final m in LogoMode.values)
                 RadioListTile<String>(contentPadding: EdgeInsets.zero, value: m.name, title: Text(m.label)),
             ]),
           ),
         ]),
-        Section(title: 'Retro look', children: _retroRows(c, view)),
+        Section(title: tr.retroLook, children: _retroRows(c, view)),
         if (view['auto'] == false && !isLive)
           Section(children: [
             Align(
               alignment: Alignment.centerLeft,
               child: TextButton.icon(
                 icon: const Icon(Icons.delete_outline),
-                label: const Text('Remove this channel'),
+                label: Text(tr.removeThisChannel),
                 onPressed: () async {
                   final ok = await confirm(context,
-                      title: 'Remove ${c['name']}?',
-                      message: blockOnly ? 'Its programming blocks are removed too.' : 'It leaves the lineup.',
-                      action: 'Remove');
+                      title: tr.remove3('${c['name']}'),
+                      message: blockOnly ? tr.itsProgrammingBlocks : tr.itLeavesThe,
+                      action: tr.remove);
                   if (!ok || !context.mounted) return;
                   final r = await attempt(context, () => context.api.delete(_path), profileId: widget.profileId);
                   if (r != null && context.mounted) context.go('/profiles/${widget.profileId}/channels');
@@ -798,16 +798,16 @@ class _ChannelEditorPageState extends State<ChannelEditorPage> {
     final rule = SlotRule.fromJson(c['slot']);
     final fillers = [for (final p in pools) if (p['kind'] != PoolKind.bumpers.name) p];
     Future<void> set(SlotRule? r) => _put({'slot': r?.toJson()});
-    return Section(title: 'Slot length', children: [
-      const Text('Every program starts on the clock. The tail fills the rest of each slot.'),
+    return Section(title: tr.slotLength2, children: [
+      Text(tr.everyProgramStarts),
       const SizedBox(height: 12),
       DropdownButtonFormField<int>(
         key: ValueKey('slot-${rule?.length.inMinutes}'),
         initialValue: rule?.length.inMinutes ?? 0,
-        decoration: const InputDecoration(labelText: 'Slot length'),
+        decoration: InputDecoration(labelText: tr.slotLength2),
         items: [
-          const DropdownMenuItem(value: 0, child: Text('Off')),
-          for (final l in SlotRule.lengths) DropdownMenuItem(value: l.inMinutes, child: Text('${l.inMinutes} minutes')),
+          DropdownMenuItem(value: 0, child: Text(tr.off)),
+          for (final l in SlotRule.lengths) DropdownMenuItem(value: l.inMinutes, child: Text(tr.minutes(l.inMinutes))),
         ],
         onChanged: (m) {
           if (m == null) return;
@@ -820,7 +820,7 @@ class _ChannelEditorPageState extends State<ChannelEditorPage> {
         DropdownButtonFormField<TailMode>(
           key: ValueKey('tail-${rule.tail.name}'),
           initialValue: rule.tail,
-          decoration: const InputDecoration(labelText: 'Tail'),
+          decoration: InputDecoration(labelText: tr.tail),
           items: [for (final t in TailMode.values) DropdownMenuItem(value: t, child: Text(t.label))],
           onChanged: (t) {
             if (t != null) set(rule.copyWith(tail: t));
@@ -831,9 +831,9 @@ class _ChannelEditorPageState extends State<ChannelEditorPage> {
           DropdownButtonFormField<String>(
             key: ValueKey('pool-${rule.poolId}'),
             initialValue: fillers.any((p) => p['id'] == rule.poolId) ? rule.poolId : '',
-            decoration: const InputDecoration(labelText: 'Filler pool'),
+            decoration: InputDecoration(labelText: tr.fillerPool2),
             items: [
-              const DropdownMenuItem(value: '', child: Text('All pools')),
+              DropdownMenuItem(value: '', child: Text(tr.allPools)),
               for (final p in fillers) DropdownMenuItem(value: p['id'] as String, child: Text(p['name'] as String)),
             ],
             onChanged: (id) => set(rule.copyWith(poolId: () => id == null || id.isEmpty ? null : id)),
@@ -843,12 +843,12 @@ class _ChannelEditorPageState extends State<ChannelEditorPage> {
         Wrap(spacing: 8, runSpacing: 8, children: [
           FilledButton.tonal(
             onPressed: () => _uploadOffline(rule),
-            child: Text(rule.offlineImage == null ? 'Choose offline image…' : 'Change offline image…'),
+            child: Text(rule.offlineImage == null ? tr.chooseOfflineImage : tr.changeOfflineImage),
           ),
           if (rule.offlineImage != null)
             OutlinedButton(
               onPressed: () => set(rule.copyWith(offlineImage: () => null)),
-              child: const Text('Default card'),
+              child: Text(tr.defaultCard),
             ),
         ]),
       ],
@@ -859,19 +859,19 @@ class _ChannelEditorPageState extends State<ChannelEditorPage> {
   List<Widget> _retroRows(Map<String, Object?> c, Map<dynamic, dynamic> view) {
     final own = ChannelRetro.fromJson(c['retro']);
     final used = ResolvedRetro.of(ChannelRetro.main, RetroSettings.fromJson(view['mainRetro']));
-    String main(String value) => 'Main setting ($value)';
+    String main(String value) => tr.mainSetting(value);
     Future<void> set(ChannelRetro retro) => _put({'retro': retro.toJson()});
     return [
-      const Text(_retroNote),
+      Text(_retroNote),
       const SizedBox(height: 12),
       _RetroDropdown<PictureShape?>(
-          title: 'Picture shape',
+          title: tr.pictureShape2,
           values: [null, ...PictureShape.values],
           value: own.shape,
           label: (v) => v?.label ?? main(used.shape.label),
           onChanged: (v) => set(own.copyWith(shape: () => v))),
       _RetroDropdown<Surround?>(
-          title: 'Surround',
+          title: tr.surround2,
           values: [
             null,
             for (final s in Surround.values)
@@ -882,16 +882,16 @@ class _ChannelEditorPageState extends State<ChannelEditorPage> {
           onChanged: (v) => set(own.copyWith(surround: () => v))),
       Align(
         alignment: Alignment.centerLeft,
-        child: TextButton(onPressed: () => _uploadSurround(own), child: const Text('Choose surround image…')),
+        child: TextButton(onPressed: () => _uploadSurround(own), child: Text(tr.chooseSurroundImage)),
       ),
       _RetroDropdown<CrtStyle?>(
-          title: 'CRT effect',
+          title: tr.crtEffect2,
           values: [null, ...CrtStyle.values],
           value: own.crt,
           label: (v) => v?.label ?? main(used.crt.label),
           onChanged: (v) => set(own.copyWith(crt: () => v))),
       _RetroDropdown<OverlayThemeName?>(
-          title: 'Overlay theme',
+          title: tr.overlayTheme2,
           values: [null, ...OverlayThemeName.values],
           value: own.overlay,
           label: (v) => v?.label ?? main(used.overlay.label),
@@ -914,8 +914,8 @@ class _ChannelEditorPageState extends State<ChannelEditorPage> {
 
 /// A picture chosen and stored for a full-screen use; its name, or null.
 Future<String?> _uploadFullScreenImage(BuildContext context, String profileId) async {
-  final file = await openFile(acceptedTypeGroups: const [
-    XTypeGroup(label: 'Images', extensions: ['png', 'jpg', 'jpeg', 'webp', 'gif', 'bmp', 'svg'], mimeTypes: ['image/*']),
+  final file = await openFile(acceptedTypeGroups: [
+    XTypeGroup(label: tr.images, extensions: ['png', 'jpg', 'jpeg', 'webp', 'gif', 'bmp', 'svg'], mimeTypes: ['image/*']),
   ]);
   if (file == null || !context.mounted) return null;
   final bytes = await file.readAsBytes();

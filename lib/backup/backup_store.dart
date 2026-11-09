@@ -3,6 +3,7 @@ import 'dart:typed_data';
 
 import '../playback/playback_diagnostics.dart';
 import 'backup_archive.dart';
+import '../l10n/tr.dart';
 
 /// A backup kept in the store.
 class StoredBackup {
@@ -30,20 +31,36 @@ class StoredBackup {
 
   bool get isSafety => BackupReason.isSafety(kind);
 
+  /// [kindLabel] for the middle of a sentence ("Last backup: today (automatic)").
+  String get kindInSentence => switch (kind) {
+        BackupReason.daily => tr.kindSentenceAutomatic,
+        BackupReason.beforeRestore => tr.kindSentenceBeforeRestore,
+        BackupReason.beforeReset => tr.kindSentenceBeforeReset,
+        BackupReason.beforeDelete => archive.subject == null ? tr.kindSentenceBeforeDeletingAProfile : tr.kindSentenceBeforeDeleting(archive.subject!),
+        BackupReason.beforeUpgrade => tr.kindSentenceBeforeUpdate,
+        BackupReason.beforeLineupCleanup => tr.kindSentenceBeforeLineupCleanup,
+        BackupReason.file => tr.kindSentenceFromAFile,
+        BackupReason.movingToOfficial => tr.kindSentenceMovingToOfficial,
+        BackupReason.movingToOwnBuild => tr.kindSentenceMovingToOwnBuild,
+        BackupReason.fromOfficial => tr.kindSentenceFromOfficial,
+        BackupReason.fromOwnBuild => tr.kindSentenceFromOwnBuild,
+        _ => tr.kindSentenceMadeByYou,
+      };
+
   /// "Automatic", "Before deleting Kids", "Made by you"…
   String get kindLabel => switch (kind) {
-        BackupReason.daily => 'Automatic',
-        BackupReason.beforeRestore => 'Before restore',
-        BackupReason.beforeReset => 'Before reset',
-        BackupReason.beforeDelete => archive.subject == null ? 'Before deleting a profile' : 'Before deleting ${archive.subject}',
-        BackupReason.beforeUpgrade => 'Before update',
-        BackupReason.beforeLineupCleanup => 'Before lineup cleanup',
-        BackupReason.file => 'From a file',
-        BackupReason.movingToOfficial => 'Moving to Nightingale TV',
-        BackupReason.movingToOwnBuild => 'Moving to Nightingale TV (own build)',
-        BackupReason.fromOfficial => 'From Nightingale TV',
-        BackupReason.fromOwnBuild => 'From Nightingale TV (own build)',
-        _ => 'Made by you',
+        BackupReason.daily => tr.automatic,
+        BackupReason.beforeRestore => tr.beforeRestore,
+        BackupReason.beforeReset => tr.beforeReset,
+        BackupReason.beforeDelete => archive.subject == null ? tr.beforeDeletingA : tr.beforeDeleting(archive.subject!),
+        BackupReason.beforeUpgrade => tr.beforeUpdate,
+        BackupReason.beforeLineupCleanup => tr.beforeLineupCleanup,
+        BackupReason.file => tr.fromAFile,
+        BackupReason.movingToOfficial => tr.movingToNightingaleTv,
+        BackupReason.movingToOwnBuild => tr.movingToNightingale,
+        BackupReason.fromOfficial => tr.fromNightingaleTv2,
+        BackupReason.fromOwnBuild => tr.fromNightingaleTv,
+        _ => tr.madeByYou,
       };
 }
 

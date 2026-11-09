@@ -1,0 +1,3639 @@
+{
+  "@@locale": "en",
+  "onlyChannelsYou": "Only channels you added can be removed. Hide this one instead.",
+  "music": "Music",
+  "nothingInThe": "Nothing in the library matches that.",
+  "chooseSongsOr": "Choose songs or music videos.",
+  "blockChannel": "Block Channel",
+  "thisOverlapsOn": "This overlaps \"{title}\" ({clash}) on the same channel.",
+  "@thisOverlapsOn": {
+    "placeholders": {
+      "title": {
+        "type": "Object"
+      },
+      "clash": {
+        "type": "Object"
+      }
+    }
+  },
+  "chooseSomeShows": "Choose some shows or movies for the block to play.",
+  "nothingInThis": "Nothing in this mix is rated {shortLabel} or higher. Choose a lower rating or other shows.",
+  "@nothingInThis": {
+    "placeholders": {
+      "shortLabel": {
+        "type": "Object"
+      }
+    }
+  },
+  "theLineupsShows": "The lineup's shows have no episodes. Pick other shows.",
+  "addAShow": "Add a show to the lineup.",
+  "chooseAChannel": "Choose a channel.",
+  "theBlockHas": "The block has to end at a different time than it starts.",
+  "pickAtLeast": "Pick at least one day.",
+  "giveTheBlock": "Give the block a title.",
+  "thisChannelDoesnt": "This channel doesn't have slots.",
+  "onlyShuffledChannels": "Only shuffled channels can be reshuffled.",
+  "chooseSomethingFor": "Choose something for the channel to play.",
+  "onlyChannelsYouAdded": "Only channels you added can change what they play.",
+  "myChannel": "My Channel",
+  "noneOfYour": "None of your servers could be reached.",
+  "scanning": "Scanning {where}…",
+  "@scanning": {
+    "placeholders": {
+      "where": {
+        "type": "Object"
+      }
+    }
+  },
+  "buildingChannels": "Building channels…",
+  "notSignedIn": "Not signed in.",
+  "isAlreadyIn": "{name} is already in this profile",
+  "@isAlreadyIn": {
+    "placeholders": {
+      "name": {
+        "type": "Object"
+      }
+    }
+  },
+  "thatServerIs": "That server is no longer in this profile",
+  "yourSessionExpired": "Your session expired. Please sign in again.",
+  "m3uPlaylist": "M3U playlist",
+  "hasNoLive": "{serverName} has no Live TV channels",
+  "@hasNoLive": {
+    "placeholders": {
+      "serverName": {
+        "type": "Object"
+      }
+    }
+  },
+  "couldntReach": "Couldn't reach {serverName}",
+  "@couldntReach": {
+    "placeholders": {
+      "serverName": {
+        "type": "Object"
+      }
+    }
+  },
+  "liveTv": "{serverName} Live TV",
+  "@liveTv": {
+    "placeholders": {
+      "serverName": {
+        "type": "Object"
+      }
+    }
+  },
+  "liveTvIs": "{serverName} Live TV is already a source",
+  "@liveTvIs": {
+    "placeholders": {
+      "serverName": {
+        "type": "Object"
+      }
+    }
+  },
+  "notSignedIn2": "Not signed in",
+  "newGroup": "New group",
+  "thisBackupIs": "This backup is damaged: one of its channel logos can't be read.",
+  "thisBackupIsDamaged": "This backup is damaged: its Live TV export settings can't be read.",
+  "thisBackupIsDamagedS": "This backup is damaged: {name}'s {what} can't be read.",
+  "@thisBackupIsDamagedS": {
+    "placeholders": {
+      "name": {
+        "type": "Object"
+      },
+      "what": {
+        "type": "Object"
+      }
+    }
+  },
+  "liveTvSources": "Live TV sources",
+  "thisBackupCant": "This backup can't be restored. {problem}",
+  "@thisBackupCant": {
+    "placeholders": {
+      "problem": {
+        "type": "Object"
+      }
+    }
+  },
+  "thisBackupIsDamagedIts": "This backup is damaged: its profiles can't be read.",
+  "thisFileIs": "This file is too big to be a Nightingale TV backup.",
+  "thisBackupWas": "This backup was made by a newer version of Nightingale TV.",
+  "thisFileIsnt": "This file isn't a Nightingale TV backup, or it's damaged.",
+  "restoredTheBackup": "Restored the backup from {toLocal}.",
+  "@restoredTheBackup": {
+    "placeholders": {
+      "toLocal": {
+        "type": "Object"
+      }
+    }
+  },
+  "couldntRestoreThe": "Couldn't restore the backup: {e}",
+  "@couldntRestoreThe": {
+    "placeholders": {
+      "e": {
+        "type": "Object"
+      }
+    }
+  },
+  "couldntSaveA": "Couldn't save a backup first: {e}",
+  "@couldntSaveA": {
+    "placeholders": {
+      "e": {
+        "type": "Object"
+      }
+    }
+  },
+  "madeByYou": "Made by you",
+  "fromNightingaleTv": "From Nightingale TV (own build)",
+  "fromNightingaleTv2": "From Nightingale TV",
+  "movingToNightingale": "Moving to Nightingale TV (own build)",
+  "movingToNightingaleTv": "Moving to Nightingale TV",
+  "fromAFile": "From a file",
+  "beforeLineupCleanup": "Before lineup cleanup",
+  "beforeUpdate": "Before update",
+  "beforeDeleting": "Before deleting {subject}",
+  "@beforeDeleting": {
+    "placeholders": {
+      "subject": {
+        "type": "Object"
+      }
+    }
+  },
+  "beforeDeletingA": "Before deleting a profile",
+  "beforeReset": "Before reset",
+  "beforeRestore": "Before restore",
+  "automatic": "Automatic",
+  "nc1718": "NC-17 / 18 and up",
+  "tvMaR": "TV-MA / R and up",
+  "tv14Pg": "TV-14 / PG-13 and up",
+  "off": "Off",
+  "nowAndThen": "Now and then",
+  "always": "Always",
+  "truncate": "Truncate",
+  "offlineImage": "Offline image",
+  "filler": "Filler",
+  "leastWatchedFirst": "Least watched first",
+  "shuffled": "Shuffled",
+  "inOrderShows": "In order (shows take turns)",
+  "channelsWhereEverything": "Channels where everything that plays, blocks included, is rated TV-Y, TV-Y7, TV-G or G.",
+  "musicVideoAnd": "Music video and radio channels.",
+  "channelsThatPlay": "Channels that play movies and no episodes or music.",
+  "channelsFromYour": "Channels from your Live TV sources.",
+  "channelsYouMarked": "Channels you marked as favorites.",
+  "everyChannel": "Every channel.",
+  "kids": "Kids",
+  "movies": "Movies",
+  "liveTv2": "Live TV",
+  "favorites": "Favorites",
+  "all": "All",
+  "theAccentsAre": "The accents are a theme and theme or channel for each.",
+  "thoseArentRetro": "Those aren't retro settings.",
+  "theOverlayTheme": "The overlay theme is standard, vcr, cableBox or stationIdent.",
+  "theCrtEffect": "The CRT effect is off, softTube, livingRoom, arcade, studioMonitor or custom.",
+  "theSurroundImage": "The surround image is a file name.",
+  "theSurroundIs": "The surround is black, charcoal, channel or image.",
+  "thePictureShape": "The picture shape is original, fill43 or fit43.",
+  "channelColor": "Channel color",
+  "theme": "Theme",
+  "stationIdent": "Station ident",
+  "cableBox": "Cable box",
+  "vcr": "VCR",
+  "standard": "Standard",
+  "custom": "Custom",
+  "studioMonitor": "Studio monitor",
+  "arcade": "Arcade",
+  "livingRoom": "Living room",
+  "softTube": "Soft tube",
+  "customColorIs": "Custom color is natural, warm, faded or vivid.",
+  "customLinesIs": "Custom lines is 240 or 480.",
+  "customIsOff": "Custom {key} is off, low, medium or high.",
+  "@customIsOff": {
+    "placeholders": {
+      "key": {
+        "type": "Object"
+      }
+    }
+  },
+  "thatIsntA": "That isn't a Custom style.",
+  "vivid": "Vivid",
+  "faded": "Faded",
+  "warm": "Warm",
+  "natural": "Natural",
+  "high": "High",
+  "medium": "Medium",
+  "low": "Low",
+  "image": "Image",
+  "charcoal": "Charcoal",
+  "black": "Black",
+  "n43Fit": "4:3 fit",
+  "n43Fill": "4:3 fill",
+  "original": "Original",
+  "thisChannelIs": "This channel is off the air",
+  "offAir": "Off Air",
+  "tail": "Tail",
+  "postRoll": "Post-roll",
+  "midRoll": "Mid-roll",
+  "preRoll": "Pre-roll",
+  "commercials": "Commercials",
+  "bumpers": "Bumpers",
+  "pleaseStandBy": "PLEASE STAND BY",
+  "offTheAir": "OFF THE AIR",
+  "wellBeRight": "We'll be right back",
+  "upNextAt": "Up next at {at}",
+  "@upNextAt": {
+    "placeholders": {
+      "at": {
+        "type": "Object"
+      }
+    }
+  },
+  "backOnThe": "Back on the air {next} with {title}",
+  "@backOnThe": {
+    "placeholders": {
+      "next": {
+        "type": "Object"
+      },
+      "title": {
+        "type": "Object"
+      }
+    }
+  },
+  "processor": "Processor",
+  "graphicsCardNvenc": "Graphics card (NVENC)",
+  "graphicsCardVaapi": "Graphics card (VAAPI)",
+  "signInTo": "Sign in to this profile on the TV to export its channels.",
+  "signInToThis": "Sign in to this profile here to export its channels.",
+  "portIsIn": "Port {port} is in use by another program. Pick another port, then update it in Plex or Jellyfin.",
+  "@portIsIn": {
+    "placeholders": {
+      "port": {
+        "type": "Object"
+      }
+    }
+  },
+  "anotherProfileAlready": "Another profile already uses port {port}.",
+  "@anotherProfileAlready": {
+    "placeholders": {
+      "port": {
+        "type": "Object"
+      }
+    }
+  },
+  "pickAPort": "Pick a port between 1024 and 65535.",
+  "movie": "Movie",
+  "backOnTheAir": "Back on the air {start} with {title}.",
+  "@backOnTheAir": {
+    "placeholders": {
+      "start": {
+        "type": "Object"
+      },
+      "title": {
+        "type": "Object"
+      }
+    }
+  },
+  "images": "Images",
+  "couldNotRead": "Could not read that image. Try PNG, JPG, WebP or SVG.",
+  "thatFileIs": "That file is not a valid SVG.",
+  "thatImageIs": "That image is over 20 MB. Please pick a smaller one.",
+  "other": "Other",
+  "seasonsHolidays": "Seasons & Holidays",
+  "newsWeather": "News & Weather",
+  "sports": "Sports",
+  "genres": "Genres",
+  "kidsFamily": "Kids & Family",
+  "tvMovies": "TV & Movies",
+  "theServerWould": "The server would not convert this item.",
+  "theServerHas": "The server has no playable version of this item.",
+  "externalLabel": "External",
+  "scanningChannelSources": "Scanning channel sources…",
+  "didNotAnswer": "{serverUrl} did not answer like a Jellyfin server.",
+  "@didNotAnswer": {
+    "placeholders": {
+      "serverUrl": {
+        "type": "Object"
+      }
+    }
+  },
+  "noJellyfinServer": "No Jellyfin server found at {serverUrl}. {message}",
+  "@noJellyfinServer": {
+    "placeholders": {
+      "serverUrl": {
+        "type": "Object"
+      },
+      "message": {
+        "type": "Object"
+      }
+    }
+  },
+  "serverErrorOn": "Server error {statusCode} on {path}.",
+  "@serverErrorOn": {
+    "placeholders": {
+      "statusCode": {
+        "type": "Object"
+      },
+      "path": {
+        "type": "Object"
+      }
+    }
+  },
+  "wrongUsernameOr": "Wrong username or password, or the session expired.",
+  "couldNotReach": "Could not reach the server ({e}).",
+  "@couldNotReach": {
+    "placeholders": {
+      "e": {
+        "type": "Object"
+      }
+    }
+  },
+  "theServerTook": "The server took too long to respond.",
+  "theServerWouldNot": "The server would not convert this channel.",
+  "musicVideo": "Music video",
+  "movie2": "Movie · {year}",
+  "@movie2": {
+    "placeholders": {
+      "year": {
+        "type": "Object"
+      }
+    }
+  },
+  "commercial": "Commercial",
+  "couldntReachThe": "Couldn't reach the {what}",
+  "@couldntReachThe": {
+    "placeholders": {
+      "what": {
+        "type": "Object"
+      }
+    }
+  },
+  "theIsToo": "The {what} is too big",
+  "@theIsToo": {
+    "placeholders": {
+      "what": {
+        "type": "Object"
+      }
+    }
+  },
+  "theSAddress": "The {what}'s address isn't a web address",
+  "@theSAddress": {
+    "placeholders": {
+      "what": {
+        "type": "Object"
+      }
+    }
+  },
+  "noGuideInformation": "No guide information",
+  "serverLiveTv": "Server Live TV",
+  "theChannelHas": "The channel has no stream address.",
+  "couldntReadThe": "Couldn't read the guide",
+  "couldntReachTheGuide": "Couldn't reach the guide",
+  "theSourceHas": "The source has no playlist",
+  "couldntReachThePlaylist": "Couldn't reach the playlist",
+  "couldntReadThePlaylist": "Couldn't read the playlist file",
+  "couldntRefresh": "Couldn't refresh {name}",
+  "@couldntRefresh": {
+    "placeholders": {
+      "name": {
+        "type": "Object"
+      }
+    }
+  },
+  "thePlaylistHas": "The playlist has no channels",
+  "thatIsntAn": "That isn't an M3U playlist",
+  "thatIsntAnXmltv": "That isn't an XMLTV guide",
+  "theGuideIs": "The guide is too big (over 1 GB)",
+  "nightingaleTvBackups": "Nightingale TV backups",
+  "uninstallingThisApp": "Uninstalling this app deletes its profiles, channels and settings unless you back them up or move them first.",
+  "theStoreVersion": "The store version installs beside this one as a separate app, \"{officialName}\", with its own setup. Buying it supports the project. Once it's installed, your setup can be moved to it from here.",
+  "@theStoreVersion": {
+    "placeholders": {
+      "officialName": {
+        "type": "Object"
+      }
+    }
+  },
+  "updatesFromGoogle": "Updates from Google Play and official Nightingale TV APKs install over this one and keep your setup. A build of your own installs as a separate app, \"{ownBuildName}\", and your setup can be moved to it from here.",
+  "@updatesFromGoogle": {
+    "placeholders": {
+      "ownBuildName": {
+        "type": "Object"
+      }
+    }
+  },
+  "yourOwnBuild": "Your own build",
+  "officialNightingaleTv": "Official Nightingale TV APK",
+  "installedFromGoogle": "Installed from Google Play",
+  "nightingaleTvOwn": "Nightingale TV (own build)",
+  "sleepTimerOff": "Sleep timer off",
+  "sleepAtEnd": "Sleep at end of program",
+  "sleepInMin": "Sleep in {minutes} min",
+  "@sleepInMin": {
+    "placeholders": {
+      "minutes": {
+        "type": "Object"
+      }
+    }
+  },
+  "forced": "Forced",
+  "unknownLanguage": "Unknown language",
+  "didntStart": "{name} didn't start",
+  "@didntStart": {
+    "placeholders": {
+      "name": {
+        "type": "Object"
+      }
+    }
+  },
+  "thisDeviceCant": "This device can't play this channel's video",
+  "thisChannelsStream": "This channel's stream type isn't supported on this device",
+  "refusedTheStream": "{name} refused the stream. It may be playing on another device.",
+  "@refusedTheStream": {
+    "placeholders": {
+      "name": {
+        "type": "Object"
+      }
+    }
+  },
+  "yourAccountCant": "Your {server} account can't watch this channel",
+  "@yourAccountCant": {
+    "placeholders": {
+      "server": {
+        "type": "Object"
+      }
+    }
+  },
+  "cantReach": "Can't reach {name}",
+  "@cantReach": {
+    "placeholders": {
+      "name": {
+        "type": "Object"
+      }
+    }
+  },
+  "allOfS": "All of {server}'s tuners are in use",
+  "@allOfS": {
+    "placeholders": {
+      "server": {
+        "type": "Object"
+      }
+    }
+  },
+  "lostTheSignal": "Lost the signal on {name}",
+  "@lostTheSignal": {
+    "placeholders": {
+      "name": {
+        "type": "Object"
+      }
+    }
+  },
+  "couldntPlayThat": "Couldn't play that part. Back to live",
+  "backToLive": "Back to live",
+  "theServerTookToo": "The server took too long to start converting this program.",
+  "nothingToPlay": "Nothing to play on this channel",
+  "captionsOn": "Captions on: {shown}",
+  "@captionsOn": {
+    "placeholders": {
+      "shown": {
+        "type": "Object"
+      }
+    }
+  },
+  "captionsOn2": "Captions on",
+  "captionsOnNo": "Captions on: no subtitles for this program",
+  "captionsOff": "Captions off",
+  "guest": "Guest",
+  "thereHasTo": "There has to be at least one grown-up profile.",
+  "switchToAnother": "Switch to another profile before deleting this one.",
+  "me": "Me",
+  "couldntOpenA": "Couldn't open a network port for the remote.",
+  "notPaired": "Not paired",
+  "phone": "Phone",
+  "thatCodeDoesnt": "That code doesn't match. Check the code on the TV.",
+  "openMenuPhone": "Open Menu → Phone remote on the TV to pair",
+  "yourAccountCantWatch": "Your {serverName} account can't watch Live TV",
+  "@yourAccountCantWatch": {
+    "placeholders": {
+      "serverName": {
+        "type": "Object"
+      }
+    }
+  },
+  "enterYourServer": "Enter your server address.",
+  "needsSignIn": "Needs sign-in",
+  "cantBeReached": "Can't be reached",
+  "isNotAnswering": "{name} is not answering at any of its addresses. Is it on?",
+  "@isNotAnswering": {
+    "placeholders": {
+      "name": {
+        "type": "Object"
+      }
+    }
+  },
+  "everyServerOn": "Every server on this Plex account is already in this profile.",
+  "thisPlexAccount": "This Plex account has no servers. Ask the server's owner to share it with you.",
+  "quickConnectStopped": "Quick Connect stopped: {message}",
+  "@quickConnectStopped": {
+    "placeholders": {
+      "message": {
+        "type": "Object"
+      }
+    }
+  },
+  "enterYourUsername": "Enter your username.",
+  "plexDidNot": "Plex did not switch users.",
+  "plexTvError": "plex.tv error {statusCode}.",
+  "@plexTvError": {
+    "placeholders": {
+      "statusCode": {
+        "type": "Object"
+      }
+    }
+  },
+  "yourPlexSign": "Your Plex sign-in expired.",
+  "couldNotReachPlex": "Could not reach plex.tv ({e}).",
+  "@couldNotReachPlex": {
+    "placeholders": {
+      "e": {
+        "type": "Object"
+      }
+    }
+  },
+  "plexTvTook": "plex.tv took too long to respond.",
+  "sharedBy": "{name} — Shared by {ownerName}",
+  "@sharedBy": {
+    "placeholders": {
+      "name": {
+        "type": "Object"
+      },
+      "ownerName": {
+        "type": "Object"
+      }
+    }
+  },
+  "theServerWouldNotConvert": "The server would not convert this item ({transcodeDecisionText}).",
+  "@theServerWouldNotConvert": {
+    "placeholders": {
+      "transcodeDecisionText": {
+        "type": "Object"
+      }
+    }
+  },
+  "theServerHasNo": "The server has no file for this item; refresh the library.",
+  "didNotAnswerLike": "{serverUrl} did not answer like a Plex server.",
+  "@didNotAnswerLike": {
+    "placeholders": {
+      "serverUrl": {
+        "type": "Object"
+      }
+    }
+  },
+  "noPlexServer": "No Plex server found at {serverUrl}. {message}",
+  "@noPlexServer": {
+    "placeholders": {
+      "serverUrl": {
+        "type": "Object"
+      },
+      "message": {
+        "type": "Object"
+      }
+    }
+  },
+  "thePlexSign": "The Plex sign-in expired.",
+  "channelIsNot": "Channel {channelId} is not on any DVR.",
+  "@channelIsNot": {
+    "placeholders": {
+      "channelId": {
+        "type": "Object"
+      }
+    }
+  },
+  "noSuchUser": "No such user.",
+  "yourCurrentPassword": "Your current password is wrong.",
+  "signInFirst": "Sign in first.",
+  "thereIsAlready": "There is already a user named {name}.",
+  "@thereIsAlready": {
+    "placeholders": {
+      "name": {
+        "type": "Object"
+      }
+    }
+  },
+  "thisAccountIs": "This account is turned off.",
+  "chooseAnAdmin": "Choose an admin account.",
+  "useAtMost": "Use at most {maxNameLength} characters for the user name.",
+  "@useAtMost": {
+    "placeholders": {
+      "maxNameLength": {
+        "type": "Object"
+      }
+    }
+  },
+  "enterAUser": "Enter a user name.",
+  "useAtLeast": "Use at least {minPasswordLength} characters.",
+  "@useAtLeast": {
+    "placeholders": {
+      "minPasswordLength": {
+        "type": "Object"
+      }
+    }
+  },
+  "tooManyWrong": "Too many wrong passwords. Try again in a minute.",
+  "wrongUserName": "Wrong user name or password.",
+  "openTheSetup": "Open the setup link from the server's log.",
+  "makeSomeoneElse": "Make someone else an admin first.",
+  "noSuchProfile": "No such profile.",
+  "onlyAnAdmin": "Only an admin can do that.",
+  "thatProfileIsnt": "That profile isn't assigned to you.",
+  "enterAGrown": "Enter a grown-up's PIN to change a kid profile's settings.",
+  "enterThisProfiles": "Enter this profile's PIN.",
+  "reloadThePage": "Reload the page and try again.",
+  "somethingWentWrong": "Something went wrong: {e}",
+  "@somethingWentWrong": {
+    "placeholders": {
+      "e": {
+        "type": "Object"
+      }
+    }
+  },
+  "signInToThisProfile": "Sign in to this profile first.",
+  "changedInAnother": "Changed in another window. Showing the latest.",
+  "wrongPin": "Wrong PIN.",
+  "tooManyWrongPins": "Too many wrong PINs. Try again in a minute.",
+  "theRoleIs": "The role is \"admin\" or \"user\".",
+  "noSuchBackup": "No such backup.",
+  "backupsAreOff": "Backups are off.",
+  "noSuchEncoder": "No such encoder.",
+  "allow1To": "Allow 1 to 16 streams.",
+  "noSuchQuality": "No such quality.",
+  "processorOnly": "Processor only",
+  "liveTvExport": "Live TV export isn't running.",
+  "thoseArentPremiere": "Those aren't premiere settings.",
+  "theLogoMode": "The logo mode is always, nowAndThen or off.",
+  "thatIsntAPicture": "That isn't a picture in the custom logos folder.",
+  "couldntSaveASafety": "Couldn't save a safety backup first, so nothing was reset: {e}",
+  "@couldntSaveASafety": {
+    "placeholders": {
+      "e": {
+        "type": "Object"
+      }
+    }
+  },
+  "theKindIs": "The kind is \"block\", \"music\" or \"custom\".",
+  "thatIsntAPlay": "That isn't a play order.",
+  "musicChannelsOnly": "Music channels only shuffle.",
+  "channelNumbersStart": "Channel numbers start at 1.",
+  "slotLengthsAre": "Slot lengths are 15, 30, 60, 90 or 120 minutes.",
+  "thatIsntAChannel": "That isn't a channel.",
+  "noSuchChannel": "No such channel.",
+  "thatPictureIs": "That picture is too big (5 MB at most).",
+  "unknownAction": "Unknown action.",
+  "noSuchServer": "No such server.",
+  "startSigningIn": "Start signing in first.",
+  "aRestoreIs": "A restore is already running.",
+  "uploadTheBackup": "Upload the backup again.",
+  "discoveryIsOff": "Discovery is off, so add the tuner by address. Run the container with host networking to turn it on.",
+  "sendKeys": "Send keys.",
+  "enterThePlaylists": "Enter the playlist's address, or choose a playlist file",
+  "uploadTheFile": "Upload the file again.",
+  "kidProfilesGet": "Kid profiles get no live channels.",
+  "liveTvIsAlready": "{name} Live TV is already added",
+  "@liveTvIsAlready": {
+    "placeholders": {
+      "name": {
+        "type": "Object"
+      }
+    }
+  },
+  "noSuchSource": "No such source.",
+  "thatFileIsToo": "That file is too big (32 MB at most).",
+  "aPinIs": "A PIN is 4 digits.",
+  "noSuchRating": "No such rating.",
+  "noSuchKind": "No such kind.",
+  "onlyAnAdminCan": "Only an admin can change that.",
+  "shouldBeA": "\"{key}\" should be a list of text.",
+  "@shouldBeA": {
+    "placeholders": {
+      "key": {
+        "type": "Object"
+      }
+    }
+  },
+  "shouldBeAn": "\"{key}\" should be an object.",
+  "@shouldBeAn": {
+    "placeholders": {
+      "key": {
+        "type": "Object"
+      }
+    }
+  },
+  "shouldBeTrue": "\"{key}\" should be true or false.",
+  "@shouldBeTrue": {
+    "placeholders": {
+      "key": {
+        "type": "Object"
+      }
+    }
+  },
+  "shouldBeANumber": "\"{key}\" should be a number.",
+  "@shouldBeANumber": {
+    "placeholders": {
+      "key": {
+        "type": "Object"
+      }
+    }
+  },
+  "shouldBeText": "\"{key}\" should be text.",
+  "@shouldBeText": {
+    "placeholders": {
+      "key": {
+        "type": "Object"
+      }
+    }
+  },
+  "expectedAJson": "Expected a JSON object.",
+  "thatIsToo": "That is too much to send at once.",
+  "aQualityLimit": "A quality limit is at least 500 kbps.",
+  "orderShouldName": "\"order\" should name every server once.",
+  "orderIsMissing": "\"order\" is missing.",
+  "signOutOf": "Sign out of the profile to change its main server.",
+  "thoseArentPool": "Those aren't pool folders.",
+  "sendRoots": "Send roots.",
+  "thatIsntAPool": "That isn't a pool type.",
+  "giveThePool": "Give the pool a name.",
+  "liveChannelsHave": "Live channels have no breaks.",
+  "sendAPlan": "Send a plan.",
+  "thatIsntABreak": "That isn't a break plan.",
+  "noSuchPool": "No such pool.",
+  "thatIsntAProgramming": "That isn't a programming block.",
+  "noSuchBlock": "No such block.",
+  "sendEveryTab": "Send every tab once.",
+  "sendChannelids": "Send channelIds.",
+  "giveTheGroup": "Give the group a name.",
+  "noSuchGroup": "No such group.",
+  "restoringBringsBack": "Restoring brings back your profiles, channels, blocks and settings. Each profile signs in to its server once.",
+  "channels": "{channels, plural, =1{{profiles} · {channels} channel} other{{profiles} · {channels} channels}}",
+  "@channels": {
+    "placeholders": {
+      "profiles": {
+        "type": "Object"
+      },
+      "channels": {
+        "type": "int"
+      }
+    }
+  },
+  "theresABackup": "There's a backup of your setup on this device:",
+  "welcomeBack": "Welcome back",
+  "moveOkSelect": "◀▶ Move    OK Select",
+  "startFresh": "Start fresh",
+  "restoreIt": "Restore it",
+  "couldntRestore": "Couldn't restore",
+  "cancel": "Cancel",
+  "useYourPhone": "Use your phone or computer",
+  "openABackup": "Open a backup file",
+  "setUpThis": "Set up this TV from a Nightingale TV backup: your profiles, channels, blocks and settings. Each profile signs in to its server once.",
+  "restoreFromA": "Restore from a backup",
+  "close": "Close",
+  "thereYouCan": "There you can download a backup of this TV, or send one to restore here. Anything sent is confirmed on this TV first. The page closes with this window.",
+  "onAPhone": "On a phone, tablet or computer on the same Wi-Fi as this TV, scan the code or open:",
+  "couldntOpenANetwork": "Couldn't open a network port for the page.",
+  "thePageStopped": "The page stopped after 15 minutes with nothing to do. Close this and open it again.",
+  "and": "{namesCount} and {last}",
+  "@and": {
+    "placeholders": {
+      "namesCount": {
+        "type": "Object"
+      },
+      "last": {
+        "type": "Object"
+      }
+    }
+  },
+  "restore": "Restore",
+  "liveTvExportMoves": "Live TV export moves to this device; turn it off on the old one.",
+  "willNeedTo": "{need} will need to sign in to their server again.",
+  "@willNeedTo": {
+    "placeholders": {
+      "need": {
+        "type": "Object"
+      }
+    }
+  },
+  "itSetsUp": "It sets up this TV as the backup has it.",
+  "itReplacesEverything": "It replaces everything on this TV. Your current setup is backed up first.",
+  "restoreTheBackup": "Restore the backup from {toLocal}?",
+  "@restoreTheBackup": {
+    "placeholders": {
+      "toLocal": {
+        "type": "Object"
+      }
+    }
+  },
+  "delete": "Delete",
+  "saveToFile": "Save to file",
+  "madeOn": "Made on {device}",
+  "@madeOn": {
+    "placeholders": {
+      "device": {
+        "type": "Object"
+      }
+    }
+  },
+  "moveOkSelectEsc": "▲▼◀▶ Move    OK Select    ESC Back",
+  "backupRestore": "Backup & restore",
+  "backups": "BACKUPS",
+  "backUpNow": "Back up now",
+  "aBackupHolds": "A backup holds every profile with its channels, blocks, commercials and settings, and is made every day something changes. Sign-in passwords are never in it.",
+  "lastBackup": "Last backup: {toLocal} ({kindLabel}).",
+  "@lastBackup": {
+    "placeholders": {
+      "toLocal": {
+        "type": "Object"
+      },
+      "kindLabel": {
+        "type": "Object"
+      }
+    }
+  },
+  "noBackupsYet": "No backups yet.",
+  "itCantBe": "{toLocal} · {kindLabel}. It can't be brought back.",
+  "@itCantBe": {
+    "placeholders": {
+      "toLocal": {
+        "type": "Object"
+      },
+      "kindLabel": {
+        "type": "Object"
+      }
+    }
+  },
+  "deleteThisBackup": "Delete this backup?",
+  "couldntSaveThe": "Couldn't save the backup: {e}",
+  "@couldntSaveThe": {
+    "placeholders": {
+      "e": {
+        "type": "Object"
+      }
+    }
+  },
+  "thatDidntWork": "That didn't work: {e}",
+  "@thatDidntWork": {
+    "placeholders": {
+      "e": {
+        "type": "Object"
+      }
+    }
+  },
+  "aNewChannel": "A new channel is off the air outside the block, like a channel that signs off at night.",
+  "aNewChannelJust": "A new channel just for this block",
+  "moveOkChoose": "▲▼ Move    OK Choose    ESC Back",
+  "chooseAChannel2": "Choose a channel",
+  "episodes": "{keyCount} episodes",
+  "@episodes": {
+    "placeholders": {
+      "keyCount": {
+        "type": "Object"
+      }
+    }
+  },
+  "moveOkAdd": "▲▼ Move    OK Add    ESC Back",
+  "addAShow2": "Add a show",
+  "remove": "Remove",
+  "episodes2": "{count, plural, =1{{count} episode} other{{count} episodes}}",
+  "@episodes2": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "month": "+ Month",
+  "day": "+ Day",
+  "day2": "− Day",
+  "month2": "− Month",
+  "save": "Save",
+  "everyDay": "Every day",
+  "weekends": "Weekends",
+  "weekdays": "Weekdays",
+  "days": "DAYS",
+  "starts": "Starts",
+  "time": "TIME",
+  "premieresAreOff": "Premieres are off",
+  "premieresAreOn": "Premieres are on",
+  "onTheAir": "ON THE AIR",
+  "episodesAddedTo": "Episodes added to your server in the last two weeks premiere in a nightly slot on their show's channel: one new episode per show each night, for up to two hours, marked NEW. Programming blocks come first.",
+  "moveOkSelectEscCancel": "▲▼◀▶ Move    OK Select    ESC Cancel",
+  "newEpisodePremieres": "New episode premieres",
+  "theChannelGoes": "The channel goes back to its regular programming at these times.",
+  "delete2": "Delete \"{title}\"?",
+  "@delete2": {
+    "placeholders": {
+      "title": {
+        "type": "Object"
+      }
+    }
+  },
+  "addAnotherShow": "Add another show",
+  "missingShow": "Missing show",
+  "runsThenStarts": "Runs {start}, then starts over.",
+  "@runsThenStarts": {
+    "placeholders": {
+      "start": {
+        "type": "Object"
+      }
+    }
+  },
+  "fillsTheBlock": "Fills the block.",
+  "longerThanThe": "Longer than the block: it ends at {end}, cutting off {title}.",
+  "@longerThanThe": {
+    "placeholders": {
+      "end": {
+        "type": "Object"
+      },
+      "title": {
+        "type": "Object"
+      }
+    }
+  },
+  "onTheAirNow": "ON THE AIR NOW",
+  "nextAiring": "NEXT AIRING · {start}",
+  "@nextAiring": {
+    "placeholders": {
+      "start": {
+        "type": "Object"
+      }
+    }
+  },
+  "inAll": "{runtime} in all",
+  "@inAll": {
+    "placeholders": {
+      "runtime": {
+        "type": "Object"
+      }
+    }
+  },
+  "movies2": "{movies, plural, =1{{movies} movie} other{{movies} movies}}",
+  "@movies2": {
+    "placeholders": {
+      "movies": {
+        "type": "int"
+      }
+    }
+  },
+  "shows": "{showsCount, plural, =1{{showsCount} show} other{{showsCount} shows}}",
+  "@shows": {
+    "placeholders": {
+      "showsCount": {
+        "type": "int"
+      }
+    }
+  },
+  "nothingYetChoose": "Nothing yet. Choose shows or movies.",
+  "nothingYetAdd": "Nothing yet. Add shows to the lineup.",
+  "plays": "PLAYS",
+  "onLabel": "On {number} {name}",
+  "@onLabel": {
+    "placeholders": {
+      "number": {
+        "type": "Object"
+      },
+      "name": {
+        "type": "Object"
+      }
+    }
+  },
+  "noChannelChosen": "No channel chosen",
+  "onANew": "On a new channel (off the air at other times)",
+  "untitledBlock": "Untitled block",
+  "deleteBlock": "Delete block",
+  "blockIsOff": "Block is off",
+  "blockIsOn": "Block is on",
+  "onlyShowsAnd": "Only shows and movies rated this or higher. Unrated ones are left out.",
+  "anyRating": "Any rating",
+  "minimumRating": "Minimum rating",
+  "chooseShowsMovies": "Choose shows & movies",
+  "showsAndMovies": "Shows and movies you choose, in order or shuffled.",
+  "yourShowsIn": "Your shows in this order, each playing its next episode every airing. If time is left, the lineup starts over.",
+  "aLineup": "A lineup",
+  "aMix": "A mix",
+  "whatItPlays": "WHAT IT PLAYS",
+  "repeatsEveryYear": "Repeats every year.",
+  "to": "To",
+  "from": "From",
+  "onlyBetweenDates": "Only between dates",
+  "allYear": "All year",
+  "dates": "DATES",
+  "nextDay": " (next day)",
+  "ends": "Ends",
+  "channel": "CHANNEL",
+  "saturdayMorningCartoons": "Saturday Morning Cartoons",
+  "title": "Title",
+  "newProgrammingBlock": "New programming block",
+  "newLateNight": "New late-night block",
+  "editProgrammingBlock": "Edit programming block",
+  "next": "Next: {next} {next2}",
+  "@next": {
+    "placeholders": {
+      "next": {
+        "type": "Object"
+      },
+      "next2": {
+        "type": "Object"
+      }
+    }
+  },
+  "onTheAirNow2": "On the air now",
+  "noUpcomingAirings": "No upcoming airings",
+  "itsChannelIs": "Its channel is gone. Pick a new one.",
+  "turnedOff": "Turned off",
+  "blocksTakeOver": "Blocks take over a channel on the days and times you choose, like Saturday morning cartoons. Each airing picks up where the last one left off.",
+  "moveOkEdit": "▲▼ Move    OK Edit    ESC Back",
+  "programmingBlocks": "Programming blocks",
+  "newlyAddedEpisodes": "Newly added episodes, on their show's channel",
+  "onLabel2": "On",
+  "clips": "{clips, plural, =1{{name}  ·  {clips} clip} other{{name}  ·  {clips} clips}}",
+  "@clips": {
+    "placeholders": {
+      "name": {
+        "type": "Object"
+      },
+      "clips": {
+        "type": "int"
+      }
+    }
+  },
+  "n100MinMovie": "100-min movie",
+  "n44MinDrama": "44-min drama",
+  "n22MinSitcom": "22-min sitcom",
+  "breaksInside": "{midCount, plural, =1{, {midCount} break inside} other{, {midCount} breaks inside}}",
+  "@breaksInside": {
+    "placeholders": {
+      "midCount": {
+        "type": "int"
+      }
+    }
+  },
+  "noBreaks": "{name}: no breaks",
+  "@noBreaks": {
+    "placeholders": {
+      "name": {
+        "type": "Object"
+      }
+    }
+  },
+  "openAndClose": "Open and close breaks, from pools set to Bumpers",
+  "bumpers2": "BUMPERS",
+  "toTheHalf": "To the half hour",
+  "toTheHour": "To the hour",
+  "padsEachSlot": "Pads each slot to the clock, so programs start on time",
+  "tail2": "TAIL",
+  "afterEachProgram": "After each program",
+  "postRoll2": "POST-ROLL",
+  "length": "Length",
+  "every": "Every",
+  "min": "{inMinutes} min",
+  "@min": {
+    "placeholders": {
+      "inMinutes": {
+        "type": "Object"
+      }
+    }
+  },
+  "breaksInsideShows": "Breaks inside shows and movies, at act breaks when they can be found",
+  "midRoll2": "MID-ROLL",
+  "beforeEachProgram": "Before each program",
+  "preRoll2": "PRE-ROLL",
+  "onePool": "One pool…",
+  "allBumperPools": "All bumper pools",
+  "none": "None",
+  "clipsFrom": "Clips from: {pool}",
+  "@clipsFrom": {
+    "placeholders": {
+      "pool": {
+        "type": "Object"
+      }
+    }
+  },
+  "allPools": "All pools",
+  "clips2": "{label} clips",
+  "@clips2": {
+    "placeholders": {
+      "label": {
+        "type": "Object"
+      }
+    }
+  },
+  "leave": "Leave",
+  "yourChangesTo": "Your changes to the break settings are lost.",
+  "leaveWithoutSaving": "Leave without saving?",
+  "size": "Size",
+  "captions": "Captions",
+  "sampleCaption": "Sample caption",
+  "theServerDraws": "The server draws these captions into the picture, so their size can't change here.",
+  "findingSubtitles": "Finding subtitles…",
+  "noSubtitlesFor": "No subtitles for this program",
+  "hrMin": "{inHours} hr {inMinutes} min",
+  "@hrMin": {
+    "placeholders": {
+      "inHours": {
+        "type": "Object"
+      },
+      "inMinutes": {
+        "type": "Object"
+      }
+    }
+  },
+  "days2": "{toStringAsFixed} days",
+  "@days2": {
+    "placeholders": {
+      "toStringAsFixed": {
+        "type": "Object"
+      }
+    }
+  },
+  "theChannelGoesAway": "The channel goes away, with its programming blocks and its places in channel groups.",
+  "remove2": "Remove \"{name}\"?",
+  "@remove2": {
+    "placeholders": {
+      "name": {
+        "type": "Object"
+      }
+    }
+  },
+  "contentOf": "Content of {name}",
+  "@contentOf": {
+    "placeholders": {
+      "name": {
+        "type": "Object"
+      }
+    }
+  },
+  "newChannel": "New channel",
+  "defaultCard": "Default card",
+  "changeOfflineImage": "Change offline image…",
+  "offlineImage2": "Offline image…",
+  "fillerPool": "Filler pool: {poolName}",
+  "@fillerPool": {
+    "placeholders": {
+      "poolName": {
+        "type": "Object"
+      }
+    }
+  },
+  "slotLength": "SLOT LENGTH",
+  "hideFromGuide": "Hide from guide",
+  "showInGuide": "Show in guide",
+  "favorite": "Favorite",
+  "unfavorite": "Unfavorite",
+  "mainSetting": "Main setting ({label})",
+  "@mainSetting": {
+    "placeholders": {
+      "label": {
+        "type": "Object"
+      }
+    }
+  },
+  "channelLogo": "CHANNEL LOGO",
+  "breaksOn": "Breaks on {name}",
+  "@breaksOn": {
+    "placeholders": {
+      "name": {
+        "type": "Object"
+      }
+    }
+  },
+  "custom2": "Custom…",
+  "commercials2": "COMMERCIALS",
+  "removeChannel": "Remove channel",
+  "reshuffle": "Reshuffle",
+  "editContent": "Edit content",
+  "number": "Number +",
+  "number2": "Number −",
+  "sourcesLogo": "Source's logo",
+  "changeIcon": "Change icon",
+  "rename": "Rename",
+  "channelName": "Channel name",
+  "programmingBlocks2": "{blockCount, plural, =1{{blockCount} programming block} other{{blockCount} programming blocks}}",
+  "@programmingBlocks2": {
+    "placeholders": {
+      "blockCount": {
+        "type": "int"
+      }
+    }
+  },
+  "repeatsEvery": "repeats every {loop}",
+  "@repeatsEvery": {
+    "placeholders": {
+      "loop": {
+        "type": "Object"
+      }
+    }
+  },
+  "programs": "{playlistCount} programs",
+  "@programs": {
+    "placeholders": {
+      "playlistCount": {
+        "type": "Object"
+      }
+    }
+  },
+  "programmingBlocksOnly": "Programming blocks only",
+  "channelThere": "channel {n} there",
+  "@channelThere": {
+    "placeholders": {
+      "n": {
+        "type": "Object"
+      }
+    }
+  },
+  "channel2": "CHANNEL {number}",
+  "@channel2": {
+    "placeholders": {
+      "number": {
+        "type": "Object"
+      }
+    }
+  },
+  "noChannelsYet": "No channels yet",
+  "guideRange": "GUIDE RANGE",
+  "channelsEditOk": "▲▼ Channels    ▶ Edit    OK Select    ESC Back",
+  "channelsIcons": "Channels & icons",
+  "howFarAhead": "How far ahead the guide shows, from now.",
+  "hours": "{hours} hours",
+  "@hours": {
+    "placeholders": {
+      "hours": {
+        "type": "Object"
+      }
+    }
+  },
+  "theChannelLogo": "The channel logo in the corner of the picture, on the TV and in Live TV export.",
+  "name": "Name",
+  "ok": "OK",
+  "channels2": "CHANNELS",
+  "groupName": "Group name",
+  "group": "Group: {name}",
+  "@group": {
+    "placeholders": {
+      "name": {
+        "type": "Object"
+      }
+    }
+  },
+  "deleteGroup": "Delete group",
+  "itsTabLeaves": "Its tab leaves the guide. The channels stay in your lineup.",
+  "channels3": "{membersCount, plural, =1{{membersCount} channel} other{{membersCount} channels}}",
+  "@channels3": {
+    "placeholders": {
+      "membersCount": {
+        "type": "int"
+      }
+    }
+  },
+  "channelsYouPicked": "Channels you picked.",
+  "theTabsAt": "The tabs at the top of the guide, in this order. Hidden tabs and tabs with no channels aren't shown.",
+  "channelGroups": "Channel groups",
+  "shown": "Shown",
+  "down": "Down",
+  "up": "Up",
+  "automatic2": "· automatic",
+  "channels4": "· {channelIdsCount} channels",
+  "@channels4": {
+    "placeholders": {
+      "channelIdsCount": {
+        "type": "Object"
+      }
+    }
+  },
+  "create": "Create",
+  "commercialsNeverShow": "Commercials never show up in your server's watch history.",
+  "theSameAds": "The same ads play for everyone, every time.",
+  "bumperPoolsClips": "Bumper pools' clips open and close breaks, and never play as ads.",
+  "howBreaksWork": "HOW BREAKS WORK",
+  "withATail": "With a tail, slots are padded out to the clock.",
+  "adsShrinkTo": "Ads shrink to fit the slot, and no break runs over 5 minutes.",
+  "aShortBreak": "A short break before the show, a break every 10 minutes inside it (12 for movies), at act breaks when they can be found, and the rest after it.",
+  "pickAutomaticFor": "Pick Automatic for breaks like broadcast TV, or Custom to set them up yourself.",
+  "workingOn": "Working on {current}…",
+  "@workingOn": {
+    "placeholders": {
+      "current": {
+        "type": "Object"
+      }
+    }
+  },
+  "analysis": "ANALYSIS",
+  "couldNotBe": "{failed} could not be analyzed (they're tried again if the file changes)",
+  "@couldNotBe": {
+    "placeholders": {
+      "failed": {
+        "type": "Object"
+      }
+    }
+  },
+  "programsWithBreak": "Programs with break points: {programsDone} of {programsTotal}",
+  "@programsWithBreak": {
+    "placeholders": {
+      "programsDone": {
+        "type": "Object"
+      },
+      "programsTotal": {
+        "type": "Object"
+      }
+    }
+  },
+  "longVideosSplit": "Long videos split: {reelsDone} of {reelsTotal}",
+  "@longVideosSplit": {
+    "placeholders": {
+      "reelsDone": {
+        "type": "Object"
+      },
+      "reelsTotal": {
+        "type": "Object"
+      }
+    }
+  },
+  "folders": "{folders, plural, =1{{folders} folder  ·  {idCount}} other{{folders} folders  ·  {idCount}}}",
+  "@folders": {
+    "placeholders": {
+      "folders": {
+        "type": "int"
+      },
+      "idCount": {
+        "type": "Object"
+      }
+    }
+  },
+  "fromCommercialPools": "{used, plural, =1{{clips} from {used} commercial pool.} other{{clips} from {used} commercial pools.}}",
+  "@fromCommercialPools": {
+    "placeholders": {
+      "clips": {
+        "type": "Object"
+      },
+      "used": {
+        "type": "int"
+      }
+    }
+  },
+  "breaksStartOnce": "Breaks start once a pool has clips. Add folders with videos to a pool.",
+  "breaksStartOnceA": "Breaks start once a pool has clips. Its long videos are being split now.",
+  "breaksStartOnceAPool": "Breaks start once a pool has clips. Make a pool below.",
+  "breaksAreOff": "Breaks are off. {clips} ready in your pools.",
+  "@breaksAreOff": {
+    "placeholders": {
+      "clips": {
+        "type": "Object"
+      }
+    }
+  },
+  "breaksAreOff2": "Breaks are off.",
+  "clips3": "{n, plural, =1{{n} clip} other{{n} clips}}",
+  "@clips3": {
+    "placeholders": {
+      "n": {
+        "type": "int"
+      }
+    }
+  },
+  "lastScanFailed": "Last scan failed: {syncError}",
+  "@lastScanFailed": {
+    "placeholders": {
+      "syncError": {
+        "type": "Object"
+      }
+    }
+  },
+  "newPool": "New pool",
+  "pickTheFolders": "Pick the folders on your server that hold commercials and bumpers. Their videos leave your regular channels and fill the breaks instead. Set a pool's type to Bumpers to have its clips open and close breaks.",
+  "pools": "POOLS",
+  "breakSettings": "Break settings…",
+  "commercialBreaks": "COMMERCIAL BREAKS",
+  "breakSettings2": "Break settings",
+  "breakPointsAlso": "{ffmpegWarning}{count} Break points also land more naturally with it.",
+  "@breakPointsAlso": {
+    "placeholders": {
+      "ffmpegWarning": {
+        "type": "Object"
+      },
+      "count": {
+        "type": "Object"
+      }
+    }
+  },
+  "waiting": " ({waiting} waiting).",
+  "@waiting": {
+    "placeholders": {
+      "waiting": {
+        "type": "Object"
+      }
+    }
+  },
+  "longCommercialVideos": "Long commercial videos without chapters can't be split on this device",
+  "installFfmpegTo": "Install ffmpeg to split long commercial videos",
+  "picturesOnThis": "Pictures on this device, newest first. Big ones are shrunk to 512 px.",
+  "noPicturesOn": "No pictures on this device yet. Copy a PNG or JPG to its Download folder or onto a USB drive, then try again.",
+  "lookingForPictures": "Looking for pictures…",
+  "couldntReadThePictures": "Couldn't read the pictures on this device.",
+  "nightingaleTvIsnt": "Nightingale TV isn't allowed to see the pictures on this device. Allow \"Photos and videos\" for it in Android's Settings › Apps › Nightingale TV › Permissions, then try again.",
+  "moveOkChooseEsc": "◀▶▲▼ Move    OK Choose    ESC Cancel",
+  "chooseAPicture": "Choose a picture",
+  "thePoolHasnt": "{error}  The pool hasn't changed.",
+  "@thePoolHasnt": {
+    "placeholders": {
+      "error": {
+        "type": "Object"
+      }
+    }
+  },
+  "nothingHasChanged": "{error}  Nothing has changed.",
+  "@nothingHasChanged": {
+    "placeholders": {
+      "error": {
+        "type": "Object"
+      }
+    }
+  },
+  "couldntReachTheServer": "Couldn't reach the server",
+  "tryAgain": "Try again",
+  "nothingInside": "Nothing inside",
+  "noMovies": "No movies",
+  "inside": "{childrenCount} inside",
+  "@inside": {
+    "placeholders": {
+      "childrenCount": {
+        "type": "Object"
+      }
+    }
+  },
+  "video": "Video",
+  "collection": "{name} (collection)",
+  "@collection": {
+    "placeholders": {
+      "name": {
+        "type": "Object"
+      }
+    }
+  },
+  "included": "Included",
+  "nothingInside2": "Nothing inside.",
+  "loadingFolders": "Loading folders…",
+  "pressOnA": "Press ▶ on a library to see what's in it.",
+  "done": "Done",
+  "ticked": "{_pickedCount} ticked",
+  "@ticked": {
+    "placeholders": {
+      "_pickedCount": {
+        "type": "Object"
+      }
+    }
+  },
+  "nothingTickedYet": "Nothing ticked yet. Tick a library to use all of it, or ▶ to pick what's in it.",
+  "wholeLibrary": "Whole library",
+  "libraries": "LIBRARIES",
+  "loadingLibraries": "Loading libraries…",
+  "moveOkTick": "▲▼ Move    OK Tick    ▶ Open    ◀ Back up    ESC Cancel",
+  "foldersFor": "Folders for {poolName}",
+  "@foldersFor": {
+    "placeholders": {
+      "poolName": {
+        "type": "Object"
+      }
+    }
+  },
+  "chooseFolders": "Choose folders",
+  "chooseWhatPlays": "Choose what plays on this channel",
+  "endsEarly": "Ends early",
+  "madeFromThis": "Made from this channel's shows and movies, and updated with the library. Change anything and it becomes yours.",
+  "fromTheLineup": "From the lineup",
+  "yesterday": "yesterday {t}",
+  "@yesterday": {
+    "placeholders": {
+      "t": {
+        "type": "Object"
+      }
+    }
+  },
+  "today": "today {t}",
+  "@today": {
+    "placeholders": {
+      "t": {
+        "type": "Object"
+      }
+    }
+  },
+  "behind": "{d} behind",
+  "@behind": {
+    "placeholders": {
+      "d": {
+        "type": "Object"
+      }
+    }
+  },
+  "hr": "{h} hr",
+  "@hr": {
+    "placeholders": {
+      "h": {
+        "type": "Object"
+      }
+    }
+  },
+  "underAMinute": "under a minute",
+  "noProgramming": "No programming",
+  "today2": "TODAY",
+  "tuning": "TUNING…",
+  "offAir2": "OFF AIR",
+  "noSignal": "NO SIGNAL",
+  "left": "{now} left",
+  "@left": {
+    "placeholders": {
+      "now": {
+        "type": "Object"
+      }
+    }
+  },
+  "nothingScheduled": "Nothing scheduled",
+  "back": "Back",
+  "sleep": "Sleep",
+  "menu": "Menu",
+  "nightingaleTvGuide": "NIGHTINGALE TV GUIDE",
+  "nowPlaying": "Now playing: {title}",
+  "@nowPlaying": {
+    "placeholders": {
+      "title": {
+        "type": "Object"
+      }
+    }
+  },
+  "mMenu": "M Menu",
+  "escBackTo": "ESC Back to TV",
+  "channelsTabsTime": "▲▼ Channels     ▲ Tabs     ◀▶ Time     OK Watch     ",
+  "color": "Color",
+  "channelsUsingIt": "Channels using it go back to a default icon.",
+  "deleteThisIcon": "Delete this icon?",
+  "uploadImage": "Upload image…",
+  "pngJpgWebp": "PNG, JPG, WebP, GIF or SVG. Big images are shrunk to 512 px automatically.",
+  "genericBadgesOnly": "Generic badges only. Upload a real network logo under \"My icons\".",
+  "tv": "TV",
+  "useThisBadge": "Use this badge",
+  "preview": "Preview",
+  "shape": "Shape",
+  "callLettersUp": "Call letters (up to 5)",
+  "iconFor": "Icon for {name}",
+  "@iconFor": {
+    "placeholders": {
+      "name": {
+        "type": "Object"
+      }
+    }
+  },
+  "couldntReadThat": "Couldn't read that picture. Try another one.",
+  "myIcons": "My icons",
+  "showLogos": "Show logos",
+  "badges": "Badges",
+  "builtIn": "Built-in",
+  "couldntMoveThe": "Couldn't move the setup",
+  "send": "Send",
+  "thisBacksUp": "This backs up your profiles, channels and settings now and opens them in {counterpartName}, which asks before restoring them. Nothing changes here.",
+  "@thisBacksUp": {
+    "placeholders": {
+      "counterpartName": {
+        "type": "Object"
+      }
+    }
+  },
+  "sendYourSetup": "Send your setup to {counterpartName}?",
+  "@sendYourSetup": {
+    "placeholders": {
+      "counterpartName": {
+        "type": "Object"
+      }
+    }
+  },
+  "parentalControls": "Parental controls",
+  "notNow": "Not now",
+  "bringMySetup": "Bring my setup here from {counterpartName}",
+  "@bringMySetup": {
+    "placeholders": {
+      "counterpartName": {
+        "type": "Object"
+      }
+    }
+  },
+  "moveMySetup": "Move my setup to {counterpartName}",
+  "@moveMySetup": {
+    "placeholders": {
+      "counterpartName": {
+        "type": "Object"
+      }
+    }
+  },
+  "uninstallingEitherOne": "Uninstalling either one before moving the setup you want to keep deletes that setup.",
+  "andAreSeparate": "{appName} and {counterpartName} are separate apps, each with its own profiles, channels and settings.",
+  "@andAreSeparate": {
+    "placeholders": {
+      "appName": {
+        "type": "Object"
+      },
+      "counterpartName": {
+        "type": "Object"
+      }
+    }
+  },
+  "thankYouFor": "Thank you for supporting Nightingale TV!",
+  "isAlsoOn": "{counterpartName} is also on this device",
+  "@isAlsoOn": {
+    "placeholders": {
+      "counterpartName": {
+        "type": "Object"
+      }
+    }
+  },
+  "aboutThisInstall": "ABOUT THIS INSTALL",
+  "couldntOpen": "Couldn't open {counterpartName}.",
+  "@couldntOpen": {
+    "placeholders": {
+      "counterpartName": {
+        "type": "Object"
+      }
+    }
+  },
+  "nothingIsSet": "Nothing is set up here yet, so there's no setup to move.",
+  "yourSetupIs": "Your setup is on its way to {counterpartName}",
+  "@yourSetupIs": {
+    "placeholders": {
+      "counterpartName": {
+        "type": "Object"
+      }
+    }
+  },
+  "guide": "GUIDE",
+  "ofLabel": "{n} of {keysCount}",
+  "@ofLabel": {
+    "placeholders": {
+      "n": {
+        "type": "Object"
+      },
+      "keysCount": {
+        "type": "Object"
+      }
+    }
+  },
+  "saving": "Saving…",
+  "ofChosen": "{_checkedCount} of {total} chosen",
+  "@ofChosen": {
+    "placeholders": {
+      "_checkedCount": {
+        "type": "Object"
+      },
+      "total": {
+        "type": "Object"
+      }
+    }
+  },
+  "channelOrGroup": "Channel or group name",
+  "search": "Search",
+  "moveOkCheck": "▲▼ Move    OK Check    ESC Back",
+  "chooseChannels": "Choose channels: {name}",
+  "@chooseChannels": {
+    "placeholders": {
+      "name": {
+        "type": "Object"
+      }
+    }
+  },
+  "add": "Add",
+  "readingThePlaylist": "Reading the playlist…",
+  "nowThePlaylists": "Now: the playlist's guide, {guideUrl}",
+  "@nowThePlaylists": {
+    "placeholders": {
+      "guideUrl": {
+        "type": "Object"
+      }
+    }
+  },
+  "leaveEmptyTo": "Leave empty to use the guide the playlist names",
+  "xmltvGuideAddress": "XMLTV guide address",
+  "guideOptional": "GUIDE (OPTIONAL)",
+  "httpProviderExample": "http://provider.example/get.php?username=…&type=m3u_plus",
+  "playlistAddress": "Playlist address",
+  "playlist": "PLAYLIST",
+  "myIptv": "My IPTV",
+  "useAnAddress": "Use an address instead",
+  "chooseAFile": "Choose a file",
+  "chooseAnotherFile": "Choose another file",
+  "moveOkSelectEscBack": "▲▼ Move    OK Select    ESC Back",
+  "edit": "Edit {name}",
+  "@edit": {
+    "placeholders": {
+      "name": {
+        "type": "Object"
+      }
+    }
+  },
+  "addAnM3u": "Add an M3U playlist",
+  "m3uPlaylists": "M3U playlists",
+  "xmltvGuides": "XMLTV guides",
+  "anIptvPlaylist": "An IPTV playlist (a web address or a file), with an XMLTV guide if you have one.",
+  "theChannelsAnd": "The channels and guide of your server's tuner (an antenna, cable box or IPTV it has).",
+  "readingSChannels": "Reading {server}'s channels…",
+  "@readingSChannels": {
+    "placeholders": {
+      "server": {
+        "type": "Object"
+      }
+    }
+  },
+  "checkingLiveTv": "Checking {server} Live TV…",
+  "@checkingLiveTv": {
+    "placeholders": {
+      "server": {
+        "type": "Object"
+      }
+    }
+  },
+  "addALive": "Add a Live TV source",
+  "itsChannelsLeave": "Its channels leave the guide, their groups and favorites.",
+  "renameSource": "Rename source",
+  "edit2": "Edit",
+  "refreshNow": "Refresh now",
+  "chooseChannels2": "Choose channels",
+  "playlistFile": "Playlist file",
+  "notRefreshedYet": "Not refreshed yet",
+  "refreshed": "Refreshed {lastRefresh}",
+  "@refreshed": {
+    "placeholders": {
+      "lastRefresh": {
+        "type": "Object"
+      }
+    }
+  },
+  "lastRefreshFailed": "Last refresh failed: {lastError}",
+  "@lastRefreshFailed": {
+    "placeholders": {
+      "lastError": {
+        "type": "Object"
+      }
+    }
+  },
+  "refreshing": "Refreshing…",
+  "ofChannels": "{label} · {keyCount} of {channelsCount} channels",
+  "@ofChannels": {
+    "placeholders": {
+      "label": {
+        "type": "Object"
+      },
+      "keyCount": {
+        "type": "Object"
+      },
+      "channelsCount": {
+        "type": "Object"
+      }
+    }
+  },
+  "noSourcesYet": "No sources yet.",
+  "addSource": "Add source",
+  "realBroadcastsAnd": "Real broadcasts and IPTV in your guide: your server's Live TV, or an M3U playlist with an XMLTV guide. Their channels join the lineup after yours.",
+  "notStreamingOf": "Not streaming. {runningCount} of {streamLimit} streams in use.",
+  "@notStreamingOf": {
+    "placeholders": {
+      "runningCount": {
+        "type": "Object"
+      },
+      "streamLimit": {
+        "type": "Object"
+      }
+    }
+  },
+  "savePort": "Save port",
+  "port": "Port",
+  "xmltv": "XMLTV",
+  "tuner": "Tuner",
+  "enterAPort": "Enter a port number.",
+  "pinFor": "PIN for {name}",
+  "@pinFor": {
+    "placeholders": {
+      "name": {
+        "type": "Object"
+      }
+    }
+  },
+  "letPlexFind": "Let Plex find it automatically",
+  "discovery": "DISCOVERY",
+  "encoder": "ENCODER",
+  "nowAtOnce": "Now: {streamLimit} at once. Each channel being watched elsewhere is one stream.",
+  "@nowAtOnce": {
+    "placeholders": {
+      "streamLimit": {
+        "type": "Object"
+      }
+    }
+  },
+  "streamsAtOnce": "STREAMS AT ONCE",
+  "quality": "QUALITY",
+  "lineups": "LINEUPS",
+  "liveTvExport2": "Live TV export",
+  "automaticDiscoveryIsnt": "Automatic discovery isn't available on this PC. Add the tuner in Plex or Jellyfin by its address.",
+  "anyoneOnYour": "Anyone on your home network can watch this lineup.",
+  "watchYourChannels": "Watch your channels in Plex, Jellyfin or any IPTV app on your home network. Nightingale TV has to stay open for them to play.",
+  "offline": "Offline",
+  "online": "Online",
+  "added": "Added",
+  "chooseAServer": "Choose a server",
+  "whosSigningIn": "Who's signing in?",
+  "openPlexTv": "Open plex.tv/link",
+  "waitingForThe": "Waiting for the code to be linked…",
+  "goToPlex": "Go to plex.tv/link on your phone or computer and enter this code.",
+  "signInWith": "Sign in with Plex",
+  "waitingForApproval": "Waiting for approval…",
+  "onYourPhone": "On your phone or computer, open {label} → your profile → Quick Connect, and enter this code:",
+  "@onYourPhone": {
+    "placeholders": {
+      "label": {
+        "type": "Object"
+      }
+    }
+  },
+  "quickConnect": "Quick Connect",
+  "signIn": "Sign in",
+  "password": "Password",
+  "username": "Username",
+  "signInTo2": "Sign in to {name}",
+  "@signInTo2": {
+    "placeholders": {
+      "name": {
+        "type": "Object"
+      }
+    }
+  },
+  "differentServer": "Different server",
+  "signInWithPassword": "Sign in with password",
+  "quickConnectUse": "Quick Connect (use your phone)",
+  "connect": "Connect",
+  "serverAddress": "Server address",
+  "connectToYour": "Connect to your server",
+  "nightingaleTvTurns": "Nightingale TV turns your Jellyfin, Emby or Plex library into always-on channels with a program guide. Flip around and catch whatever is on.",
+  "yourLibraryOn": "Your library.\nOn the air, 24/7.",
+  "welcomeToNightingale": "Welcome to Nightingale TV",
+  "signInFor": "Sign in for {name}",
+  "@signInFor": {
+    "placeholders": {
+      "name": {
+        "type": "Object"
+      }
+    }
+  },
+  "signInToAgain": "Sign in to {name} again",
+  "@signInToAgain": {
+    "placeholders": {
+      "name": {
+        "type": "Object"
+      }
+    }
+  },
+  "addAServer": "Add a server",
+  "foundNewPrograms": "Found {list}. New programs start airing on their channels right after what's on now.",
+  "@foundNewPrograms": {
+    "placeholders": {
+      "list": {
+        "type": "Object"
+      }
+    }
+  },
+  "libraryRefreshed": "Library refreshed",
+  "nothingNew": "Nothing new",
+  "yourChannelsAre": "Your channels are up to date.",
+  "refreshFailed": "Refresh failed",
+  "moveOkSelectEscBackTo": "▲▼ Move    OK Select    ESC Back to TV",
+  "noPoolsYet": "no pools yet",
+  "updatedAt": "Updated {fetchedAt} at {fetchedAt2}",
+  "@updatedAt": {
+    "placeholders": {
+      "fetchedAt": {
+        "type": "Object"
+      },
+      "fetchedAt2": {
+        "type": "Object"
+      }
+    }
+  },
+  "libraryLabel": "LIBRARY",
+  "account": "ACCOUNT",
+  "watching": "WATCHING",
+  "exitNightingaleTv": "Exit Nightingale TV",
+  "signOut": "Sign out",
+  "yourChannelLineup": "Your channel lineup is cleared. Custom icons are kept.",
+  "signOut2": "Sign out?",
+  "fullScreenOn": "Full screen on/off (F11)",
+  "nothingWasReset": "Nothing was reset",
+  "reset": "Reset",
+  "rebuildsTheDefault": "Rebuilds the default channels from your library. Names, icons and numbers you changed are reset. Channels you added are kept. A backup is saved first, so you can bring them back in Backup & restore.",
+  "resetChannelLineup": "Reset channel lineup?",
+  "resetChannelLineup2": "Reset channel lineup",
+  "refreshLibrary": "Refresh library",
+  "refreshingLibrary": "Refreshing library…",
+  "servers": "Servers",
+  "phoneRemote": "Phone remote",
+  "profiles": "Profiles",
+  "retroLook": "Retro look",
+  "playback": "Playback",
+  "switchProfile": "Switch profile",
+  "sleepTimer": "Sleep timer",
+  "backToTv": "Back to TV",
+  "removeAll": "Remove all",
+  "pairedLastUsed": "paired {paired} · last used {lastUsed}",
+  "@pairedLastUsed": {
+    "placeholders": {
+      "paired": {
+        "type": "Object"
+      },
+      "lastUsed": {
+        "type": "Object"
+      }
+    }
+  },
+  "noPhonesPaired": "No phones paired yet.",
+  "pairedPhones": "PAIRED PHONES",
+  "blockedByThis": "Blocked by this computer's firewall",
+  "someWiFi": "Some Wi-Fi networks keep devices apart (called AP or client isolation). If the phone still can't connect, turn that setting off for your Wi-Fi.",
+  "thePhoneHas": "The phone has to be on the same Wi-Fi as this TV, not a guest network or mobile data.",
+  "ifThePhone": "If the phone can't connect, this computer's firewall may be blocking it. Open a terminal on this computer and run:",
+  "checkAgain": "Check again",
+  "thenChooseCheck": "Then choose Check again.",
+  "thisComputersFirewall": "This computer's firewall stops phones from reaching the remote. To let them in, open a terminal on this computer and run:",
+  "notConfirmedYet": "Not confirmed yet · no phone has connected",
+  "working": "Working",
+  "workingLastUsed": "Working · last used by {name}, {lastUsed}",
+  "@workingLastUsed": {
+    "placeholders": {
+      "name": {
+        "type": "Object"
+      },
+      "lastUsed": {
+        "type": "Object"
+      }
+    }
+  },
+  "theRemoteIs": "The remote is off.",
+  "orScanThe": "or scan the code with the phone's camera.",
+  "andEnter": "and enter  ",
+  "onYourPhoneOpen": "ON YOUR PHONE, OPEN",
+  "useYourPhoneAs": "Use your phone as the remote: open a web page on it to change channels, bring up the guide, or tap a channel to tune in. Nothing to install.",
+  "everyPairedPhone": "Every paired phone stops working as a remote until it scans the code on this screen again.",
+  "removeAllPhones": "Remove all phones?",
+  "thoseDidntMatch": "Those didn't match. Try again.",
+  "enterTheSame": "Enter the same 4 digits again.",
+  "choose4Digits": "Choose 4 digits.",
+  "thatPinIsnt": "That PIN isn't right. Try again.",
+  "clock": "CLOCK",
+  "captions2": "CAPTIONS",
+  "audio": "AUDIO",
+  "maximumStreamingBitrate": "MAXIMUM STREAMING BITRATE",
+  "converting": "CONVERTING",
+  "afterThisLong": "After this long with no button pressed, Nightingale TV asks if anyone is watching. With no answer in a minute, it goes to sleep: playback stops and your server stops streaming. Not while a sleep timer is set.",
+  "askIfIm": "Ask if I'm still watching",
+  "liveTvStill": "Live TV still shows on the dashboard.",
+  "offWhatYou": "Off: what you watch here never changes play counts, watched marks or resume points on your server, and doesn't show on its dashboard.",
+  "pauseSkipAnd": "Pause, skip and restart what's on. Off: every channel stays on the clock, like always-on TV.",
+  "pauseAndRewind": "Pause and rewind",
+  "showsTheTime": "Shows the time in the corner of the picture.",
+  "onScreenClock": "On-screen clock",
+  "showACountdown": "Show a countdown before commercials start and before the program comes back.",
+  "breakNotices": "Break notices",
+  "theSizeOf": "The size of captions on every program and channel.",
+  "whileItsOn": "While it's on, surround audio (Dolby, DTS) is decoded by this device instead of being passed through to a receiver.",
+  "evensOutThe": "Evens out the volume as you watch: loud commercials and programs are turned down and quiet ones turned up, so you don't have to reach for the remote.",
+  "volumeLeveling": "Volume leveling",
+  "pickALower": "Pick a lower bitrate if shows buffer or stutter over Wi-Fi or a remote connection. Original never converts because of bitrate.",
+  "connectedThroughPlex": "Connected through Plex Relay; quality is limited.",
+  "offNightingaleTv": "Off: Nightingale TV always plays your original files at full quality, and your server does no extra work. On: your server converts a show or movie only when it's above the maximum bitrate, or when the original file won't play. Converting uses your server's processor or graphics card. Commercials always play the original files.",
+  "transcodeOnlyIf": "Transcode only if needed (experimental)",
+  "longerVideosAd": "Longer videos (ad compilations) are split into their ads, at chapters or where the picture goes black and silent.",
+  "videosOf5": "Videos of 5 seconds to 3 minutes are one clip each.",
+  "commercialsFillBreaks": "Commercials fill breaks. Set the type to Bumpers for station idents and \"we'll be right back\" clips.",
+  "bumpersTakeAt": "Bumpers take at most half of a break, except in a pre-roll. One too long for that is skipped.",
+  "stillToSplit": "{unsplit} still to split",
+  "@stillToSplit": {
+    "placeholders": {
+      "unsplit": {
+        "type": "Object"
+      }
+    }
+  },
+  "longOnesSplit": "{reelsCount, plural, =1{{reelsCount} long one split into clips} other{{reelsCount} long ones split into clips}}",
+  "@longOnesSplit": {
+    "placeholders": {
+      "reelsCount": {
+        "type": "int"
+      }
+    }
+  },
+  "deletePool": "Delete pool",
+  "addFolders": "Add folders…",
+  "libraryLabel2": "Library",
+  "noFoldersYet": "No folders yet.",
+  "folders2": "FOLDERS",
+  "type": "TYPE",
+  "poolName": "Pool name",
+  "commercialPool": "Commercial pool",
+  "itsVideosGo": "Its videos go back to your regular channels. Breaks that drew from it use all pools instead.",
+  "now": "Now",
+  "watch": "Watch",
+  "tuning2": "Tuning…",
+  "fullScreen": "Full screen",
+  "noChannels": "No channels",
+  "theirChannelsProgramming": "Their channels, programming blocks and settings are deleted, and this TV is signed out of their server.",
+  "delete3": "Delete {name}?",
+  "@delete3": {
+    "placeholders": {
+      "name": {
+        "type": "Object"
+      }
+    }
+  },
+  "giveTheProfile": "Give the profile a name.",
+  "deleteProfile": "Delete profile",
+  "removePin": "Remove PIN",
+  "setAPin": "Set a PIN",
+  "changePin": "Change PIN",
+  "noPinAnyone": "No PIN. Anyone can open this profile.",
+  "lockedThePin": "Locked. The PIN is needed to open this profile.",
+  "pin": "PIN",
+  "showsAndMoviesWith": "Shows and movies with no rating are left out.",
+  "allowedToWatch": "ALLOWED TO WATCH",
+  "kid": "Kid",
+  "grownUp": "Grown-up",
+  "whoItsFor": "WHO IT'S FOR",
+  "color2": "COLOR",
+  "editProfile": "Edit profile",
+  "newProfile": "New profile",
+  "watchingNow": "Watching now",
+  "noPin": "No PIN",
+  "pinLocked": "PIN locked",
+  "kid2": "Kid · {label} ({description})",
+  "@kid2": {
+    "placeholders": {
+      "label": {
+        "type": "Object"
+      },
+      "description": {
+        "type": "Object"
+      }
+    }
+  },
+  "addProfile": "Add profile",
+  "everyoneGetsTheir": "Everyone gets their own server sign-in, channels and programming blocks. Kid profiles only see shows and movies rated for their age.",
+  "enterSPin": "Enter {name}'s PIN",
+  "@enterSPin": {
+    "placeholders": {
+      "name": {
+        "type": "Object"
+      }
+    }
+  },
+  "whosWatching": "Who's watching?",
+  "moveOkChoose2": "◀▶ Move    OK Choose",
+  "enterAGrownUps": "Enter a grown-up's PIN.",
+  "grownUpsOnly": "Grown-ups only",
+  "yourChannelYour": "Your channel, your look",
+  "testPattern": "Test Pattern",
+  "upNext8": "UP NEXT  ·  8:00 PM",
+  "thisDevice": "THIS DEVICE",
+  "glow": "GLOW",
+  "curvature": "CURVATURE",
+  "vignette": "VIGNETTE",
+  "mask": "MASK",
+  "lines": "LINES",
+  "scanlines": "SCANLINES",
+  "customCrtStyle": "CUSTOM CRT STYLE",
+  "accent": "ACCENT ({label})",
+  "@accent": {
+    "placeholders": {
+      "label": {
+        "type": "Object"
+      }
+    }
+  },
+  "overlayTheme": "OVERLAY THEME",
+  "crtEffect": "CRT EFFECT",
+  "surround": "SURROUND",
+  "pictureShape": "PICTURE SHAPE",
+  "surroundImage": "Surround image",
+  "notAvailableOn": "Not available on this device",
+  "offTurnsOff": "Off turns off all CRT effects on this device only. Picture shape, surround and overlay themes stay as they are.",
+  "effectsOnThis": "Effects on this device",
+  "retroLook2": "RETRO LOOK",
+  "theseSettingsApply": "These settings apply on screens running the app. They don't apply to Live TV export.",
+  "sameAsThe": "Same as the profile",
+  "streamsFromThis": "Streams from this server stay under this. The profile's own limit (Playback) still applies; the lower one wins.",
+  "qualityLimit": "Quality limit · {name}",
+  "@qualityLimit": {
+    "placeholders": {
+      "name": {
+        "type": "Object"
+      }
+    }
+  },
+  "mbps": "{toStringAsFixed} Mbps",
+  "@mbps": {
+    "placeholders": {
+      "toStringAsFixed": {
+        "type": "Object"
+      }
+    }
+  },
+  "itsProgramsLeave": "Its programs leave your channels, which keep their numbers. Sources and commercial folders on it show as not found until you change them.",
+  "remove3": "Remove {name}?",
+  "@remove3": {
+    "placeholders": {
+      "name": {
+        "type": "Object"
+      }
+    }
+  },
+  "signingOutOf": "Signing out of this profile changes its main server.",
+  "signedInAs": "Signed in as {user}",
+  "@signedInAs": {
+    "placeholders": {
+      "user": {
+        "type": "Object"
+      }
+    }
+  },
+  "mainServer": "Main server",
+  "qualityLimit2": "Quality limit",
+  "moveDown": "Move down",
+  "moveUp": "Move up",
+  "signInAgain": "Sign in again",
+  "programsFromEvery": "Programs from every server join one lineup. A title on several servers plays from the first one in this list that answers (Play from); if it stops answering, the next one takes over.",
+  "sleepingPressAny": "Sleeping · Press any button to watch",
+  "goingToSleep": "Going to sleep in {seconds}",
+  "@goingToSleep": {
+    "placeholders": {
+      "seconds": {
+        "type": "Object"
+      }
+    }
+  },
+  "goingToSleep2": "Going to sleep",
+  "goingToSleepIn": "Going to sleep in 1 minute. {hint}",
+  "@goingToSleepIn": {
+    "placeholders": {
+      "hint": {
+        "type": "Object"
+      }
+    }
+  },
+  "pressAnyButton": "Press any button to keep watching",
+  "goingToSleepIn0": "Going to sleep in 0:{padLeft}",
+  "@goingToSleepIn0": {
+    "placeholders": {
+      "padLeft": {
+        "type": "Object"
+      }
+    }
+  },
+  "keepWatching": "Keep watching",
+  "areYouStill": "Are you still watching?",
+  "sleepTimerMin": "Sleep timer · {left} min left",
+  "@sleepTimerMin": {
+    "placeholders": {
+      "left": {
+        "type": "Object"
+      }
+    }
+  },
+  "whatsOnNow": "What's on now has no set end time.",
+  "endOfThis": "End of this program · {programEnd}",
+  "@endOfThis": {
+    "placeholders": {
+      "programEnd": {
+        "type": "Object"
+      }
+    }
+  },
+  "endOfThisProgram": "End of this program",
+  "moveOkToggle": "▲▼◀▶ Move    OK Toggle    ESC Cancel",
+  "usedWhenNo": "Used when no shows are picked. Also narrows down movies.",
+  "genres2": "GENRES",
+  "includeMovies": "Include movies",
+  "add2": "Add…",
+  "notFoundOn": "Not found on the server",
+  "collectionsFolders": "COLLECTIONS & FOLDERS",
+  "playOrder": "PLAY ORDER",
+  "clear": "Clear",
+  "shows2": "SHOWS",
+  "pickSomethingTo": "Pick something to play.",
+  "everyMovie": "every {genreText} movie",
+  "@everyMovie": {
+    "placeholders": {
+      "genreText": {
+        "type": "Object"
+      }
+    }
+  },
+  "everyMovie2": "every movie",
+  "everyShow": "every {genreText} show",
+  "@everyShow": {
+    "placeholders": {
+      "genreText": {
+        "type": "Object"
+      }
+    }
+  },
+  "or": "{genresCount} or {last}",
+  "@or": {
+    "placeholders": {
+      "genresCount": {
+        "type": "Object"
+      },
+      "last": {
+        "type": "Object"
+      }
+    }
+  },
+  "settingUpYour": "Setting up your channels",
+  "couldntLoadYour": "Couldn't load your library",
+  "upNext": "Up next: {title}",
+  "@upNext": {
+    "placeholders": {
+      "title": {
+        "type": "Object"
+      }
+    }
+  },
+  "backTo": "Back to {title}",
+  "@backTo": {
+    "placeholders": {
+      "title": {
+        "type": "Object"
+      }
+    }
+  },
+  "programmingResumesIn": "Programming resumes in {left}",
+  "@programmingResumesIn": {
+    "placeholders": {
+      "left": {
+        "type": "Object"
+      }
+    }
+  },
+  "inLabel": "{commercialBreakLabel} in {left}",
+  "@inLabel": {
+    "placeholders": {
+      "commercialBreakLabel": {
+        "type": "Object"
+      },
+      "left": {
+        "type": "Object"
+      }
+    }
+  },
+  "startingWith": "Starting with {title}",
+  "@startingWith": {
+    "placeholders": {
+      "title": {
+        "type": "Object"
+      }
+    }
+  },
+  "upNext2": "UP NEXT  ·  {start}",
+  "@upNext2": {
+    "placeholders": {
+      "start": {
+        "type": "Object"
+      }
+    }
+  },
+  "next2": "Next {start}: {title}",
+  "@next2": {
+    "placeholders": {
+      "start": {
+        "type": "Object"
+      },
+      "title": {
+        "type": "Object"
+      }
+    }
+  },
+  "backOn": "Back on {backOnAir}",
+  "@backOn": {
+    "placeholders": {
+      "backOnAir": {
+        "type": "Object"
+      }
+    }
+  },
+  "offTheAir2": "Off the air",
+  "commercialBreak": "Commercial break",
+  "tryingAgainAt": "Trying again at {end}",
+  "@tryingAgainAt": {
+    "placeholders": {
+      "end": {
+        "type": "Object"
+      }
+    }
+  },
+  "exitFullScreen": "Exit full screen",
+  "guide2": "Guide",
+  "thereIsNo": "There is no channel {number}",
+  "@thereIsNo": {
+    "placeholders": {
+      "number": {
+        "type": "Object"
+      }
+    }
+  },
+  "liveChannelsCant": "Live channels can't be paused",
+  "curvatureAndGlow": "Curvature and glow are off: this device can't keep up",
+  "pressBackAgain": "Press Back again to exit",
+  "backAt": "Back at {backAt}",
+  "@backAt": {
+    "placeholders": {
+      "backAt": {
+        "type": "Object"
+      }
+    }
+  },
+  "live": "LIVE",
+  "newLabel": "NEW",
+  "nowPlayingOn": "NOW PLAYING ON {name}",
+  "@nowPlayingOn": {
+    "placeholders": {
+      "name": {
+        "type": "Object"
+      }
+    }
+  },
+  "ch": "CH {padLeft}",
+  "@ch": {
+    "placeholders": {
+      "padLeft": {
+        "type": "Object"
+      }
+    }
+  },
+  "paused": "PAUSED",
+  "seekBar": "Seek bar",
+  "live2": "Live",
+  "forward30": "Forward 30",
+  "pause": "Pause",
+  "play": "Play",
+  "back10": "Back 10",
+  "restart": "Restart",
+  "somethingWentWrong2": "Something went wrong ({status}).",
+  "@somethingWentWrong2": {
+    "placeholders": {
+      "status": {
+        "type": "Object"
+      }
+    }
+  },
+  "thatIsTooBig": "That is too big.",
+  "notFound": "Not found.",
+  "youCantDo": "You can't do that.",
+  "cantReachThe": "Can't reach the server. Check that it's running.",
+  "signOut3": "Sign out {userName}",
+  "@signOut3": {
+    "placeholders": {
+      "userName": {
+        "type": "Object"
+      }
+    }
+  },
+  "changePassword": "Change password",
+  "users": "Users",
+  "backups2": "Backups",
+  "serverAndSign": "Server and sign-in",
+  "channels5": "Channels",
+  "thatProfileIsntYours": "That profile isn't yours, or it's gone.",
+  "download": "Download",
+  "itReplacesThe": "It replaces the profiles, channels and settings here.",
+  "restoreThisBackup": "Restore this backup?",
+  "backupActions": "Backup actions",
+  "channels6": "{profiles} · {channels} channels · {device}",
+  "@channels6": {
+    "placeholders": {
+      "profiles": {
+        "type": "Object"
+      },
+      "channels": {
+        "type": "Object"
+      },
+      "device": {
+        "type": "Object"
+      }
+    }
+  },
+  "noneYetOne": "None yet. One is saved each day the household changes.",
+  "savedOnThe": "Saved on the server",
+  "restoring": "Restoring…",
+  "restoreFromAFile": "Restore from a file…",
+  "downloadABackup": "Download a backup now",
+  "aBackupHoldsThe": "A backup holds the profiles, channels, blocks, logos, export settings and user accounts (never passwords or sign-in tokens).",
+  "restoredTheBackup2": "Restored the backup.",
+  "fromItReplaces": "From {whenValue} ({device}): {profiles}. It replaces the profiles, channels and settings here.",
+  "@fromItReplaces": {
+    "placeholders": {
+      "whenValue": {
+        "type": "Object"
+      },
+      "device": {
+        "type": "Object"
+      },
+      "profiles": {
+        "type": "Object"
+      }
+    }
+  },
+  "nextAiring2": "Next airing: {start} {end}",
+  "@nextAiring2": {
+    "placeholders": {
+      "start": {
+        "type": "Object"
+      },
+      "end": {
+        "type": "Object"
+      }
+    }
+  },
+  "programsInIts": "{total} programs in its playlist.",
+  "@programsInIts": {
+    "placeholders": {
+      "total": {
+        "type": "Object"
+      }
+    }
+  },
+  "workingOutWhat": "Working out what it plays…",
+  "later": "Later",
+  "earlier": "Earlier",
+  "eachAiringPlays": "Each airing plays every spot's next episodes in order, then starts over if time is left.",
+  "aLineupOf": "A lineup of shows",
+  "whatItPlays2": "What it plays",
+  "onlyPartOf": "Only part of the year",
+  "runsPastMidnight": "Runs past midnight into the next day.",
+  "whenLabel": "When",
+  "aNewChannelFor": "A new channel for this block",
+  "channel3": "Channel",
+  "blocks": "Blocks",
+  "newBlock": "New block",
+  "programmingBlock": "Programming block",
+  "aBlockTakes": "A block takes over a channel at set times: \"Saturday Morning Cartoons\", Saturdays 7 AM to noon.",
+  "overlayTheme2": "Overlay theme",
+  "crtEffect2": "CRT effect",
+  "chooseSurroundImage": "Choose surround image…",
+  "surround2": "Surround",
+  "pictureShape2": "Picture shape",
+  "chooseOfflineImage": "Choose offline image…",
+  "fillerPool2": "Filler pool",
+  "minutes": "{inMinutes} minutes",
+  "@minutes": {
+    "placeholders": {
+      "inMinutes": {
+        "type": "Object"
+      }
+    }
+  },
+  "slotLength2": "Slot length",
+  "everyProgramStarts": "Every program starts on the clock. The tail fills the rest of each slot.",
+  "itLeavesThe": "It leaves the lineup.",
+  "itsProgrammingBlocks": "Its programming blocks are removed too.",
+  "removeThisChannel": "Remove this channel",
+  "channelLogo2": "Channel logo",
+  "editCustomBreaks": "Edit custom breaks…",
+  "musicChannelsOnlyShuffle": "Music channels only shuffle, never the same artist twice in a row.",
+  "playOrder2": "Play order",
+  "saveWhatIt": "Save what it plays",
+  "canBeA": "Can be a show's home channel for its newest episodes.",
+  "hiddenFromThe": "Hidden from the guide",
+  "chooseIcon": "Choose icon…",
+  "icon": "Icon",
+  "saveNameAnd": "Save name and number",
+  "aChannelAlready": "A channel already on that number swaps into this one's place.",
+  "number3": "Number",
+  "nameAndNumber": "Name and number",
+  "decadesNoneAny": "Decades (none: any)",
+  "genresNoneAny": "Genres (none: any)",
+  "musicVideos": "Music videos ({musicVideos})",
+  "@musicVideos": {
+    "placeholders": {
+      "musicVideos": {
+        "type": "Object"
+      }
+    }
+  },
+  "songs": "Songs ({songs})",
+  "@songs": {
+    "placeholders": {
+      "songs": {
+        "type": "Object"
+      }
+    }
+  },
+  "newMusicChannel": "New music channel",
+  "aNightlySlot": "A nightly slot for shows' newest episodes, on each show's home channel.",
+  "mainSettings": "Main settings",
+  "glow2": "Glow",
+  "curvature2": "Curvature",
+  "vignette2": "Vignette",
+  "mask2": "Mask",
+  "lines2": "Lines",
+  "scanlines2": "Scanlines",
+  "customCrtStyle2": "Custom CRT style",
+  "accent2": "Accent ({label})",
+  "@accent2": {
+    "placeholders": {
+      "label": {
+        "type": "Object"
+      }
+    }
+  },
+  "hidden": "Hidden",
+  "blockChannel2": "Block channel",
+  "live3": "Live · {source}",
+  "@live3": {
+    "placeholders": {
+      "source": {
+        "type": "Object"
+      }
+    }
+  },
+  "ofChannels2": "{shownCount} of {channelsCount} channels",
+  "@ofChannels2": {
+    "placeholders": {
+      "shownCount": {
+        "type": "Object"
+      },
+      "channelsCount": {
+        "type": "Object"
+      }
+    }
+  },
+  "searchChannels": "Search channels",
+  "resetLineup": "Reset lineup",
+  "everyChannelEdit": "Every channel edit is discarded and the default lineup is made again. Channels you added are kept. A backup is saved first.",
+  "musicChannel": "Music channel",
+  "newBlockChannel": "New block channel",
+  "channelsOwnPlans": "Channels' own plans",
+  "setTypeBumpers": "Set type: Bumpers",
+  "setTypeCommercials": "Set type: Commercials",
+  "chooseFolders2": "Choose folders…",
+  "plansThatDrew": "Plans that drew from it use all pools instead, and its videos rejoin the channels.",
+  "renamePool": "Rename pool",
+  "poolActions": "Pool actions",
+  "aPoolIs": "A pool is a set of library folders whose videos fill breaks instead of airing. A pool's type says whether its clips play as commercials or as bumpers, which open and close breaks.",
+  "pools2": "Pools",
+  "breaks": "Breaks",
+  "clipsInAll": "{clips} clips in all commercial pools.",
+  "@clipsInAll": {
+    "placeholders": {
+      "clips": {
+        "type": "Object"
+      }
+    }
+  },
+  "tunerAddress": "Tuner address",
+  "changePort": "Change port",
+  "exportThisProfile": "Export this profile",
+  "letsPlexAnd": "Lets Plex and others find the tuners on the network.",
+  "discovery2": "Discovery",
+  "encoder2": "Encoder",
+  "automaticOnThis": "Automatic: {streamLimitInUse} on this machine.",
+  "@automaticOnThis": {
+    "placeholders": {
+      "streamLimitInUse": {
+        "type": "Object"
+      }
+    }
+  },
+  "streamsAtOnce2": "Streams at once",
+  "quality2": "Quality",
+  "settings": "Settings",
+  "eachExportedProfile": "Each exported profile is a tuner for Plex, Jellyfin or Emby. Add it in their DVR settings by its address.",
+  "channelsInThis": "Channels in this group",
+  "chooseChannels3": "Choose channels…",
+  "channels7": "{channelIds} channels",
+  "@channels7": {
+    "placeholders": {
+      "channelIds": {
+        "type": "Object"
+      }
+    }
+  },
+  "itsChannelsStay": "Its channels stay in the lineup.",
+  "renameGroup": "Rename group",
+  "groupActions": "Group actions",
+  "yourGroup": "Your group",
+  "theOrderOf": "The order of the tabs in the guide, and which are shown.",
+  "guideTabs": "Guide tabs",
+  "make": "Make",
+  "breaksBetweenPrograms": "Breaks between programs",
+  "breaksInside2": "{mids, plural, =1{{mids} break inside} other{{mids} breaks inside}}",
+  "@breaksInside2": {
+    "placeholders": {
+      "mids": {
+        "type": "int"
+      }
+    }
+  },
+  "songs2": "{songs} songs",
+  "@songs2": {
+    "placeholders": {
+      "songs": {
+        "type": "Object"
+      }
+    }
+  },
+  "newEpisode": "New episode",
+  "noChannelsYet2": "No channels yet.",
+  "noGuide": "No guide",
+  "noneShown": "None shown",
+  "allShown": "All shown",
+  "channels8": "{name}: channels",
+  "@channels8": {
+    "placeholders": {
+      "name": {
+        "type": "Object"
+      }
+    }
+  },
+  "orChooseA": "Or choose a guide file…",
+  "emptyThePlaylists": "Empty: the playlist's own guide, if it names one.",
+  "guideAddressXmltv": "Guide address (XMLTV, optional)",
+  "orChooseAPlaylist": "Or choose a playlist file…",
+  "leaveEmptyToKeep": "Leave empty to keep the playlist file.",
+  "httpPlaylistM3u": "http://…/playlist.m3u",
+  "files": "Files",
+  "itsChannelsJoin": "Its channels join while this profile is signed in to that server.",
+  "guide3": "Guide: {guideFile}",
+  "@guide3": {
+    "placeholders": {
+      "guideFile": {
+        "type": "Object"
+      }
+    }
+  },
+  "playlistFile2": "Playlist file: {playlistFile}",
+  "@playlistFile2": {
+    "placeholders": {
+      "playlistFile": {
+        "type": "Object"
+      }
+    }
+  },
+  "refreshed2": "Refreshed {last} {context}",
+  "@refreshed2": {
+    "placeholders": {
+      "last": {
+        "type": "Object"
+      },
+      "context": {
+        "type": "Object"
+      }
+    }
+  },
+  "itsChannelsLeaveThe": "Its channels leave the lineup, groups and favorites.",
+  "read": "Read {fetched} {context}.",
+  "@read": {
+    "placeholders": {
+      "fetched": {
+        "type": "Object"
+      },
+      "context": {
+        "type": "Object"
+      }
+    }
+  },
+  "showsEpisodesMovies": "{series} shows · {episodes} episodes · {movies} movies · {songs} songs · {musicVideos} music videos · {commercials} commercial videos",
+  "@showsEpisodesMovies": {
+    "placeholders": {
+      "series": {
+        "type": "Object"
+      },
+      "episodes": {
+        "type": "Object"
+      },
+      "movies": {
+        "type": "Object"
+      },
+      "songs": {
+        "type": "Object"
+      },
+      "musicVideos": {
+        "type": "Object"
+      },
+      "commercials": {
+        "type": "Object"
+      }
+    }
+  },
+  "fromAs": "From {server} as {user}.",
+  "@fromAs": {
+    "placeholders": {
+      "server": {
+        "type": "Object"
+      },
+      "user": {
+        "type": "Object"
+      }
+    }
+  },
+  "libraryLabel3": "{name}: library",
+  "@libraryLabel3": {
+    "placeholders": {
+      "name": {
+        "type": "Object"
+      }
+    }
+  },
+  "removeThePin": "Remove the PIN",
+  "pinOptional": "PIN (optional)",
+  "newPinLeave": "New PIN (leave empty to keep it)",
+  "colour": "Colour {i}",
+  "@colour": {
+    "placeholders": {
+      "i": {
+        "type": "Object"
+      }
+    }
+  },
+  "colour2": "Colour",
+  "itsChannelsBlocks": "Its channels, blocks and settings are deleted. A backup is saved first.",
+  "exported": "Exported",
+  "kid3": "Kid · {label}",
+  "@kid3": {
+    "placeholders": {
+      "label": {
+        "type": "Object"
+      }
+    }
+  },
+  "noProfilesAre": "No profiles are assigned to you yet. Ask an admin.",
+  "signIn2": "Sign {name} in",
+  "@signIn2": {
+    "placeholders": {
+      "name": {
+        "type": "Object"
+      }
+    }
+  },
+  "theLibraryIs": "The library is being read again; the server's programs join the channels when it's done.",
+  "itsLibraryIs": "Its library is being read and its channels made. This takes a minute or two.",
+  "isSignedIn": "{name} is signed in.",
+  "@isSignedIn": {
+    "placeholders": {
+      "name": {
+        "type": "Object"
+      }
+    }
+  },
+  "couldntDoThat": "Couldn't do that. Try again.",
+  "itsChannelsStayIt": "Its channels stay; it needs signing in to play.",
+  "signOut4": "Sign {name} out?",
+  "@signOut4": {
+    "placeholders": {
+      "name": {
+        "type": "Object"
+      }
+    }
+  },
+  "signingIn": "Signing in…",
+  "wasSignedIn": "Was signed in to {server} as {user}. Sign in again.",
+  "@wasSignedIn": {
+    "placeholders": {
+      "server": {
+        "type": "Object"
+      },
+      "user": {
+        "type": "Object"
+      }
+    }
+  },
+  "signedInTo": "Signed in to {server} as {user}.",
+  "@signedInTo": {
+    "placeholders": {
+      "server": {
+        "type": "Object"
+      },
+      "user": {
+        "type": "Object"
+      }
+    }
+  },
+  "profileName": "Profile name",
+  "nameAProfile": "Name a profile, sign it in to your media server, and its channels are made and exported.",
+  "chooseABackup": "Choose a backup file…",
+  "moveAHousehold": "Move a household here from a TV or another server: its profiles, channels, blocks, logos and export settings.",
+  "restoreABackup": "Restore a backup",
+  "theServerIs": "The server is starting…",
+  "itsProgramsLeaveThe": "Its programs leave the channels, which keep their numbers. Sources and commercial folders on it show as not found until you change them.",
+  "addAServerTo": "Add a server to {name}",
+  "@addAServerTo": {
+    "placeholders": {
+      "name": {
+        "type": "Object"
+      }
+    }
+  },
+  "servers2": "{name}: servers",
+  "@servers2": {
+    "placeholders": {
+      "name": {
+        "type": "Object"
+      }
+    }
+  },
+  "makeAccountAnd": "Make account and sign in",
+  "setPasswordAnd": "Set password and sign in",
+  "passwordAgain": "Password again",
+  "atLeast8": "At least 8 characters.",
+  "userName": "User name",
+  "adminAccount": "Admin account",
+  "makeTheFirst": "Make the first admin account.",
+  "setANew": "Set a new password for an admin account.",
+  "thisSetupLink": "This setup link has been used, or it's from an earlier start. Open the newest one from the server's log, or sign in.",
+  "thePasswordsDont": "The passwords don't match.",
+  "newPasswordAgain": "New password again",
+  "newPassword": "New password",
+  "currentPassword": "Current password",
+  "passwordChangedYour": "Password changed. Your other browsers are signed out.",
+  "theNewPasswords": "The new passwords don't match.",
+  "theyAreSigned": "They are signed out and can't sign in again.",
+  "cantSignIn": "Can't sign in; signed out everywhere.",
+  "usersReachOnly": "Users reach only the profiles below.",
+  "adminsCanDo": "Admins can do everything, on every profile.",
+  "admin": "Admin",
+  "user": "User",
+  "leaveEmptyToKeepIt": "Leave empty to keep it. Setting one signs them out elsewhere.",
+  "needsAPassword": "Needs a password before it can sign in.",
+  "addUser": "Add user",
+  "needsAPassword2": "Needs a password",
+  "noProfiles": "No profiles",
+  "pad": "Pad",
+  "clips4": "{name}  ·  {clips} clips",
+  "@clips4": {
+    "placeholders": {
+      "name": {
+        "type": "Object"
+      },
+      "clips": {
+        "type": "Object"
+      }
+    }
+  },
+  "clipsFrom2": "Clips from",
+  "channelsUsingItGo": "Channels using it go back to a built-in icon.",
+  "uploading": "Uploading…",
+  "noneOfYourShows": "None of your shows have a logo image on your server.",
+  "chooseAnIcon": "Choose an icon",
+  "couldntCopySelect": "Couldn't copy. Select the text and copy it.",
+  "copy": "Copy {label}",
+  "@copy": {
+    "placeholders": {
+      "label": {
+        "type": "Object"
+      }
+    }
+  },
+  "home": "Home",
+  "thereIsNoPage": "There is no page here.",
+  "enterPin": "Enter PIN",
+  "thisIsA": "This is a kid profile. Changing its settings needs a grown-up's PIN.",
+  "hasAPin": "{name} has a PIN.",
+  "@hasAPin": {
+    "placeholders": {
+      "name": {
+        "type": "Object"
+      }
+    }
+  },
+  "profile": "Profile",
+  "changingAKid": "Changing a kid profile's settings needs the PIN of a grown-up profile.",
+  "aGrownUps": "A grown-up's PIN",
+  "thisProfile": "this profile",
+  "movies3": "Movies ({movies})",
+  "@movies3": {
+    "placeholders": {
+      "movies": {
+        "type": "Object"
+      }
+    }
+  },
+  "shows3": "Shows",
+  "remove4": "Remove {label}",
+  "@remove4": {
+    "placeholders": {
+      "label": {
+        "type": "Object"
+      }
+    }
+  },
+  "notFoundOnThe": "{label} · Not found on the server",
+  "@notFoundOnThe": {
+    "placeholders": {
+      "label": {
+        "type": "Object"
+      }
+    }
+  },
+  "dragACollection": "Drag a collection, folder or movie here, or use its Add button.",
+  "collectionsAndFolders": "Collections and folders",
+  "add3": "Add {name}",
+  "@add3": {
+    "placeholders": {
+      "name": {
+        "type": "Object"
+      }
+    }
+  },
+  "added2": "{name} added",
+  "@added2": {
+    "placeholders": {
+      "name": {
+        "type": "Object"
+      }
+    }
+  },
+  "dragToAdd": "Drag to add",
+  "languageAutomatic": "Automatic",
+  "dateAtTime": "{date}, {time}",
+  "@dateAtTime": {
+    "placeholders": {
+      "date": {
+        "type": "String"
+      },
+      "time": {
+        "type": "String"
+      }
+    }
+  },
+  "connectingTo": "Connecting to {server}…",
+  "@connectingTo": {
+    "placeholders": {
+      "server": {
+        "type": "Object"
+      }
+    }
+  },
+  "yourServerLower": "your server",
+  "noServerFoundAt": "No Jellyfin, Emby or Plex server found at {address}.",
+  "@noServerFoundAt": {
+    "placeholders": {
+      "address": {
+        "type": "Object"
+      }
+    }
+  },
+  "captionsValue": "Captions: {name}",
+  "@captionsValue": {
+    "placeholders": {
+      "name": {
+        "type": "Object"
+      }
+    }
+  },
+  "channelOverrides": "{count} channels have its own setting (Channels & icons).",
+  "@channelOverrides": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "noShowLogosOn": "None of your shows have a logo image on your {kind} server.",
+  "@noShowLogosOn": {
+    "placeholders": {
+      "kind": {
+        "type": "Object"
+      }
+    }
+  },
+  "fileChosen": "File: {name}",
+  "@fileChosen": {
+    "placeholders": {
+      "name": {
+        "type": "Object"
+      }
+    }
+  },
+  "theOneChosenBefore": "the one chosen before",
+  "streamingChannels": "{count, plural, =1{Streaming channel {channels} to {viewers} viewer(s). {running} of {limit} streams in use.} other{Streaming channels {channels} to {viewers} viewer(s). {running} of {limit} streams in use.}}",
+  "@streamingChannels": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      },
+      "channels": {
+        "type": "Object"
+      },
+      "viewers": {
+        "type": "Object"
+      },
+      "running": {
+        "type": "Object"
+      },
+      "limit": {
+        "type": "Object"
+      }
+    }
+  },
+  "exportThisLineup": "{name}: export this lineup",
+  "@exportThisLineup": {
+    "placeholders": {
+      "name": {
+        "type": "Object"
+      }
+    }
+  },
+  "exportThisLineupKid": "{name} (kid): export this lineup",
+  "@exportThisLineupKid": {
+    "placeholders": {
+      "name": {
+        "type": "Object"
+      }
+    }
+  },
+  "encoderInUse": "Encoder in use: {encoder}",
+  "@encoderInUse": {
+    "placeholders": {
+      "encoder": {
+        "type": "Object"
+      }
+    }
+  },
+  "checking": "checking…",
+  "countShows": "{count} shows",
+  "@countShows": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "countEpisodes": "{count} episodes",
+  "@countEpisodes": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "countMovies": "{count} movies",
+  "@countMovies": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "countSongs": "{count} songs",
+  "@countSongs": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "countMusicVideos": "{count} music videos",
+  "@countMusicVideos": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "countHidden": "{count} hidden",
+  "@countHidden": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "countOnTheAir": "{count} on the air",
+  "@countOnTheAir": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "countProgrammingBlocks": "{count, plural, =1{{count} programming block} other{{count} programming blocks}}",
+  "@countProgrammingBlocks": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "perServerStats": "{name}: {stats}",
+  "@perServerStats": {
+    "placeholders": {
+      "name": {
+        "type": "Object"
+      },
+      "stats": {
+        "type": "Object"
+      }
+    }
+  },
+  "yourServerHasNothingNew": "Your server has nothing new since the last refresh. New files show up here once the server has scanned them: if you just added some, scan the library on the server first, then refresh again.",
+  "serverHasNothingNew": "{server} has nothing new since the last refresh. New files show up here once the server has scanned them: if you just added some, scan the library on the server first, then refresh again.",
+  "@serverHasNothingNew": {
+    "placeholders": {
+      "server": {
+        "type": "Object"
+      }
+    }
+  },
+  "updateWatchStatusOnYourServer": "Update watch status on your server",
+  "updateWatchStatusOnYourServers": "Update watch status on your servers",
+  "updateWatchStatusOn": "Update watch status on {name}",
+  "@updateWatchStatusOn": {
+    "placeholders": {
+      "name": {
+        "type": "Object"
+      }
+    }
+  },
+  "poolFoldersBumpers": "Every video in these folders (and the folders inside them) opens and closes breaks, and never airs as a program.",
+  "poolFoldersCommercials": "Every video in these folders (and the folders inside them) fills breaks, and never airs as a program.",
+  "newPin": "New PIN",
+  "namedPin": "{name} PIN",
+  "@namedPin": {
+    "placeholders": {
+      "name": {
+        "type": "Object"
+      }
+    }
+  },
+  "qualitySameAsProfile": "Quality: same as the profile",
+  "qualityValue": "Quality: {limit}",
+  "@qualityValue": {
+    "placeholders": {
+      "limit": {
+        "type": "Object"
+      }
+    }
+  },
+  "onChannel": "on {channel}",
+  "@onChannel": {
+    "placeholders": {
+      "channel": {
+        "type": "Object"
+      }
+    }
+  },
+  "aChannelThatIsGone": "a channel that is gone",
+  "liveFrom": "Live from {source}",
+  "@liveFrom": {
+    "placeholders": {
+      "source": {
+        "type": "Object"
+      }
+    }
+  },
+  "logoAndPremieres": "Logo {mode} · Premieres {premieres}",
+  "@logoAndPremieres": {
+    "placeholders": {
+      "mode": {
+        "type": "Object"
+      },
+      "premieres": {
+        "type": "Object"
+      }
+    }
+  },
+  "offLower": "off",
+  "streamingNow": "{count} streaming now.",
+  "@streamingNow": {
+    "placeholders": {
+      "count": {
+        "type": "Object"
+      }
+    }
+  },
+  "streamingNowEncoding": "{count} streaming now · encoding with {encoder}.",
+  "@streamingNowEncoding": {
+    "placeholders": {
+      "count": {
+        "type": "Object"
+      },
+      "encoder": {
+        "type": "Object"
+      }
+    }
+  },
+  "kindChosenChannels": "{kind} · {chosen} of {channels} channels",
+  "@kindChosenChannels": {
+    "placeholders": {
+      "kind": {
+        "type": "Object"
+      },
+      "chosen": {
+        "type": "Object"
+      },
+      "channels": {
+        "type": "Object"
+      }
+    }
+  },
+  "backupSummary": "From {when} ({device}): {profiles}. {channels} channels, {blocks} programming blocks, {logos} logos.",
+  "@backupSummary": {
+    "placeholders": {
+      "when": {
+        "type": "Object"
+      },
+      "device": {
+        "type": "Object"
+      },
+      "profiles": {
+        "type": "Object"
+      },
+      "channels": {
+        "type": "Object"
+      },
+      "blocks": {
+        "type": "Object"
+      },
+      "logos": {
+        "type": "Object"
+      }
+    }
+  },
+  "backupSavedFirst": "A backup of what's here now is saved first.",
+  "newShows": "{count, plural, =1{{count} new show} other{{count} new shows}}",
+  "@newShows": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "newEpisodes": "{count, plural, =1{{count} new episode} other{{count} new episodes}}",
+  "@newEpisodes": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "newMovies": "{count, plural, =1{{count} new movie} other{{count} new movies}}",
+  "@newMovies": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "newSongs": "{count, plural, =1{{count} new song} other{{count} new songs}}",
+  "@newSongs": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "playsList": "Plays {list}.",
+  "@playsList": {
+    "placeholders": {
+      "list": {
+        "type": "Object"
+      }
+    }
+  },
+  "newChannels": "{count, plural, =1{{count} new channel} other{{count} new channels}}",
+  "@newChannels": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "kidRatingYoung": "Young kids",
+  "kidRatingYoungDescription": "TV-Y and TV-Y7",
+  "kidRatingKids": "Kids",
+  "kidRatingKidsDescription": "Up to TV-G and G",
+  "kidRatingOlder": "Older kids",
+  "kidRatingOlderDescription": "Up to TV-PG and PG",
+  "countProfilesWord": "{count, plural, =1{{count} profile} other{{count} profiles}}",
+  "@countProfilesWord": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "countChannelsWord": "{count, plural, =1{{count} channel} other{{count} channels}}",
+  "@countChannelsWord": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "countBlocksWord": "{count, plural, =1{{count} block} other{{count} blocks}}",
+  "@countBlocksWord": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "countSlots": "{count, plural, =1{{count} slot} other{{count} slots}}",
+  "@countSlots": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "videosInFolders": "{count, plural, =1{{count} video in its folders} other{{count} videos in its folders}}",
+  "@videosInFolders": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "backupProfilesChannelsBlocks": "{profiles} · {channels} · {blocks}.",
+  "@backupProfilesChannelsBlocks": {
+    "placeholders": {
+      "profiles": {
+        "type": "Object"
+      },
+      "channels": {
+        "type": "Object"
+      },
+      "blocks": {
+        "type": "Object"
+      }
+    }
+  },
+  "liveLabel": "Live",
+  "aMidRollOpens": "A mid-roll opens and closes with a bumper, a post-roll opens with one, and a pre-roll closes with one. Commercials fill the rest.",
+  "programsPlayBack": "Programs play back to back, with no breaks.",
+  "everyShowFills": "Every show fills a half-hour slot (an hour or more for long ones), so the guide stays on the clock.",
+  "chooseHowLong": "Choose how long each break is, how often shows break, and which pool each break draws from.",
+  "kindSentenceAutomatic": "automatic",
+  "kindSentenceBeforeRestore": "before restore",
+  "kindSentenceBeforeReset": "before reset",
+  "kindSentenceBeforeDeletingAProfile": "before deleting a profile",
+  "kindSentenceBeforeDeleting": "before deleting {subject}",
+  "@kindSentenceBeforeDeleting": {
+    "placeholders": {
+      "subject": {
+        "type": "Object"
+      }
+    }
+  },
+  "kindSentenceBeforeUpdate": "before update",
+  "kindSentenceBeforeLineupCleanup": "before lineup cleanup",
+  "kindSentenceFromAFile": "from a file",
+  "kindSentenceMovingToOfficial": "moving to Nightingale TV",
+  "kindSentenceMovingToOwnBuild": "moving to Nightingale TV (own build)",
+  "kindSentenceFromOfficial": "from Nightingale TV",
+  "kindSentenceFromOwnBuild": "from Nightingale TV (own build)",
+  "kindSentenceMadeByYou": "made by you",
+  "copyAction": "Copy",
+  "channelKidsZone": "Kids Zone",
+  "channelToonTv": "Toon TV",
+  "channelLaughTrack": "Laugh Track",
+  "channelFamilyRoom": "Family Room",
+  "channelAdventureTv": "Adventure TV",
+  "channelSciFiFantasy": "Sci-Fi & Fantasy",
+  "channelMysteryTv": "Mystery TV",
+  "channelDramaCentral": "Drama Central",
+  "channelCrimeJustice": "Crime & Justice",
+  "channelThrillTv": "Thrill TV",
+  "channelFrightNight": "Fright Night",
+  "channelRomanceTv": "Romance TV",
+  "channelDiscoveryZone": "Discovery Zone",
+  "channelMusicTv": "Music TV",
+  "channelRealityTv": "Reality TV",
+  "channelGameShowTv": "Game Show TV",
+  "channelFrontierTv": "Frontier TV",
+  "channelHistoryTv": "History TV",
+  "channelSportsTv": "Sports TV",
+  "channelNewsTv": "News TV",
+  "channelAllShows": "All Shows",
+  "channelMovieChannel": "Movie Channel",
+  "channelMusicVideos": "Music Videos",
+  "channelMusicRadio": "Music Radio",
+  "genreActionAdventure": "Action & Adventure",
+  "genreSciFiFantasy": "Sci-Fi & Fantasy",
+  "genreKids": "Kids",
+  "genreAnimation": "Animation",
+  "genreComedy": "Comedy",
+  "genreFamily": "Family",
+  "genreDrama": "Drama",
+  "genreCrime": "Crime",
+  "genreMystery": "Mystery",
+  "genreThriller": "Thriller",
+  "genreHorror": "Horror",
+  "genreRomance": "Romance",
+  "genreDocumentary": "Documentary",
+  "genreMusic": "Music",
+  "genreReality": "Reality",
+  "genreGameShows": "Game Shows",
+  "genreWestern": "Western",
+  "genreWar": "War",
+  "genreHistory": "History",
+  "genreNews": "News",
+  "genreTalk": "Talk",
+  "genreSoap": "Soap",
+  "genreSports": "Sports",
+  "genreClassical": "Classical",
+  "genreElectronic": "Electronic",
+  "genreCountry": "Country",
+  "genreLatin": "Latin",
+  "genreSoundtrack": "Soundtrack",
+  "genreOldies": "Oldies",
+  "genreDance": "Dance",
+  "genreFolk": "Folk",
+  "genreAlternative": "Alternative",
+  "blockDaytime": "Daytime",
+  "blockMovieNight": "Movie Night",
+  "blockNewEpisodes": "New Episodes",
+  "kindShow": "Show",
+  "kindShows": "Shows",
+  "kindMovies": "Movies",
+  "kindMusicVideos": "Music Videos",
+  "kindRadio": "Radio",
+  "genreMovies": "{genre} Movies",
+  "@genreMovies": {
+    "placeholders": {
+      "genre": {
+        "type": "Object"
+      }
+    }
+  },
+  "genreMusicVideos": "{genre} Music Videos",
+  "@genreMusicVideos": {
+    "placeholders": {
+      "genre": {
+        "type": "Object"
+      }
+    }
+  },
+  "genreRadio": "{genre} Radio",
+  "@genreRadio": {
+    "placeholders": {
+      "genre": {
+        "type": "Object"
+      }
+    }
+  },
+  "kindSuffix": "{name} ({kind})",
+  "@kindSuffix": {
+    "placeholders": {
+      "name": {
+        "type": "Object"
+      },
+      "kind": {
+        "type": "Object"
+      }
+    }
+  },
+  "kindSuffixNumbered": "{name} ({kind} {number})",
+  "@kindSuffixNumbered": {
+    "placeholders": {
+      "name": {
+        "type": "Object"
+      },
+      "kind": {
+        "type": "Object"
+      },
+      "number": {
+        "type": "Object"
+      }
+    }
+  },
+  "lateNightTitle": "Late Night",
+  "languageTitle": "Language",
+  "stillWatchingOff": "Off",
+  "afterHours": "After {hours} hours",
+  "@afterHours": {
+    "placeholders": {
+      "hours": {
+        "type": "int"
+      }
+    }
+  },
+  "bitrateOriginal": "Original (no limit)",
+  "bitrate40": "40 Mbps · 4K",
+  "bitrate20": "20 Mbps · 1080p high",
+  "bitrate12": "12 Mbps · 1080p",
+  "bitrate8": "8 Mbps · 1080p",
+  "bitrate4": "4 Mbps · 720p",
+  "noSuchLanguage": "No such language.",
+  "languageField": "Language",
+  "remotePageTitle": "Nightingale TV Remote",
+  "remotePairTitle": "Pair with the TV",
+  "remotePairHelp": "Scan the code on the TV (Menu → Phone remote), or enter the 6-digit code shown there.",
+  "remotePairingCode": "Pairing code",
+  "remotePair": "Pair",
+  "remoteConnecting": "Connecting…",
+  "remoteTabRemote": "Remote",
+  "remoteUp": "Up",
+  "remoteLeft": "Left",
+  "remoteRight": "Right",
+  "remoteDown": "Down",
+  "remoteInfo": "Info",
+  "remoteLastCh": "Last ch",
+  "remoteCc": "CC",
+  "remoteChUp": "CH +",
+  "remoteChDown": "CH −",
+  "remoteEnter": "Enter",
+  "remoteRemovedFromTv": "This phone was removed from the TV. Scan the code to pair again.",
+  "remoteCouldntPair": "Couldn't pair. Try again.",
+  "remoteCantReachWifi": "Can't reach the TV. Is this phone on the same Wi-Fi?",
+  "remoteEnterDigits": "Enter the 6 digits shown on the TV.",
+  "remoteCantReachTv": "Can't reach the TV",
+  "remotePickProfile": "Pick a profile with the arrows and OK.",
+  "remoteWatching": "Watching: {name}",
+  "@remoteWatching": {
+    "placeholders": {
+      "name": {
+        "type": "Object"
+      }
+    }
+  },
+  "remoteKidName": "{name} (kid)",
+  "@remoteKidName": {
+    "placeholders": {
+      "name": {
+        "type": "Object"
+      }
+    }
+  },
+  "transferPageTitle": "Nightingale TV Backup",
+  "transferIntro": "Move a backup between this TV and this device. Keep the TV's dialog open while you do.",
+  "transferDownload": "Download backup",
+  "transferDownloadHelp": "A backup of the TV's setup as it is now: profiles, channels, blocks and settings.",
+  "transferRestoreTitle": "Restore from a file",
+  "transferRestoreHelp": "Send a {file} file to the TV. Nothing changes until you confirm it on the TV.",
+  "@transferRestoreHelp": {
+    "placeholders": {
+      "file": {
+        "type": "Object"
+      }
+    }
+  },
+  "transferChoose": "Choose a backup file…",
+  "transferFoot": "Only devices on your home network can open this page.",
+  "transferSending": "Sending {name}…",
+  "@transferSending": {
+    "placeholders": {
+      "name": {
+        "type": "Object"
+      }
+    }
+  },
+  "transferCheckTv": "Check your TV to finish.",
+  "transferClosed": "The TV closed this page. Open it again from Backup & restore.",
+  "transferCouldntTake": "The TV couldn’t take that file.",
+  "transferCouldntReach": "Couldn’t reach the TV. Is it still showing the code?",
+  "includeShows": "Include shows",
+  "everyShow2": "every show",
+  "decades": "Decades",
+  "decadesHeading": "DECADES",
+  "channelActionTv": "Action TV",
+  "channelSciFiTv": "Sci-Fi TV",
+  "channelFantasyTv": "Fantasy TV",
+  "channelMysteryThrills": "Mystery & Thrills",
+  "genreAction": "Action",
+  "genreAdventure": "Adventure",
+  "genreSciFi": "Sci-Fi",
+  "genreFantasy": "Fantasy",
+  "genreThrillerMystery": "Thriller & Mystery",
+  "decadeTv": "{decade} TV",
+  "@decadeTv": {
+    "placeholders": {
+      "decade": {
+        "type": "Object"
+      }
+    }
+  },
+  "decadeGenreTv": "{decade} {genre} TV",
+  "@decadeGenreTv": {
+    "placeholders": {
+      "decade": {
+        "type": "Object"
+      },
+      "genre": {
+        "type": "Object"
+      }
+    }
+  },
+  "decadeGenreMovies": "{decade} {genre} Movies",
+  "@decadeGenreMovies": {
+    "placeholders": {
+      "decade": {
+        "type": "Object"
+      },
+      "genre": {
+        "type": "Object"
+      }
+    }
+  }
+}

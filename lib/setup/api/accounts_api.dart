@@ -1,3 +1,4 @@
+
 part of '../setup_server.dart';
 
 /// Signing in to the web admin, the first admin and admin resets, the
@@ -87,7 +88,7 @@ extension _AccountsApi on SetupServer {
       _setCookie(r.response, session, Accounts.sessionLife);
       return {'ok': true};
     } on AccountException catch (e) {
-      ServerLog.info('Web admin sign-in refused from ${r.from}: ${e.message}');
+      ServerLog.info('Web admin sign-in refused from ${r.from}: ${e.english ?? e.message}');
       throw ApiError(e.status, e.message);
     }
   }
@@ -112,13 +113,13 @@ extension _AccountsApi on SetupServer {
   List<Map<String, Object?>> _users() => [for (final a in accounts.users()) a.toJson()];
 
   Map<String, Object?> _user(String id) =>
-      (accounts.byId(id) ?? (throw ApiError(HttpStatus.notFound, 'No such user.'))).toJson();
+      (accounts.byId(id) ?? (throw ApiError(HttpStatus.notFound, tr.noSuchUser))).toJson();
 
   /// Profile ids in [body]'s "profiles", each one that exists.
   Set<String> _profileIds(Map<String, Object?> body) {
     final ids = body.strings('profiles') ?? const [];
     for (final id in ids) {
-      if (household.profileById(id) == null) throw ApiError(HttpStatus.badRequest, 'No such profile.');
+      if (household.profileById(id) == null) throw ApiError(HttpStatus.badRequest, tr.noSuchProfile);
     }
     return ids.toSet();
   }
@@ -127,7 +128,7 @@ extension _AccountsApi on SetupServer {
         null => null,
         'admin' => Role.admin,
         'user' => Role.user,
-        _ => throw ApiError(HttpStatus.badRequest, 'The role is "admin" or "user".'),
+        _ => throw ApiError(HttpStatus.badRequest, tr.theRoleIs),
       };
 
   Future<Object?> _addUser(ApiRequest r) async {
@@ -196,20 +197,20 @@ extension _AccountsApi on SetupServer {
     if (!account.mayUse(id)) throw ApiError(HttpStatus.forbidden, SetupServer.notYoursText);
     final profile = _profile(id);
     if (accounts.lockedOut(r.from, account.name)) {
-      throw ApiError(HttpStatus.tooManyRequests, 'Too many wrong PINs. Try again in a minute.');
+      throw ApiError(HttpStatus.tooManyRequests, tr.tooManyWrongPins);
     }
     final body = await r.body();
     if (body.string('pin') case final pin?) {
       if (!account.isAdmin && profile.hasPin && !profile.checkPin(pin)) {
         accounts.recordFailure(r.from, account.name);
-        throw ApiError(HttpStatus.forbidden, 'Wrong PIN.');
+        throw ApiError(HttpStatus.forbidden, tr.wrongPin);
       }
       accounts.unlockProfile(r.session!, id);
     }
     if (body.string('grownUp') case final pin?) {
       if (!account.isAdmin && household.grownUpWithPin(pin) == null) {
         accounts.recordFailure(r.from, account.name);
-        throw ApiError(HttpStatus.forbidden, 'Wrong PIN.');
+        throw ApiError(HttpStatus.forbidden, tr.wrongPin);
       }
       accounts.unlockGrownUp(r.session!);
     }

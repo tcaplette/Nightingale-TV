@@ -6,6 +6,8 @@ import 'channel.dart';
 import 'premieres.dart';
 import 'program_block.dart';
 import 'slot_layout.dart';
+import '../l10n/tr.dart';
+import '../l10n/generated_names.dart' as names show displayBlockTitle;
 
 /// How long an item occupies the schedule.
 typedef SlotLength = Duration Function(MediaEntry item);
@@ -56,6 +58,7 @@ class ScheduledProgram {
     DateTime? layoutStart,
     Duration? itemFrom,
     this.blockTitle,
+    this.blockGenerated = false,
     this.role,
     this.program,
     this.isPremiere = false,
@@ -94,6 +97,15 @@ class ScheduledProgram {
   /// for a premiere slot).
   final String? blockTitle;
 
+  /// The block's title is generated, so it's shown translated (design D6).
+  final bool blockGenerated;
+
+  /// [blockTitle] on screen.
+  String? get displayBlockTitle {
+    final title = blockTitle;
+    return title == null || !blockGenerated ? title : names.displayBlockTitle(title);
+  }
+
   /// A new episode premiering (episode-premieres).
   final bool isPremiere;
 
@@ -125,6 +137,7 @@ class ScheduledProgram {
         layoutStart: layoutStart,
         itemFrom: itemFrom,
         blockTitle: blockTitle,
+        blockGenerated: blockGenerated,
         isPremiere: isPremiere,
         endsEarly: endsEarly,
         pad: pad + end.difference(this.end),
@@ -148,10 +161,10 @@ class ScheduledProgram {
   /// Where in [item]'s video this ends.
   Duration get itemTo => itemFrom + duration;
 
-  String get title => label ?? item?.guideTitle ?? 'Off Air';
+  String get title => label ?? item?.guideTitle ?? tr.offAir;
 
   /// Episode code + title, or "Movie · year".
-  String get subtitle => item?.subtitle ?? 'This channel is off the air';
+  String get subtitle => item?.subtitle ?? tr.thisChannelIs;
 
   /// Second line in guide cells: the episode title for episodes.
   String get detail {
@@ -397,7 +410,7 @@ class BlockSchedule {
     void add(MediaEntry item) {
       final slotEnd = t.add(_slotOf(item));
       final end = slotEnd.isAfter(airing.end) ? airing.end : slotEnd;
-      programs.add(ScheduledProgram(item: item, start: t, end: end, blockTitle: block.title));
+      programs.add(ScheduledProgram(item: item, start: t, end: end, blockTitle: block.title, blockGenerated: block.generated != null));
       t = end;
     }
 
@@ -467,7 +480,7 @@ class BlockSchedule {
           if (!t.isBefore(airing.end)) break;
           final slotEnd = t.add(_slotOf(item));
           final cut = slotEnd.isAfter(airing.end);
-          programs.add(ScheduledProgram(item: item, start: t, end: cut ? airing.end : slotEnd, blockTitle: block.title));
+          programs.add(ScheduledProgram(item: item, start: t, end: cut ? airing.end : slotEnd, blockTitle: block.title, blockGenerated: block.generated != null));
           t = cut ? airing.end : slotEnd;
           // An episode the block's end cuts off airs in full next time,
           // unless it's longer than the whole block.
@@ -750,7 +763,7 @@ class ChannelSchedule implements ProgramSchedule {
     for (final (i, e) in airing.episodes.indexed) {
       final end = start.add(airing.slots[i]);
       if (t.isBefore(end) || i == airing.episodes.length - 1) {
-        return ScheduledProgram(item: e, start: start, end: end, blockTitle: PremierePlan.title, isPremiere: true);
+        return ScheduledProgram(item: e, start: start, end: end, blockTitle: PremierePlan.title, blockGenerated: true, isPremiere: true);
       }
       start = end;
     }
@@ -791,6 +804,7 @@ class ChannelSchedule implements ProgramSchedule {
         end: slot.end,
         layoutStart: slot.layoutStart,
         blockTitle: slot.blockTitle,
+        blockGenerated: slot.blockGenerated,
         isPremiere: slot.isPremiere,
         endsEarly: slot.endsEarly,
       );
@@ -810,6 +824,7 @@ class ChannelSchedule implements ProgramSchedule {
       role: segment.role,
       program: segment.isShow ? null : item,
       blockTitle: slot.blockTitle,
+      blockGenerated: slot.blockGenerated,
       isPremiere: slot.isPremiere,
       offline: segment.offline,
       endsEarly: slot.endsEarly,

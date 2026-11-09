@@ -71,13 +71,13 @@ BreakNotice? breakNoticeAt(ProgramSchedule schedule, DateTime now) {
   // before the run.
   final before = _before(schedule, segment);
   final continues = before.item?.id == after.item!.id && before.layoutStart == after.layoutStart;
-  final block = after.blockTitle;
+  final block = after.displayBlockTitle;
   return (
     kind: BreakNoticeKind.resumes,
     at: end,
     resumes: after,
     continues: continues,
-    opensBlock: !continues && block != null && block != before.blockTitle ? block : null,
+    opensBlock: !continues && block != null && after.blockTitle != before.blockTitle ? block : null,
   );
 }
 

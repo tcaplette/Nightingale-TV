@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
 import '../jellyfin/jellyfin_client.dart';
+import '../l10n/tr.dart';
 
 /// One video codec as the device's hardware decoders take it, in Jellyfin's
 /// names (android/app/src/main/kotlin/…/DeviceCapabilities.kt).
@@ -213,7 +214,7 @@ Map<String, Object?> androidDeviceProfile(DeviceCapabilities caps, {int? maxBitr
       // ExoPlayer shows these from inside the file.
       for (final format in const ['srt', 'subrip', 'ass', 'ssa', 'vtt', 'webvtt', 'pgs', 'pgssub', 'dvdsub', 'dvbsub'])
         {'Format': format, 'Method': 'Embed'},
-      for (final format in const ['srt', 'subrip', 'ass', 'ssa', 'vtt']) {'Format': format, 'Method': 'External'},
+      for (final format in const ['srt', 'subrip', 'ass', 'ssa', 'vtt']) {'Format': format, 'Method': tr.externalLabel},
     ],
   };
 }

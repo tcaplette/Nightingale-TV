@@ -1,6 +1,9 @@
 import '../commercials/break_plan.dart';
 import '../library/pool_root.dart';
+import 'channel_generator.dart' show migrateGenres;
 import 'retro.dart';
+import '../l10n/generated_names.dart';
+import '../l10n/tr.dart';
 
 /// How a channel's playlist is ordered.
 enum PlaybackOrder {
@@ -15,9 +18,9 @@ enum PlaybackOrder {
   weighted;
 
   String get label => switch (this) {
-        cyclic => 'In order (shows take turns)',
-        random => 'Shuffled',
-        weighted => 'Least watched first',
+        cyclic => tr.inOrderShows,
+        random => tr.shuffled,
+        weighted => tr.leastWatchedFirst,
       };
 
   /// Orders saved by a newer version that this one doesn't know read as
@@ -65,9 +68,9 @@ enum TailMode {
   truncate;
 
   String get label => switch (this) {
-        filler => 'Filler',
-        offline => 'Offline image',
-        truncate => 'Truncate',
+        filler => tr.filler,
+        offline => tr.offlineImage,
+        truncate => tr.truncate,
       };
 
   static TailMode? parse(Object? name) => values.where((m) => m.name == name).firstOrNull;
@@ -145,9 +148,9 @@ enum LogoMode {
   off;
 
   String get label => switch (this) {
-        always => 'Always',
-        nowAndThen => 'Now and then',
-        off => 'Off',
+        always => tr.always,
+        nowAndThen => tr.nowAndThen,
+        off => tr.off,
       };
 
   static LogoMode? parse(Object? name) => LogoMode.values.where((m) => m.name == name).firstOrNull;
@@ -226,14 +229,19 @@ class LiveRef {
 /// A block mix's minimum rating (late-night-drift D1): only items rated at
 /// [rank] (see `ratingRank`) or above play. Unrated items never pass.
 enum RatingFloor {
-  teen(4, 'TV-14 / PG-13 and up', 'TV-14'),
-  mature(5, 'TV-MA / R and up', 'TV-MA'),
-  adult(6, 'NC-17 / 18 and up', 'NC-17');
+  teen(4, 'TV-14'),
+  mature(5, 'TV-MA'),
+  adult(6, 'NC-17');
 
-  const RatingFloor(this.rank, this.label, this.shortLabel);
+  const RatingFloor(this.rank, this.shortLabel);
 
   final int rank;
-  final String label;
+
+  String get label => switch (this) {
+        RatingFloor.teen => tr.tv14Pg,
+        RatingFloor.mature => tr.tvMaR,
+        RatingFloor.adult => tr.nc1718,
+      };
 
   /// The lowest rating that passes, for messages ("rated TV-MA or higher").
   final String shortLabel;
@@ -261,7 +269,7 @@ class ChannelSource {
     this.excluded = const [],
   });
 
-  /// Normalized genre names (see `normalizeGenre`). Empty = any genre.
+  /// Genre names, merged (see `genresOf`). Empty = any genre.
   final List<String> genres;
 
   /// Specific shows. When non-empty, only these shows are used.
@@ -271,7 +279,10 @@ class ChannelSource {
   final bool includeSongs;
   final bool includeMusicVideos;
 
-  /// Music only: the decades (first year, e.g. 1980) to play. Empty = any.
+  /// The decades (first year, e.g. 1980) to play: movies and songs by
+  /// their year, episodes by theirs or their show's (see `itemDecade`).
+  /// They narrow every other choice, picked shows and roots included.
+  /// Empty = any.
   final List<int> decades;
 
   /// Collections, folders, shows and seasons on the server whose episodes
@@ -283,9 +294,9 @@ class ChannelSource {
   /// Music ignores it.
   final RatingFloor? ratingFloor;
 
-  /// Generated genre channels only: the shows (series keys) and movies (ids)
-  /// of the genre that air on a sibling channel instead, so each title has
-  /// one genre channel (see `ChannelGenerator.spreadTitles`).
+  /// Generated channels only: the shows (series keys) with a marathon
+  /// channel of their own, which air only there (see
+  /// `ChannelGenerator.spreadTitles`). Older lineups also listed movies.
   final List<String> excluded;
 
   /// Plays songs or music videos.
@@ -297,13 +308,14 @@ class ChannelSource {
       roots.isNotEmpty ||
       seriesKeys.isNotEmpty ||
       includeMovies ||
-      (includeEpisodes && genres.isNotEmpty);
+      (includeEpisodes && (genres.isNotEmpty || decades.isNotEmpty));
 
   ChannelSource copyWith({
     List<String>? genres,
     List<String>? seriesKeys,
     bool? includeEpisodes,
     bool? includeMovies,
+    List<int>? decades,
     List<PoolRoot>? roots,
     RatingFloor? Function()? ratingFloor,
     List<String>? excluded,
@@ -315,7 +327,7 @@ class ChannelSource {
         includeMovies: includeMovies ?? this.includeMovies,
         includeSongs: includeSongs,
         includeMusicVideos: includeMusicVideos,
-        decades: decades,
+        decades: decades ?? this.decades,
         roots: roots ?? this.roots,
         ratingFloor: ratingFloor != null ? ratingFloor() : this.ratingFloor,
         excluded: excluded ?? this.excluded,
@@ -335,7 +347,9 @@ class ChannelSource {
       };
 
   factory ChannelSource.fromJson(Map<String, Object?> j) => ChannelSource(
-        genres: (j['genres'] as List?)?.cast<String>() ?? const [],
+        // Names saved before the 12 major genres convert on every read
+        // (genre-decade-channels D2): launches, restores, web admin saves.
+        genres: migrateGenres((j['genres'] as List?)?.cast<String>() ?? const []),
         seriesKeys: (j['seriesKeys'] as List?)?.cast<String>() ?? const [],
         includeEpisodes: j['episodes'] as bool? ?? true,
         includeMovies: j['movies'] as bool? ?? false,
@@ -406,6 +420,14 @@ class Channel {
   final String id;
   int number;
   String name;
+
+  /// [name] on screen (design D6): a generated name in the current language, a
+  /// user's own as they wrote it.
+  String get displayName {
+    if (!auto) return name;
+    return displayChannelName(name, showChannel: id.startsWith('auto:show:'));
+  }
+
   ChannelIcon icon;
   ChannelSource source;
   PlaybackOrder order;

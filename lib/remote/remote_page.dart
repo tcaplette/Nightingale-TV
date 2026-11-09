@@ -1,14 +1,16 @@
+import '../l10n/page_text.dart';
+import '../l10n/tr.dart';
 import '../ui/widgets/nightingale_mark.dart';
 
 /// The phone remote page. Self-contained (no outside files or fonts), so it
 /// works on a home network with no internet.
-const remotePageHtml = r'''<!doctype html>
+const _template = r'''<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
 <meta name="theme-color" content="#0b1650">
-<title>Nightingale TV Remote</title>
+<title>@@title@@</title>
 <style>
   :root {
     --bg-top: #0e1d63; --bg-bottom: #050a24; --panel: #13236e; --cell: #1b3394;
@@ -90,11 +92,11 @@ const remotePageHtml = r'''<!doctype html>
 <div class="wrap">
   <section class="pair" id="pair" hidden>
     ''' + nightingaleMarkSvg + r'''
-    <h1>Pair with the TV</h1>
-    <p>Scan the code on the TV (Menu → Phone remote), or enter the 6-digit code shown there.</p>
+    <h1>@@pairTitle@@</h1>
+    <p>@@pairHelp@@</p>
     <form id="pairform">
-      <input id="code" inputmode="numeric" autocomplete="one-time-code" maxlength="7" placeholder="000 000" aria-label="Pairing code">
-      <button type="submit">Pair</button>
+      <input id="code" inputmode="numeric" autocomplete="one-time-code" maxlength="7" placeholder="000 000" aria-label="@@pairingCode@@">
+      <button type="submit">@@pair@@</button>
     </form>
     <p class="msg" id="pairmsg" role="alert"></p>
   </section>
@@ -103,44 +105,44 @@ const remotePageHtml = r'''<!doctype html>
   <section class="now" aria-live="polite">
     <div class="num" id="num">''' + nightingaleMarkSvg + r'''</div>
     <div class="chname" id="chname">Nightingale TV</div>
-    <div class="title" id="title">Connecting…</div>
+    <div class="title" id="title">@@connecting@@</div>
     <div class="sub" id="sub"></div>
     <div class="bar"><i id="bar"></i></div>
   </section>
   <div class="who"><span id="who"></span><span id="status"></span></div>
 
   <div class="tabs" role="tablist">
-    <button role="tab" aria-selected="true" data-tab="remote">Remote</button>
-    <button role="tab" aria-selected="false" data-tab="channels">Channels</button>
+    <button role="tab" aria-selected="true" data-tab="remote">@@tabRemote@@</button>
+    <button role="tab" aria-selected="false" data-tab="channels">@@tabChannels@@</button>
   </div>
 
   <section id="remote">
     <div class="row">
-      <button data-key="guide">Guide</button>
-      <button data-key="menu">Menu</button>
-      <button data-key="info">Info</button>
+      <button data-key="guide">@@guide@@</button>
+      <button data-key="menu">@@menu@@</button>
+      <button data-key="info">@@info@@</button>
     </div>
     <div class="pad">
-      <button class="up" data-key="up" data-repeat aria-label="Up">▲</button>
-      <button class="left" data-key="left" data-repeat aria-label="Left">◀</button>
-      <button class="ok" data-key="ok">OK</button>
-      <button class="right" data-key="right" data-repeat aria-label="Right">▶</button>
-      <button class="down" data-key="down" data-repeat aria-label="Down">▼</button>
+      <button class="up" data-key="up" data-repeat aria-label="@@up@@">▲</button>
+      <button class="left" data-key="left" data-repeat aria-label="@@left@@">◀</button>
+      <button class="ok" data-key="ok">@@ok@@</button>
+      <button class="right" data-key="right" data-repeat aria-label="@@right@@">▶</button>
+      <button class="down" data-key="down" data-repeat aria-label="@@down@@">▼</button>
     </div>
     <div class="row">
-      <button data-key="back">Back</button>
-      <button data-key="last">Last ch</button>
-      <button data-key="cc">CC</button>
+      <button data-key="back">@@back@@</button>
+      <button data-key="last">@@lastCh@@</button>
+      <button data-key="cc">@@cc@@</button>
     </div>
     <div class="rocker">
-      <button data-key="chup" data-repeat>CH +</button>
-      <button data-key="chdown" data-repeat>CH −</button>
+      <button data-key="chup" data-repeat>@@chUp@@</button>
+      <button data-key="chdown" data-repeat>@@chDown@@</button>
     </div>
     <div class="digits">
       <button data-key="1">1</button><button data-key="2">2</button><button data-key="3">3</button>
       <button data-key="4">4</button><button data-key="5">5</button><button data-key="6">6</button>
       <button data-key="7">7</button><button data-key="8">8</button><button data-key="9">9</button>
-      <span></span><button data-key="0">0</button><button data-key="ok">Enter</button>
+      <span></span><button data-key="0">0</button><button data-key="ok">@@enter@@</button>
     </div>
   </section>
 
@@ -150,6 +152,7 @@ const remotePageHtml = r'''<!doctype html>
   </div>
 </div>
 <script>
+  /*TEXTS*/
   const $ = (id) => document.getElementById(id);
   // The bird fills the number box until a profile is watching.
   const mark = $('num').firstElementChild;
@@ -186,7 +189,7 @@ const remotePageHtml = r'''<!doctype html>
   function unpaired() {
     key = null;
     store.clear();
-    showPairing('This phone was removed from the TV. Scan the code to pair again.');
+    showPairing(T.removed);
   }
 
   // A short name for the TV's paired-phones list, like "iPhone · Safari".
@@ -213,21 +216,21 @@ const remotePageHtml = r'''<!doctype html>
     try {
       const r = await fetch('/api/pair', { method: 'POST', headers: headers(), body: JSON.stringify({ code, name: phoneName() }) });
       const j = await r.json().catch(() => ({}));
-      if (!r.ok || !j.key) { showPairing(j.error || 'Couldn\'t pair. Try again.'); return; }
+      if (!r.ok || !j.key) { showPairing(j.error || T.couldntPair); return; }
       key = j.key;
       store.set(key);
       $('code').value = '';
       showRemote();
       refresh();
     } catch (e) {
-      showPairing('Can\'t reach the TV. Is this phone on the same Wi-Fi?');
+      showPairing(T.cantReachWifi);
     }
   }
 
   $('pairform').addEventListener('submit', (e) => {
     e.preventDefault();
     const code = $('code').value.replace(/\D/g, '');
-    if (code.length !== 6) { $('pairmsg').textContent = 'Enter the 6 digits shown on the TV.'; return; }
+    if (code.length !== 6) { $('pairmsg').textContent = T.enterDigits; return; }
     pair(code);
   });
 
@@ -269,21 +272,23 @@ const remotePageHtml = r'''<!doctype html>
   }));
 
   function setOnline(ok) {
-    $('status').textContent = ok ? '' : 'Can\'t reach the TV';
+    $('status').textContent = ok ? '' : T.cantReachTv;
     $('status').className = ok ? '' : 'offline';
   }
 
   function fmt(t) {
-    return new Date(t).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+    return new Date(t).toLocaleTimeString(LANG, { hour: 'numeric', minute: '2-digit', hour12: LANG === 'en' });
   }
 
   function render(s) {
+    // The TV changed language: the page follows, still paired.
+    if (s.language && s.language !== LANG) { location.reload(); return; }
     state = s;
     if (!s.profile) {
       $('num').replaceChildren(mark);
       $('chname').textContent = 'Nightingale TV';
-      $('title').textContent = 'Who\'s watching?';
-      $('sub').textContent = 'Pick a profile with the arrows and OK.';
+      $('title').textContent = T.whosWatching;
+      $('sub').textContent = T.pickProfile;
       $('who').textContent = '';
       $('bar').style.width = '0';
       $('list').replaceChildren();
@@ -292,17 +297,17 @@ const remotePageHtml = r'''<!doctype html>
     const p = s.program, c = s.channel;
     $('num').textContent = c ? c.number : '–';
     $('chname').textContent = c ? c.name + (p && p.block ? ' · ' + p.block : '') : '';
-    $('title').textContent = p ? p.title : 'Tuning…';
-    $('sub').textContent = p ? (p.commercial ? 'Commercial break · ' : '') + p.subtitle + ' · ' + fmt(p.start) + ' – ' + fmt(p.end) : '';
+    $('title').textContent = p ? p.title : T.tuning;
+    $('sub').textContent = p ? (p.commercial ? T.commercialBreak + ' · ' : '') + p.subtitle + ' · ' + fmt(p.start) + ' – ' + fmt(p.end) : '';
     if (p) {
       const start = new Date(p.start), end = new Date(p.end), now = new Date(s.now);
       $('bar').style.width = Math.max(0, Math.min(100, 100 * (now - start) / (end - start))) + '%';
     }
     $('who').innerHTML = '';
     const who = document.createElement('span');
-    who.append('Watching: ');
-    const b = document.createElement('b'); b.textContent = s.profile + (s.kid ? ' (kid)' : '');
-    who.append(b);
+    const b = document.createElement('b'); b.textContent = s.kid ? T.kidName.replace('{name}', s.profile) : s.profile;
+    const [before, after] = T.watching.split('{name}');
+    who.append(before, b, after);
     $('who').append(who);
 
     const list = $('list');
@@ -349,3 +354,43 @@ const remotePageHtml = r'''<!doctype html>
 </body>
 </html>
 ''';
+
+/// The page's text, in the language the TV is showing (design D9).
+Map<String, String> remotePageTexts() => {
+      'title': tr.remotePageTitle,
+      'pairTitle': tr.remotePairTitle,
+      'pairHelp': tr.remotePairHelp,
+      'pairingCode': tr.remotePairingCode,
+      'pair': tr.remotePair,
+      'connecting': tr.remoteConnecting,
+      'tabRemote': tr.remoteTabRemote,
+      'tabChannels': tr.channels5,
+      'guide': tr.guide2,
+      'menu': tr.menu,
+      'info': tr.remoteInfo,
+      'up': tr.remoteUp,
+      'left': tr.remoteLeft,
+      'right': tr.remoteRight,
+      'down': tr.remoteDown,
+      'ok': tr.ok,
+      'back': tr.back,
+      'lastCh': tr.remoteLastCh,
+      'cc': tr.remoteCc,
+      'chUp': tr.remoteChUp,
+      'chDown': tr.remoteChDown,
+      'enter': tr.remoteEnter,
+      'removed': tr.remoteRemovedFromTv,
+      'couldntPair': tr.remoteCouldntPair,
+      'cantReachWifi': tr.remoteCantReachWifi,
+      'enterDigits': tr.remoteEnterDigits,
+      'cantReachTv': tr.remoteCantReachTv,
+      'whosWatching': tr.whosWatching,
+      'pickProfile': tr.remotePickProfile,
+      'tuning': tr.tuning2,
+      'commercialBreak': tr.commercialBreak,
+      'watching': tr.remoteWatching('{name}'),
+      'kidName': tr.remoteKidName('{name}'),
+    };
+
+/// The page, in the language the TV is showing.
+String remotePageHtml() => fillPage(_template, remotePageTexts());

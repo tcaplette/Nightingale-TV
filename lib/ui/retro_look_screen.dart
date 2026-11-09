@@ -18,9 +18,10 @@ import 'widgets/overlay_style.dart';
 import 'widgets/retro_frame.dart';
 import 'widgets/screen_layout.dart';
 import 'widgets/tv_focus.dart';
+import '../l10n/tr.dart';
 
 /// Said wherever these settings are changed.
-const retroExportNote = "These settings apply on screens running the app. They don't apply to Live TV export.";
+String get retroExportNote => tr.theseSettingsApply;
 
 /// A picture for a full-screen use (an offline card, a surround): the file
 /// picker, or the device's own pictures on a TV with none. Its name in the
@@ -37,7 +38,7 @@ Future<String?> pickFullScreenImage(BuildContext context) async {
     try {
       bytes = await DeviceImages.read(image, limit: CustomIconStore.maxSourceBytes);
     } on PlatformException {
-      throw CustomIconException('Couldn\'t read that picture. Try another one.');
+      throw CustomIconException(tr.couldntReadThat);
     }
     return icons.importOfflineBytes(bytes, image.name);
   }
@@ -117,7 +118,7 @@ class ChannelRetroSection extends StatelessWidget {
       await app.setChannelRetro(
           channel, channel.retro.copyWith(surround: () => Surround.image, surroundImage: () => name));
     } on CustomIconException catch (e) {
-      if (context.mounted) await showMessage(context, title: 'Surround image', message: e.message);
+      if (context.mounted) await showMessage(context, title: tr.surroundImage, message: e.message);
     }
   }
 
@@ -127,24 +128,24 @@ class ChannelRetroSection extends StatelessWidget {
     final g = context.guide;
     final own = channel.retro;
     final main = app.settings.retro;
-    String mainLabel(String value) => 'Main setting ($value)';
+    String mainLabel(String value) => tr.mainSetting(value);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         const SizedBox(height: 28),
-        Text('RETRO LOOK', style: g.display(26, weight: FontWeight.w800, color: g.accent)),
+        Text(tr.retroLook2, style: g.display(26, weight: FontWeight.w800, color: g.accent)),
         const SizedBox(height: 6),
         Text(retroExportNote, style: g.body(22, color: g.textDim)),
         const SizedBox(height: 14),
         RetroRadios<PictureShape?>(
-          title: 'PICTURE SHAPE',
+          title: tr.pictureShape,
           values: [null, ...PictureShape.values],
           selected: own.shape,
           label: (v) => v?.label ?? mainLabel(main.shape.label),
           onPick: (v) => app.setChannelRetro(channel, own.copyWith(shape: () => v)),
         ),
         RetroRadios<Surround?>(
-          title: 'SURROUND',
+          title: tr.surround,
           values: [null, ...Surround.values],
           selected: own.surround,
           label: (v) => v?.label ?? mainLabel(main.surround.label),
@@ -157,14 +158,14 @@ class ChannelRetroSection extends StatelessWidget {
           },
         ),
         RetroRadios<CrtStyle?>(
-          title: 'CRT EFFECT',
+          title: tr.crtEffect,
           values: [null, ...CrtStyle.values],
           selected: own.crt,
           label: (v) => v?.label ?? mainLabel(main.crt.label),
           onPick: (v) => app.setChannelRetro(channel, own.copyWith(crt: () => v)),
         ),
         RetroRadios<OverlayThemeName?>(
-          title: 'OVERLAY THEME',
+          title: tr.overlayTheme,
           values: [null, ...OverlayThemeName.values],
           selected: own.overlay,
           label: (v) => v?.label ?? mainLabel(main.overlay.label),
@@ -180,10 +181,9 @@ class ChannelRetroSection extends StatelessWidget {
 class RetroLookScreen extends StatefulWidget {
   const RetroLookScreen({super.key});
 
-  static const switchLabel = 'Effects on this device';
-  static const switchHelp = 'Off turns off all CRT effects on this device only. Picture shape, surround and overlay '
-      'themes stay as they are.';
-  static const notAvailable = 'Not available on this device';
+  static String get switchLabel => tr.effectsOnThis;
+  static String get switchHelp => tr.offTurnsOff;
+  static String get notAvailable => tr.notAvailableOn;
 
   @override
   State<RetroLookScreen> createState() => _RetroLookScreenState();
@@ -203,7 +203,7 @@ class _RetroLookScreenState extends State<RetroLookScreen> {
       if (name == null) return;
       await app.setMainRetro(app.settings.retro.copyWith(surround: Surround.image, surroundImage: () => name));
     } on CustomIconException catch (e) {
-      if (mounted) await showMessage(context, title: 'Surround image', message: e.message);
+      if (mounted) await showMessage(context, title: tr.surroundImage, message: e.message);
     }
   }
 
@@ -229,7 +229,7 @@ class _RetroLookScreenState extends State<RetroLookScreen> {
       Text(retroExportNote, style: g.body(22, color: g.textDim)),
       const SizedBox(height: 18),
       RetroRadios<PictureShape>(
-        title: 'PICTURE SHAPE',
+        title: tr.pictureShape,
         autofocus: true,
         values: PictureShape.values,
         selected: main.shape,
@@ -237,7 +237,7 @@ class _RetroLookScreenState extends State<RetroLookScreen> {
         onPick: (v) => set(main.copyWith(shape: v)),
       ),
       RetroRadios<Surround>(
-        title: 'SURROUND',
+        title: tr.surround,
         values: Surround.values,
         selected: main.surround,
         label: (v) => v.label,
@@ -250,48 +250,48 @@ class _RetroLookScreenState extends State<RetroLookScreen> {
         },
       ),
       RetroRadios<CrtStyle>(
-        title: 'CRT EFFECT',
+        title: tr.crtEffect,
         values: CrtStyle.values,
         selected: main.crt,
         label: (v) => v.label,
         onPick: (v) => set(main.copyWith(crt: v)),
       ),
       RetroRadios<OverlayThemeName>(
-        title: 'OVERLAY THEME',
+        title: tr.overlayTheme,
         values: OverlayThemeName.values,
         selected: main.overlay,
         label: (v) => v.label,
         onPick: (v) => set(main.copyWith(overlay: v)),
       ),
       RetroRadios<OverlayAccent>(
-        title: 'ACCENT (${main.overlay.label.toUpperCase()})',
+        title: tr.accent(main.overlay.label.toUpperCase()),
         values: OverlayAccent.values,
         selected: main.accentOf(main.overlay),
         label: (v) => v.label,
         onPick: (v) => set(main.copyWith(accents: {...main.accents, main.overlay: v})),
       ),
-      Text('CUSTOM CRT STYLE', style: g.display(26, weight: FontWeight.w800, color: g.accent)),
+      Text(tr.customCrtStyle, style: g.display(26, weight: FontWeight.w800, color: g.accent)),
       const SizedBox(height: 14),
-      level('SCANLINES', custom.scanlines, (v) => setCustom(custom.copyWith(scanlines: v))),
+      level(tr.scanlines, custom.scanlines, (v) => setCustom(custom.copyWith(scanlines: v))),
       RetroRadios<int>(
-        title: 'LINES',
+        title: tr.lines,
         values: CrtValues.lineCounts,
         selected: custom.lines,
         label: (v) => '$v',
         onPick: (v) => setCustom(custom.copyWith(lines: v)),
       ),
-      level('MASK', custom.mask, (v) => setCustom(custom.copyWith(mask: v))),
-      level('VIGNETTE', custom.vignette, (v) => setCustom(custom.copyWith(vignette: v))),
-      level('CURVATURE', custom.curvature, (v) => setCustom(custom.copyWith(curvature: v)), off: !shaderOk),
-      level('GLOW', custom.glow, (v) => setCustom(custom.copyWith(glow: v)), off: !shaderOk),
+      level(tr.mask, custom.mask, (v) => setCustom(custom.copyWith(mask: v))),
+      level(tr.vignette, custom.vignette, (v) => setCustom(custom.copyWith(vignette: v))),
+      level(tr.curvature, custom.curvature, (v) => setCustom(custom.copyWith(curvature: v)), off: !shaderOk),
+      level(tr.glow, custom.glow, (v) => setCustom(custom.copyWith(glow: v)), off: !shaderOk),
       RetroRadios<CrtColor>(
-        title: 'COLOR',
+        title: tr.color2,
         values: CrtColor.values,
         selected: custom.color,
         label: (v) => v.label,
         onPick: (v) => setCustom(custom.copyWith(color: v)),
       ),
-      Text('THIS DEVICE', style: g.display(26, weight: FontWeight.w800, color: g.accent)),
+      Text(tr.thisDevice, style: g.display(26, weight: FontWeight.w800, color: g.accent)),
       const SizedBox(height: 14),
       Align(
         alignment: Alignment.centerLeft,
@@ -311,8 +311,8 @@ class _RetroLookScreenState extends State<RetroLookScreen> {
     final app = AppScope.of(context);
     final layout = ScreenLayout.of(context);
     return TvPage(
-      title: 'Retro look',
-      hints: '▲▼◀▶ Move    OK Select    ESC Back',
+      title: tr.retroLook,
+      hints: tr.moveOkSelectEsc,
       onBack: () => Navigator.of(context).pop(),
       child: ListenableBuilder(
         listenable: Listenable.merge([DeviceEffects.instance, CrtShader.instance.available]),
@@ -403,10 +403,10 @@ class _SamplePanel extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('UP NEXT  ·  8:00 PM', style: g.display(24, weight: FontWeight.w800, color: g.accent)),
+          Text(tr.upNext8, style: g.display(24, weight: FontWeight.w800, color: g.accent)),
           const SizedBox(height: 4),
-          Text('Test Pattern', maxLines: 1, style: g.display(40, weight: FontWeight.w800)),
-          Text('Your channel, your look', maxLines: 1, style: g.body(24, color: g.textDim)),
+          Text(tr.testPattern, maxLines: 1, style: g.display(40, weight: FontWeight.w800)),
+          Text(tr.yourChannelYour, maxLines: 1, style: g.body(24, color: g.textDim)),
         ],
       ),
     );

@@ -1,16 +1,22 @@
 import 'dart:isolate';
 
 import 'live_data.dart';
+import '../l10n/tr.dart';
 
 /// Why a playlist couldn't be read.
 class M3uException implements Exception {
-  const M3uException(this.message);
+  const M3uException._(this._message);
 
-  /// Shown to the user as it is.
-  final String message;
+  final String Function() _message;
 
-  static const notM3u = M3uException("That isn't an M3U playlist");
-  static const empty = M3uException('The playlist has no channels');
+  /// Shown to the user as it is, in the current language.
+  String get message => _message();
+
+  static const notM3u = M3uException._(_notM3uMessage);
+  static const empty = M3uException._(_emptyMessage);
+
+  static String _notM3uMessage() => tr.thatIsntAn;
+  static String _emptyMessage() => tr.thePlaylistHas;
 
   @override
   String toString() => message;

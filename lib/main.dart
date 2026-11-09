@@ -4,6 +4,7 @@ import 'dart:ui' show PlatformDispatcher;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:media_kit/media_kit.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:window_manager/window_manager.dart';
@@ -18,6 +19,7 @@ import 'channels/slot_layout.dart';
 import 'data/app_storage.dart';
 import 'export/broadcast_art.dart';
 import 'export/export_service.dart';
+import 'l10n/tr.dart';
 import 'platform/android_back_bridge.dart';
 import 'platform/linux_wakelock.dart';
 import 'platform/platform_info.dart';
@@ -56,6 +58,7 @@ Future<void> main(List<String> args) async {
   // One screensaver hold for media_kit's players, released when they stop.
   SingleLinuxWakelock.install();
   await PlatformInfo.init();
+  await languageDataReady;
   if (PlatformInfo.isDesktop) {
     await _setUpWindow();
   } else if (PlatformInfo.isAndroid) {
@@ -76,6 +79,8 @@ Future<void> main(List<String> args) async {
   PlaybackDiagnostics.mark('platform ready');
   final household = Household(await AppStorage.open());
   household.backups = BackupScheduler(household, BackupStore(Directory('${household.root.root.path}/backups')));
+  // Automatic follows the device's languages while the app runs.
+  WidgetsBinding.instance.addObserver(household.language);
   await DeviceEffects.instance.load(household.root);
   PlaybackDiagnostics.mark('storage open');
   // The phone remote is for a TV or a PC across the room; on a phone or
@@ -125,6 +130,7 @@ Future<void> _serverMain() async {
   };
   WidgetsFlutterBinding.ensureInitialized();
   await PlatformInfo.init();
+  await languageDataReady;
   runApp(const ColoredBox(color: Colors.black));
   ServerLog.info('Nightingale TV server starting on ${PlatformInfo.deviceName} '
       '(time zone ${Platform.environment['TZ'] ?? DateTime.now().timeZoneName}, ${DateTime.now().timeZoneName}).');
@@ -287,9 +293,41 @@ class _ShellState extends State<_Shell> {
   final _navigator = GlobalKey<NavigatorState>();
 
   @override
+  void initState() {
+    super.initState();
+    widget.household.language.addListener(_languageChanged);
+  }
+
+  @override
+  void dispose() {
+    widget.household.language.removeListener(_languageChanged);
+    super.dispose();
+  }
+
+  /// Text reads [tr] with no widget dependency, so everything showing is
+  /// rebuilt once; nothing is recreated, so focus, screens and playback
+  /// carry on (design D5).
+  void _languageChanged() {
+    setState(() {});
+    void rebuild(Element element) {
+      element.markNeedsBuild();
+      element.visitChildren(rebuild);
+    }
+
+    context.visitChildElements(rebuild);
+  }
+
+  @override
   Widget build(BuildContext context) => MaterialApp(
         title: 'Nightingale TV',
         navigatorKey: _navigator,
+        locale: widget.household.language.locale,
+        supportedLocales: [for (final l in supportedLanguages) Locale(l)],
+        localizationsDelegates: const [
+          GlobalMaterialLocalizations.delegate,
+          GlobalWidgetsLocalizations.delegate,
+          GlobalCupertinoLocalizations.delegate,
+        ],
         debugShowCheckedModeBanner: false,
         theme: GuideTheme.cableGuide.toThemeData(),
         onNavigationNotification: PlatformInfo.isAndroid ? AndroidBackBridge.alwaysHandleBack : null,

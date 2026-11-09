@@ -9,6 +9,7 @@ import '../api_client.dart';
 import '../app.dart';
 import '../widgets/common.dart';
 import '../widgets/source_editor.dart';
+import '../../l10n/tr.dart';
 
 /// A profile's programming blocks.
 class BlocksPage extends StatelessWidget {
@@ -21,34 +22,34 @@ class BlocksPage extends StatelessWidget {
         builder: (context, data, reload) {
           final blocks = (data['blocks'] as List).cast<Map<String, Object?>>();
           return PageBody(
-            title: 'Programming blocks',
+            title: tr.programmingBlocks,
             actions: [
               FilledButton.icon(
                 icon: const Icon(Icons.add),
-                label: const Text('New block'),
+                label: Text(tr.newBlock),
                 onPressed: () => context.go('/profiles/$profileId/blocks/new'),
               ),
               // Kid profiles get no late-night shortcut (late-night-drift D6).
               if (data['kidProfile'] != true)
                 OutlinedButton.icon(
                   icon: const Icon(Icons.nightlight_round),
-                  label: const Text('New late-night block'),
+                  label: Text(tr.newLateNight),
                   onPressed: () => context.go('/profiles/$profileId/blocks/late-night'),
                 ),
             ],
             children: [
               if (blocks.isEmpty)
-                const Text('A block takes over a channel at set times: "Saturday Morning Cartoons", Saturdays 7 AM to noon.'),
+                Text(tr.aBlockTakes),
               for (final b in blocks)
                 Card(
                   margin: const EdgeInsets.only(bottom: 8),
                   child: ListTile(
-                    title: Text((b['title'] as String).isEmpty ? 'Untitled block' : b['title'] as String),
+                    title: Text((b['title'] as String).isEmpty ? tr.untitledBlock : b['title'] as String),
                     subtitle: Text([
                       if (b['generated'] != null) fromTheLineupLabel,
                       (b['view'] as Map)['describe'],
-                      'on ${(b['view'] as Map)['channel'] ?? 'a channel that is gone'}',
-                      if (b['enabled'] == false) 'Off',
+                      tr.onChannel((b['view'] as Map)['channel'] ?? tr.aChannelThatIsGone),
+                      if (b['enabled'] == false) tr.off,
                     ].join(' · ')),
                     trailing: const Icon(Icons.chevron_right),
                     onTap: () => context.go('/profiles/$profileId/blocks/${Uri.encodeComponent(b['id'] as String)}'),
@@ -116,7 +117,7 @@ class _BlockEditorPageState extends State<BlockEditorPage> {
           ? (blocks['newBlock'] as Map).cast<String, Object?>()
           : (blocks['blocks'] as List)
               .cast<Map<String, Object?>>()
-              .firstWhere((b) => b['id'] == widget.blockId, orElse: () => throw ApiException(404, 'No such block.'));
+              .firstWhere((b) => b['id'] == widget.blockId, orElse: () => throw ApiException(404, tr.noSuchBlock));
       if (!mounted) return;
       final block = ProgramBlock.fromJson({...json, 'playlist': const <String>[]});
       final shown = [
@@ -213,7 +214,7 @@ class _BlockEditorPageState extends State<BlockEditorPage> {
   Widget build(BuildContext context) {
     final b = _block;
     if (b == null) {
-      return PageBody(title: 'Programming block', children: [
+      return PageBody(title: tr.programmingBlock, children: [
         if (_error == null) const Center(child: CircularProgressIndicator()) else ErrorText(_error),
       ]);
     }
@@ -223,17 +224,17 @@ class _BlockEditorPageState extends State<BlockEditorPage> {
     final preview = _preview;
     final next = preview?['next'] as Map?;
     return PageBody(
-      title: _lateNight ? 'New late-night block' : _isNew ? 'New block' : (b.title.isEmpty ? 'Untitled block' : b.title),
+      title: _lateNight ? tr.newLateNight : _isNew ? tr.newBlock : (b.title.isEmpty ? tr.untitledBlock : b.title),
       actions: [
         TextButton.icon(
           icon: const Icon(Icons.arrow_back),
-          label: const Text('Blocks'),
+          label: Text(tr.blocks),
           onPressed: () => context.go('/profiles/${widget.profileId}/blocks'),
         ),
       ],
       children: [
         if (b.generated != null)
-          const Padding(
+          Padding(
             padding: EdgeInsets.only(bottom: 12),
             child: Text('$fromTheLineupLabel. $fromTheLineupNote'),
           ),
@@ -241,16 +242,16 @@ class _BlockEditorPageState extends State<BlockEditorPage> {
           TextField(
             controller: _title,
             autofocus: _isNew,
-            decoration: const InputDecoration(labelText: 'Title', hintText: 'Saturday Morning Cartoons'),
+            decoration: InputDecoration(labelText: tr.title, hintText: tr.saturdayMorningCartoons),
             onChanged: (_) => _update((_) {}),
           ),
           const SizedBox(height: 12),
           DropdownButtonFormField<String>(
             initialValue: _newChannel ? '' : (_channels.any((c) => c['id'] == b.channelId) ? b.channelId : null),
             isExpanded: true,
-            decoration: const InputDecoration(labelText: 'Channel'),
+            decoration: InputDecoration(labelText: tr.channel3),
             items: [
-              if (_isNew) const DropdownMenuItem(value: '', child: Text('A new channel for this block')),
+              if (_isNew) DropdownMenuItem(value: '', child: Text(tr.aNewChannelFor)),
               for (final c in _channels)
                 DropdownMenuItem(value: c['id'] as String, child: Text('${c['number']}  ${c['name']}', overflow: TextOverflow.ellipsis)),
             ],
@@ -264,24 +265,24 @@ class _BlockEditorPageState extends State<BlockEditorPage> {
           ),
           SwitchListTile(
             contentPadding: EdgeInsets.zero,
-            title: const Text('On'),
+            title: Text(tr.onLabel2),
             value: b.enabled,
             onChanged: (v) => _update((b) => b.enabled = v),
           ),
         ]),
-        Section(title: 'When', children: [
+        Section(title: tr.whenLabel, children: [
           DayPicker(days: b.days, onChanged: (d) => _update((b) => b.days = d)),
           const SizedBox(height: 12),
           Wrap(spacing: 8, runSpacing: 8, children: [
-            MinuteField(label: 'Starts', minute: b.startMinute, onChanged: (m) => _update((b) => b.startMinute = m)),
-            MinuteField(label: 'Ends', minute: b.endMinute, onChanged: (m) => _update((b) => b.endMinute = m)),
+            MinuteField(label: tr.starts, minute: b.startMinute, onChanged: (m) => _update((b) => b.startMinute = m)),
+            MinuteField(label: tr.ends, minute: b.endMinute, onChanged: (m) => _update((b) => b.endMinute = m)),
           ]),
           if (b.endMinute <= b.startMinute && b.endMinute != b.startMinute)
-            const Padding(padding: EdgeInsets.only(top: 8), child: Text('Runs past midnight into the next day.')),
+            Padding(padding: EdgeInsets.only(top: 8), child: Text(tr.runsPastMidnight)),
           const SizedBox(height: 12),
           SwitchListTile(
             contentPadding: EdgeInsets.zero,
-            title: const Text('Only part of the year'),
+            title: Text(tr.onlyPartOf),
             subtitle: b.hasSeason ? Text('${b.seasonStart} – ${b.seasonEnd}') : null,
             value: b.hasSeason,
             onChanged: (on) => _update((b) {
@@ -291,15 +292,15 @@ class _BlockEditorPageState extends State<BlockEditorPage> {
           ),
           if (b.hasSeason)
             Wrap(spacing: 16, runSpacing: 8, children: [
-              _MonthDayField(label: 'From', value: b.seasonStart!, onChanged: (v) => _update((b) => b.seasonStart = v)),
-              _MonthDayField(label: 'To', value: b.seasonEnd!, onChanged: (v) => _update((b) => b.seasonEnd = v)),
+              _MonthDayField(label: tr.from, value: b.seasonStart!, onChanged: (v) => _update((b) => b.seasonStart = v)),
+              _MonthDayField(label: tr.to, value: b.seasonEnd!, onChanged: (v) => _update((b) => b.seasonEnd = v)),
             ]),
         ]),
-        Section(title: 'What it plays', children: [
+        Section(title: tr.whatItPlays2, children: [
           SegmentedButton<bool>(
-            segments: const [
-              ButtonSegment(value: false, label: Text('A mix')),
-              ButtonSegment(value: true, label: Text('A lineup of shows')),
+            segments: [
+              ButtonSegment(value: false, label: Text(tr.aMix)),
+              ButtonSegment(value: true, label: Text(tr.aLineupOf)),
             ],
             selected: {_lineupMode},
             onSelectionChanged: (s) => _update((_) => _lineupMode = s.single),
@@ -334,20 +335,20 @@ class _BlockEditorPageState extends State<BlockEditorPage> {
                 initialValue: b.source.ratingFloor,
                 isExpanded: true,
                 decoration: InputDecoration(
-                  labelText: 'Minimum rating',
+                  labelText: tr.minimumRating,
                   helperText: b.source.ratingFloor == null
                       ? null
-                      : 'Only shows and movies rated this or higher. Unrated ones are left out.',
+                      : tr.onlyShowsAnd,
                 ),
                 items: [
-                  const DropdownMenuItem<RatingFloor?>(value: null, child: Text('Any rating')),
+                  DropdownMenuItem<RatingFloor?>(value: null, child: Text(tr.anyRating)),
                   for (final f in RatingFloor.values) DropdownMenuItem<RatingFloor?>(value: f, child: Text(f.label)),
                 ],
                 onChanged: (f) => _update((b) => b.source = b.source.copyWith(ratingFloor: () => f)),
               ),
             ],
           ] else ...[
-            const Text("Each airing plays every spot's next episodes in order, then starts over if time is left."),
+            Text(tr.eachAiringPlays),
             const SizedBox(height: 8),
             for (final (i, slot) in b.lineup.indexed)
               Card(
@@ -359,22 +360,22 @@ class _BlockEditorPageState extends State<BlockEditorPage> {
                       value: slot.count,
                       items: [
                         for (var n = 1; n <= LineupSlot.maxCount; n++)
-                          DropdownMenuItem(value: n, child: Text('$n episode${n == 1 ? '' : 's'}')),
+                          DropdownMenuItem(value: n, child: Text(tr.episodes2(n))),
                       ],
                       onChanged: (n) => _update((_) => slot.count = n!),
                     ),
                     IconButton(
-                      tooltip: 'Earlier',
+                      tooltip: tr.earlier,
                       icon: const Icon(Icons.arrow_upward),
                       onPressed: i == 0 ? null : () => _update((b) => b.lineup.insert(i - 1, b.lineup.removeAt(i))),
                     ),
                     IconButton(
-                      tooltip: 'Later',
+                      tooltip: tr.later,
                       icon: const Icon(Icons.arrow_downward),
                       onPressed: i == b.lineup.length - 1 ? null : () => _update((b) => b.lineup.insert(i + 1, b.lineup.removeAt(i))),
                     ),
                     IconButton(
-                      tooltip: 'Remove',
+                      tooltip: tr.remove,
                       icon: const Icon(Icons.close),
                       onPressed: () => _update((b) => b.lineup.removeAt(i)),
                     ),
@@ -384,7 +385,7 @@ class _BlockEditorPageState extends State<BlockEditorPage> {
             DropdownButtonFormField<String>(
               key: ValueKey(b.lineup.length),
               isExpanded: true,
-              decoration: const InputDecoration(labelText: 'Add a show'),
+              decoration: InputDecoration(labelText: tr.addAShow2),
               items: [
                 for (final s in shows) DropdownMenuItem(value: s['key'] as String, child: Text(s['name'] as String)),
               ],
@@ -394,15 +395,14 @@ class _BlockEditorPageState extends State<BlockEditorPage> {
             ),
           ],
         ]),
-        Section(title: 'Preview', children: [
+        Section(title: tr.preview, children: [
           if (preview == null)
-            const Busy(text: 'Working out what it plays…')
+            Busy(text: tr.workingOutWhat)
           else ...[
-            Text('${preview['total']} programs in its playlist.'),
+            Text(tr.programsInIts('${preview['total']}')),
             if (next != null) ...[
               const SizedBox(height: 8),
-              Text('Next airing: ${formatDate(DateTime.parse(next['start'] as String).toLocal())} '
-                  '${formatRange(DateTime.parse(next['start'] as String).toLocal(), DateTime.parse(next['end'] as String).toLocal())}'),
+              Text(tr.nextAiring2(formatDate(DateTime.parse(next['start'] as String).toLocal()), formatRange(DateTime.parse(next['start'] as String).toLocal(), DateTime.parse(next['end'] as String).toLocal()))),
               for (final p in (next['programs'] as List).cast<Map>().take(8))
                 Text('${formatTime(DateTime.parse(p['start'] as String).toLocal())}  ${p['title']}'
                     '${(p['detail'] as String?)?.isNotEmpty == true ? ' · ${p['detail']}' : ''}'),
@@ -412,16 +412,16 @@ class _BlockEditorPageState extends State<BlockEditorPage> {
         ]),
         ErrorText(_error),
         Wrap(spacing: 8, runSpacing: 8, children: [
-          FilledButton.icon(icon: const Icon(Icons.check), label: const Text('Save'), onPressed: _saving ? null : _save),
+          FilledButton.icon(icon: const Icon(Icons.check), label: Text(tr.save), onPressed: _saving ? null : _save),
           if (!_isNew)
             OutlinedButton.icon(
               icon: const Icon(Icons.delete_outline),
-              label: const Text('Delete'),
+              label: Text(tr.delete),
               onPressed: () async {
                 final ok = await confirm(context,
-                    title: 'Delete "${b.title}"?',
-                    message: 'The channel goes back to its regular programming at these times.',
-                    action: 'Delete');
+                    title: tr.delete2(b.title),
+                    message: tr.theChannelGoes,
+                    action: tr.delete);
                 if (!ok || !context.mounted) return;
                 final r = await attempt(context, () => context.api.delete('$_base/blocks/${Uri.encodeComponent(widget.blockId)}'),
                     profileId: widget.profileId, onConflict: _load);
@@ -441,14 +441,13 @@ class _MonthDayField extends StatelessWidget {
   final MonthDay value;
   final ValueChanged<MonthDay> onChanged;
 
-  static const _months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
   @override
   Widget build(BuildContext context) => Row(mainAxisSize: MainAxisSize.min, children: [
         Text('$label '),
         DropdownButton<int>(
           value: value.month,
-          items: [for (var m = 1; m <= 12; m++) DropdownMenuItem(value: m, child: Text(_months[m - 1]))],
+          items: [for (var m = 1; m <= 12; m++) DropdownMenuItem(value: m, child: Text(monthName(m)))],
           onChanged: (m) => onChanged(MonthDay(m!, value.day.clamp(1, MonthDay.daysIn(m)))),
         ),
         const SizedBox(width: 8),

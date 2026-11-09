@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../api_client.dart';
 import '../app.dart';
 import '../widgets/common.dart';
+import '../../l10n/tr.dart';
 
 /// Live TV export (admin): each profile's export, port and URLs, and the
 /// quality, stream limit, encoder and discovery. Status refreshes every 3
@@ -60,22 +61,22 @@ class _ExportPageState extends State<ExportPage> {
   Widget build(BuildContext context) {
     final status = _status, settings = _settings;
     if (status == null || settings == null) {
-      return PageBody(title: 'Live TV export', children: [
+      return PageBody(title: tr.liveTvExport2, children: [
         if (_error == null) const Center(child: CircularProgressIndicator()) else ErrorText(_error),
       ]);
     }
     final profiles = (status['profiles'] as List).cast<Map<String, Object?>>();
     final limit = settings['streamLimit'] as int?;
-    return PageBody(title: 'Live TV export', children: [
+    return PageBody(title: tr.liveTvExport2, children: [
       Section(children: [
-        Text('Each exported profile is a tuner for Plex, Jellyfin or Emby. Add it in their DVR settings by its address.'),
+        Text(tr.eachExportedProfile),
         const SizedBox(height: 8),
-        Text('${status['streams']} streaming now${status['encoder'] == null ? '' : ' · encoding with ${status['encoder']}'}.'),
+        Text(status['encoder'] == null ? tr.streamingNow('${status['streams']}') : tr.streamingNowEncoding('${status['streams']}', '${status['encoder']}')),
         if (status['discoveryMessage'] != null) Text(status['discoveryMessage'] as String),
       ]),
       for (final p in profiles) _profile(context, p),
-      Section(title: 'Settings', children: [
-        Text('Quality', style: Theme.of(context).textTheme.labelLarge),
+      Section(title: tr.settings, children: [
+        Text(tr.quality2, style: Theme.of(context).textTheme.labelLarge),
         const SizedBox(height: 6),
         SegmentedButton<String>(
           segments: [for (final q in (settings['qualities'] as List).cast<String>()) ButtonSegment(value: q, label: Text(q))],
@@ -86,16 +87,16 @@ class _ExportPageState extends State<ExportPage> {
         DropdownButtonFormField<int?>(
           initialValue: limit,
           decoration: InputDecoration(
-              labelText: 'Streams at once',
-              helperText: limit == null ? 'Automatic: ${settings['streamLimitInUse']} on this machine.' : null),
+              labelText: tr.streamsAtOnce2,
+              helperText: limit == null ? tr.automaticOnThis('${settings['streamLimitInUse']}') : null),
           items: [
-            const DropdownMenuItem<int?>(value: null, child: Text('Automatic')),
+            DropdownMenuItem<int?>(value: null, child: Text(tr.automatic)),
             for (var n = 1; n <= 16; n++) DropdownMenuItem<int?>(value: n, child: Text('$n')),
           ],
           onChanged: (v) => _put('export', {'streamLimit': v}),
         ),
         const SizedBox(height: 16),
-        Text('Encoder', style: Theme.of(context).textTheme.labelLarge),
+        Text(tr.encoder2, style: Theme.of(context).textTheme.labelLarge),
         RadioGroup<String>(
           groupValue: settings['encoder'] as String,
           onChanged: (v) => _put('export', {'encoder': v}),
@@ -107,8 +108,8 @@ class _ExportPageState extends State<ExportPage> {
         ),
         SwitchListTile(
           contentPadding: EdgeInsets.zero,
-          title: const Text('Discovery'),
-          subtitle: const Text('Lets Plex and others find the tuners on the network.'),
+          title: Text(tr.discovery2),
+          subtitle: Text(tr.letsPlexAnd),
           value: settings['discovery'] == true,
           onChanged: (v) => _put('export', {'discovery': v}),
         ),
@@ -123,7 +124,7 @@ class _ExportPageState extends State<ExportPage> {
     return Section(title: p['name'] as String, children: [
       SwitchListTile(
         contentPadding: EdgeInsets.zero,
-        title: const Text('Export this profile'),
+        title: Text(tr.exportThisProfile),
         value: exported,
         onChanged: (v) => _put('profiles/$id/export', {'exported': v}),
       ),
@@ -133,7 +134,7 @@ class _ExportPageState extends State<ExportPage> {
             child: TextField(
               controller: port,
               keyboardType: TextInputType.number,
-              decoration: const InputDecoration(labelText: 'Port'),
+              decoration: InputDecoration(labelText: tr.port),
               onSubmitted: (v) {
                 final n = int.tryParse(v.trim());
                 if (n != null) _put('profiles/$id/export', {'port': n});
@@ -146,13 +147,13 @@ class _ExportPageState extends State<ExportPage> {
               final n = int.tryParse(port.text.trim());
               if (n != null) _put('profiles/$id/export', {'port': n});
             },
-            child: const Text('Change port'),
+            child: Text(tr.changePort),
           ),
         ]),
         if (p['url'] != null) ...[
-          CopyField(label: 'Tuner address', value: p['url'] as String),
+          CopyField(label: tr.tunerAddress, value: p['url'] as String),
           CopyField(label: 'M3U', value: p['m3u'] as String),
-          CopyField(label: 'XMLTV', value: p['xmltv'] as String),
+          CopyField(label: tr.xmltv, value: p['xmltv'] as String),
         ],
       ],
       if (p['problem'] != null) ErrorText(p['problem'] as String),

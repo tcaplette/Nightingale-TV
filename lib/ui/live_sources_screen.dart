@@ -20,6 +20,7 @@ import 'widgets/adaptive.dart';
 import 'widgets/channel_logo.dart';
 import 'widgets/screen_layout.dart';
 import 'widgets/tv_focus.dart';
+import '../l10n/tr.dart';
 
 /// Menu → Live TV sources (live-tv-sources): the profile's sources, each
 /// with its channel count and last refresh, and adding, choosing channels,
@@ -34,8 +35,8 @@ class LiveSourcesScreen extends StatelessWidget {
     final g = context.guide;
     final layout = ScreenLayout.of(context);
     return TvPage(
-      title: 'Live TV sources',
-      hints: '▲▼◀▶ Move    OK Select    ESC Back',
+      title: tr.liveTvSources,
+      hints: tr.moveOkSelectEsc,
       onBack: () => Navigator.of(context).pop(),
       child: ListenableBuilder(
         listenable: app.live,
@@ -46,15 +47,14 @@ class LiveSourcesScreen extends StatelessWidget {
               padding: layout.pagePadding(const EdgeInsets.fromLTRB(100, 32, 100, 40)),
               children: [
                 Text(
-                  'Real broadcasts and IPTV in your guide: your server\'s Live TV, or an M3U playlist with '
-                  'an XMLTV guide. Their channels join the lineup after yours.',
+                  tr.realBroadcastsAnd,
                   style: g.body(24, color: g.textDim),
                 ),
                 const SizedBox(height: 20),
                 Align(
                   alignment: Alignment.centerLeft,
                   child: TvButton(
-                    label: 'Add source',
+                    label: tr.addSource,
                     icon: Icons.add,
                     autofocus: true,
                     onPressed: () => Navigator.of(context)
@@ -62,7 +62,7 @@ class LiveSourcesScreen extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(height: 28),
-                if (sources.isEmpty) Text('No sources yet.', style: g.body(26, color: g.textDim)),
+                if (sources.isEmpty) Text(tr.noSourcesYet, style: g.body(26, color: g.textDim)),
                 for (final s in sources) _SourceRow(source: s),
               ],
             ),
@@ -76,7 +76,7 @@ class LiveSourcesScreen extends StatelessWidget {
 /// "M3U playlist · 12 of 40 channels": how many of the source's [channels]
 /// are in the lineup.
 String sourceSummary(LiveSource s, List<LiveChannelInfo> channels) =>
-    '${s.kind.label} · ${channels.where((c) => s.chosen.containsKey(c.key)).length} of ${channels.length} channels';
+    tr.ofChannels(s.kind.label, channels.where((c) => s.chosen.containsKey(c.key)).length, channels.length);
 
 class _SourceRow extends StatelessWidget {
   const _SourceRow({required this.source});
@@ -92,29 +92,29 @@ class _SourceRow extends StatelessWidget {
     final state = entry.state;
     final refreshing = app.live.isRefreshing(source);
     final status = refreshing
-        ? 'Refreshing…'
+        ? tr.refreshing
         : state.lastError != null
-            ? 'Last refresh failed: ${state.lastError}'
+            ? tr.lastRefreshFailed('${state.lastError}')
             : state.lastRefresh != null
-                ? 'Refreshed ${formatRecent(state.lastRefresh!)}'
-                : 'Not refreshed yet';
+                ? tr.refreshed(formatRecent(state.lastRefresh!))
+                : tr.notRefreshedYet;
     final where = source.kind == LiveSourceKind.m3u
         ? source.playlistFile != null
-            ? 'Playlist file'
+            ? tr.playlistFile
             : maskUrl(source.playlistUrl ?? '')
         : null;
     final buttons = [
       TvButton(
-        label: 'Choose channels',
+        label: tr.chooseChannels2,
         icon: Icons.checklist,
         onPressed: entry.channels.isEmpty
             ? null
             : () => Navigator.of(context)
                 .push(MaterialPageRoute<void>(builder: (_) => LiveChannelPickerScreen(source: source))),
       ),
-      TvButton(label: 'Refresh now', icon: Icons.sync, onPressed: refreshing ? null : () => app.refreshLiveNow(source)),
-      TvButton(label: 'Edit', icon: Icons.edit, onPressed: () => _edit(context)),
-      TvButton(label: 'Remove', icon: Icons.delete, danger: true, onPressed: () => _remove(context)),
+      TvButton(label: tr.refreshNow, icon: Icons.sync, onPressed: refreshing ? null : () => app.refreshLiveNow(source)),
+      TvButton(label: tr.edit2, icon: Icons.edit, onPressed: () => _edit(context)),
+      TvButton(label: tr.remove, icon: Icons.delete, danger: true, onPressed: () => _remove(context)),
     ];
     return Padding(
       padding: const EdgeInsets.only(bottom: 28),
@@ -148,7 +148,7 @@ class _SourceRow extends StatelessWidget {
       await Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => M3uSourceScreen(editing: source)));
       return;
     }
-    final name = await askName(context, title: 'Rename source', initial: source.name, action: 'Rename');
+    final name = await askName(context, title: tr.renameSource, initial: source.name, action: tr.rename);
     if (name == null || !context.mounted) return;
     source.name = name;
     await AppScope.read(context).live.save();
@@ -157,9 +157,9 @@ class _SourceRow extends StatelessWidget {
   Future<void> _remove(BuildContext context) async {
     final ok = await confirm(
       context,
-      title: 'Remove "${source.name}"?',
-      message: 'Its channels leave the guide, their groups and favorites.',
-      action: 'Remove',
+      title: tr.remove2(source.name),
+      message: tr.itsChannelsLeave,
+      action: tr.remove,
     );
     if (!ok || !context.mounted) return;
     await AppScope.read(context).removeLiveSource(source);
@@ -223,8 +223,8 @@ class _AddLiveSourceScreenState extends State<AddLiveSourceScreen> {
     final g = context.guide;
     final servers = [for (final s in app.servers.ordered) if (_availability.containsKey(s.key)) s];
     return TvPage(
-      title: 'Add a Live TV source',
-      hints: '▲▼ Move    OK Select    ESC Back',
+      title: tr.addALive,
+      hints: tr.moveOkSelectEscBack,
       onBack: () => Navigator.of(context).pop(),
       child: FocusTraversalGroup(
         child: ListView(
@@ -254,9 +254,9 @@ class _AddLiveSourceScreenState extends State<AddLiveSourceScreen> {
                 String? why;
                 VoidCallback? action;
                 if (already) {
-                  why = '$server Live TV is already added';
+                  why = tr.liveTvIsAlready(server);
                 } else if (snap.connectionState != ConnectionState.done) {
-                  why = 'Checking $server Live TV…';
+                  why = tr.checkingLiveTv(server);
                 } else if (a == LiveTvAvailability.available) {
                   action = _adding != null ? null : () => _addServer(s.key);
                 } else {
@@ -266,7 +266,7 @@ class _AddLiveSourceScreenState extends State<AddLiveSourceScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     TvButton(
-                      label: _adding == s.key ? 'Reading $server\'s channels…' : LiveTvAvailability.available.reason(server),
+                      label: _adding == s.key ? tr.readingSChannels(server) : LiveTvAvailability.available.reason(server),
                       icon: Icons.settings_input_antenna,
                       expand: true,
                       autofocus: autofocus,
@@ -277,7 +277,7 @@ class _AddLiveSourceScreenState extends State<AddLiveSourceScreen> {
                       Text(why, style: g.body(24, weight: FontWeight.w700, color: g.accent)),
                     ],
                     const SizedBox(height: 8),
-                    Text("The channels and guide of your server's tuner (an antenna, cable box or IPTV it has).",
+                    Text(tr.theChannelsAnd,
                         style: g.body(22, color: g.textDim)),
                   ],
                 );
@@ -286,7 +286,7 @@ class _AddLiveSourceScreenState extends State<AddLiveSourceScreen> {
             const SizedBox(height: 28),
             ],
             TvButton(
-              label: 'M3U playlist',
+              label: tr.m3uPlaylist,
               icon: Icons.playlist_add,
               expand: true,
               focusNode: _m3u,
@@ -294,7 +294,7 @@ class _AddLiveSourceScreenState extends State<AddLiveSourceScreen> {
                   .pushReplacement(MaterialPageRoute<void>(builder: (_) => const M3uSourceScreen())),
             ),
             const SizedBox(height: 8),
-            Text('An IPTV playlist (a web address or a file), with an XMLTV guide if you have one.',
+            Text(tr.anIptvPlaylist,
                 style: g.body(22, color: g.textDim)),
             if (_error != null) ...[
               const SizedBox(height: 24),
@@ -356,8 +356,8 @@ class _M3uSourceScreenState extends State<M3uSourceScreen> {
 
   Future<void> _pick({required bool guide}) async {
     final f = guide
-        ? await pickLiveFile(label: 'XMLTV guides', extensions: const ['xml', 'gz', 'xmltv'])
-        : await pickLiveFile(label: 'M3U playlists', extensions: const ['m3u', 'm3u8', 'txt']);
+        ? await pickLiveFile(label: tr.xmltvGuides, extensions: const ['xml', 'gz', 'xmltv'])
+        : await pickLiveFile(label: tr.m3uPlaylists, extensions: const ['m3u', 'm3u8', 'txt']);
     if (f == null || !mounted) return;
     setState(() {
       if (guide) {
@@ -375,13 +375,13 @@ class _M3uSourceScreenState extends State<M3uSourceScreen> {
   String _nameFor(String url) {
     if (_name.text.trim().isNotEmpty) return _name.text.trim();
     final host = Uri.tryParse(url.trim())?.host ?? '';
-    return host.isEmpty ? 'M3U playlist' : host;
+    return host.isEmpty ? tr.m3uPlaylist : host;
   }
 
   Future<void> _save() async {
     final url = _playlist.text.trim();
     if (_playlistFile == null && !_keepPlaylistFile && url.isEmpty) {
-      setState(() => _error = 'Enter the playlist\'s address, or choose a playlist file');
+      setState(() => _error = tr.enterThePlaylists);
       return;
     }
     setState(() {
@@ -428,8 +428,8 @@ class _M3uSourceScreenState extends State<M3uSourceScreen> {
     final playlistIsFile = _playlistFile != null || _keepPlaylistFile;
     final guideIsFile = _guideFile != null || _keepGuideFile;
     return TvPage(
-      title: editing == null ? 'Add an M3U playlist' : 'Edit ${editing.name}',
-      hints: '▲▼ Move    OK Select    ESC Back',
+      title: editing == null ? tr.addAnM3u : tr.edit(editing.name),
+      hints: tr.moveOkSelectEscBack,
       onBack: () => Navigator.of(context).pop(),
       child: FutureBuilder<bool>(
         future: _canPick,
@@ -444,16 +444,16 @@ class _M3uSourceScreenState extends State<M3uSourceScreen> {
               crossAxisAlignment: WrapCrossAlignment.center,
               children: [
                 if (picked != null || keep)
-                  Text('File: ${picked?.name ?? 'the one chosen before'}', style: g.body(26, weight: FontWeight.w600)),
+                  Text(tr.fileChosen(picked?.name ?? tr.theOneChosenBefore), style: g.body(26, weight: FontWeight.w600)),
                 if (canPick)
                   TvButton(
-                    label: picked != null || keep ? 'Choose another file' : 'Choose a file',
+                    label: picked != null || keep ? tr.chooseAnotherFile : tr.chooseAFile,
                     icon: Icons.folder_open,
                     onPressed: () => _pick(guide: guide),
                   ),
                 if (picked != null || keep)
                   TvButton(
-                    label: 'Use an address instead',
+                    label: tr.useAnAddress,
                     icon: Icons.link,
                     onPressed: () => setState(() {
                       if (guide) {
@@ -473,33 +473,33 @@ class _M3uSourceScreenState extends State<M3uSourceScreen> {
             child: ListView(
               padding: ScreenLayout.of(context).pagePadding(const EdgeInsets.fromLTRB(100, 32, 100, 40)),
               children: [
-                TvTextField(controller: _name, label: 'Name', hint: 'My IPTV', autofocus: true),
+                TvTextField(controller: _name, label: tr.name, hint: tr.myIptv, autofocus: true),
                 const SizedBox(height: 28),
-                Text('PLAYLIST', style: g.display(26, weight: FontWeight.w800, color: g.accent)),
+                Text(tr.playlist, style: g.display(26, weight: FontWeight.w800, color: g.accent)),
                 const SizedBox(height: 10),
                 if (!playlistIsFile)
                   TvTextField(
                     controller: _playlist,
-                    label: 'Playlist address',
-                    hint: 'http://provider.example/get.php?username=…&type=m3u_plus',
+                    label: tr.playlistAddress,
+                    hint: tr.httpProviderExample,
                     keyboardType: TextInputType.url,
                   ),
                 const SizedBox(height: 12),
                 fileRow(guide: false),
                 const SizedBox(height: 28),
-                Text('GUIDE (OPTIONAL)', style: g.display(26, weight: FontWeight.w800, color: g.accent)),
+                Text(tr.guideOptional, style: g.display(26, weight: FontWeight.w800, color: g.accent)),
                 const SizedBox(height: 10),
                 if (!guideIsFile)
                   TvTextField(
                     controller: _guide,
-                    label: 'XMLTV guide address',
-                    hint: 'Leave empty to use the guide the playlist names',
+                    label: tr.xmltvGuideAddress,
+                    hint: tr.leaveEmptyTo,
                     keyboardType: TextInputType.url,
                   ),
                 if (editing?.guideFromPlaylist == true && _guide.text.isEmpty && !guideIsFile)
                   Padding(
                     padding: const EdgeInsets.only(top: 8),
-                    child: Text('Now: the playlist\'s guide, ${maskUrl(editing!.guideUrl ?? '')}',
+                    child: Text(tr.nowThePlaylists(maskUrl(editing!.guideUrl ?? '')),
                         maxLines: 1, overflow: TextOverflow.ellipsis, style: g.body(22, color: g.textDim)),
                   ),
                 const SizedBox(height: 12),
@@ -510,9 +510,9 @@ class _M3uSourceScreenState extends State<M3uSourceScreen> {
                   const SizedBox(height: 20),
                 ],
                 ButtonRow(children: [
-                  TvButton(label: 'Cancel', onPressed: () => Navigator.of(context).pop()),
+                  TvButton(label: tr.cancel, onPressed: () => Navigator.of(context).pop()),
                   TvButton(
-                    label: _saving ? 'Reading the playlist…' : (editing == null ? 'Add' : 'Save'),
+                    label: _saving ? tr.readingThePlaylist : (editing == null ? tr.add : tr.save),
                     icon: Icons.check,
                     onPressed: _saving ? null : _save,
                   ),
@@ -623,8 +623,8 @@ class _LiveChannelPickerScreenState extends State<LiveChannelPickerScreen> {
     final total = _groups.values.fold(0, (n, l) => n + l.length);
     final padding = layout.pagePadding(const EdgeInsets.fromLTRB(100, 24, 100, 24));
     return TvPage(
-      title: 'Choose channels: ${widget.source.name}',
-      hints: '▲▼ Move    OK Check    ESC Back',
+      title: tr.chooseChannels(widget.source.name),
+      hints: tr.moveOkCheck,
       onBack: () => Navigator.of(context).pop(),
       child: FocusTraversalGroup(
         child: Column(
@@ -635,7 +635,7 @@ class _LiveChannelPickerScreenState extends State<LiveChannelPickerScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  TvTextField(controller: _search, label: 'Search', hint: 'Channel or group name'),
+                  TvTextField(controller: _search, label: tr.search, hint: tr.channelOrGroup),
                   // Gives way to the results while typing, its state kept.
                   Offstage(
                     offstage: ScreenLayout.keyboardTakesRoom(context),
@@ -646,14 +646,14 @@ class _LiveChannelPickerScreenState extends State<LiveChannelPickerScreen> {
                         runSpacing: 12,
                         crossAxisAlignment: WrapCrossAlignment.center,
                         children: [
-                          Text('${_checked.length} of $total chosen', style: g.display(32, weight: FontWeight.w800)),
+                          Text(tr.ofChosen(_checked.length, total), style: g.display(32, weight: FontWeight.w800)),
                           TvButton(
-                            label: _saving ? 'Saving…' : 'Done',
+                            label: _saving ? tr.saving : tr.done,
                             icon: Icons.check,
                             autofocus: true,
                             onPressed: _saving ? null : _done,
                           ),
-                          TvButton(label: 'Cancel', onPressed: () => Navigator.of(context).pop()),
+                          TvButton(label: tr.cancel, onPressed: () => Navigator.of(context).pop()),
                         ],
                       ),
                     ),
@@ -689,7 +689,7 @@ class _LiveChannelPickerScreenState extends State<LiveChannelPickerScreen> {
                               ? Icons.check_box_outline_blank
                               : Icons.indeterminate_check_box,
                       title: row.group.toUpperCase(),
-                      trailing: '$n of ${keys.length}',
+                      trailing: tr.ofLabel(n, keys.length),
                       header: true,
                       onPressed: () => _toggleGroup(row.group),
                     );
@@ -700,7 +700,7 @@ class _LiveChannelPickerScreenState extends State<LiveChannelPickerScreen> {
                     number: c.number,
                     logo: LiveTvManager.defaultIcon(c),
                     title: c.name,
-                    trailing: withGuide.contains(c.key) ? 'GUIDE' : null,
+                    trailing: withGuide.contains(c.key) ? tr.guide : null,
                     onPressed: () => setState(() => _checked.contains(c.key) ? _checked.remove(c.key) : _checked.add(c.key)),
                   );
                 },

@@ -2,6 +2,7 @@ import '../commercials/commercial_pool.dart';
 import '../playback/playback_diagnostics.dart';
 import '../server/media_server.dart';
 import '../profiles/profile.dart';
+import '../l10n/tr.dart';
 
 enum MediaKind {
   episode,
@@ -262,10 +263,10 @@ class MediaEntry {
   /// "S3 · E12 · Episode title" for episodes, year for movies, "Album ·
   /// Year" for music.
   String get subtitle {
-    if (kind == MediaKind.commercial) return 'Commercial';
-    if (kind == MediaKind.movie) return year != null ? 'Movie · $year' : 'Movie';
+    if (kind == MediaKind.commercial) return tr.commercial;
+    if (kind == MediaKind.movie) return year != null ? tr.movie2(year!) : tr.movie;
     if (isMusic) {
-      final parts = [album ?? (kind == MediaKind.musicVideo ? 'Music video' : null), ?year?.toString()];
+      final parts = [album ?? (kind == MediaKind.musicVideo ? tr.musicVideo : null), ?year?.toString()];
       return parts.whereType<String>().join(' · ');
     }
     final code = [

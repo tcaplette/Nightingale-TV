@@ -4,6 +4,7 @@ import '../../channels/channel.dart';
 import '../../theme/tv_theme.dart';
 import '../format.dart';
 import 'overlay_style.dart';
+import '../../l10n/tr.dart';
 
 /// The full-screen cards a channel shows instead of a picture: on the TV,
 /// and drawn into Live TV export streams.
@@ -79,7 +80,7 @@ class TuningCard extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.end,
               children: [
                 ChannelNumberOsd(text: '${channel.number}'),
-                Text(channel.name.toUpperCase(),
+                Text(channel.displayName.toUpperCase(),
                     style: g.display(40, weight: FontWeight.w700, color: g.accent).copyWith(
                       shadows: const [Shadow(color: Colors.black, blurRadius: 12, offset: Offset(3, 3))],
                     )),
@@ -121,10 +122,10 @@ class OfflineCard extends StatelessWidget {
           children: [
             if (logo != null) SizedBox(width: 520, height: 300, child: Center(child: logo)),
             const SizedBox(height: 32),
-            Text(channel.name, textAlign: TextAlign.center, style: g.display(72, weight: FontWeight.w800)),
+            Text(channel.displayName, textAlign: TextAlign.center, style: g.display(72, weight: FontWeight.w800)),
             if (backAt != null) ...[
               const SizedBox(height: 16),
-              Text('Back at ${formatTime(backAt!)}', style: g.body(32, color: g.textDim)),
+              Text(tr.backAt(formatTime(backAt!)), style: g.body(32, color: g.textDim)),
             ],
           ],
         ),
