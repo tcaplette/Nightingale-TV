@@ -29,6 +29,8 @@ cp -r build/web "$BUNDLE/web"
 # The service worker isn't used (--pwa-strategy=none leaves a stub).
 rm -f "$BUNDLE/web/flutter_service_worker.js"
 
-mkdir -p dist
-tar -C "$BUNDLE" -czf "dist/$FILE" .
-(cd dist && sha256sum "$FILE" > "$FILE.sha256" && cat "$FILE.sha256")
+# NTV_DIST puts the archive in another folder, like dist/1.2.4.
+DIST="${NTV_DIST:-dist}"
+mkdir -p "$DIST"
+tar -C "$BUNDLE" -czf "$DIST/$FILE" .
+(cd "$DIST" && sha256sum "$FILE" > "$FILE.sha256" && cat "$FILE.sha256")

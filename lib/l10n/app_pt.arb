@@ -1429,5 +1429,11 @@
   "quoteReportId": "Informe este ID quando contar um problema ao desenvolvedor.",
   "testReportSent": "Relatório de teste enviado: {id}",
   "testReportNotSent": "Não foi possível enviar o relatório de teste. Tente de novo daqui a pouco.",
-  "reportsNotInBuild": "Relatórios de erros não fazem parte desta versão do Nightingale TV, então nada é enviado."
+  "reportsNotInBuild": "Relatórios de erros não fazem parte desta versão do Nightingale TV, então nada é enviado.",
+  "sendAVideoReport": "Enviar um relatório de vídeo",
+  "videoReportHelp": "Se a imagem parecer errada, pressione aqui e volte a um canal. Após 10 segundos de imagem, o relatório é enviado e o ID dele aparece na tela da TV.",
+  "videoReportArmed": "Volte agora a um canal. O relatório de vídeo é enviado após 10 segundos de imagem.",
+  "videoReportTooSoon": "Um relatório de vídeo foi enviado há menos de um minuto. Tente de novo em instantes.",
+  "videoReportSent": "Relatório de vídeo enviado: {id}",
+  "videoReportsExplain": "Um relatório de vídeo envia dados do dispositivo, do vídeo e do decodificador, grades de cores aproximadas da imagem e as últimas linhas de registro do app; nunca uma imagem do que você assiste. Um é enviado após cada atualização do app, quando um canal toca por 10 segundos."
 }

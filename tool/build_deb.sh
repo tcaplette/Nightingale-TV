@@ -22,7 +22,9 @@ DEFINES=()
 # the installed app in place, even when pubspec's version hasn't changed.
 VERSION="$(sed -n 's/^version: *//p' pubspec.yaml).$(date -u +%Y%m%d%H%M%S)"
 ARCH=amd64
-OUT="$ROOT/dist/nightingale-tv_${VERSION}_${ARCH}.deb"
+# NTV_DIST puts the package in another folder, like dist/1.2.4.
+DIST="${NTV_DIST:-$ROOT/dist}"
+OUT="$DIST/nightingale-tv_${VERSION}_${ARCH}.deb"
 
 flutter build linux --release ${DEFINES[@]+"${DEFINES[@]}"}
 
@@ -116,10 +118,10 @@ Description: Always-on cable TV channels from your Jellyfin library
  guide, programming blocks, commercial breaks, profiles and a phone remote.
 CONTROL
 
-mkdir -p "$ROOT/dist"
+mkdir -p "$DIST"
 # Only the newest package stays, so ./dist/nightingale-tv_*_amd64.deb
 # matches one file. APKs and the release .tar.gz are left alone.
-rm -f "$ROOT"/dist/nightingale-tv_*_"$ARCH".deb
+rm -f "$DIST"/nightingale-tv_*_"$ARCH".deb
 dpkg-deb --root-owner-group --build "$STAGE" "$OUT" >/dev/null
 echo "Built $OUT ($(du -h "$OUT" | cut -f1))"
 echo "Install on another machine with: sudo apt install ./$(basename "$OUT")"

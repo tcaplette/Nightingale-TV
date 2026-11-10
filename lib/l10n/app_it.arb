@@ -1429,5 +1429,11 @@
   "quoteReportId": "Indica questo ID quando segnali un problema allo sviluppatore.",
   "testReportSent": "Segnalazione di prova inviata: {id}",
   "testReportNotSent": "Impossibile inviare la segnalazione di prova. Riprova tra un momento.",
-  "reportsNotInBuild": "Le segnalazioni di errori non fanno parte di questa build di Nightingale TV, quindi non viene mai inviato nulla."
+  "reportsNotInBuild": "Le segnalazioni di errori non fanno parte di questa build di Nightingale TV, quindi non viene mai inviato nulla.",
+  "sendAVideoReport": "Invia una segnalazione video",
+  "videoReportHelp": "Se l'immagine sembra sbagliata, premi qui e torna a un canale. Dopo 10 secondi di immagine, la segnalazione viene inviata e il suo ID compare sullo schermo TV.",
+  "videoReportArmed": "Torna ora a un canale. La segnalazione video viene inviata dopo 10 secondi di immagine.",
+  "videoReportTooSoon": "Una segnalazione video è stata inviata meno di un minuto fa. Riprova tra un attimo.",
+  "videoReportSent": "Segnalazione video inviata: {id}",
+  "videoReportsExplain": "Una segnalazione video invia dati sul dispositivo, sul video e sul suo decoder, griglie di colore approssimative dell'immagine e le ultime righe del registro dell'app; mai un'immagine di ciò che guardi. Ne viene inviata una dopo ogni aggiornamento dell'app, quando un canale è stato riprodotto per 10 secondi."
 }

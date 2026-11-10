@@ -8709,6 +8709,42 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Error reporting isn\'t part of this build of Nightingale TV, so nothing is ever sent.'**
   String get reportsNotInBuild;
+
+  /// No description provided for @sendAVideoReport.
+  ///
+  /// In en, this message translates to:
+  /// **'Send a video report'**
+  String get sendAVideoReport;
+
+  /// No description provided for @videoReportHelp.
+  ///
+  /// In en, this message translates to:
+  /// **'If the picture looks wrong, press this, then go back to a channel. After 10 seconds of picture, the report is sent and its ID shows on the TV screen.'**
+  String get videoReportHelp;
+
+  /// No description provided for @videoReportArmed.
+  ///
+  /// In en, this message translates to:
+  /// **'Go back to a channel now. The video report is sent after 10 seconds of its picture.'**
+  String get videoReportArmed;
+
+  /// No description provided for @videoReportTooSoon.
+  ///
+  /// In en, this message translates to:
+  /// **'A video report was sent less than a minute ago. Try again in a moment.'**
+  String get videoReportTooSoon;
+
+  /// No description provided for @videoReportSent.
+  ///
+  /// In en, this message translates to:
+  /// **'Video report sent: {id}'**
+  String videoReportSent(String id);
+
+  /// No description provided for @videoReportsExplain.
+  ///
+  /// In en, this message translates to:
+  /// **'A video report sends facts about the device, the video and its decoder, coarse colour grids of the picture and the app\'s own recent log lines; never an image of what you watch. One is sent once after each app update, when a channel has played for 10 seconds.'**
+  String get videoReportsExplain;
 }
 
 class _AppLocalizationsDelegate

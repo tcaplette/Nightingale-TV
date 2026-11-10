@@ -31,6 +31,7 @@ import 'playback/tuner.dart';
 import 'profiles/household.dart';
 import 'remote/remote_control.dart';
 import 'reporting/error_reports.dart';
+import 'reporting/video_report.dart';
 import 'reporting/household_names.dart';
 import 'reporting/report_breadcrumbs.dart';
 import 'server/server_log.dart';
@@ -88,7 +89,15 @@ Future<void> main(List<String> args) async {
   // switch is on (error-reporting); not awaited, so the first picture never
   // waits for it. The household's names are kept out of every report.
   HouseholdNames(household);
-  unawaited(ErrorReports.startApp(household.root).then((_) => ErrorReports.forceErrorForChecks()));
+  unawaited(ErrorReports.startApp(household.root).then((_) async {
+    await ErrorReports.forceErrorForChecks();
+    // Video reports (Android): the debug fault, and this version's
+    // automatic report armed.
+    if (PlatformInfo.isAndroid) {
+      await VideoFault.load(VideoReports.instance.platform);
+      await VideoReports.instance.load(household.root);
+    }
+  }));
   // Automatic follows the device's languages while the app runs.
   WidgetsBinding.instance.addObserver(household.language);
   await DeviceEffects.instance.load(household.root);

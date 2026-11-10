@@ -12,6 +12,7 @@ import '../platform/platform_info.dart';
 import 'report_policy.dart';
 import 'report_scrubber.dart';
 import 'report_switch.dart';
+import 'video_report.dart';
 
 /// Error reports to the Nightingale TV GlitchTip project (error-reporting).
 ///
@@ -100,6 +101,8 @@ abstract final class ErrorReports {
   /// once and discards reports still queued; on starts it again.
   static Future<void> setOn(bool on) async {
     // Reporting stops (or starts) at once; the switch is saved meanwhile.
+    // Off also disarms an armed video report (video-report).
+    if (!on) VideoReports.instance.disarm();
     final saving = ReportSwitch.instance.setOn(on);
     if (available) {
       if (on) {
@@ -214,7 +217,11 @@ abstract final class ErrorReports {
     }
     final tags = event.tags ??= {};
     tags.putIfAbsent('area', () => 'uncaught');
-    final why = limiter.admit(ReportPolicy.fingerprint(event), test: tags['area'] == 'test');
+    // Video reports have limits of their own (video-report D10) and never
+    // use up the errors' budget.
+    final why = tags['area'] == 'video_report'
+        ? null
+        : limiter.admit(ReportPolicy.fingerprint(event), test: tags['area'] == 'test');
     if (why != null) {
       _leftOut('${thrown?.runtimeType ?? 'message'} ($why)', tags['area']);
       return null;

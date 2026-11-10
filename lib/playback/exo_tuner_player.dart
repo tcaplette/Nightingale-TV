@@ -1,10 +1,13 @@
 import 'dart:async';
 import 'dart:math';
+import 'dart:ui' as ui;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 
+import '../reporting/video_report.dart';
 import 'playback_diagnostics.dart';
 import 'caption_size.dart';
 import 'caption_style.dart';
@@ -35,6 +38,31 @@ class ExoTunerPlayer implements TunerPlayer {
 
   /// The subtitles on screen now (captions on).
   final cues = ValueNotifier<ExoCues>(ExoCues.none);
+
+  /// The video's places on screen, newest last (video-report D4).
+  final _areas = <BuildContext>[];
+
+  /// Where the video shows on screen, for a video report: the part of the
+  /// screen it covers and the part of the texture shown there; null when
+  /// it isn't on screen.
+  TextureView? textureView() {
+    for (final context in _areas.reversed) {
+      final fitted = context.findRenderObject();
+      if (fitted is! RenderFittedBox || !fitted.attached || !fitted.hasSize) continue;
+      final texture = fitted.child;
+      if (texture is! RenderBox || !texture.hasSize || texture.size.isEmpty) continue;
+      final clip = MatrixUtils.transformRect(fitted.getTransformTo(null), Offset.zero & fitted.size);
+      final full = MatrixUtils.transformRect(texture.getTransformTo(null), Offset.zero & texture.size);
+      final visible = full.intersect(clip).intersect(Offset.zero & MediaQuery.sizeOf(context));
+      if (visible.width <= 0 || visible.height <= 0) continue;
+      return TextureView(
+        visible,
+        Rect.fromLTRB((visible.left - full.left) / full.width, (visible.top - full.top) / full.height,
+            (visible.right - full.left) / full.width, (visible.bottom - full.top) / full.height),
+      );
+    }
+    return null;
+  }
 
   final _playing = StreamController<bool>.broadcast();
   final _buffering = StreamController<bool>.broadcast();
@@ -471,10 +499,13 @@ class _ExoVideo extends StatelessWidget {
                         : Stack(
                             fit: StackFit.expand,
                             children: [
-                              FittedBox(
-                                fit: fit,
-                                clipBehavior: Clip.hardEdge,
-                                child: SizedBox.fromSize(size: size, child: Texture(textureId: id)),
+                              _VideoArea(
+                                player,
+                                child: FittedBox(
+                                  fit: fit,
+                                  clipBehavior: Clip.hardEdge,
+                                  child: SizedBox.fromSize(size: size, child: _FaultyTexture(id)),
+                                ),
                               ),
                               FittedBox(child: SizedBox.fromSize(size: size, child: ExoImageCues(player.cues, player.captionSize, size))),
                             ],
@@ -486,6 +517,93 @@ class _ExoVideo extends StatelessWidget {
       ),
     );
   }
+}
+
+/// Notes where the video is on screen, for a video report.
+class _VideoArea extends StatefulWidget {
+  const _VideoArea(this.player, {required this.child});
+
+  final ExoTunerPlayer player;
+  final Widget child;
+
+  @override
+  State<_VideoArea> createState() => _VideoAreaState();
+}
+
+class _VideoAreaState extends State<_VideoArea> {
+  @override
+  void initState() {
+    super.initState();
+    widget.player._areas.add(context);
+  }
+
+  @override
+  void dispose() {
+    widget.player._areas.remove(context);
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => widget.child;
+}
+
+/// The texture; with the debug fault `smear-screen` (video-report D13), as
+/// the Shield photo shows it: blurred, under a four-corner colour wash.
+class _FaultyTexture extends StatelessWidget {
+  const _FaultyTexture(this.id);
+
+  final int id;
+
+  @override
+  Widget build(BuildContext context) {
+    return ValueListenableBuilder<VideoFault>(
+      valueListenable: VideoFault.current,
+      builder: (context, fault, _) {
+        final texture = Texture(textureId: id);
+        if (fault != VideoFault.smearScreen) return texture;
+        return Stack(
+          fit: StackFit.expand,
+          children: [
+            ImageFiltered(
+              imageFilter: ui.ImageFilter.blur(sigmaX: 24, sigmaY: 24, tileMode: TileMode.clamp),
+              child: ColorFiltered(
+                // Grey: the wash takes the colour's place.
+                colorFilter: const ColorFilter.matrix([
+                  0.3, 0.59, 0.11, 0, 0, //
+                  0.3, 0.59, 0.11, 0, 0, //
+                  0.3, 0.59, 0.11, 0, 0, //
+                  0, 0, 0, 1, 0,
+                ]),
+                child: texture,
+              ),
+            ),
+            const IgnorePointer(child: CustomPaint(painter: _WashPainter())),
+          ],
+        );
+      },
+    );
+  }
+}
+
+class _WashPainter extends CustomPainter {
+  const _WashPainter();
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final w = size.width, h = size.height;
+    const tl = Color(0xFF2850E6), tr = Color(0xFFE63232), bl = Color(0xFF32D246), br = Color(0xFFEBDC28);
+    canvas.drawVertices(
+      ui.Vertices(VertexMode.triangles, [Offset.zero, Offset(w, 0), Offset(0, h), Offset(w, 0), Offset(w, h), Offset(0, h)],
+          colors: [tl, tr, bl, tr, br, bl]),
+      BlendMode.modulate,
+      Paint()
+        ..color = const Color(0x99FFFFFF)
+        ..blendMode = BlendMode.overlay,
+    );
+  }
+
+  @override
+  bool shouldRepaint(_WashPainter oldDelegate) => false;
 }
 
 /// Where image cues go at [factor] of their authored size, in the picture

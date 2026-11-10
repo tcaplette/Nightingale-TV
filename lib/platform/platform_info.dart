@@ -96,7 +96,7 @@ abstract final class PlatformInfo {
   @visibleForTesting
   static set debugAndroidSdk(int? value) => _androidSdk = value;
 
-  /// The renderer Android asked for at start-up ("impeller opengles
+  /// The renderer Android asked for at start-up ("skia opengles
   /// (nvidia)", or "default"), for the diagnostics; null elsewhere.
   static String? get renderer => _renderer;
   static String? _renderer;

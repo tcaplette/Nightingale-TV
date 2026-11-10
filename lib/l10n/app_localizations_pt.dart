@@ -5310,4 +5310,28 @@ class AppLocalizationsPt extends AppLocalizations {
   @override
   String get reportsNotInBuild =>
       'Relatórios de erros não fazem parte desta versão do Nightingale TV, então nada é enviado.';
+
+  @override
+  String get sendAVideoReport => 'Enviar um relatório de vídeo';
+
+  @override
+  String get videoReportHelp =>
+      'Se a imagem parecer errada, pressione aqui e volte a um canal. Após 10 segundos de imagem, o relatório é enviado e o ID dele aparece na tela da TV.';
+
+  @override
+  String get videoReportArmed =>
+      'Volte agora a um canal. O relatório de vídeo é enviado após 10 segundos de imagem.';
+
+  @override
+  String get videoReportTooSoon =>
+      'Um relatório de vídeo foi enviado há menos de um minuto. Tente de novo em instantes.';
+
+  @override
+  String videoReportSent(String id) {
+    return 'Relatório de vídeo enviado: $id';
+  }
+
+  @override
+  String get videoReportsExplain =>
+      'Um relatório de vídeo envia dados do dispositivo, do vídeo e do decodificador, grades de cores aproximadas da imagem e as últimas linhas de registro do app; nunca uma imagem do que você assiste. Um é enviado após cada atualização do app, quando um canal toca por 10 segundos.';
 }

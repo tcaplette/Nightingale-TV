@@ -4,7 +4,7 @@ Nightingale TV turns your Jellyfin, Emby or Plex library into always-on cable TV
 
 It's built for the couch, so everything works with a TV remote, an air mouse, a touchscreen, your phone, or a keyboard and mouse.
 
-![The program guide, with a programming block on channel 2](docs/screenshots/guide.png)
+![The program guide, with a live preview and Movie Night blocks labeled across their time slots](docs/screenshots/guide.png)
 
 ## Features
 
@@ -34,6 +34,8 @@ It's built for the couch, so everything works with a TV remote, an air mouse, a 
 - **Volume leveling.** Evens out the volume as you watch, so loud commercials and quiet shows come out about the same (off by default, in Menu → **Playback**). On Android, surround audio is decoded on the device while it's on, instead of passed through to a receiver.
 - **Channel logo in the corner.** A translucent station logo sits in the bottom-right corner of the picture, like a network's. Show it **Always**, **Now and then** (for 20 seconds when a show starts or comes back from a break, and at each quarter hour) or **Off**, for every channel or for one.
 - **Retro look.** Make a channel look like an old TV in Menu → **Retro look**: a **4:3 picture** (filled or fitted) with a black, charcoal, channel-colored or picture surround, a **CRT effect** (Soft tube, Living room, Arcade, Studio monitor, or your own mix of scanlines, glow, curvature and color), and an **overlay theme** for the banner and channel number (Standard, VCR, Cable box, Station ident). Set it for every channel and override it for any one. **Effects on this device** turns the CRT effects off on a slower TV without changing anything else. Exported streams are never changed.
+
+  **On NVIDIA Shield, curvature and glow aren't available** (Retro look shows them as "Not available on this device"). The Shield's graphics driver shows video with the wrong colours under Flutter's newer renderer (Impeller), so on NVIDIA devices the app draws with the older renderer (Skia) instead. Curvature and glow are a GPU shader filter that only Impeller can run. Scanlines, mask, vignette and color all work on the Shield.
 - **Quick channel changes.** The app keeps its connections to your server ready, remembers how each file plays, and loads the next part of a channel before it's due, so channels come up fast and breaks play in and out with no gap.
 - **Always direct play.** Nightingale TV plays your original files and never asks your server to transcode, unless you turn on **Transcode only if needed**. Then pick a **maximum bitrate** (40 Mbps · 4K down to 4 Mbps · 720p) for Wi-Fi or a remote connection, and your server converts only what's above it. *Original*, the default, never converts because of bitrate.
 
@@ -63,9 +65,13 @@ Make TV feel like TV again, with ads between and during shows. Being experimenta
 - **Live TV export (desktop).** Your channels play in Jellyfin Live TV, Plex, Emby or any IPTV app on your home network, with the same schedule, breaks and ads as this TV. Each profile you export shows up as its own **HDHomeRun tuner**, with an **M3U playlist** and a three-day **XMLTV guide**. See [Live TV export](#live-tv-export).
 - **Nightingale TV server (Docker).** Run your channels on an always-on machine such as a NAS instead of a desktop that has to stay open, and set everything up from a browser in its **web admin**: profiles, channels, blocks, commercials, Live TV sources, export, backups and user accounts. See [Running it as a server](#running-it-as-a-server).
 
-| Who's watching? | Phone remote | Programming block editor |
+| Watching, with captions and pause and rewind | Retro look: Living room CRT and VCR overlay | Menu |
 | --- | --- | --- |
-| ![Profile picker](docs/screenshots/profiles.png) | ![Phone remote](docs/screenshots/phone-remote.png) | ![Programming block editor](docs/screenshots/programming-block.png) |
+| ![Watching a channel with captions on and the pause and rewind bar](docs/screenshots/watching.jpg) | ![A 4:3 channel with the Living room CRT effect and the VCR overlay theme](docs/screenshots/retro-look.jpg) | ![The menu](docs/screenshots/menu.png) |
+
+| Sleep timer | Who's watching? | Programming block editor | Phone remote |
+| --- | --- | --- | --- |
+| ![Sleep timer](docs/screenshots/sleep-timer.png) | ![Profile picker with a PIN-locked and a kid profile](docs/screenshots/profiles.png) | ![Programming block editor](docs/screenshots/programming-block.png) | ![Phone remote](docs/screenshots/phone-remote.png) |
 
 ## Install
 

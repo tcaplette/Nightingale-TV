@@ -7,7 +7,9 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:nightingale_tv/data/app_storage.dart';
 import 'package:nightingale_tv/l10n/tr.dart';
 import 'package:nightingale_tv/reporting/error_reports.dart';
+import 'package:nightingale_tv/platform/platform_info.dart';
 import 'package:nightingale_tv/reporting/report_switch.dart';
+import 'package:nightingale_tv/reporting/video_report.dart';
 import 'package:nightingale_tv/theme/tv_theme.dart';
 import 'package:nightingale_tv/ui/error_reports_screen.dart';
 import 'package:nightingale_tv/ui/widgets/tv_focus.dart';
@@ -35,7 +37,17 @@ void main() {
     ErrorReports.debugInstallHandlers = false;
   }
 
-  Future<void> show(WidgetTester tester, {bool dsn = true}) async {
+  Future<void> show(WidgetTester tester, {bool dsn = true, bool android = false}) async {
+    if (android) {
+      PlatformInfo.debugOverride = TargetPlatform.android;
+      // The Dart SDK alone: no native plugin in a test.
+      PlatformInfo.debugAndroidSdk = 24;
+      addTearDown(() {
+        PlatformInfo.debugOverride = null;
+        PlatformInfo.debugAndroidSdk = null;
+        VideoReports.instance.debugReset();
+      });
+    }
     tester.view.physicalSize = const Size(1920, 1080);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.reset);
@@ -157,5 +169,62 @@ void main() {
     await tester.tap(find.text(tr.sendATestReport));
     await settle(tester);
     expect(sent.envelopes, isEmpty);
+  });
+
+  group('Android: the video report button', () {
+    testWidgets('D-pad: switch, test button, video report button and back; Select arms a report', (tester) async {
+      await show(tester, android: true);
+      expect(find.text(tr.videoReportsExplain), findsOneWidget);
+      expect(find.text(tr.videoReportHelp), findsOneWidget);
+      expect(focused(), tr.sendErrorReportsFrom);
+      await press(tester, LogicalKeyboardKey.arrowDown);
+      expect(focused(), tr.sendATestReport);
+      await press(tester, LogicalKeyboardKey.arrowDown);
+      expect(focused(), tr.sendAVideoReport);
+      await tester.sendKeyEvent(LogicalKeyboardKey.select);
+      await settle(tester);
+      expect(VideoReports.instance.armed, VideoTrigger.button);
+      expect(find.text(tr.videoReportArmed), findsOneWidget, reason: 'says to go back to a channel');
+      expect(sent.envelopes, isEmpty, reason: 'nothing is sent from this page');
+      await press(tester, LogicalKeyboardKey.arrowUp);
+      await press(tester, LogicalKeyboardKey.arrowUp);
+      expect(focused(), tr.sendErrorReportsFrom);
+      await press(tester, LogicalKeyboardKey.arrowUp);
+      expect(focused(), 'back');
+    });
+
+    testWidgets('a mouse click arms it as Select does', (tester) async {
+      await show(tester, android: true);
+      await tester.tap(find.text(tr.sendAVideoReport), kind: PointerDeviceKind.mouse);
+      await settle(tester);
+      expect(VideoReports.instance.armed, VideoTrigger.button);
+      expect(find.text(tr.videoReportArmed), findsOneWidget);
+    });
+
+    testWidgets('a tap arms it as Select does; the switch off disarms it', (tester) async {
+      await show(tester, android: true);
+      await tester.tap(find.text(tr.sendAVideoReport), kind: PointerDeviceKind.touch);
+      await settle(tester);
+      expect(VideoReports.instance.armed, VideoTrigger.button);
+      await tester.tap(find.text(tr.sendErrorReportsFrom), kind: PointerDeviceKind.touch);
+      await settle(tester);
+      expect(VideoReports.instance.armed, isNull);
+      expect(tester.widget<TvButton>(find.widgetWithText(TvButton, tr.sendAVideoReport)).onPressed, isNull);
+      expect(find.text(tr.videoReportArmed), findsNothing);
+    });
+
+    testWidgets('a build without a DSN: the button cannot be pressed', (tester) async {
+      await show(tester, dsn: false, android: true);
+      expect(find.text(tr.reportsNotInBuild), findsOneWidget);
+      expect(tester.widget<TvButton>(find.widgetWithText(TvButton, tr.sendAVideoReport)).onPressed, isNull);
+      await tester.tap(find.text(tr.sendAVideoReport));
+      await settle(tester);
+      expect(VideoReports.instance.armed, isNull);
+    });
+
+    testWidgets('Linux shows no video report button', (tester) async {
+      await show(tester);
+      expect(find.text(tr.sendAVideoReport), findsNothing);
+    });
   });
 }

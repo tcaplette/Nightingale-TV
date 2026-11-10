@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 
 import '../l10n/tr.dart';
+import '../platform/platform_info.dart';
 import '../reporting/error_reports.dart';
 import '../reporting/report_switch.dart';
+import '../reporting/video_report.dart';
 import '../theme/tv_theme.dart';
 import 'widgets/screen_layout.dart';
 import 'widgets/tv_focus.dart';
@@ -23,6 +25,11 @@ class _ErrorReportsScreenState extends State<ErrorReportsScreen> {
 
   /// The last test's outcome: its ID, or null when it couldn't be sent.
   ({String? id})? _test;
+
+  /// What the video report button last did (video-report D11).
+  ButtonResult? _video;
+
+  void _armVideoReport() => setState(() => _video = VideoReports.instance.armButton());
 
   Future<void> _sendTest() async {
     if (_sending) return;
@@ -51,7 +58,7 @@ class _ErrorReportsScreenState extends State<ErrorReportsScreen> {
       hints: tr.moveOkSelectEscBack,
       onBack: () => Navigator.of(context).pop(),
       child: ListenableBuilder(
-        listenable: reports,
+        listenable: Listenable.merge([reports, VideoReports.instance]),
         builder: (context, _) {
           final on = available && reports.on;
           final test = _test;
@@ -96,6 +103,27 @@ class _ErrorReportsScreenState extends State<ErrorReportsScreen> {
                 if (test?.id != null || (test == null && available && reports.shortLastId != null)) ...[
                   const SizedBox(height: 8),
                   help(tr.quoteReportId),
+                ],
+                // Video reports are Android's (video-report).
+                if (PlatformInfo.isAndroid) ...[
+                  const SizedBox(height: 40),
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: TvButton(
+                      label: tr.sendAVideoReport,
+                      icon: Icons.videocam,
+                      onPressed: on ? _armVideoReport : null,
+                    ),
+                  ),
+                  const SizedBox(height: 18),
+                  if (on && (VideoReports.instance.armed == VideoTrigger.button || _video == ButtonResult.alreadyArmed))
+                    Text(tr.videoReportArmed, style: g.body(26, color: g.text))
+                  else if (on && _video == ButtonResult.tooSoon)
+                    Text(tr.videoReportTooSoon, style: g.body(26, color: g.nowLine))
+                  else
+                    help(tr.videoReportHelp),
+                  const SizedBox(height: 8),
+                  help(tr.videoReportsExplain),
                 ],
               ],
             ),

@@ -5324,4 +5324,28 @@ class AppLocalizationsIt extends AppLocalizations {
   @override
   String get reportsNotInBuild =>
       'Le segnalazioni di errori non fanno parte di questa build di Nightingale TV, quindi non viene mai inviato nulla.';
+
+  @override
+  String get sendAVideoReport => 'Invia una segnalazione video';
+
+  @override
+  String get videoReportHelp =>
+      'Se l\'immagine sembra sbagliata, premi qui e torna a un canale. Dopo 10 secondi di immagine, la segnalazione viene inviata e il suo ID compare sullo schermo TV.';
+
+  @override
+  String get videoReportArmed =>
+      'Torna ora a un canale. La segnalazione video viene inviata dopo 10 secondi di immagine.';
+
+  @override
+  String get videoReportTooSoon =>
+      'Una segnalazione video è stata inviata meno di un minuto fa. Riprova tra un attimo.';
+
+  @override
+  String videoReportSent(String id) {
+    return 'Segnalazione video inviata: $id';
+  }
+
+  @override
+  String get videoReportsExplain =>
+      'Una segnalazione video invia dati sul dispositivo, sul video e sul suo decoder, griglie di colore approssimative dell\'immagine e le ultime righe del registro dell\'app; mai un\'immagine di ciò che guardi. Ne viene inviata una dopo ogni aggiornamento dell\'app, quando un canale è stato riprodotto per 10 secondi.';
 }

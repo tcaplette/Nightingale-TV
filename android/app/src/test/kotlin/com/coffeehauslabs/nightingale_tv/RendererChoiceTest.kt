@@ -7,7 +7,7 @@ import org.junit.Test
 
 class RendererChoiceTest {
     @Test
-    fun nvidiaDevicesUseOpenGles() {
+    fun nvidiaDevicesUseSkia() {
         assertEquals("nvidia", RendererChoice.reason("NVIDIA", debuggable = false, overrideAsked = false))
         assertEquals("nvidia", RendererChoice.reason("nvidia", debuggable = false, overrideAsked = false))
         assertEquals("nvidia", RendererChoice.reason("Nvidia", debuggable = true, overrideAsked = true))
@@ -33,16 +33,16 @@ class RendererChoiceTest {
 
     @Test
     fun engineArguments() {
-        assertEquals("--impeller-backend=opengles", RendererChoice.OPENGLES_ARGUMENT)
-        assertArrayEquals(arrayOf("--impeller-backend=opengles"), RendererChoice.engineArguments("nvidia"))
-        assertArrayEquals(arrayOf("--impeller-backend=opengles"), RendererChoice.engineArguments("debug override"))
+        assertEquals("--enable-impeller=false", RendererChoice.SKIA_ARGUMENT)
+        assertArrayEquals(arrayOf("--enable-impeller=false"), RendererChoice.engineArguments("nvidia"))
+        assertArrayEquals(arrayOf("--enable-impeller=false"), RendererChoice.engineArguments("debug override"))
         assertArrayEquals(emptyArray<String>(), RendererChoice.engineArguments(null))
     }
 
     @Test
     fun diagnosticsWording() {
-        assertEquals("impeller opengles (nvidia)", RendererChoice.describe("nvidia"))
-        assertEquals("impeller opengles (debug override)", RendererChoice.describe("debug override"))
+        assertEquals("skia opengles (nvidia)", RendererChoice.describe("nvidia"))
+        assertEquals("skia opengles (debug override)", RendererChoice.describe("debug override"))
         assertEquals("default", RendererChoice.describe(null))
         assertEquals("ntv_treat_as_shield", RendererChoice.DEBUG_EXTRA)
     }

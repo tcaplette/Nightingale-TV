@@ -990,6 +990,8 @@ class Tuner extends ChangeNotifier {
       }
     }
 
+    playMethod = _method(template, directStream);
+    serverKind = client.kind.name;
     if (template != null) {
       if (!await _openTranscode(generation, current, item, template, startAt, client,
           capKbps: cap, directStream: directStream)) {
@@ -1136,6 +1138,9 @@ class Tuner extends ChangeNotifier {
   /// open, but nothing opens, and the status stays `playing`.
   void _handOver(_Preload next, {required String trigger}) {
     _preloaded = null;
+    // Only static streams are preloaded.
+    playMethod = 'direct';
+    if (next.pick?.client case final c?) serverKind = c.kind.name;
     final ch = channel;
     final schedule = this.schedule;
     if (ch == null || app.client == null || schedule == null || next.generation != _generation) return;
@@ -1592,6 +1597,12 @@ class Tuner extends ChangeNotifier {
   static bool _isProgramPart(ScheduledProgram s) => !s.isBreak && s.item != null && !s.isCommercial;
 
   /// A decision as the diagnostics name it.
+  /// How the item on screen plays (`direct`, `direct-stream`, `transcode`
+  /// or `live-…`) and from which kind of server, for a video report
+  /// (video-report D8).
+  String? playMethod;
+  String? serverKind;
+
   static String _method(Uri? template, bool directStream) =>
       template == null ? 'direct' : (directStream ? 'direct-stream' : 'transcode');
 
@@ -2380,6 +2391,8 @@ class Tuner extends ChangeNotifier {
       return;
     }
     session.stream = stream;
+    playMethod = 'live-${stream.method.json}';
+    serverKind = source.kind.name;
     _diagnostics?.opened('live-${source.kind.name}-${stream.method.json}', Uri.parse(scrubUrl(stream.uri.toString())));
     _expectFirstFrame(Duration.zero);
     try {

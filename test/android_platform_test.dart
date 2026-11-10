@@ -59,14 +59,14 @@ void main() {
       messenger.setMockMethodCallHandler(channel, (call) async => switch (call.method) {
             'deviceName' => 'SHIELD Android TV',
             'isTelevision' => true,
-            'renderer' => 'impeller opengles (nvidia)',
+            'renderer' => 'skia opengles (nvidia)',
             _ => fail('unexpected ${call.method}'),
           });
       await PlatformInfo.init();
       expect(PlatformInfo.deviceName, 'SHIELD Android TV');
       expect(PlatformInfo.deviceName, isNot('localhost'));
       expect(PlatformInfo.isTelevision, isTrue);
-      expect(PlatformInfo.renderer, 'impeller opengles (nvidia)');
+      expect(PlatformInfo.renderer, 'skia opengles (nvidia)');
     });
 
     test('a phone is not a TV, and neither is a PC', () async {

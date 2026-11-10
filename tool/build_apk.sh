@@ -47,7 +47,8 @@ fi
 VERSION="$(sed -n 's/^version: *//p' pubspec.yaml)"
 PLATFORMS=android-arm,android-arm64,android-x64
 APKS=build/app/outputs/flutter-apk
-DIST="$ROOT/dist"
+# NTV_DIST puts the APKs in another folder, like dist/1.2.4.
+DIST="${NTV_DIST:-$ROOT/dist}"
 mkdir -p "$DIST"
 
 SDK="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-$HOME/Android/Sdk}}"

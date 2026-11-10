@@ -117,6 +117,10 @@ class CrtShader {
 
   ui.FragmentProgram? _program;
   bool _flip = false;
+
+  /// Whether the probe found the shader's picture upside down here (for a
+  /// video report).
+  bool get flip => _flip;
   Future<void>? _loading;
 
   /// Finds out, once.

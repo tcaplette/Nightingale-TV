@@ -12,7 +12,7 @@
 
 FROM ubuntu:24.04
 
-ARG NTV_VERSION=1.2.2
+ARG NTV_VERSION=1.2.3
 ARG NTV_RELEASES=https://github.com/tcaplette/Nightingale-TV/releases/download
 
 ENV DEBIAN_FRONTEND=noninteractive

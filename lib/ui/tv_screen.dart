@@ -18,7 +18,10 @@ import '../platform/platform_info.dart';
 import '../playback/device_effects.dart';
 import '../playback/playback_diagnostics.dart';
 import '../playback/sleep_timer.dart';
+import '../playback/exo_tuner_player.dart';
 import '../playback/tuner.dart';
+import '../reporting/video_report.dart';
+import 'widgets/crt_effects.dart';
 import '../theme/tv_theme.dart';
 import 'format.dart';
 import 'guide_view.dart';
@@ -102,6 +105,11 @@ class _TvScreenState extends State<TvScreen> {
   Tuner? _tuner;
   StreamSubscription<String>? _notices;
 
+  /// While a video report is armed: the picture's clock, once a second
+  /// (video-report D1), and the toast for a button report.
+  Timer? _reportTick;
+  StreamSubscription<String>? _reportsSent;
+
   /// The sleep timer; it woke the app while a settings screen was open, so
   /// the channel is tuned on the way back.
   SleepTimer? _sleep;
@@ -119,6 +127,80 @@ class _TvScreenState extends State<TvScreen> {
     DeviceEffects.instance.addListener(_effectsChanged);
     _effectsFellBack = DeviceEffects.instance.shaderTurnedOff;
     WidgetsBinding.instance.addPostFrameCallback((_) => _powerOn());
+    VideoReports.instance.addListener(_videoReportChanged);
+    _reportsSent = VideoReports.instance.sentNotices.listen((id) {
+      if (mounted) _showToast(tr.videoReportSent(id));
+    });
+    _videoReportChanged();
+  }
+
+  /// The clock runs only while a report is armed: nothing to cost an idle
+  /// TV otherwise (idle-power).
+  void _videoReportChanged() {
+    final armed = VideoReports.instance.armed != null;
+    if (armed && _reportTick == null) {
+      _reportTick = Timer.periodic(const Duration(seconds: 1), (_) => _checkVideoReport());
+    } else if (!armed) {
+      _reportTick?.cancel();
+      _reportTick = null;
+    }
+  }
+
+  /// The channel's picture is on screen (video-report D1): the TV screen is
+  /// the current page with no guide over it, a video segment plays on the
+  /// Android player with its picture, not paused or dimmed.
+  bool _pictureShowing() {
+    final tuner = _tuner;
+    if (tuner == null || !mounted) return false;
+    final media = tuner.media;
+    return pictureOnScreen(
+      current: ModalRoute.of(context)?.isCurrent ?? false,
+      guideOpen: _guideOpen,
+      portrait: ScreenLayout.of(context).isPortrait,
+      playing: tuner.status == TunerStatus.playing,
+      song: tuner.segment?.item?.kind == MediaKind.song,
+      paused: tuner.paused,
+      dimmed: _dimmed,
+      picture: media is ExoTunerPlayer &&
+          media.textureId.value != null &&
+          media.videoSize.value != null &&
+          media.playing,
+    );
+  }
+
+  void _checkVideoReport() {
+    if (!mounted) return;
+    if (!VideoReports.instance.tick(showing: _pictureShowing())) return;
+    final tuner = _tuner!;
+    final media = tuner.media as ExoTunerPlayer;
+    final app = AppScope.read(context);
+    final retro = app.retroFor(tuner.channel!);
+    final shader = CrtShader.instance;
+    final effects = effectiveCrt(retro.values,
+        switchOn: DeviceEffects.instance.on,
+        shaderAvailable: shader.available.value == true && !DeviceEffects.instance.shaderTurnedOff);
+    final effectsOn = crtColorMatrix(effects) != null ||
+        [effects.scanlines, effects.mask, effects.vignette, effects.curvature, effects.glow].any((l) => l != CrtLevel.off);
+    unawaited(VideoReports.instance.take(LivePicture(
+      playerId: media.textureId.value!,
+      textureRect: media.textureView(),
+      devicePixelRatio: MediaQuery.devicePixelRatioOf(context),
+      effectsOn: effectsOn,
+      retro: {
+        'shape': retro.shape.name,
+        'crt': retro.crt.name,
+        'values': retro.values.toJson(),
+        'effects_switch': DeviceEffects.instance.on,
+        'shader_tier': switch (shader.available.value) {
+          true => DeviceEffects.instance.shaderTurnedOff ? 'turned off' : 'ready',
+          false => 'unavailable',
+          null => 'not loaded',
+        },
+        'shader_flip': shader.flip,
+      },
+      playMethod: tuner.playMethod,
+      serverKind: tuner.serverKind,
+    )));
   }
 
   bool _effectsFellBack = false;
@@ -180,6 +262,9 @@ class _TvScreenState extends State<TvScreen> {
     _dimTimer?.cancel();
     _shiftTick?.cancel();
     _tuner?.removeListener(_tunerChanged);
+    VideoReports.instance.removeListener(_videoReportChanged);
+    _reportTick?.cancel();
+    unawaited(_reportsSent?.cancel());
     _sleep?.woke.removeListener(_woke);
     unawaited(_notices?.cancel());
     _focus.dispose();

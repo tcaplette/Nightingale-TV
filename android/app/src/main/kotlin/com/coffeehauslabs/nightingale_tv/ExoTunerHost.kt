@@ -157,6 +157,11 @@ class ExoTunerHost(
                     result.success(player.stats())
                     return
                 }
+                // The stream and decoder for a video report (video-report D8).
+                "videoReport" -> {
+                    result.success(player.videoReport())
+                    return
+                }
                 "dispose" -> {
                     players.remove(player.id)
                     player.dispose()
@@ -269,6 +274,13 @@ class ExoTunerHost(
         private var rebufferSince = 0L
         private var videoDecoder = "-"
         private var audioDecoder = "-"
+
+        /** For a video report (video-report D8): the video decoder's name,
+         *  its output format as it last reported it (every key, written on
+         *  the playback thread), and the last size ExoPlayer reported. */
+        @Volatile private var videoDecoderName: String? = null
+        @Volatile private var decoderOutput: Map<String, String>? = null
+        @Volatile private var lastVideoSize: Map<String, Any?>? = null
 
         /** The playlist holds the next segment after the item playing
          *  (segment-handover spec), and whether the player moved on to the
@@ -712,6 +724,21 @@ class ExoTunerHost(
             )
         }
 
+        /** The item on screen's stream and decoder (video-report D8). */
+        fun videoReport(): Map<String, Any?> {
+            val format = player.videoFormat
+            val name = videoDecoderName
+            return mapOf(
+                "input" to format?.let { describeFormat(it) },
+                "decoder" to name,
+                "decoder_hardware" to name?.let { DeviceCapabilities.isHardware(it) },
+                "decoder_output" to decoderOutput,
+                "decoder_caps" to if (name != null && format?.sampleMimeType != null) decoderCaps(name, format.sampleMimeType!!) else null,
+                "texture_size" to "${textureSize.first}x${textureSize.second}",
+                "video_size" to lastVideoSize,
+            )
+        }
+
         fun dispose() {
             disposed = true
             main.removeCallbacks(ticker)
@@ -840,6 +867,11 @@ class ExoTunerHost(
          *  (video-size-surface-swap). */
         override fun onVideoSizeChanged(videoSize: VideoSize) {
             if (videoSize.width <= 0 || videoSize.height <= 0) return
+            lastVideoSize = mapOf(
+                "width" to videoSize.width,
+                "height" to videoSize.height,
+                "pixel_ratio" to videoSize.pixelWidthHeightRatio.toDouble(),
+            )
             send(
                 mapOf(
                     "e" to "size",
@@ -900,6 +932,8 @@ class ExoTunerHost(
             eventTime: AnalyticsListener.EventTime, decoderName: String,
             initializedTimestampMs: Long, initializationDurationMs: Long,
         ) {
+            videoDecoderName = decoderName
+            decoderOutput = null
             videoDecoder = "$decoderName (${if (DeviceCapabilities.isHardware(decoderName)) "hardware" else "software"})"
             log("info exo: video decoder $videoDecoder in $initializationDurationMs ms")
         }
@@ -953,6 +987,10 @@ class ExoTunerHost(
          *  the renderer already has. */
         override fun note(line: String) {
             main.post { log(line) }
+        }
+
+        override fun outputFormat(format: android.media.MediaFormat?) {
+            decoderOutput = format?.let { mediaFormatEntries(it) }
         }
 
         override fun prepareSurface(width: Int, height: Int): Surface? {
@@ -1076,6 +1114,10 @@ private interface RenderHost {
     /** A diagnostics line. */
     fun note(line: String)
 
+    /** The video decoder's output format, as it reported it (video-report
+     *  D8); on the playback thread. */
+    fun outputFormat(format: android.media.MediaFormat?) {}
+
     fun prepareSurface(width: Int, height: Int): Surface?
 }
 
@@ -1131,6 +1173,11 @@ private class SdrVideoRenderer(
             positionUs, elapsedRealtimeUs, codec, buffer, bufferIndex, bufferFlags, sampleCount,
             bufferPresentationTimeUs, isDecodeOnlyBuffer, isLastBuffer, format,
         )
+    }
+
+    override fun onOutputFormatChanged(format: Format, mediaFormat: MediaFormat?) {
+        super.onOutputFormatChanged(format, mediaFormat)
+        sizer.outputFormat(mediaFormat)
     }
 
     /** A decoder reused across a change of resolution keeps its old output
@@ -1407,4 +1454,73 @@ private sealed class Subs {
             else -> Off
         }
     }
+}
+
+/** A stream's video format, for a video report (video-report D8). */
+@UnstableApi
+internal fun describeFormat(f: Format): Map<String, Any?> = mapOf(
+    "mime" to f.sampleMimeType,
+    "codecs" to f.codecs,
+    "width" to f.width,
+    "height" to f.height,
+    "frame_rate" to f.frameRate.toDouble(),
+    "pixel_ratio" to f.pixelWidthHeightRatio.toDouble(),
+    "color_space" to f.colorInfo?.colorSpace?.let { colorSpaceName(it) },
+    "color_range" to f.colorInfo?.colorRange?.let { if (it == C.COLOR_RANGE_FULL) "full" else if (it == C.COLOR_RANGE_LIMITED) "limited" else "$it" },
+    "color_transfer" to f.colorInfo?.colorTransfer?.let { colorTransferName(it) },
+    "bit_depth" to f.colorInfo?.lumaBitdepth?.takeIf { it != Format.NO_VALUE },
+    "hdr_static_info" to (f.colorInfo?.hdrStaticInfo != null),
+)
+
+private fun colorSpaceName(v: Int) = when (v) {
+    C.COLOR_SPACE_BT709 -> "bt709"
+    C.COLOR_SPACE_BT601 -> "bt601"
+    C.COLOR_SPACE_BT2020 -> "bt2020"
+    else -> "$v"
+}
+
+private fun colorTransferName(v: Int) = when (v) {
+    C.COLOR_TRANSFER_SDR -> "sdr"
+    C.COLOR_TRANSFER_ST2084 -> "pq"
+    C.COLOR_TRANSFER_HLG -> "hlg"
+    C.COLOR_TRANSFER_LINEAR -> "linear"
+    C.COLOR_TRANSFER_SRGB -> "srgb"
+    C.COLOR_TRANSFER_GAMMA_2_2 -> "gamma2.2"
+    else -> "$v"
+}
+
+/** Every key of a decoder's [MediaFormat], its value as a string. */
+internal fun mediaFormatEntries(format: MediaFormat): Map<String, String> {
+    if (Build.VERSION.SDK_INT < 29) return mapOf("format" to format.toString())
+    return format.keys.sorted().associateWith { key ->
+        try {
+            when (format.getValueTypeForKey(key)) {
+                MediaFormat.TYPE_INTEGER -> format.getInteger(key).toString()
+                MediaFormat.TYPE_LONG -> format.getLong(key).toString()
+                MediaFormat.TYPE_FLOAT -> format.getFloat(key).toString()
+                MediaFormat.TYPE_STRING -> format.getString(key) ?: ""
+                MediaFormat.TYPE_BYTE_BUFFER -> "<${format.getByteBuffer(key)?.remaining() ?: 0} bytes>"
+                else -> "?"
+            }
+        } catch (e: Exception) {
+            "?"
+        }
+    }
+}
+
+/** The colour formats and profile levels decoder [name] lists for [mime]. */
+internal fun decoderCaps(name: String, mime: String): Map<String, Any?> = try {
+    val info = android.media.MediaCodecList(android.media.MediaCodecList.ALL_CODECS).codecInfos.firstOrNull { it.name == name }
+    val caps = info?.getCapabilitiesForType(mime)
+    if (caps == null) {
+        mapOf("error" to "not listed")
+    } else {
+        mapOf(
+            "color_formats" to caps.colorFormats.map { "0x" + Integer.toHexString(it) },
+            "profile_levels" to caps.profileLevels.map { "${it.profile}/${it.level}" },
+            "max_instances" to caps.maxSupportedInstances,
+        )
+    }
+} catch (e: Exception) {
+    mapOf("error" to (e.message ?: e.toString()))
 }

@@ -60,6 +60,10 @@ class MainActivity : FlutterActivity() {
 
     private var players: ExoTunerHost? = null
 
+    /** The video report's self-test (video-report D5), with the engine's
+     *  texture registry. */
+    private var selfTest: VideoSelfTest? = null
+
     private val deviceImages = DeviceImages(this)
 
     private val backupFiles = BackupFiles(this)
@@ -189,7 +193,7 @@ class MainActivity : FlutterActivity() {
                             ""
                         }
                     )
-                    else -> result.notImplemented()
+                    else -> if (!videoReportCall(call, result)) result.notImplemented()
                 }
             }
         // Pictures on the device, for icons where there's no document picker.
@@ -205,10 +209,50 @@ class MainActivity : FlutterActivity() {
         // Full screen from the portrait watch screen (phones and tablets).
         fullScreen.channel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "nightingale_tv/orientation")
             .also { it.setMethodCallHandler(fullScreen) }
+        // The video report (lib/reporting/video_report.dart).
+        selfTest = VideoSelfTest(applicationContext, flutterEngine.renderer)
+        VideoReport.watchForBackend()
         // The players (lib/playback/exo_tuner_player.dart).
         val host = ExoTunerHost(applicationContext, flutterEngine.renderer, flutterEngine.dartExecutor.binaryMessenger)
         players = host
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "nightingale_tv/player").setMethodCallHandler(host)
+    }
+
+    /** The video report's methods on `nightingale_tv/platform` (video-report
+     *  D4, D5, D7, D9, D13); false when [call] isn't one. Anything that
+     *  blocks runs off the main thread. */
+    private fun videoReportCall(call: io.flutter.plugin.common.MethodCall, result: MethodChannel.Result): Boolean {
+        val test = selfTest ?: return false
+        fun card() = VideoSelfTest.cards[call.argument<String>("card")]
+            ?: throw IllegalArgumentException("no card ${call.argument<String>("card")}")
+        fun decoder() = call.argument<String>("decoder")!!
+        when (call.method) {
+            "videoFacts" -> test.background({ VideoReport.facts(this, RendererChoice.describe(rendererReason)) }) { result.success(it) }
+            "videoLogcat" -> test.background({ VideoReport.logcat() }) { result.success(it) }
+            "videoCapture" -> VideoReport.captureScreen(this) { result.success(it) }
+            "videoFault" -> result.success(VideoReport.fault(this))
+            "selfTestDecoder" -> test.background({ test.decoder(card()) }) { result.success(it) }
+            "selfTestCpu" -> test.background({ test.cpu(card(), decoder()) }) { result.success(it) }
+            "selfTestProbe" -> test.background({ test.probe(card(), decoder()) }) { result.success(it) }
+            "selfTestTexture" -> {
+                val gl = call.argument<Boolean>("gl") == true
+                if (gl) {
+                    // Only where the engine runs Impeller on OpenGL ES.
+                    test.background({ VideoSelfTest.surfaceTextureSkip(VideoReport.backendInUse()) }) { skip ->
+                        if (skip != null) result.success(mapOf("skipped" to skip))
+                        else test.texture(card(), decoder(), true) { result.success(it) }
+                    }
+                } else {
+                    test.texture(card(), decoder(), false) { result.success(it) }
+                }
+            }
+            "selfTestRelease" -> {
+                test.release(call.argument<Number>("id")!!.toLong())
+                result.success(null)
+            }
+            else -> return false
+        }
+        return true
     }
 
     /** The name Jellyfin shows: the one set in Android's settings, or the
