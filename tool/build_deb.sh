@@ -88,7 +88,7 @@ cat > "$STAGE/usr/share/applications/$APP_ID.desktop" <<DESKTOP_ENTRY
 [Desktop Entry]
 Type=Application
 Name=Nightingale TV
-Comment=Always-on cable TV channels from your Jellyfin library
+Comment=Always-on cable TV channels from your Jellyfin, Emby or Plex library
 Exec=/opt/nightingale-tv/nightingale_tv
 Icon=$APP_ID
 Terminal=false
@@ -113,7 +113,7 @@ Provides: retro-tv
 Section: video
 Priority: optional
 Installed-Size: $(du -sk "$STAGE/opt" | cut -f1)
-Description: Always-on cable TV channels from your Jellyfin library
+Description: Always-on cable TV channels from your Jellyfin, Emby or Plex library
  Turns a Jellyfin library into always-on cable TV channels with a program
  guide, programming blocks, commercial breaks, profiles and a phone remote.
 CONTROL

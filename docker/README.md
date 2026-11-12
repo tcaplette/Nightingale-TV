@@ -37,6 +37,8 @@ Everything else is set up in the web admin at `http://<server>:8484`, from a com
 
 Everything is kept in `/config`: the household in `/config/com.coffeehauslabs.nightingale_tv/`, with the user accounts in `nightingale.db` there, and caches in `/config/cache/`. Ports: 8484 (web admin), 5004 and up (one per exported profile).
 
+**Networking:** `docker-compose.yml` uses host networking. If that clashes with other ports on the machine, use [`docker-compose.bridge.yml`](docker-compose.bridge.yml) and set `NTV_LAN_HOST` to the server's address.
+
 ## Users
 
 Each person signs in to the web admin with their own account:
@@ -49,14 +51,6 @@ Anyone can change their own password (Change password). Five wrong passwords in 
 **Forgotten admin password:** add `NTV_RESET_PASSWORD: "1"` to the compose file and restart. Every session ends and a new setup link is logged; open it, pick the admin account and set its new password. Other accounts and their passwords stay as they are. Remove the variable again afterwards.
 
 Backups made here hold the account names, roles and profiles, never passwords. Restored on a new server, each account that isn't there yet is added and shows **Needs a password** until an admin sets one; the admin who restored stays an admin. The TV app ignores the accounts.
-
-## Upgrading from the first server image
-
-The first image had one admin password. On the first start of a newer image it becomes the admin account **admin**, with the same password, and `admin.json` is renamed `admin.json.migrated`. Sign in as `admin` (browsers need to sign in once more).
-
-To go back to the first image, rename `admin.json.migrated` back to `admin.json` in `/config/com.coffeehauslabs.nightingale_tv/` before starting it. It ignores `nightingale.db`; nothing else changed.
-
-**Networking:** `docker-compose.yml` uses host networking. If that clashes with other ports on the machine, use [`docker-compose.bridge.yml`](docker-compose.bridge.yml) and set `NTV_LAN_HOST` to the server's address.
 
 ## Updating
 
