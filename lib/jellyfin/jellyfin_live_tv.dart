@@ -48,20 +48,22 @@ class JellyfinLiveTv implements LiveTv {
       'EnableUserData': 'false',
       'Fields': 'ChannelInfo',
     });
-    final channels = [
-      for (final c in (page['Items'] as List? ?? const []).cast<Map<String, Object?>>())
-        if (c['Id'] case final String id)
-          LiveChannelInfo(
-            key: id,
-            name: (c['Name'] as String?)?.trim() ?? 'Channel',
-            number: (c['Number'] ?? c['ChannelNumber']) as String?,
-            logo: switch (c['ImageTags']) {
-              {'Primary': final String tag} => client.imageUri(id, ImageKind.primary, maxHeight: 160, tag: tag).toString(),
-              _ => null,
-            },
-            guideId: id,
-          ),
-    ];
+    final items = (page['Items'] as List? ?? const []).whereType<Map<String, Object?>>();
+    final channels = readChannelEntries('jellyfin', items, (c) {
+      if (c['Id'] case final String id) {
+        return LiveChannelInfo(
+          key: id,
+          name: (c['Name'] as String?)?.trim() ?? 'Channel',
+          number: (c['Number'] ?? c['ChannelNumber']) as String?,
+          logo: switch (c['ImageTags']) {
+            {'Primary': final String tag} => client.imageUri(id, ImageKind.primary, maxHeight: 160, tag: tag).toString(),
+            _ => null,
+          },
+          guideId: id,
+        );
+      }
+      return null;
+    });
     return channels..sort(compareSourceOrder);
   }
 

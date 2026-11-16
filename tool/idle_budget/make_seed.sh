@@ -14,7 +14,7 @@ set -uo pipefail
 cd "$(dirname "$0")/../.."
 . tool/idle_budget/lib.sh
 
-BUNDLE="${1:-build/linux/x64/release/bundle}"
+BUNDLE="${1:-build/linux/x64/free/release/bundle}"
 SEED=tool/idle_budget/seed
 MODULES="${PLAYWRIGHT_MODULES:?set PLAYWRIGHT_MODULES to a folder with node_modules/playwright}"
 WORK=$(mktemp -d)

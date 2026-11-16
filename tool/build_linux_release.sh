@@ -10,6 +10,7 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 tool/check_version.sh
+source tool/debug_files.sh
 
 # Official builds report errors to the Nightingale TV GlitchTip project
 # (error-reporting D2). The DSN lives in the git-ignored error_reporting.env;
@@ -19,18 +20,31 @@ DEFINES=()
 
 VERSION="${1:-$(sed -n 's/^version: *\([^+]*\).*/\1/p' pubspec.yaml)}"
 FILE="nightingale-tv-linux-x64-${VERSION}.tar.gz"
+# NTV_DIST puts the archive in another folder, like dist/1.2.4.
+DIST="${NTV_DIST:-dist}"
+mkdir -p "$DIST"
+DIST="$(cd "$DIST" && pwd)"
+# The debug file of the Dart code (library-scan-anr D3), for
+# tool/symbolize_event.py. Kept beside the archive, never inside it.
+DEBUG="$DIST/symbols/libapp-linux-x64.debug"
+mkdir -p "$DIST/symbols"
+SAVING="$(debug_files_fresh "$DEBUG")"
 
-flutter build linux --release ${DEFINES[@]+"${DEFINES[@]}"}
+flutter build linux --release "$(debug_files_option "$SAVING")" ${DEFINES[@]+"${DEFINES[@]}"}
+debug_files_keep "$SAVING" "$DEBUG"
 tool/build_web_admin.sh
 
-BUNDLE=build/linux/x64/release/bundle
+# Where `flutter build linux` puts the app: the default flavor's folder
+# (pubspec default-flavor: free), not build/linux/x64/release.
+BUNDLE=build/linux/x64/free/release/bundle
 rm -rf "$BUNDLE/web"
 cp -r build/web "$BUNDLE/web"
 # The service worker isn't used (--pwa-strategy=none leaves a stub).
 rm -f "$BUNDLE/web/flutter_service_worker.js"
 
-# NTV_DIST puts the archive in another folder, like dist/1.2.4.
-DIST="${NTV_DIST:-dist}"
-mkdir -p "$DIST"
+echo "Checking the debug file:"
+debug_files_check_linux "$BUNDLE/lib/libapp.so" "$DEBUG"
 tar -C "$BUNDLE" -czf "$DIST/$FILE" .
+tar -tzf "$DIST/$FILE" | debug_files_none_inside "$FILE"
 (cd "$DIST" && sha256sum "$FILE" > "$FILE.sha256" && cat "$FILE.sha256")
+echo "Debug file (keep it with this release; tool/symbolize_event.py reads it): $DEBUG"

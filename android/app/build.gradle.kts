@@ -97,6 +97,22 @@ android {
         }
     }
 
+    // Store flavors (play-unlock D1): "play" is the Google Play bundle, with
+    // Play Billing, a free trial and the one-time unlock; "free" is the
+    // Releases APKs and every build from source, with no billing code at
+    // all. Neither changes the id or the name: the official/own-build rule
+    // above decides those, so official APKs and the Play version still
+    // install over each other with the setup kept.
+    flavorDimensions += "store"
+    productFlavors {
+        create("free") {
+            dimension = "store"
+        }
+        create("play") {
+            dimension = "store"
+        }
+    }
+
     buildFeatures {
         resValues = true
     }
@@ -121,7 +137,10 @@ dependencies {
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
     // FileProvider, for handing a setup to the other app (InstallSwitching.kt).
     implementation("androidx.core:core:1.16.0")
-    // LevelingAudioProcessorTest.
+    // Google Play Billing (play-unlock D2), in the play flavor only: the free
+    // APKs carry neither the library nor its BILLING permission.
+    "playImplementation"("com.android.billingclient:billing:8.3.0")
+    // LevelingAudioProcessorTest, and StoreBridge's tests (src/testPlay).
     testImplementation("junit:junit:4.13.2")
 }
 
@@ -133,7 +152,8 @@ configurations.all {
 }
 
 gradle.taskGraph.whenReady {
-    val releasePackaging = allTasks.any { it.project == project && it.name in setOf("packageRelease", "signReleaseBundle") }
+    // packageFreeRelease, signPlayReleaseBundle and the like (one per flavor).
+    val releasePackaging = allTasks.any { it.project == project && it.name.matches(Regex("package\\w*Release|sign\\w*ReleaseBundle")) }
     if (releasePackaging && !keyPropertiesFile.exists()) {
         throw GradleException(
             """

@@ -29,9 +29,16 @@ class LiveChannelSettings {
     this.retro = ChannelRetro.live,
     this.hidden = false,
     this.favorite = false,
+    this.sourceNumber,
+    this.sourceName,
   });
 
   int number;
+
+  /// The source's own number and name for it when last seen, to find it
+  /// again when the server gives it a new key (live-channel-repair D3).
+  String? sourceNumber;
+  String? sourceName;
 
   /// The user's name for it; null takes the source's.
   String? name;
@@ -57,6 +64,8 @@ class LiveChannelSettings {
         'retro': retro.toJson(),
         if (hidden) 'hidden': true,
         if (favorite) 'favorite': true,
+        'sourceNumber': ?sourceNumber,
+        'sourceName': ?sourceName,
       };
 
   factory LiveChannelSettings.fromJson(Map<String, Object?> j) => LiveChannelSettings(
@@ -67,6 +76,8 @@ class LiveChannelSettings {
         retro: j.containsKey('retro') ? ChannelRetro.fromJson(j['retro']) : ChannelRetro.live,
         hidden: j['hidden'] == true,
         favorite: j['favorite'] == true,
+        sourceNumber: j['sourceNumber'] as String?,
+        sourceName: j['sourceName'] as String?,
       );
 }
 

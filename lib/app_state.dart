@@ -29,6 +29,7 @@ import 'commercials/commercial_catalog.dart';
 import 'commercials/commercial_pool.dart';
 import 'data/app_storage.dart';
 import 'icons/custom_icons.dart';
+import 'library/index_builder.dart';
 import 'library/library_index.dart';
 import 'library/library_merge.dart';
 import 'live/live_data.dart';
@@ -985,9 +986,19 @@ class AppState extends ChangeNotifier {
 
   /// Refreshes [source] (see [LiveTvManager.refresh]).
   Future<void> refreshLiveSource(LiveSource source, {bool channels = true, bool guide = true}) async {
+    var moved = false;
     final groupsChanged = await live.refresh(source,
-        channels: channels, guide: guide, taken: () => _takenNumbers, groups: settings.groups);
-    if (groupsChanged) await _saveSettings();
+        channels: channels,
+        guide: guide,
+        taken: () => _takenNumbers,
+        groups: settings.groups,
+        moved: (from, to) {
+          // A channel the server gave a new key (live-channel-repair D3):
+          // groups, the last channel and the tuner follow it.
+          _channelMoved(from, to);
+          moved = true;
+        });
+    if (groupsChanged || moved) await _saveSettings();
   }
 
   /// "Refresh now" on a source.
@@ -1530,17 +1541,20 @@ class AppState extends ChangeNotifier {
       unawaited(_recordServerId());
     });
 
-    final libraryJson = await storage.readJson(_libraryFile);
+    // The saved index is read and decoded in a worker isolate meanwhile
+    // (library-scan-anr D2): a large one would hold up the main thread.
+    final libraryRead = IndexBuilder.saved(storage.pathOf(_libraryFile));
     final channelsJson = await storage.readJson(_channelsFile);
-    PlaybackDiagnostics.mark('library and channels read');
+    PlaybackDiagnostics.mark('channels read');
     // Blocks whenever they're saved: a restored lineup has them without a
     // library index.
     await _loadBlocks();
     await live.load();
     PlaybackDiagnostics.mark('live sources read');
-    if (libraryJson is Map<String, Object?> && channelsJson is List) {
-      library = LibraryIndex.fromJson(libraryJson);
-      PlaybackDiagnostics.mark('library parsed');
+    final saved = await libraryRead;
+    PlaybackDiagnostics.mark('library read');
+    if (saved != null && channelsJson is List) {
+      library = saved;
       // A kid's limit may have been tightened since this was saved.
       final limit = maxRatingRank;
       if (limit != null) library = library.restrictedTo(limit);
@@ -1609,7 +1623,7 @@ class AppState extends ChangeNotifier {
       }
       final previous = library;
       final plansBefore = _plans();
-      if (from < 1) library = previous.rekeyed();
+      if (from < 1) library = await IndexBuilder.rekeyed(previous);
       final orphans = _takeMajorGenres();
       final capped = from < 2 ? _showChannelsOverCap() : const <Channel>[];
       _channels.removeWhere(capped.contains);
@@ -2311,16 +2325,22 @@ class AppState extends ChangeNotifier {
     if (!background || phase != AppPhase.ready) _setPhase(AppPhase.syncing);
     try {
       LibraryIndex fresh;
-      if (servers.multiple) {
-        fresh = await _scanServers();
-      } else {
-        syncStatus = tr.connectingTo(session?.serverName ?? tr.yourServerLower);
-        notifyListeners();
-        fresh = await fetchLibraryIndex(c, pools: settings.commercialPools, channelRoots: _channelRoots(),
-            onStatus: (s) {
-          syncStatus = s;
+      // Diagnostics builds: the main thread's lag during the scan.
+      final lag = PlaybackDiagnostics.watchLag();
+      try {
+        if (servers.multiple) {
+          fresh = await _scanServers();
+        } else {
+          syncStatus = tr.connectingTo(session?.serverName ?? tr.yourServerLower);
           notifyListeners();
-        }, onLibraries: _labelLibraryRoots);
+          fresh = await fetchLibraryIndex(c, pools: settings.commercialPools, channelRoots: _channelRoots(),
+              onStatus: (s) {
+            syncStatus = s;
+            notifyListeners();
+          }, onLibraries: _labelLibraryRoots);
+        }
+      } finally {
+        lag?.stop('SCAN');
       }
       final limit = maxRatingRank;
       if (limit != null) fresh = fresh.restrictedTo(limit);
@@ -2471,10 +2491,9 @@ class AppState extends ChangeNotifier {
   }
 
   Future<LibraryIndex?> _savedPart(String key) async {
-    final json = await storage.readJson(_partFile(key));
     try {
       // Saved before show identity (lineup-dedup): its shows merged again.
-      return json is Map<String, Object?> ? LibraryIndex.fromJson(json).rekeyed() : null;
+      return await IndexBuilder.saved(storage.pathOf(_partFile(key)), rekey: true);
     } on Object catch (e) {
       debugPrint('Unreadable library part $key: $e');
       return null;

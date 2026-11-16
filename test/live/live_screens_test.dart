@@ -78,6 +78,13 @@ void main() {
     addTearDown(() async {
       tuner.dispose();
       await tester.runAsync(() async {
+        // A refresh started without waiting (Done's guide read) finishes
+        // before its folder goes.
+        for (final s in app.live.sources) {
+          for (var i = 0; i < 200 && app.live.isRefreshing(s); i++) {
+            await Future<void>.delayed(const Duration(milliseconds: 20));
+          }
+        }
         await app.close();
         await dir.delete(recursive: true);
       });
@@ -118,6 +125,30 @@ void main() {
     await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
     await tester.pumpAndSettle();
     expect(focusedLabel(), 'Refresh now');
+  });
+
+  testWidgets("a server source's row counts the chosen channels the server dropped, until they're back", (tester) async {
+    setWindow(tester, const Size(1920, 1080));
+    await setUpApp(tester);
+    final den = LiveSource(id: 'srv', kind: LiveSourceKind.server, name: 'Den Live TV', serverKind: ServerKind.jellyfin);
+    await tester.runAsync(() => app.live.addSource(den, channels(3)));
+    den.departed['gone1'] =
+        DepartedChannel(settings: LiveChannelSettings(number: 120), groupIds: const [], leftAt: DateTime.now());
+    den.departed['gone2'] =
+        DepartedChannel(settings: LiveChannelSettings(number: 121), groupIds: const [], leftAt: DateTime.now());
+    // An M3U source's departed channels aren't "on the server".
+    app.live.sources.firstWhere((s) => s.kind == LiveSourceKind.m3u).departed['x'] =
+        DepartedChannel(settings: LiveChannelSettings(number: 130), groupIds: const [], leftAt: DateTime.now());
+    await show(tester, const LiveSourcesScreen());
+    expect(find.text('2 channels no longer on the server'), findsOneWidget);
+    expect(find.textContaining('no longer on the server'), findsOneWidget);
+
+    den.departed.remove('gone2');
+    await show(tester, const LiveSourcesScreen());
+    expect(find.text('1 channel no longer on the server'), findsOneWidget);
+    den.departed.clear();
+    await show(tester, const LiveSourcesScreen());
+    expect(find.textContaining('no longer on the server'), findsNothing);
   });
 
   testWidgets('Remove asks first, then takes the source and its channels away', (tester) async {

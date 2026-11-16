@@ -116,6 +116,16 @@ class PlaybackDiagnostics {
     if (enabled) _log(tag, message);
   }
 
+  /// Starts measuring the main isolate's event-loop lag (library-scan-anr
+  /// 4.1): a 50 ms timer records how late each tick fires. [LagWatch.stop]
+  /// logs `<tag> lag max <ms>`. Null when diagnostics are off, unless
+  /// [debugWatchLag] (the scan-lag live test) asks for it.
+  static LagWatch? watchLag() => enabled || debugWatchLag ? LagWatch._() : null;
+
+  /// Measures lag ([watchLag]) with diagnostics off, for the live test.
+  @visibleForTesting
+  static bool debugWatchLag = false;
+
   /// Writes to the open log, or keeps the line until it opens.
   static void _log(String tag, String message) {
     final d = active;
@@ -762,4 +772,53 @@ class DiagnosticHttpClient extends http.BaseClient {
 
   @override
   void close() => _inner.close();
+}
+
+/// The main isolate's event-loop lag while something runs: how late a
+/// 50 ms periodic timer fires, at most (see [PlaybackDiagnostics.watchLag]).
+class LagWatch {
+  LagWatch._() {
+    _timer = Timer.periodic(_tick, (_) {
+      final now = _clock.elapsed;
+      final late = now - _last - _tick;
+      if (late > _max) {
+        _max = late;
+        _maxAt = now;
+      }
+      _last = now;
+      _ticks++;
+    });
+  }
+
+  static const _tick = Duration(milliseconds: 50);
+  final _clock = Stopwatch()..start();
+  late final Timer _timer;
+  Duration _last = Duration.zero;
+  Duration _max = Duration.zero;
+  Duration _maxAt = Duration.zero;
+  int _ticks = 0;
+
+  /// The worst lateness so far.
+  Duration get max => _max;
+
+  /// The last stopped watch's result: (worst lateness, how long it ran,
+  /// ticks), for the live test.
+  static ({Duration max, Duration at, Duration length, int ticks})? last;
+
+  /// Stops and logs `<tag> lag max <ms>`, with the run's length and the
+  /// process's peak memory.
+  void stop(String tag) {
+    _timer.cancel();
+    // A last tick that is due but hasn't fired counts too.
+    final pending = _clock.elapsed - _last - _tick;
+    if (pending > _max) {
+      _max = pending;
+      _maxAt = _clock.elapsed;
+    }
+    last = (max: _max, at: _maxAt, length: _clock.elapsed, ticks: _ticks);
+    PlaybackDiagnostics.note(
+        tag,
+        'lag max ${_max.inMilliseconds} ms (at ${_maxAt.inMilliseconds} ms) over ${_clock.elapsed.inMilliseconds} ms '
+        '($_ticks ticks), peak rss ${ProcessInfo.maxRss ~/ (1024 * 1024)} MB');
+  }
 }

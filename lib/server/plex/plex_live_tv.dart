@@ -40,32 +40,56 @@ class PlexLiveTv implements LiveTv {
   Future<List<LiveChannelInfo>> channels() async {
     final out = <LiveChannelInfo>[];
     final seen = <String>{};
+    // Built afresh: a channel a DVR no longer lists can't be tuned
+    // (live-channel-repair D4).
+    final where = <String, ({String dvr, String epg, String gridKey})>{};
     for (final dvr in await _dvrs()) {
       final key = '${dvr['key'] ?? ''}';
       final epg = dvr['epgIdentifier'] as String?;
       if (epg == null || key.isEmpty) continue;
       final lineup = await client.container('/$epg/lineups/dvr/channels');
-      for (final c in _list(lineup, 'Channel')) {
+      final group = dvr['lineupTitle'];
+      out.addAll(readChannelEntries('plex', _list(lineup, 'Channel'), (c) {
         final id = c['id'] as String?;
-        if (id == null || !seen.add(id)) continue;
+        if (id == null || seen.contains(id)) return null;
         final gridKey = (c['gridKey'] as String?) ?? id;
-        _where[id] = (dvr: key, epg: epg, gridKey: gridKey);
         final thumb = c['thumb'] as String?;
-        out.add(LiveChannelInfo(
+        final info = LiveChannelInfo(
           key: id,
           name: ((c['title'] ?? c['callSign']) as String?)?.trim() ?? id,
           number: c['vcn'] as String?,
-          group: dvr['lineupTitle'] as String?,
+          group: group is String ? group : null,
           logo: thumb == null
               ? null
               : thumb.startsWith('/')
                   ? client.uri('/photo/:/transcode', {'url': thumb, 'height': 160, 'width': 320, 'minSize': 1}).toString()
                   : thumb,
           guideId: gridKey,
-        ));
-      }
+        );
+        seen.add(id);
+        where[id] = (dvr: key, epg: epg, gridKey: gridKey);
+        return info;
+      }));
     }
+    _where
+      ..clear()
+      ..addAll(where);
     return out..sort(compareSourceOrder);
+  }
+
+  /// [failure] of a tune of [channelId], unless the DVRs no longer list
+  /// the channel: Plex answers a deleted channel's tune with "Could not
+  /// tune channel" (HTTP 200), not a 404, so the lineup is read again to
+  /// tell (live-channel-repair D4).
+  Future<LiveTvException> _orGone(String channelId, LiveTvException failure) async {
+    if (failure.failure == LiveFailure.tunersBusy || failure.failure == LiveFailure.unreachable) return failure;
+    try {
+      await channels();
+    } on Object catch (e) {
+      debugPrint('Plex lineup after a failed tune: $e');
+      return failure;
+    }
+    return _where.containsKey(channelId) ? failure : LiveTvException(LiveFailure.channelGone, failure.message);
   }
 
   Future<({String dvr, String epg, String gridKey})?> _whereIs(String id) async {
@@ -141,14 +165,15 @@ class PlexLiveTv implements LiveTv {
   Future<LiveStream> open(String channelId,
       {int? maxBitrate, bool forceTranscode = false, Map<String, Object?>? profile}) async {
     final where = await _whereIs(channelId);
-    if (where == null) throw LiveTvException(LiveFailure.other, tr.channelIsNot(channelId));
+    // Not in any DVR's lineup, read again just now: gone from the server.
+    if (where == null) throw LiveTvException(LiveFailure.channelGone, tr.channelIsNot(channelId));
     final session = _session('live');
     final Map<String, Object?> tuned;
     try {
       tuned = await client.container('/livetv/dvrs/${where.dvr}/channels/${Uri.encodeComponent(channelId)}/tune',
           method: 'POST', headers: {'X-Plex-Session-Identifier': session});
     } on ServerException catch (e) {
-      throw LiveTvException.fromServer(e);
+      throw await _orGone(channelId, LiveTvException.fromServer(e));
     }
     final op = _list(_list(tuned, 'MediaSubscription').firstOrNull ?? const {}, 'MediaGrabOperation').firstOrNull;
     final item = op?['Metadata'] as Map<String, Object?>?;
@@ -156,7 +181,7 @@ class PlexLiveTv implements LiveTv {
     final part = media == null ? null : _list(media, 'Part').firstOrNull;
     final itemKey = item?['key'] as String?;
     if (itemKey == null || part?['key'] == null) {
-      throw LiveTvException.fromMessage('${tuned['message'] ?? 'Could not tune channel'}');
+      throw await _orGone(channelId, LiveTvException.fromMessage('${tuned['message'] ?? 'Could not tune channel'}'));
     }
     final extra = {
       'key': itemKey,

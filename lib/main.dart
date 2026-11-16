@@ -39,6 +39,7 @@ import 'setup/accounts.dart';
 import 'setup/server_db.dart';
 import 'setup/setup_server.dart';
 import 'setup/web_files.dart';
+import 'store/unlock.dart';
 import 'theme/tv_theme.dart';
 import 'ui/backup_screen.dart';
 import 'ui/install_switching.dart';
@@ -47,6 +48,7 @@ import 'ui/profiles_screen.dart';
 import 'ui/sleep_overlay.dart';
 import 'ui/sync_screen.dart';
 import 'ui/tv_screen.dart';
+import 'ui/unlock_screen.dart';
 import 'ui/widgets/nightingale_mark.dart';
 import 'ui/widgets/screen_layout.dart';
 import 'ui/widgets/tv_canvas.dart';
@@ -101,6 +103,11 @@ Future<void> main(List<String> args) async {
   // Automatic follows the device's languages while the app runs.
   WidgetsBinding.instance.addObserver(household.language);
   await DeviceEffects.instance.load(household.root);
+  // The Play version's free trial and unlock purchase (play-unlock); never
+  // locked in the free flavor, own builds or on Linux. Before the first
+  // screen, so an expired trial never shows the TV first.
+  final unlock = household.unlock = await Unlock.forThisInstall(household.root);
+  await unlock.start();
   PlaybackDiagnostics.mark('storage open');
   // The phone remote is for a TV or a PC across the room; on a phone or
   // tablet the app is already in hand, so there's none (portrait-layout).
@@ -374,7 +381,9 @@ class _ShellState extends State<_Shell> {
                           final back? => BackKeyWatcher(bridge: back, child: child!),
                           null => child!,
                         }))))),
-        home: widget.home,
+        // The Unlock screen in place of the home screen once the Play
+        // version's trial is over (play-unlock).
+        home: UnlockGate(household: widget.household, child: widget.home),
       );
 }
 
@@ -461,6 +470,8 @@ class _ProfileSessionState extends State<ProfileSession> {
     // The system caption size may have changed while the app was away.
     unawaited(widget.app.readSystemCaptionSize());
     await _hiding;
+    // The trial ran out while away: the Unlock screen, not the TV.
+    if (!mounted || unlockStateOf(HouseholdScope.read(context)).blocked) return;
     final channel = _hiddenChannel;
     final place = _hiddenPlace;
     _hiddenChannel = null;

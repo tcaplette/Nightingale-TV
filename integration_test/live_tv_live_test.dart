@@ -12,10 +12,12 @@
 // out of generated channels and quickly through live ones, and checks the
 // tuner has nothing left open. M3U also checks the user agent, a provider
 // drop that reconnects, rotating stream URLs and a refused stream.
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
 import 'package:media_kit/media_kit.dart';
@@ -35,7 +37,9 @@ import 'package:nightingale_tv/playback/tuner_player.dart';
 import 'package:nightingale_tv/profiles/household.dart';
 import 'package:nightingale_tv/server/live_tv.dart';
 import 'package:nightingale_tv/server/media_server.dart';
+import 'package:nightingale_tv/server/plex/plex_client.dart';
 import 'package:nightingale_tv/server/server_clients.dart';
+import 'package:nightingale_tv/ui/live_sources_screen.dart';
 import 'package:nightingale_tv/ui/tv_screen.dart';
 
 /// Settings: environment variables on Linux; `--dart-define`s on Android,
@@ -108,6 +112,25 @@ void main() {
       expect(done(), isTrue, reason: what);
     }
 
+    // Jellyfin's own Live TV, driven as its admin (live-channel-repair).
+    JellyfinClient admin() => app.client! as JellyfinClient;
+    Future<List<Map<String, Object?>>> serverChannels() async => [
+          for (final c in ((await admin().request('GET', '/LiveTv/Channels', query: {'UserId': admin().userId}))
+                  as Map)['Items'] as List)
+            c as Map<String, Object?>,
+        ];
+    Future<void> refreshServerGuide() async {
+      final tasks = await admin().request('GET', '/ScheduledTasks') as List;
+      final id = (tasks.firstWhere((t) => (t as Map)['Key'] == 'RefreshGuide') as Map)['Id'];
+      await admin().request('POST', '/ScheduledTasks/Running/$id');
+      for (var i = 0; i < 100; i++) {
+        await Future<void>.delayed(const Duration(seconds: 2));
+        final task = await admin().request('GET', '/ScheduledTasks/$id') as Map;
+        if (task['State'] == 'Idle') return;
+      }
+      fail("Jellyfin's guide refresh didn't finish");
+    }
+
     await tester.pumpWidget(const SizedBox());
     await io(household.start);
     app = household.app!;
@@ -146,6 +169,20 @@ void main() {
     final generated = [for (final c in app.channels) if (!c.isLive) c];
     expect(generated, isNotEmpty);
 
+    // The tuner as it starts (an earlier run may have left a control on).
+    await io(() => _tunerStatus('reset'));
+
+    // ---- A channel number too long to be one (live-channel-repair 5.2) ----
+    if (kind == 'jellyfin') {
+      await io(() async {
+        await _tunerStatus('bignumber');
+        await refreshServerGuide();
+      });
+      final numbers = [for (final c in await io(serverChannels)) c['ChannelNumber']];
+      debugPrint('Jellyfin channel numbers: $numbers');
+      expect(numbers, contains('4021733519837465190276453'));
+    }
+
     // ---- Adding the source ----
     late final LiveSource source;
     final watch = Stopwatch()..start();
@@ -168,6 +205,8 @@ void main() {
     final expected = switch (kind) {
       'plex' => ['2.1', '4.1', '7.1'],
       'm3u' => ['2.1', '4.1', '7.1', '9.1', '11.1'],
+      // In number order, and the 25-digit one with the unnumbered, by name.
+      'jellyfin' => ['2.1', '4.1', '7.1', '9.1', '11.1', '4021733519837465190276453'],
       _ => ['2.1', '4.1', '7.1', '9.1', '11.1'],
     };
     expect([for (final c in live) c.live!.sourceNumber], expected);
@@ -222,6 +261,12 @@ void main() {
     // ---- The TV, tuning each live channel ----
     await tester.pumpWidget(NightingaleTvApp(household: household));
     await wait(const Duration(seconds: 2));
+    // A device with the official app installed asks about it first
+    // (install-switching): Not now, so the TV has the keys.
+    if (find.text('Not now').evaluate().isNotEmpty) {
+      await tester.tap(find.text('Not now'));
+      await wait(const Duration(seconds: 1));
+    }
     final tuner = AppScope.tunerOf(tester.element(find.byType(TvScreen)));
     await until(() => tuner.status == TunerStatus.playing, what: 'the launch tune: ${tuner.error}');
 
@@ -340,6 +385,138 @@ void main() {
       expect(tuner.liveMessage, 'Fake tuner refused the stream. It may be playing on another device.');
       await io(() => _tunerStatus('reset'));
       await until(() => tuner.status == TunerStatus.playing, max: const Duration(seconds: 15), what: 'the retry plays');
+    }
+
+    if (kind == 'jellyfin') {
+      // ---- The server re-creates its channels (live-channel-repair 5.3) ----
+      final ch = live.firstWhere((c) => c.live!.sourceNumber == '2.1');
+      final number = ch.number;
+      final group = await io(() => app.createGroup('Locals'));
+      await io(() => app.setInGroup(group, ch, true));
+      await io(() => app.updateChannel(ch, favorite: true));
+      final oldIds = {for (final c in await io(serverChannels)) c['Id']};
+      // The tuner's channels come back with new ids (as after a tuner or
+      // guide is re-added), the same numbers and names.
+      await io(() async {
+        await _tunerStatus('newids');
+        await refreshServerGuide();
+      });
+      final newIds = {for (final c in await io(serverChannels)) c['Id']};
+      debugPrint('New ids: ${newIds.length} channels, ${newIds.intersection(oldIds).length} ids kept');
+      expect(newIds.intersection(oldIds), isEmpty, reason: 'Jellyfin gave the channels new ids');
+      expect(app.channelById(ch.id), isNotNull, reason: 'the app has not refreshed yet');
+      await io(() => tuner.tune(generated.first));
+      await until(() => tuner.status == TunerStatus.playing, what: 'a generated channel');
+      final statuses = <TunerStatus>{};
+      void seen() => statuses.add(tuner.status);
+      tuner.addListener(seen);
+      await tuneLive(ch);
+      tuner.removeListener(seen);
+      final moved = tuner.channel!;
+      debugPrint('2.1 after the new ids: ${moved.id} (was ${ch.id}), statuses $statuses');
+      expect(moved.id, isNot(ch.id));
+      expect(statuses, isNot(contains(TunerStatus.error)), reason: 'no stand-by card on the way');
+      expect(moved.number, number);
+      expect(moved.favorite, isTrue);
+      expect(app.settings.groups.firstWhere((g) => g.id == group.id).channelIds, [moved.id]);
+      expect(app.live.entryFor(source).channels.map((c) => c.key).toSet(), newIds);
+
+      // ---- A channel deleted on the server ----
+      final doomed = app.channels.firstWhere((c) => c.isLive && c.live!.sourceNumber == '11.1');
+      await io(() async {
+        await _tunerStatus('hide?n=11.1');
+        await refreshServerGuide();
+      });
+      final left = [for (final c in await io(serverChannels)) c['ChannelNumber']];
+      debugPrint('After deleting 11.1 the server lists $left');
+      expect(left, isNot(contains('11.1')));
+      final opens = (await io(_tunerStreams)).length;
+      await io(() => tuner.tune(doomed));
+      await until(() => tuner.status == TunerStatus.error, what: 'the gone card: ${tuner.liveMessage}');
+      expect(tuner.liveMessage, 'This channel is no longer on ${app.session!.serverName}');
+      debugPrint('LIVE-REPAIR: gone card on screen');
+      await wait(const Duration(seconds: 6));
+      expect(tuner.status, TunerStatus.error, reason: 'no reconnect after the gone card');
+      expect((await io(_tunerStreams)).length, lessThanOrEqualTo(opens));
+      expect(source.departed, hasLength(1));
+      expect(app.channels.where((c) => c.id == doomed.id), isEmpty, reason: 'it left the lineup');
+
+      // Channel Up with the D-pad from the card: on Android the host
+      // presses it (adb), elsewhere the key goes in here.
+      if (Platform.isAndroid) {
+        debugPrint('LIVE-REPAIR: press D-pad Up');
+      } else {
+        await tester.sendKeyEvent(LogicalKeyboardKey.arrowUp);
+      }
+      await until(() => tuner.channel?.id != doomed.id, max: const Duration(seconds: 40), what: 'Channel Up from the card');
+      await until(() => tuner.status == TunerStatus.playing, what: 'the next channel: ${tuner.liveMessage}');
+      expect(tuner.channel!.number, greaterThan(doomed.number), reason: 'up from where 11.1 was');
+
+      // The source's row says a channel left.
+      final nav = tester.state<NavigatorState>(find.byType(Navigator).first);
+      unawaited(nav.push(MaterialPageRoute<void>(builder: (_) => const LiveSourcesScreen())));
+      await wait(const Duration(seconds: 2));
+      expect(find.text('1 channel no longer on the server'), findsOneWidget);
+      debugPrint('LIVE-REPAIR: sources row on screen');
+      await wait(const Duration(seconds: 5));
+      nav.pop();
+      await wait(const Duration(seconds: 1));
+
+      // The server as it was, for the next run.
+      await io(() async {
+        await _tunerStatus('reset');
+        await refreshServerGuide();
+      });
+    }
+
+    if (kind == 'plex') {
+      // ---- A channel the DVR no longer has (live-channel-repair 5.4) ----
+      final plex = app.client! as PlexClient;
+      final doomed = live.firstWhere((c) => c.live!.sourceNumber == '7.1');
+      Future<void> reloadGuide() async {
+        final dvrs = (await plex.container('/livetv/dvrs'))['Dvr'] as List;
+        for (final d in dvrs) {
+          await plex.container('/livetv/dvrs/${(d as Map)['key']}/reloadGuide', method: 'POST');
+        }
+      }
+      await io(() async {
+        await _tunerStatus('hide?n=7.1');
+        await reloadGuide();
+      });
+      // Asked outside the app, so the app finds out only when it tunes
+      // (Plex answers that tune "Could not tune channel", not a 404).
+      Future<List<String?>> lineup() async {
+        final http = HttpClient();
+        try {
+          final dvrs = (await plex.container('/livetv/dvrs'))['Dvr'] as List;
+          final epg = (dvrs.first as Map)['epgIdentifier'];
+          final r = await (await http.getUrl(Uri.parse('${plex.serverUrl}/$epg/lineups/dvr/channels'))
+                ..headers.set('Accept', 'application/json'))
+              .close();
+          final json = jsonDecode(await r.transform(utf8.decoder).join()) as Map;
+          return [for (final c in (json['MediaContainer'] as Map)['Channel'] as List? ?? const []) (c as Map)['vcn'] as String?];
+        } finally {
+          http.close();
+        }
+      }
+      var listed = <String?>[];
+      for (var i = 0; i < 60; i++) {
+        listed = await io(lineup);
+        if (!listed.contains('7.1')) break;
+        await wait(const Duration(seconds: 3));
+      }
+      debugPrint('Plex lineup after deleting 7.1: $listed');
+      expect(listed, isNot(contains('7.1')));
+      await io(() => tuner.tune(doomed));
+      await until(() => tuner.status == TunerStatus.error, what: 'the gone card: ${tuner.liveMessage}');
+      expect(tuner.liveMessage, 'This channel is no longer on ${app.session!.serverName}');
+      await wait(const Duration(seconds: 6));
+      expect(tuner.status, TunerStatus.error, reason: 'no reconnect after the gone card');
+      expect(source.departed, hasLength(1));
+      await io(() async {
+        await _tunerStatus('reset');
+        await reloadGuide();
+      });
     }
 
     await io(tuner.stop);

@@ -9,6 +9,7 @@ import '../app_version.dart';
 import '../data/app_storage.dart';
 import '../platform/install_info.dart';
 import '../platform/platform_info.dart';
+import '../server/live_tv.dart';
 import 'report_policy.dart';
 import 'report_scrubber.dart';
 import 'report_switch.dart';
@@ -33,6 +34,10 @@ abstract final class ErrorReports {
   /// Where tests send reports instead of GlitchTip.
   @visibleForTesting
   static Transport? debugTransport;
+
+  /// Tests hear each caught failure and whether it counts as expected.
+  @visibleForTesting
+  static void Function(Object error, String area, bool expected)? debugOnCapture;
 
   /// Tests leave Flutter's error handlers alone.
   @visibleForTesting
@@ -74,6 +79,7 @@ abstract final class ErrorReports {
   /// switch is on. Not awaited before the first frame.
   static Future<void> startApp(AppStorage storage) async {
     _serverMode = false;
+    _hookBreadcrumbs();
     await ReportSwitch.instance.load(storage);
     scrubber.setFolders([Platform.environment['HOME'], storage.root.path]);
     if (!available || !ReportSwitch.instance.on) return;
@@ -84,6 +90,7 @@ abstract final class ErrorReports {
   /// off.
   static Future<void> startServer(Map<String, String> env, {required void Function(String) log, String? dataFolder}) async {
     _serverMode = true;
+    _hookBreadcrumbs();
     scrubber.setFolders([env['HOME'], dataFolder]);
     if (!available) {
       log('Error reporting is off: this build has no reporting address.');
@@ -239,6 +246,7 @@ abstract final class ErrorReports {
   /// [expected] failures, and those [ReportPolicy] knows are expected,
   /// become breadcrumbs.
   static void capture(Object error, StackTrace? stack, {required String area, bool expected = false}) {
+    debugOnCapture?.call(error, area, expected || ReportPolicy.isExpected(error));
     if (!_running) return;
     if (expected || ReportPolicy.isExpected(error)) {
       _leftOut('${error.runtimeType} (expected)', area);
@@ -257,6 +265,12 @@ abstract final class ErrorReports {
     return id.toString();
   }
 
+  /// Code that can't import this file (see [liveTvBreadcrumb]) leaves its
+  /// trail entries through hooks.
+  static void _hookBreadcrumbs() {
+    liveTvBreadcrumb = (category, message, data) => breadcrumb(category, message, data: data);
+  }
+
   /// A trail entry in one of the app's [categories].
   static void breadcrumb(String category, String message, {Map<String, Object?>? data}) {
     if (!_running) return;
@@ -267,12 +281,17 @@ abstract final class ErrorReports {
   /// server mode) or the `debug.nightingale_tv.force_error` property
   /// (Android, which only adb can set). `dart` throws one uncaught error
   /// 5 s after start-up; `repeat` fails the same way as a stream open,
-  /// every 20 s, for the repeat limit.
+  /// every 20 s, for the repeat limit; `anr` keeps the main isolate busy in
+  /// Dart code for 10 s from 5 s after start-up, as GlitchTip issue 13 did,
+  /// so a key pressed meanwhile makes Android report an ANR
+  /// (library-scan-anr 6.3).
   static Future<void> forceErrorForChecks() async {
     final what = PlatformInfo.isAndroid ? await PlatformInfo.forcedError() : Platform.environment['NTV_FORCE_ERROR'];
     switch (what) {
       case 'dart':
         Timer(const Duration(seconds: 5), () => throw StateError('Forced uncaught error (error reporting check)'));
+      case 'anr':
+        Timer(const Duration(seconds: 5), () => debugPrint('Forced busy main thread ended: ${_busyForAnrCheck(const Duration(seconds: 10))}'));
       case 'repeat':
         Timer.periodic(const Duration(seconds: 20), (_) {
           try {
@@ -282,6 +301,21 @@ abstract final class ErrorReports {
           }
         });
     }
+  }
+
+  /// Spins on the calling isolate for [length] (the `anr` check): Dart work
+  /// that never yields, so its frames are the app's own code. Returns a
+  /// value that depends on every step, so nothing is optimised away.
+  @pragma('vm:never-inline')
+  static int _busyForAnrCheck(Duration length) {
+    final watch = Stopwatch()..start();
+    var x = 1;
+    while (watch.elapsed < length) {
+      for (var i = 0; i < 100000; i++) {
+        x = (x * 1103515245 + 12345) & 0x7fffffff;
+      }
+    }
+    return x;
   }
 
   /// The household's names, taken out of every report (D4).

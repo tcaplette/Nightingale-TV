@@ -88,11 +88,13 @@ class LiveChannelInfo {
   (int, int)? get numberParts => parseSourceNumber(number);
 }
 
-/// "2.1" → (2, 1), "7" → (7, 0), "4-1" → (4, 1); null for anything else.
+/// "2.1" → (2, 1), "7" → (7, 0), "4-1" → (4, 1); null for anything else,
+/// including digit runs too long to be a channel number (an id or a
+/// timestamp in the number field), so parsing can never overflow.
 (int, int)? parseSourceNumber(String? number) {
-  final m = RegExp(r'^\s*(\d+)(?:[.\-_](\d+))?\s*$').firstMatch(number ?? '');
+  final m = RegExp(r'^\s*(\d{1,9})(?:[.\-_](\d{1,6}))?\s*$').firstMatch(number ?? '');
   if (m == null) return null;
-  return (int.parse(m[1]!), int.tryParse(m[2] ?? '') ?? 0);
+  return (int.parse(m[1]!), m[2] == null ? 0 : int.parse(m[2]!));
 }
 
 /// Orders channels as the source does: by number (major.minor), numbered

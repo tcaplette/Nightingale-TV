@@ -644,7 +644,7 @@ class AppLocalizationsIt extends AppLocalizations {
 
   @override
   String theStoreVersion(Object officialName) {
-    return 'La versione dello store si installa accanto a questa come app separata, «$officialName», con la propria configurazione. Acquistarla sostiene il progetto. Una volta installata, puoi trasferirvi la tua configurazione da qui.';
+    return 'La versione di Google Play si installa accanto a questa come app separata, «$officialName», con la propria configurazione. È gratis per 14 giorni, poi un acquisto unico sostiene il progetto. Una volta installata, puoi trasferirvi la tua configurazione da qui.';
   }
 
   @override
@@ -5348,4 +5348,123 @@ class AppLocalizationsIt extends AppLocalizations {
   @override
   String get videoReportsExplain =>
       'Una segnalazione video invia dati sul dispositivo, sul video e sul suo decoder, griglie di colore approssimative dell\'immagine e le ultime righe del registro dell\'app; mai un\'immagine di ciò che guardi. Ne viene inviata una dopo ogni aggiornamento dell\'app, quando un canale è stato riprodotto per 10 secondi.';
+
+  @override
+  String get unlockNightingaleTv => 'Sblocca Nightingale TV';
+
+  @override
+  String trialDaysLeftMenu(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: 'Mancano $count giorni alla fine della prova gratuita',
+      one: 'Manca 1 giorno alla fine della prova gratuita',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get purchasePending => 'Acquisto in sospeso';
+
+  @override
+  String get freeForDaysTitle => 'Gratis per 14 giorni';
+
+  @override
+  String welcomeTrialPrice(String price) {
+    return 'Nightingale TV è gratis per 14 giorni. Dopo, un acquisto unico di $price lo sblocca per sempre e sostiene il progetto.';
+  }
+
+  @override
+  String get welcomeTrial =>
+      'Nightingale TV è gratis per 14 giorni. Dopo, un acquisto unico lo sblocca per sempre e sostiene il progetto.';
+
+  @override
+  String get unlockNow => 'Sblocca ora';
+
+  @override
+  String get startMyFreeTrial => 'Inizia la prova gratuita';
+
+  @override
+  String get lastDayOfTrial => 'Ultimo giorno della tua prova gratuita';
+
+  @override
+  String reminderPrice(String price) {
+    return 'Alla fine della prova gratuita, un acquisto unico di $price sblocca Nightingale TV per sempre e sostiene il progetto.';
+  }
+
+  @override
+  String get reminder =>
+      'Alla fine della prova gratuita, un acquisto unico sblocca Nightingale TV per sempre e sostiene il progetto.';
+
+  @override
+  String get freeTrialEnded => 'La tua prova gratuita è terminata';
+
+  @override
+  String get unlockScreenText =>
+      'Un acquisto unico sblocca Nightingale TV per sempre e sostiene il progetto. I tuoi profili, canali e impostazioni sono ancora tutti qui.';
+
+  @override
+  String unlockForPrice(String price) {
+    return 'Sblocca per $price';
+  }
+
+  @override
+  String get unlock => 'Sblocca';
+
+  @override
+  String get checkMyPurchaseAgain => 'Controlla di nuovo il mio acquisto';
+
+  @override
+  String get noPurchaseFound => 'Nessun acquisto trovato';
+
+  @override
+  String get noPurchaseFoundText =>
+      'Non è stato trovato nessun acquisto di Nightingale TV per l\'account Google di questo dispositivo. Se l\'hai appena acquistato, riprova tra un momento.';
+
+  @override
+  String get purchaseNotCompleted => 'Acquisto non completato';
+
+  @override
+  String get purchaseNotCompletedText =>
+      'Non è stato possibile completare l\'acquisto. Non è cambiato nulla; riprova tra un momento.';
+
+  @override
+  String get purchasePendingText =>
+      'Il tuo acquisto è in sospeso. Nightingale TV funziona nel frattempo e si sblocca da solo appena l\'acquisto è completato.';
+
+  @override
+  String get unlockedThankYou =>
+      'Sbloccato. Grazie per sostenere Nightingale TV.';
+
+  @override
+  String freeTrialDaysLeftAbout(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: 'Prova gratuita: mancano $count giorni',
+      one: 'Prova gratuita: manca 1 giorno',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String couldntReadChannels(Object name) {
+    return 'Impossibile leggere l\'elenco dei canali di $name';
+  }
+
+  @override
+  String channelNoLongerOn(Object server) {
+    return 'Questo canale non è più su $server';
+  }
+
+  @override
+  String channelsNoLongerOnServer(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count canali non sono più sul server',
+      one: '1 canale non è più sul server',
+    );
+    return '$_temp0';
+  }
 }

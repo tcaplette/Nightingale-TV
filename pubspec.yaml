@@ -16,7 +16,7 @@ publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
 # In Windows, build-name is used as the major, minor, and patch parts
 # of the product and file versions while build-number is used as the build suffix.
-version: 1.2.4+5006
+version: 1.2.5+5007
 
 environment:
   sdk: ^3.13.5
@@ -89,6 +89,9 @@ dependency_overrides:
 # The following section is specific to Flutter packages.
 flutter:
   generate: true
+  # Android store flavors (play-unlock D1): free is the Releases APKs and
+  # every build from source, so flutter run and flutter test need no --flavor.
+  default-flavor: free
   uses-material-design: true
 
   shaders:

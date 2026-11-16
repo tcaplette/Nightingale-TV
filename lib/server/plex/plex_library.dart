@@ -118,6 +118,7 @@ LibraryIndex libraryIndexFromPlex({
     songs: music(tracks, MediaKind.song),
     musicVideos: music(musicVideos, MediaKind.musicVideo),
     fetchedAt: fetchedAt ?? DateTime.now(),
+    scanNotes: indexed.notes,
   );
 }
 

@@ -19,6 +19,7 @@ import 'profile.dart';
 import '../server/media_server.dart';
 import '../server/server_clients.dart';
 import '../l10n/tr.dart';
+import '../store/unlock.dart';
 
 /// Everyone who watches this TV: the profiles, which one is watching now,
 /// and that profile's [AppState].
@@ -64,6 +65,10 @@ class Household extends ChangeNotifier {
   /// Automatic and safety backups, when the app makes them (not in most
   /// tests).
   BackupScheduler? backups;
+
+  /// The Play version's free trial and unlock purchase (play-unlock); null,
+  /// like an install that isn't locked, in most tests.
+  Unlock? unlock;
 
   /// A message for whatever screen is showing ("Restored the backup
   /// from…"), cleared once shown.

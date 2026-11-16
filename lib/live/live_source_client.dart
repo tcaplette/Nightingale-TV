@@ -78,6 +78,8 @@ class ServerLiveSource implements LiveSourceClient {
       return await tv.channels();
     } on ServerException catch (e) {
       throw LiveSourceException(tr.couldntReach(source.name), detail: e.message);
+    } on LiveChannelsUnreadable catch (e) {
+      throw LiveSourceException(tr.couldntReadChannels(source.name), detail: '$e');
     }
   }
 

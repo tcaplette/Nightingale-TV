@@ -5,6 +5,7 @@ import 'dart:typed_data';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:nightingale_tv/app_state.dart';
 import 'package:nightingale_tv/backup/backup_archive.dart';
+import 'package:nightingale_tv/backup/backup_restorer.dart';
 import 'package:nightingale_tv/backup/backup_store.dart';
 import 'package:nightingale_tv/data/app_storage.dart';
 import 'package:nightingale_tv/profiles/profile.dart';
@@ -138,6 +139,37 @@ void main() {
       for (final p in momAndKids()) {
         expect(part(json, p.id).keys.toSet(), {'settings', 'channels', 'blocks', 'signIn'});
       }
+    });
+
+    test('never holds the trial or the purchase (play-unlock), and a restore leaves them alone', () async {
+      await writeHousehold(dir, momAndKids(), fakeLibrary());
+      final store = Directory('${dir.path}/store')..createSync();
+      const trial = '{"start":1000,"lastSeen":2000,"marker":"trial-start"}';
+      const unlock = '{"owned":true,"checked":3000,"marker":"cached-unlock"}';
+      const notices = '{"welcome":true,"marker":"notices-seen"}';
+      File('${store.path}/trial.json').writeAsStringSync(trial);
+      File('${store.path}/unlock.json').writeAsStringSync(unlock);
+      File('${store.path}/notices.json').writeAsStringSync(notices);
+
+      final built = await build();
+      final text = utf8.decode(gzip.decode(built.bytes));
+      for (final marker in ['trial-start', 'cached-unlock', 'notices-seen', 'lastSeen']) {
+        expect(text, isNot(contains(marker)));
+      }
+
+      // Another device's trial files don't come in with its backup, and this
+      // device's stay as they were.
+      final h = await openHousehold(dir);
+      addTearDown(() {
+        h.leave();
+        h.backups?.dispose();
+      });
+      File('${store.path}/trial.json').writeAsStringSync('{"start":5,"lastSeen":6}');
+      await BackupRestorer(h).restore(built.bytes);
+      expect(File('${store.path}/trial.json').readAsStringSync(), '{"start":5,"lastSeen":6}');
+      expect(File('${store.path}/unlock.json').readAsStringSync(), unlock);
+      expect(File('${store.path}/notices.json').readAsStringSync(), notices);
+      await Future<void>.delayed(const Duration(milliseconds: 50));
     });
 
     test('the summary counts profiles, channels, blocks and logos', () async {

@@ -69,13 +69,34 @@ void main() {
 
   ChannelSchedule scheduleOf(Channel ch) => app.scheduleFor(ch)! as ChannelSchedule;
 
-  /// Tunes [ch] in the middle of a program part (not a break).
-  Future<ScheduledProgram> tuneIntoPart(Channel ch) async {
+  bool inPart(ScheduledProgram seg) =>
+      !seg.isBreak && !seg.isCommercial && seg.item != null && seg.duration >= const Duration(minutes: 1);
+
+  /// Tunes [ch] in the middle of a program part (not a break). With
+  /// [nextToo], at a moment when the next channel (where Channel Up goes) is
+  /// in one too, with another program: which programs line up depends on
+  /// the time of day the test runs, a break there has no subtitles to test,
+  /// and the same episode there has the subtitle list already known.
+  Future<ScheduledProgram> tuneIntoPart(Channel ch, {bool nextToo = false}) async {
     final s = scheduleOf(ch);
+    final next = app.channels[(app.channels.indexOf(ch) + 1) % app.channels.length];
+    // ...and showing another program: a channel airing the same episode
+    // has the same (already known) subtitle tracks.
+    bool nextInPart(DateTime t) {
+      final n = scheduleOf(next).playbackAt(t);
+      return inPart(n) &&
+          n.end.difference(t) >= const Duration(minutes: 1) &&
+          n.item!.sourceId != s.playbackAt(t).item?.sourceId;
+    }
+
     var seg = s.playbackAt(now);
-    for (var i = 0; i < 100 && (seg.isBreak || seg.isCommercial || seg.item == null || seg.duration < const Duration(minutes: 1)); i++) {
+    for (var i = 0;
+        i < 500 && (!inPart(seg) || (nextToo && !nextInPart(seg.start.add(const Duration(seconds: 20)))));
+        i++) {
       seg = s.playbackAt(seg.end);
     }
+    expect(inPart(seg) && (!nextToo || nextInPart(seg.start.add(const Duration(seconds: 20)))), isTrue,
+        reason: 'no moment found with ${nextToo ? 'both channels' : 'the channel'} in a program part');
     now = seg.start.add(const Duration(seconds: 20));
     await tuner.tune(ch);
     await settle();
@@ -131,7 +152,7 @@ void main() {
     await captionsOn();
     client.subtitlesFor = (_) => const [english];
     final ch = app.channels.first;
-    final part = await tuneIntoPart(ch);
+    final part = await tuneIntoPart(ch, nextToo: true);
     await tuner.channelUp();
     await settle();
     await tuner.tune(ch);
@@ -156,7 +177,7 @@ void main() {
   test('converting: a text track loads timed to the join; an image track is burned in', () async {
     await app.setPlayback(const PlaybackSettings(transcodeIfNeeded: true, maxKbps: 4000, captions: true));
     client.subtitlesFor = (_) => const [english];
-    final part = await tuneIntoPart(app.channels.first);
+    final part = await tuneIntoPart(app.channels.first, nextToo: true);
     // Captions came on after the open (the list wasn't known).
     final side = player.subtitles! as SideLoadedSubtitle;
     final join = part.positionAt(now);
@@ -194,7 +215,7 @@ void main() {
   test('not burned in: direct play, or a text track while converting', () async {
     client.subtitlesFor = (_) => const [pgs];
     await captionsOn();
-    await tuneIntoPart(app.channels.first);
+    await tuneIntoPart(app.channels.first, nextToo: true);
     expect(tuner.captionsBurnedIn, isFalse);
     await app.setPlayback(const PlaybackSettings(transcodeIfNeeded: true, maxKbps: 4000, captions: true));
     client.subtitlesFor = (_) => const [english];
@@ -230,7 +251,7 @@ void main() {
 
   test("the picker's track is saved as the language and carries to the next program", () async {
     client.subtitlesFor = (_) => const [english, spanish];
-    await tuneIntoPart(app.channels.first);
+    await tuneIntoPart(app.channels.first, nextToo: true);
     expect(await tuner.loadSubtitleTracks(), const [english, spanish]);
     await tuner.pickSubtitle(spanish);
     expect((app.settings.playback.captions, app.settings.playback.captionLanguage), (true, 'spa'));

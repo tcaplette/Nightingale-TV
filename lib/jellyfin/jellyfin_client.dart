@@ -6,6 +6,7 @@ import 'package:http/http.dart' as http;
 
 import '../app_version.dart';
 import '../commercials/commercial_pool.dart';
+import '../library/index_builder.dart';
 import '../library/library_index.dart';
 import '../playback/playback_diagnostics.dart';
 import '../server/languages.dart';
@@ -377,7 +378,7 @@ class JellyfinClient implements MediaServer {
       }));
       PlaybackDiagnostics.note('SCAN', '${lib.name}: ${DateTime.now().difference(scanStart).inMilliseconds} ms');
     }
-    final index = LibraryIndex.fromJellyfinItems(
+    final index = await IndexBuilder.jellyfin(
       seriesItems: series,
       episodeItems: episodes,
       movieItems: movies,

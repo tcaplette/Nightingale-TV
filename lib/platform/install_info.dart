@@ -18,6 +18,7 @@ class InstallInfo {
     this.installer,
     this.counterpartInstalled = false,
     this.counterpartFirstInstallTime,
+    this.unlockLine,
   });
 
   factory InstallInfo.fromMap(Map<Object?, Object?> m) => InstallInfo(
@@ -43,6 +44,19 @@ class InstallInfo {
   /// When the other app was installed, in ms: the both-installed notice shows
   /// once per value.
   final int? counterpartFirstInstallTime;
+
+  /// Where the Play version's trial or purchase stands ("Free trial: 9 days
+  /// left"), under the source line; null when the install isn't locked
+  /// (play-unlock).
+  final String? unlockLine;
+
+  InstallInfo withUnlockLine(String? line) => InstallInfo(
+        ownBuild: ownBuild,
+        installer: installer,
+        counterpartInstalled: counterpartInstalled,
+        counterpartFirstInstallTime: counterpartFirstInstallTime,
+        unlockLine: line,
+      );
 
   InstallSource get source => ownBuild
       ? InstallSource.ownBuild

@@ -90,6 +90,17 @@ jobs:
           tool/build_linux_release.sh "$VERSION"
           echo "FILE=dist/nightingale-tv-linux-x64-${VERSION}.tar.gz" >> "$GITHUB_ENV"
 
+      # The Dart code's debug file (library-scan-anr D3), kept with the run
+      # and never attached to the release: tool/symbolize_event.py reads it
+      # from dist/<version>/symbols/ to turn native frames into Dart names.
+      - name: Keep the debug file
+        uses: actions/upload-artifact@v4
+        with:
+          name: debug-files-linux-x64-${{ env.VERSION }}
+          path: dist/symbols/libapp-linux-x64.debug
+          if-no-files-found: error
+          retention-days: 90
+
       - name: Attach to the release
         env:
           GH_TOKEN: ${{ github.token }}

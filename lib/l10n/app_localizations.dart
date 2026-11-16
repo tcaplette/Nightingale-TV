@@ -1201,7 +1201,7 @@ abstract class AppLocalizations {
   /// No description provided for @theStoreVersion.
   ///
   /// In en, this message translates to:
-  /// **'The store version installs beside this one as a separate app, \"{officialName}\", with its own setup. Buying it supports the project. Once it\'s installed, your setup can be moved to it from here.'**
+  /// **'The Google Play version installs beside this one as a separate app, \"{officialName}\", with its own setup. It\'s free for 14 days, then a one-time purchase supports the project. Once it\'s installed, your setup can be moved to it from here.'**
   String theStoreVersion(Object officialName);
 
   /// No description provided for @updatesFromGoogle.
@@ -8745,6 +8745,162 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'A video report sends facts about the device, the video and its decoder, coarse colour grids of the picture and the app\'s own recent log lines; never an image of what you watch. One is sent once after each app update, when a channel has played for 10 seconds.'**
   String get videoReportsExplain;
+
+  /// No description provided for @unlockNightingaleTv.
+  ///
+  /// In en, this message translates to:
+  /// **'Unlock Nightingale TV'**
+  String get unlockNightingaleTv;
+
+  /// No description provided for @trialDaysLeftMenu.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 day left in your free trial} other{{count} days left in your free trial}}'**
+  String trialDaysLeftMenu(int count);
+
+  /// No description provided for @purchasePending.
+  ///
+  /// In en, this message translates to:
+  /// **'Purchase pending'**
+  String get purchasePending;
+
+  /// No description provided for @freeForDaysTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Free for 14 days'**
+  String get freeForDaysTitle;
+
+  /// No description provided for @welcomeTrialPrice.
+  ///
+  /// In en, this message translates to:
+  /// **'Nightingale TV is free for 14 days. After that, a one-time purchase of {price} unlocks it for good and supports the project.'**
+  String welcomeTrialPrice(String price);
+
+  /// No description provided for @welcomeTrial.
+  ///
+  /// In en, this message translates to:
+  /// **'Nightingale TV is free for 14 days. After that, a one-time purchase unlocks it for good and supports the project.'**
+  String get welcomeTrial;
+
+  /// No description provided for @unlockNow.
+  ///
+  /// In en, this message translates to:
+  /// **'Unlock now'**
+  String get unlockNow;
+
+  /// No description provided for @startMyFreeTrial.
+  ///
+  /// In en, this message translates to:
+  /// **'Start my free trial'**
+  String get startMyFreeTrial;
+
+  /// No description provided for @lastDayOfTrial.
+  ///
+  /// In en, this message translates to:
+  /// **'Last day of your free trial'**
+  String get lastDayOfTrial;
+
+  /// No description provided for @reminderPrice.
+  ///
+  /// In en, this message translates to:
+  /// **'When your free trial ends, a one-time purchase of {price} unlocks Nightingale TV for good and supports the project.'**
+  String reminderPrice(String price);
+
+  /// No description provided for @reminder.
+  ///
+  /// In en, this message translates to:
+  /// **'When your free trial ends, a one-time purchase unlocks Nightingale TV for good and supports the project.'**
+  String get reminder;
+
+  /// No description provided for @freeTrialEnded.
+  ///
+  /// In en, this message translates to:
+  /// **'Your free trial has ended'**
+  String get freeTrialEnded;
+
+  /// No description provided for @unlockScreenText.
+  ///
+  /// In en, this message translates to:
+  /// **'A one-time purchase unlocks Nightingale TV for good and supports the project. Your profiles, channels and settings are all still here.'**
+  String get unlockScreenText;
+
+  /// No description provided for @unlockForPrice.
+  ///
+  /// In en, this message translates to:
+  /// **'Unlock for {price}'**
+  String unlockForPrice(String price);
+
+  /// No description provided for @unlock.
+  ///
+  /// In en, this message translates to:
+  /// **'Unlock'**
+  String get unlock;
+
+  /// No description provided for @checkMyPurchaseAgain.
+  ///
+  /// In en, this message translates to:
+  /// **'Check my purchase again'**
+  String get checkMyPurchaseAgain;
+
+  /// No description provided for @noPurchaseFound.
+  ///
+  /// In en, this message translates to:
+  /// **'No purchase found'**
+  String get noPurchaseFound;
+
+  /// No description provided for @noPurchaseFoundText.
+  ///
+  /// In en, this message translates to:
+  /// **'No purchase of Nightingale TV was found for the Google account on this device. If you\'ve just bought it, try again in a moment.'**
+  String get noPurchaseFoundText;
+
+  /// No description provided for @purchaseNotCompleted.
+  ///
+  /// In en, this message translates to:
+  /// **'Purchase not completed'**
+  String get purchaseNotCompleted;
+
+  /// No description provided for @purchaseNotCompletedText.
+  ///
+  /// In en, this message translates to:
+  /// **'The purchase couldn\'t be completed. Nothing has changed; try again in a moment.'**
+  String get purchaseNotCompletedText;
+
+  /// No description provided for @purchasePendingText.
+  ///
+  /// In en, this message translates to:
+  /// **'Your purchase is waiting to complete. Nightingale TV works in the meantime and unlocks by itself once it does.'**
+  String get purchasePendingText;
+
+  /// No description provided for @unlockedThankYou.
+  ///
+  /// In en, this message translates to:
+  /// **'Unlocked. Thank you for supporting Nightingale TV.'**
+  String get unlockedThankYou;
+
+  /// No description provided for @freeTrialDaysLeftAbout.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{Free trial: 1 day left} other{Free trial: {count} days left}}'**
+  String freeTrialDaysLeftAbout(int count);
+
+  /// No description provided for @couldntReadChannels.
+  ///
+  /// In en, this message translates to:
+  /// **'Couldn\'t read {name}\'s channel list'**
+  String couldntReadChannels(Object name);
+
+  /// No description provided for @channelNoLongerOn.
+  ///
+  /// In en, this message translates to:
+  /// **'This channel is no longer on {server}'**
+  String channelNoLongerOn(Object server);
+
+  /// No description provided for @channelsNoLongerOnServer.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 channel no longer on the server} other{{count} channels no longer on the server}}'**
+  String channelsNoLongerOnServer(int count);
 }
 
 class _AppLocalizationsDelegate

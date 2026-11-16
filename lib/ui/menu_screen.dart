@@ -29,6 +29,7 @@ import 'widgets/screen_layout.dart';
 import 'widgets/tv_focus.dart';
 import '../l10n/tr.dart';
 import 'language_picker.dart';
+import 'unlock_screen.dart' show UnlockMenuItem;
 
 class MenuScreen extends StatefulWidget {
   const MenuScreen({super.key});
@@ -205,6 +206,9 @@ class _MenuScreenState extends State<MenuScreen> {
         onPressed: () => Navigator.of(context)
             .push(MaterialPageRoute<void>(builder: (_) => const ErrorReportsScreen())),
       ),
+      // The Play version's trial (play-unlock): outside the menu lock, so a
+      // grown-up finds it from any profile; buying asks for the PIN there.
+      const UnlockMenuItem(),
       const SizedBox(height: 18),
       TvButton(
         label: tr.servers,

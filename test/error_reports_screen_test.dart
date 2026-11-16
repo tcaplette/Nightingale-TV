@@ -37,6 +37,21 @@ void main() {
     ErrorReports.debugInstallHandlers = false;
   }
 
+  /// Waits for the saves asked for so far. A save started on the test's
+  /// fake clock finishes only while that clock is pumped, so awaiting
+  /// [AppStorage.flush] inside runAsync can wait forever when the real
+  /// write is slow (a loaded machine).
+  Future<void> flushPumping(WidgetTester tester) async {
+    var flushed = false;
+    storage.flush().whenComplete(() => flushed = true).ignore();
+    final until = DateTime.now().add(const Duration(seconds: 30));
+    while (!flushed && DateTime.now().isBefore(until)) {
+      await tester.pump();
+      await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 20)));
+    }
+    expect(flushed, isTrue, reason: 'the saves never finished');
+  }
+
   Future<void> show(WidgetTester tester, {bool dsn = true, bool android = false}) async {
     if (android) {
       PlatformInfo.debugOverride = TargetPlatform.android;
@@ -70,10 +85,10 @@ void main() {
         await tester.pump();
         await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 20)));
       }
+      await flushPumping(tester);
       await tester.runAsync(() async {
         await ErrorReports.debugReset();
         ReportSwitch.instance.reset();
-        await storage.flush();
         await dir.delete(recursive: true);
       });
     });
@@ -146,8 +161,8 @@ void main() {
     await tester.sendKeyEvent(LogicalKeyboardKey.select);
     await settle(tester);
     expect(ReportSwitch.instance.on, isFalse);
+    await flushPumping(tester);
     await tester.runAsync(() async {
-      await storage.flush();
       ReportSwitch.instance.reset();
       await ErrorReports.debugReset();
       testHooks();

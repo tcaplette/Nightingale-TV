@@ -44,7 +44,7 @@ The Linux bundle:
 
 ```
 flutter build linux --release
-XVFB=/path/to/Xvfb tool/idle_budget/server_check.sh --bundle build/linux/x64/release/bundle
+XVFB=/path/to/Xvfb tool/idle_budget/server_check.sh --bundle build/linux/x64/free/release/bundle
 ```
 
 It runs the app in server mode on its own Xvfb (`:77`, or `XVFB_DISPLAY`) with a copy of `seed/` as its data dirs, laid out like the image's `/config`. Xvfb isn't installed on the dev machine. Get it with `apt-get download xvfb` and `dpkg-deb -x` into a scratch folder.

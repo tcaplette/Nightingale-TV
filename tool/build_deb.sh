@@ -10,6 +10,7 @@ APP_ID=com.coffeehauslabs.nightingale_tv
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 tool/check_version.sh
+source tool/debug_files.sh
 
 # Official builds report errors to the Nightingale TV GlitchTip project
 # (error-reporting D2). The DSN lives in the git-ignored error_reporting.env;
@@ -24,14 +25,27 @@ VERSION="$(sed -n 's/^version: *//p' pubspec.yaml).$(date -u +%Y%m%d%H%M%S)"
 ARCH=amd64
 # NTV_DIST puts the package in another folder, like dist/1.2.4.
 DIST="${NTV_DIST:-$ROOT/dist}"
+mkdir -p "$DIST"
+DIST="$(cd "$DIST" && pwd)"
 OUT="$DIST/nightingale-tv_${VERSION}_${ARCH}.deb"
+# The debug file of the Dart code (library-scan-anr D3), for
+# tool/symbolize_event.py. Kept beside the package, never inside it.
+DEBUG="$DIST/symbols/libapp-linux-x64.debug"
+mkdir -p "$DIST/symbols"
+SAVING="$(debug_files_fresh "$DEBUG")"
 
-flutter build linux --release ${DEFINES[@]+"${DEFINES[@]}"}
+flutter build linux --release "$(debug_files_option "$SAVING")" ${DEFINES[@]+"${DEFINES[@]}"}
+debug_files_keep "$SAVING" "$DEBUG"
+# Where `flutter build linux` puts the app: the default flavor's folder
+# (pubspec default-flavor: free), not build/linux/x64/release.
+BUNDLE=build/linux/x64/free/release/bundle
+echo "Checking the debug file:"
+debug_files_check_linux "$BUNDLE/lib/libapp.so" "$DEBUG"
 
 # The libmpv package is named after the library version the build linked
 # (libmpv1 on Ubuntu 22.04, libmpv2 on 24.04+), so ask dpkg which package
 # provides the one this build uses.
-MPV_LIB="$(ldd build/linux/x64/release/bundle/lib/libmedia_kit_video_plugin.so \
+MPV_LIB="$(ldd "$BUNDLE/lib/libmedia_kit_video_plugin.so" \
   | awk '/libmpv\.so/ {print $3; exit}')"
 MPV_PKG="$(dpkg -S "$(readlink -f "$MPV_LIB")" 2>/dev/null | cut -d: -f1 || true)"
 if [[ -z "$MPV_PKG" ]]; then
@@ -44,7 +58,7 @@ trap 'rm -rf "$STAGE"' EXIT
 
 mkdir -p "$STAGE/opt/nightingale-tv" "$STAGE/usr/bin" "$STAGE/usr/share/applications" \
   "$STAGE/usr/share/icons/hicolor/scalable/apps" "$STAGE/DEBIAN"
-cp -r build/linux/x64/release/bundle/. "$STAGE/opt/nightingale-tv/"
+cp -r "$BUNDLE/." "$STAGE/opt/nightingale-tv/"
 ln -s /opt/nightingale-tv/nightingale_tv "$STAGE/usr/bin/nightingale-tv"
 cp linux/packaging/nightingale_tv.svg "$STAGE/usr/share/icons/hicolor/scalable/apps/$APP_ID.svg"
 # The license travels with the package, as Debian expects.
@@ -123,5 +137,7 @@ mkdir -p "$DIST"
 # matches one file. APKs and the release .tar.gz are left alone.
 rm -f "$DIST"/nightingale-tv_*_"$ARCH".deb
 dpkg-deb --root-owner-group --build "$STAGE" "$OUT" >/dev/null
+dpkg-deb --contents "$OUT" | awk '{print $NF}' | debug_files_none_inside "$(basename "$OUT")"
 echo "Built $OUT ($(du -h "$OUT" | cut -f1))"
+echo "Debug file (keep it with this release; tool/symbolize_event.py reads it): $DEBUG"
 echo "Install on another machine with: sudo apt install ./$(basename "$OUT")"

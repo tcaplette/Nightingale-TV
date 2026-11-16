@@ -48,7 +48,7 @@ void main() {
   test('running from anywhere else removes nothing', () async {
     for (final exe in [
       '${copy.path}/nightingale_tv',
-      '/home/me/Nightingale-TV/build/linux/x64/release/bundle/nightingale_tv',
+      '/home/me/Nightingale-TV/build/linux/x64/free/release/bundle/nightingale_tv',
       '/app/nightingale_tv',
       '/opt/nightingale-tv-old/nightingale_tv',
     ]) {

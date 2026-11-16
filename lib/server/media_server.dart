@@ -250,10 +250,20 @@ class FolderNode {
     final x = re.allMatches(a.toLowerCase()).toList(), y = re.allMatches(b.toLowerCase()).toList();
     for (var i = 0; i < x.length && i < y.length; i++) {
       final p = x[i][0]!, q = y[i][0]!;
-      final c = x[i][1] != null && y[i][1] != null ? int.parse(p).compareTo(int.parse(q)) : p.compareTo(q);
+      final c = x[i][1] != null && y[i][1] != null ? compareDigits(p, q) : p.compareTo(q);
       if (c != 0) return c;
     }
     return x.length.compareTo(y.length);
+  }
+
+  /// Two runs of digits by value, at any length and without parsing:
+  /// leading zeros aside, the longer run is larger; equal values order the
+  /// shorter spelling first ("7" before "07").
+  static int compareDigits(String p, String q) {
+    final a = p.replaceFirst(RegExp(r'^0+(?=\d)'), ''), b = q.replaceFirst(RegExp(r'^0+(?=\d)'), '');
+    if (a.length != b.length) return a.length.compareTo(b.length);
+    final c = a.compareTo(b);
+    return c != 0 ? c : p.length.compareTo(q.length);
   }
 }
 

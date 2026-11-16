@@ -36,8 +36,20 @@ class FakeLiveTv implements LiveTv {
   @override
   Future<LiveTvAvailability> availability() async => LiveTvAvailability.available;
 
+  /// Channel reads wait for this (when set); with [failChannels] the
+  /// server's list can't be read.
+  Completer<void>? channelsHold;
+  bool failChannels = false;
+
+  /// Channels the server answers 404 for.
+  Set<String> goneFor = {};
+
   @override
-  Future<List<LiveChannelInfo>> channels() async => channelList;
+  Future<List<LiveChannelInfo>> channels() async {
+    await channelsHold?.future;
+    if (failChannels) throw const LiveChannelsUnreadable(3);
+    return [...channelList];
+  }
 
   @override
   Future<Map<String, List<LiveProgramme>>> programs(List<String> ids, DateTime from, DateTime to) async {
@@ -56,6 +68,10 @@ class FakeLiveTv implements LiveTv {
   Future<LiveStream> open(String channelId, {int? maxBitrate, bool forceTranscode = false, Map<String, Object?>? profile}) async {
     log.add('live-open:$channelId');
     await hold?.future;
+    if (goneFor.contains(channelId)) {
+      log.add('live-fail:$channelId:channelGone');
+      throw LiveTvException(LiveFailure.channelGone, 'Server error 404 on /Items/<redacted>/PlaybackInfo.');
+    }
     if (failures.isNotEmpty) {
       final f = failures.removeAt(0);
       log.add('live-fail:$channelId:${f.name}');

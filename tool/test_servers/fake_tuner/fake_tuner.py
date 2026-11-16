@@ -27,7 +27,16 @@ Test controls:
   /control/tuners?count=2  at most that many streams at once (HDHomeRun
                            answers 503 / error 805, others 458)
   /control/rotate          changes every stream URL in the playlists
-  /control/reset           undoes refuse, tuners and rotate
+  /control/bignumber       adds "Fake Big Number" (tvg-chno with 25 digits,
+                           its own URL over the 2.1 clip) to the playlists
+                           and the lineup
+  /control/hide?n=4.1      leaves that channel out of the playlists, the
+                           lineup and the guide (deleted at the source)
+  /control/newids          gives every channel a new tvg-id (the guide's ids
+                           follow) and a new stream URL, so a server sees
+                           new channels with the same numbers and names
+  /control/reset           undoes refuse, tuners, rotate, bignumber, hide
+                           and newids
 """
 
 import datetime as dt
@@ -62,7 +71,24 @@ GUIDE_IDS = {c[0]: (c[2] or "fake%s.test" % c[0].replace(".", "")) for c in CHAN
 COLORS = ["0x1565c0", "0xc62828", "0x2e7d32", "0x6a1b9a", "0xef6c00"]
 
 state_lock = threading.Lock()
-state = {"refuse": None, "tuners": 8, "token": 0}
+state = {"refuse": None, "tuners": 8, "token": 0, "big": False, "hidden": set(), "ids": 0}
+BIG_NUMBER = "4021733519837465190276453"
+BIG_CHANNEL = (BIG_NUMBER, "Fake Big Number", "fakebig.test", "Fake Big Number", "Locals", "h264")
+
+
+def with_generation(gid):
+    """[gid] as the source gives it now: /control/newids renames them all."""
+    return "g%d.%s" % (state["ids"], gid) if state["ids"] else gid
+
+
+def guide_id(num):
+    return with_generation(GUIDE_IDS[num])
+
+
+def channels():
+    """The channels the source lists now (see /control/bignumber, hide)."""
+    out = [c for c in CHANNELS if c[0] not in state["hidden"]]
+    return out + [BIG_CHANNEL] if state["big"] else out
 streams = {}  # id -> {"channel", "ua", "proc", "since"}
 next_stream = [0]
 
@@ -252,19 +278,20 @@ def guide(host):
     now = dt.datetime.now(dt.timezone.utc)
     start0 = now.replace(minute=0, second=0, microsecond=0) - dt.timedelta(hours=1)
     end = start0 + dt.timedelta(hours=49)
+    listed = [c for c in CHANNELS if c[0] not in state["hidden"]]
     out = ['<?xml version="1.0" encoding="UTF-8"?>',
            '<!DOCTYPE tv SYSTEM "xmltv.dtd">',
            '<tv generator-info-name="nightingale-fake-tuner">']
-    for c in CHANNELS:
+    for c in listed:
         if c[3] is None:
             continue
-        out.append('  <channel id="%s">' % GUIDE_IDS[c[0]])
+        out.append('  <channel id="%s">' % guide_id(c[0]))
         out.append('    <display-name lang="en">%s</display-name>' % escape(c[3]))
         out.append('    <display-name lang="en">%s</display-name>' % c[0])
         out.append('    <icon src="http://%s/logo/%s.png"/>' % (host, c[0]))
         out.append("  </channel>")
     offsets = {"2.1": 0, "4.1": -4, "7.1": -5, "9.1": 2}
-    for c in CHANNELS:
+    for c in listed:
         if c[3] is None:
             continue
         num = c[0]
@@ -276,7 +303,7 @@ def guide(host):
             off = offsets[num]
             episode = n + 1
             out.append('  <programme start="%s" stop="%s" channel="%s">'
-                       % (xmltv_time(t, off), xmltv_time(stop, off), GUIDE_IDS[num]))
+                       % (xmltv_time(t, off), xmltv_time(stop, off), guide_id(num)))
             out.append('    <title lang="en">%s</title>' % escape(title))
             out.append('    <title lang="fr">%s (fr)</title>' % escape(title))
             if cat != "Movie":
@@ -307,11 +334,11 @@ def guide(host):
 def playlist(host, for_server):
     token = state["token"]
     lines = ['#EXTM3U x-tvg-url="http://%s/xmltv.xml.gz"' % host] if not for_server else ["#EXTM3U"]
-    for c in CHANNELS:
+    for c in channels():
         num, name, gid, _, group, clip = c
         attrs = []
         if gid:
-            attrs.append('tvg-id="%s"' % gid)
+            attrs.append('tvg-id="%s"' % with_generation(gid))
         attrs.append('tvg-name="%s"' % name)
         attrs.append('tvg-logo="http://%s/logo/%s.png"' % (host, num))
         attrs.append('tvg-chno="%s"' % num)
@@ -324,7 +351,7 @@ def playlist(host, for_server):
             url = "http://%s/ua/%s.ts" % (host, num)
         else:
             url = "http://%s/stream/%s.ts" % (host, num)
-        if token and clip != "hls":
+        if token:
             url += "?t=%d" % token
         lines.append(url)
     if not for_server:
@@ -375,7 +402,7 @@ def lineup(host):
         {"GuideNumber": c[0], "GuideName": c[1], "VideoCodec": "MPEG2" if c[5] == "mpeg2i" else "H264",
          "AudioCodec": "AC3" if c[5] == "mpeg2i" else "AAC", "HD": 1,
          "URL": "http://%s/auto/v%s" % (host, c[0])}
-        for c in CHANNELS if c[5] != "hls"]).encode()
+        for c in channels() if c[5] != "hls"]).encode()
 
 
 # ---------------------------------------------------------------- server
@@ -451,8 +478,15 @@ class Handler(BaseHTTPRequestHandler):
                 state["tuners"] = int(q.get("count", "2"))
             elif what == "rotate":
                 state["token"] += 1
+            elif what == "bignumber":
+                state["big"] = True
+            elif what == "newids":
+                state["ids"] += 1
+                state["token"] += 1
+            elif what == "hide":
+                state["hidden"].add(q.get("n", ""))
             elif what == "reset":
-                state.update(refuse=None, tuners=8, token=0)
+                state.update(refuse=None, tuners=8, token=0, big=False, hidden=set(), ids=0)
             elif what == "drop":
                 for s in streams.values():
                     s["proc"].kill()
@@ -460,13 +494,14 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send(404, b"unknown control", "text/plain")
             body = json.dumps({
                 "refuse": state["refuse"], "tuners": state["tuners"], "token": state["token"],
+                "big": state["big"], "hidden": sorted(state["hidden"]), "ids": state["ids"],
                 "streams": [{"id": k, "channel": s["channel"], "ua": s["ua"], "since": s["since"]}
                             for k, s in streams.items()],
             }).encode()
         self.send(200, body, "application/json")
 
     def stream(self, num, kind):
-        chan = next((c for c in CHANNELS if c[0] == num and c[5] != "hls"), None)
+        chan = next((c for c in CHANNELS + [BIG_CHANNEL] if c[0] == num and c[5] != "hls"), None)
         if chan is None:
             return self.send(404, b"no such channel", "text/plain")
         ua = self.headers.get("User-Agent", "")

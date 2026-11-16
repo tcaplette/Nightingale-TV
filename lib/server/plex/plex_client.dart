@@ -6,13 +6,13 @@ import 'package:http/http.dart' as http;
 
 import '../../commercials/commercial_pool.dart';
 import '../../jellyfin/jellyfin_client.dart';
+import '../../library/index_builder.dart';
 import '../../library/library_index.dart';
 import '../../playback/playback_diagnostics.dart';
 import '../languages.dart';
 import '../live_tv.dart';
 import '../media_server.dart';
 import 'plex_account.dart';
-import 'plex_library.dart';
 import 'plex_live_tv.dart';
 import '../../l10n/tr.dart';
 
@@ -276,7 +276,7 @@ class PlexClient implements MediaServer {
       // where its videos aren't movies: it's only a source of pools.
       PlaybackDiagnostics.note('SCAN', '${lib.name}: ${DateTime.now().difference(scanStart).inMilliseconds} ms');
     }
-    final index = libraryIndexFromPlex(
+    final index = await IndexBuilder.plex(
       shows: shows,
       episodes: episodes,
       movies: movies,

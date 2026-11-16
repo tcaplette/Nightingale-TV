@@ -4,7 +4,7 @@
 # Plex, Jellyfin and health checks do, watches one viewer come and go, then
 # measures it against the idle budget.
 #
-#   tool/idle_budget/server_check.sh --bundle build/linux/x64/release/bundle
+#   tool/idle_budget/server_check.sh --bundle build/linux/x64/free/release/bundle
 #   tool/idle_budget/server_check.sh --docker <image>
 #
 # One line per step; exits non-zero at the first step that fails.

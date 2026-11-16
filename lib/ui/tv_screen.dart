@@ -42,6 +42,7 @@ import 'widgets/transport_bar.dart';
 import 'widgets/tv_focus.dart';
 import '../server/media_server.dart';
 import '../l10n/tr.dart';
+import 'unlock_screen.dart';
 
 /// Main screen: full-screen TV with channel banner and number entry; the
 /// guide opens on top of it.
@@ -274,6 +275,8 @@ class _TvScreenState extends State<TvScreen> {
   /// Like turning on a TV: back to the last channel watched.
   void _powerOn() {
     PlaybackDiagnostics.mark('TV screen shown');
+    // The Play version's trial notices, each once (play-unlock).
+    unawaited(UnlockNotices.maybeShow(context));
     final app = AppScope.read(context);
     final tuner = AppScope.tunerOf(context);
     _tuner = tuner..addListener(_tunerChanged);

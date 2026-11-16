@@ -51,6 +51,7 @@ class MainActivity : FlutterActivity() {
     override fun onDestroy() {
         val leaving = !isChangingConfigurations
         players?.disposeAll()
+        store.end()
         super.onDestroy()
         // The engine goes with the activity, so the process ends too
         // (quitting with Back, or the system closing the app): the next
@@ -69,6 +70,10 @@ class MainActivity : FlutterActivity() {
     private val backupFiles = BackupFiles(this)
 
     private val installSwitching = InstallSwitching(this)
+
+    /** Google Play Billing in the play flavor; a stub with no store in the
+     *  free flavor (play-unlock D2). */
+    private val store by lazy { StoreBridge(this) }
 
     // Lazy: its sensor listener needs the activity attached.
     private val fullScreen by lazy { FullScreenOrientation(this) }
@@ -206,6 +211,9 @@ class MainActivity : FlutterActivity() {
         // setup between them.
         installSwitching.channel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "nightingale_tv/install")
             .also { it.setMethodCallHandler(installSwitching) }
+        // The unlock purchase (lib/store/store.dart).
+        store.channel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "nightingale_tv/store")
+            .also { it.setMethodCallHandler(store) }
         // Full screen from the portrait watch screen (phones and tablets).
         fullScreen.channel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "nightingale_tv/orientation")
             .also { it.setMethodCallHandler(fullScreen) }

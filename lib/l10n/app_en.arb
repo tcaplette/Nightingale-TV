@@ -403,7 +403,7 @@
   "theGuideIs": "The guide is too big (over 1 GB)",
   "nightingaleTvBackups": "Nightingale TV backups",
   "uninstallingThisApp": "Uninstalling this app deletes its profiles, channels and settings unless you back them up or move them first.",
-  "theStoreVersion": "The store version installs beside this one as a separate app, \"{officialName}\", with its own setup. Buying it supports the project. Once it's installed, your setup can be moved to it from here.",
+  "theStoreVersion": "The Google Play version installs beside this one as a separate app, \"{officialName}\", with its own setup. It's free for 14 days, then a one-time purchase supports the project. Once it's installed, your setup can be moved to it from here.",
   "@theStoreVersion": {
     "placeholders": {
       "officialName": {
@@ -3673,5 +3673,87 @@
       }
     }
   },
-  "videoReportsExplain": "A video report sends facts about the device, the video and its decoder, coarse colour grids of the picture and the app's own recent log lines; never an image of what you watch. One is sent once after each app update, when a channel has played for 10 seconds."
+  "videoReportsExplain": "A video report sends facts about the device, the video and its decoder, coarse colour grids of the picture and the app's own recent log lines; never an image of what you watch. One is sent once after each app update, when a channel has played for 10 seconds.",
+  "unlockNightingaleTv": "Unlock Nightingale TV",
+  "trialDaysLeftMenu": "{count, plural, =1{1 day left in your free trial} other{{count} days left in your free trial}}",
+  "@trialDaysLeftMenu": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "purchasePending": "Purchase pending",
+  "freeForDaysTitle": "Free for 14 days",
+  "welcomeTrialPrice": "Nightingale TV is free for 14 days. After that, a one-time purchase of {price} unlocks it for good and supports the project.",
+  "@welcomeTrialPrice": {
+    "placeholders": {
+      "price": {
+        "type": "String"
+      }
+    }
+  },
+  "welcomeTrial": "Nightingale TV is free for 14 days. After that, a one-time purchase unlocks it for good and supports the project.",
+  "unlockNow": "Unlock now",
+  "startMyFreeTrial": "Start my free trial",
+  "lastDayOfTrial": "Last day of your free trial",
+  "reminderPrice": "When your free trial ends, a one-time purchase of {price} unlocks Nightingale TV for good and supports the project.",
+  "@reminderPrice": {
+    "placeholders": {
+      "price": {
+        "type": "String"
+      }
+    }
+  },
+  "reminder": "When your free trial ends, a one-time purchase unlocks Nightingale TV for good and supports the project.",
+  "freeTrialEnded": "Your free trial has ended",
+  "unlockScreenText": "A one-time purchase unlocks Nightingale TV for good and supports the project. Your profiles, channels and settings are all still here.",
+  "unlockForPrice": "Unlock for {price}",
+  "@unlockForPrice": {
+    "placeholders": {
+      "price": {
+        "type": "String"
+      }
+    }
+  },
+  "unlock": "Unlock",
+  "checkMyPurchaseAgain": "Check my purchase again",
+  "noPurchaseFound": "No purchase found",
+  "noPurchaseFoundText": "No purchase of Nightingale TV was found for the Google account on this device. If you've just bought it, try again in a moment.",
+  "purchaseNotCompleted": "Purchase not completed",
+  "purchaseNotCompletedText": "The purchase couldn't be completed. Nothing has changed; try again in a moment.",
+  "purchasePendingText": "Your purchase is waiting to complete. Nightingale TV works in the meantime and unlocks by itself once it does.",
+  "unlockedThankYou": "Unlocked. Thank you for supporting Nightingale TV.",
+  "freeTrialDaysLeftAbout": "{count, plural, =1{Free trial: 1 day left} other{Free trial: {count} days left}}",
+  "@freeTrialDaysLeftAbout": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "couldntReadChannels": "Couldn't read {name}'s channel list",
+  "channelNoLongerOn": "This channel is no longer on {server}",
+  "channelsNoLongerOnServer": "{count, plural, =1{1 channel no longer on the server} other{{count} channels no longer on the server}}",
+  "@couldntReadChannels": {
+    "placeholders": {
+      "name": {
+        "type": "Object"
+      }
+    }
+  },
+  "@channelNoLongerOn": {
+    "placeholders": {
+      "server": {
+        "type": "Object"
+      }
+    }
+  },
+  "@channelsNoLongerOnServer": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  }
 }

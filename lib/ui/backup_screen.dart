@@ -21,6 +21,7 @@ import 'widgets/screen_layout.dart';
 import 'widgets/tv_focus.dart';
 import '../l10n/tr.dart';
 import '../reporting/error_reports.dart';
+import 'unlock_screen.dart' show unlockLine, unlockStateOf;
 
 /// Menu → Backup & restore (backup-restore D11): Back up now, opening a
 /// file, the phone or computer page, and every backup, newest first, each
@@ -161,7 +162,9 @@ class _BackupScreenState extends State<BackupScreen> {
     if (!mounted) return;
     final ok = await confirmRestore(context, b, plan);
     if (!ok || !mounted) return;
-    await BackupRestorer(_household).restore(bytes, beforeClosing: AppScope.tunerOf(context).stop);
+    // A profile watching stops first; the Unlock screen may have none open.
+    final tuner = context.getInheritedWidgetOfExactType<AppScope>()?.tuner;
+    await BackupRestorer(_household).restore(bytes, beforeClosing: tuner?.stop);
   }
 
   @override
@@ -181,7 +184,10 @@ class _BackupScreenState extends State<BackupScreen> {
     final install = _install;
     final top = [
               if (install != null)
-                AboutThisInstall(info: install, onMove: () => _moveSetup(install), onBring: () => _bringSetup(install)),
+                AboutThisInstall(
+                    info: install.withUnlockLine(unlockLine(unlockStateOf(_household))),
+                    onMove: () => _moveSetup(install),
+                    onBring: () => _bringSetup(install)),
               Text(
                 last == null
                     ? (list == null ? ' ' : tr.noBackupsYet)
@@ -716,15 +722,18 @@ class _HouseholdNoticeState extends State<HouseholdNotice> {
   @override
   Widget build(BuildContext context) {
     final shown = _shown;
+    // Upright on a phone: below the status bar and inside the side margins.
+    final layout = ScreenLayout.of(context);
+    final side = layout.isPortrait ? layout.gutter : 0.0;
     return Stack(
       children: [
         widget.child,
         if (shown != null)
           // Where the TV screen's own messages show, clear of the banner.
           Positioned(
-            left: 0,
-            right: 0,
-            top: 40,
+            left: side,
+            right: side,
+            top: 40 + MediaQuery.paddingOf(context).top,
             child: IgnorePointer(
               child: Center(child: _NoticeBox(message: shown)),
             ),

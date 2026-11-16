@@ -81,3 +81,12 @@ tool/idle_budget/seed/
 
 # Plugin architecture idea notes (kept local)
 /plugin-architecture.md
+
+# The Google Play flavor's own code (play-unlock): the billing bridge, its
+# backup rules and its JVM tests stay local. The free flavor (main/ + free/)
+# builds without them.
+/android/app/src/play/
+/android/app/src/testPlay/
+
+# Weekly bug-fix notes (kept local)
+/bug-fixes-nov-08-14-2026.md

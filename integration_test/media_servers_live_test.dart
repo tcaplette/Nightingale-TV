@@ -1,6 +1,7 @@
-// End-to-end checks against the Emby and Plex test servers
+// End-to-end checks against the Jellyfin, Emby and Plex test servers
 // (tool/test_servers), one at a time:
 //
+//   JELLYFIN_USER=... JELLYFIN_PASSWORD=... MEDIA_SERVER=jellyfin ...
 //   EMBY_USER=... EMBY_PASSWORD=... MEDIA_SERVER=emby SNAP_DIR=/tmp/snaps \
 //     flutter test integration_test/media_servers_live_test.dart -d linux \
 //     --dart-define=NIGHTINGALE_TV_DEBUG_PLAYBACK=1
@@ -163,10 +164,12 @@ class Recording implements MediaServer {
 void main() {
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();
   final kind = _env['MEDIA_SERVER'];
+  // Jellyfin and Emby: the same client (EmbyClient extends JellyfinClient).
+  final jellyfinFamily = kind == 'jellyfin' || kind == 'emby';
 
   testWidgets('a profile on the ${kind ?? '(MEDIA_SERVER unset)'} test server', (tester) async {
-    if (kind != 'emby' && kind != 'plex') {
-      markTestSkipped('Set MEDIA_SERVER=emby or plex, with that test server up.');
+    if (!jellyfinFamily && kind != 'plex') {
+      markTestSkipped('Set MEDIA_SERVER=jellyfin, emby or plex, with that test server up.');
       return;
     }
     MediaKit.ensureInitialized();
@@ -200,8 +203,8 @@ void main() {
     await io(() async {
       await household.start();
       app = household.app!;
-      final url = _env[kind == 'emby' ? 'EMBY_URL' : 'PLEX_URL'] ??
-          (kind == 'emby' ? 'http://127.0.0.1:8096' : 'http://127.0.0.1:32400');
+      final url = _env['${kind!.toUpperCase()}_URL'] ??
+          switch (kind) { 'jellyfin' => 'http://127.0.0.1:8097', 'emby' => 'http://127.0.0.1:8096', _ => 'http://127.0.0.1:32400' };
       // A saved Plex sign-in: a session.json's path, or its JSON itself.
       final saved = _env['PLEX_SESSION'];
       if (kind == 'plex' && saved != null) {
@@ -213,11 +216,17 @@ void main() {
       }
       final found = await identifyServer(url, deviceId: app.settings.installId, deviceName: app.deviceName);
       expect(found.info.kind.name, kind, reason: 'the address step identifies the server');
-      if (kind == 'emby') {
-        expect(found.client, isA<EmbyClient>());
+      if (jellyfinFamily) {
+        if (kind == 'emby') {
+          expect(found.client, isA<EmbyClient>());
+          final client = found.client as JellyfinClient;
+          expect(await client.quickConnectEnabled(), isFalse);
+        } else {
+          expect(found.client, isNot(isA<EmbyClient>()));
+        }
         final client = found.client as JellyfinClient;
-        expect(await client.quickConnectEnabled(), isFalse);
-        final session = await client.authenticateByName(_env['EMBY_USER']!, _env['EMBY_PASSWORD']!, serverName: found.info.name);
+        final prefix = kind.toUpperCase();
+        final session = await client.authenticateByName(_env['${prefix}_USER']!, _env['${prefix}_PASSWORD']!, serverName: found.info.name);
         await app.completeSignIn(session, client);
       } else {
         found.client.close();
@@ -259,9 +268,9 @@ void main() {
       return jsonDecode(r.body) as Map<String, Object?>;
     }
 
-    final embyUser = kind == 'emby' ? app.session!.userId : null;
+    final embyUser = jellyfinFamily ? app.session!.userId : null;
     Future<int> playCount(String id) async {
-      if (kind == 'emby') {
+      if (jellyfinFamily) {
         final item = await getJson('/Users/$embyUser/Items/$id');
         return ((item['UserData'] as Map?)?['PlayCount'] as num?)?.toInt() ?? 0;
       }
@@ -270,21 +279,25 @@ void main() {
     }
 
     Future<bool> watched(String id) async {
-      if (kind == 'emby') {
+      if (jellyfinFamily) {
         return ((await getJson('/Users/$embyUser/Items/$id'))['UserData'] as Map?)?['Played'] == true;
       }
       return await playCount(id) > 0;
     }
 
-    /// Conversions running on the server: Emby's ffmpeg processes in the
-    /// test container (its session list fills in late), Plex's transcode
-    /// sessions.
+    /// Conversions running on the server: Jellyfin's or Emby's ffmpeg
+    /// processes in the test container (the session list fills in late),
+    /// Plex's transcode sessions.
     Future<int> transcodesOnServer({String? session}) async {
-      if (kind == 'emby') {
+      if (jellyfinFamily) {
+        // The server process itself names its ffmpeg: left out. The
+        // Jellyfin image has no ps, so its processes are read from /proc.
         final r = await Process.run('sg', [
           'docker',
           '-c',
-          'docker exec nightingale-emby sh -c "ps -o args | grep -v EmbyServer | grep -c [f]fmpeg"',
+          kind == 'emby'
+              ? 'docker exec nightingale-emby sh -c "ps -o args | grep -v EmbyServer | grep -c [f]fmpeg"'
+              : r'''docker exec nightingale-jellyfin sh -c "for f in /proc/[0-9]*/cmdline; do tr '\0' ' ' < \$f; echo; done 2>/dev/null | grep -v ^/jellyfin/jellyfin | grep -c [f]fmpeg"''',
         ]);
         return int.tryParse('${r.stdout}'.trim()) ?? 0;
       }
@@ -514,7 +527,7 @@ void main() {
     // Unwatched first: an earlier run may have watched it.
     await io(() async {
       final id = soonest!.item.id;
-      final r = kind == 'emby'
+      final r = jellyfinFamily
           ? await web.delete(Uri.parse('${inner.serverUrl}/Users/$embyUser/PlayedItems/$id'), headers: inner.authHeaders)
           : await web.get(Uri.parse('${inner.serverUrl}/:/unscrobble?key=$id&identifier=com.plexapp.plugins.library'),
               headers: inner.authHeaders);

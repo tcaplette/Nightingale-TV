@@ -135,6 +135,10 @@ class _SourceRow extends StatelessWidget {
                 style: g.body(24, color: state.lastError != null && !refreshing ? g.nowLine : g.textDim)),
             if (where != null)
               Text(where, maxLines: 1, overflow: TextOverflow.ellipsis, style: g.body(22, color: g.textDim)),
+            // Chosen channels the server dropped, remembered until they
+            // come back or are forgotten (live-channel-repair D6).
+            if (source.kind == LiveSourceKind.server && source.departed.isNotEmpty)
+              Text(tr.channelsNoLongerOnServer(source.departed.length), style: g.body(24, color: g.textDim)),
             const SizedBox(height: 18),
             Wrap(spacing: 16, runSpacing: 14, children: buttons),
           ],

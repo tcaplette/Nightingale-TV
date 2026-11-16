@@ -70,6 +70,8 @@ Future<void> receiveSetup(BuildContext context, Household household, InstallInfo
 class AboutThisInstall extends StatelessWidget {
   const AboutThisInstall({super.key, required this.info, required this.onMove, required this.onBring});
 
+  static const unlockLineKey = ValueKey('about-unlock-line');
+
   final InstallInfo info;
   final VoidCallback onMove;
   final VoidCallback onBring;
@@ -83,6 +85,10 @@ class AboutThisInstall extends StatelessWidget {
         Text(tr.aboutThisInstall, style: g.display(26, weight: FontWeight.w800, color: g.accent)),
         const SizedBox(height: 12),
         Text(info.sourceLine, style: g.body(30, weight: FontWeight.w600)),
+        if (info.unlockLine case final line?) ...[
+          const SizedBox(height: 8),
+          Text(line, key: AboutThisInstall.unlockLineKey, style: g.body(26, weight: FontWeight.w600, color: g.accent)),
+        ],
         const SizedBox(height: 8),
         Text(info.switching, style: g.body(24, color: g.textDim)),
         const SizedBox(height: 8),

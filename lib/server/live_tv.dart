@@ -1,4 +1,5 @@
 import '../live/live_data.dart';
+import '../playback/playback_diagnostics.dart';
 import 'media_server.dart';
 import '../l10n/tr.dart';
 
@@ -42,6 +43,10 @@ enum LiveFailure {
   /// The device can't decode the channel's video.
   cantDecode,
 
+  /// The server doesn't know the channel (HTTP 404): it was deleted, or
+  /// re-created under a new key (live-channel-repair D4).
+  channelGone,
+
   /// No picture arrived in time, or anything else.
   other,
 }
@@ -62,6 +67,7 @@ class LiveTvException implements Exception {
     final text = '${e.message} ${e.detail ?? ''}'.toLowerCase();
     if (e.unreachable) return LiveTvException(LiveFailure.unreachable, e.message);
     if (e.statusCode == 401 || e.statusCode == 403) return LiveTvException(LiveFailure.refused, e.message);
+    if (e.statusCode == 404) return LiveTvException(LiveFailure.channelGone, e.message);
     if (_tunerBusy(text)) return LiveTvException(LiveFailure.tunersBusy, e.message);
     return LiveTvException(LiveFailure.other, e.message);
   }
@@ -115,6 +121,46 @@ class LiveStream {
 
 /// A server's Live TV (live-tv-sources D3): its channels and guide, and live
 /// streams opened and closed as the server's own web client does.
+/// No entry of a server's channel list could be read (live-tv-sources
+/// "Refreshing and caching"): a failed refresh, not an empty lineup.
+class LiveChannelsUnreadable implements Exception {
+  const LiveChannelsUnreadable(this.skipped);
+
+  final int skipped;
+
+  @override
+  String toString() => 'LiveChannelsUnreadable: none of $skipped channels could be read';
+}
+
+/// Leaves a breadcrumb in the error reports' trail; set by ErrorReports when
+/// it starts. A hook, not an import: the web admin shares this file's
+/// models, and the reporting code would bring the whole app into its build.
+void Function(String category, String message, Map<String, Object?> data)? liveTvBreadcrumb;
+
+/// [items] read one at a time by [read] (null: not a channel, left out
+/// quietly). An entry [read] throws on is skipped and logged by its field
+/// names only (live-tv-sources "Source privacy"), so one bad channel never
+/// fails the list; throws [LiveChannelsUnreadable] when entries were there
+/// and none could be read.
+List<LiveChannelInfo> readChannelEntries(
+    String server, Iterable<Map<String, Object?>> items, LiveChannelInfo? Function(Map<String, Object?> item) read) {
+  final out = <LiveChannelInfo>[];
+  var skipped = 0;
+  for (final item in items) {
+    try {
+      if (read(item) case final c?) out.add(c);
+    } on Object catch (e) {
+      skipped++;
+      final fields = (item.keys.toList()..sort()).join(',');
+      PlaybackDiagnostics.note('LIVE', '$server: skipped a channel entry the app can\'t read (${e.runtimeType}; fields $fields)');
+      liveTvBreadcrumb?.call('server', 'Skipped an unreadable channel entry',
+          {'server': server, 'error': '${e.runtimeType}', 'fields': fields});
+    }
+  }
+  if (out.isEmpty && skipped > 0) throw LiveChannelsUnreadable(skipped);
+  return out;
+}
+
 abstract interface class LiveTv {
   Future<LiveTvAvailability> availability();
 

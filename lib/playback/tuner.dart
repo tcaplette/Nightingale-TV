@@ -121,6 +121,7 @@ class Tuner extends ChangeNotifier {
 
   /// Pause and rewind turned off: a viewer behind goes live at once.
   void _onSettingsChanged() {
+    _followMovedChannel();
     if (shifted && !app.settings.playback.pauseAndRewind) unawaited(goLive());
     _followPlan();
   }
@@ -864,7 +865,15 @@ class Tuner extends ChangeNotifier {
   Future<void> _step(int delta) async {
     final list = app.channels;
     if (list.isEmpty) return;
-    final index = channel == null ? -1 : list.indexWhere((c) => c.id == channel!.id);
+    final on = channel;
+    final index = on == null ? -1 : list.indexWhere((c) => c.id == app.currentChannelId(on.id));
+    if (index < 0 && on != null) {
+      // The channel left the lineup (gone from its source): the step goes
+      // from where its number was.
+      final i = delta > 0 ? list.indexWhere((c) => c.number > on.number) : list.lastIndexWhere((c) => c.number < on.number);
+      await tune(list[i >= 0 ? i : (delta > 0 ? 0 : list.length - 1)]);
+      return;
+    }
     final next = index < 0 ? 0 : (index + delta) % list.length;
     await tune(list[next]);
   }
@@ -2317,14 +2326,20 @@ class Tuner extends ChangeNotifier {
     program = segment = schedule.programAt(now);
     final wait = program!.end.difference(now);
     _liveBoundary = Timer(wait.isNegative ? Duration.zero : wait + const Duration(milliseconds: 1), () {
-      if (generation != _generation || channel?.id != ch.id) return;
+      if (generation != _generation || !_isOn(ch)) return;
       _setLiveProgramme(ch, generation);
       notifyListeners();
     });
   }
 
   /// Opens live channel [ch] (design D8). [attempt] counts reconnects.
-  Future<void> _playLive(int generation, Channel ch, {int attempt = 0}) async {
+  Future<void> _playLive(int generation, Channel ch, {int attempt = 0, bool rekeyed = false}) async {
+    // The server gave the channel a new key since (live-channel-repair D3).
+    final followed = _followed(ch);
+    if (!identical(followed, ch)) {
+      if (channel?.id == ch.id) channel = followed;
+      ch = followed;
+    }
     _programEnd?.cancel();
     _segmentEnd = null;
     _liveRetry?.cancel();
@@ -2376,10 +2391,21 @@ class Tuner extends ChangeNotifier {
       opening.complete(null);
       if (!identical(_live, session)) return;
       final failure = e is LiveTvException ? e.failure : LiveFailure.other;
+      if (failure == LiveFailure.channelGone && !rekeyed) {
+        // The server doesn't know the channel: its list, read again, says
+        // whether it moved to a new key or is gone (live-playback "Live
+        // stand-by messages").
+        await _refreshForGone(generation, ch, session, attempt);
+        return;
+      }
       // A busy tuner, a refusing provider or a channel the device can't
-      // play is the source's doing, not the app's.
-      ErrorReports.capture(e, stack, area: 'playback', expected: e is LiveTvException && failure != LiveFailure.other);
-      _liveFailed(generation, ch, failure, scrubUrlsIn('$e'), source: source, attempt: attempt);
+      // play is the source's doing, not the app's. A 404 after the channel
+      // was found under its new key is not.
+      ErrorReports.capture(e, stack,
+          area: 'playback',
+          expected: e is LiveTvException && failure != LiveFailure.other && failure != LiveFailure.channelGone);
+      _liveFailed(generation, ch, failure, scrubUrlsIn('$e'),
+          source: source, attempt: attempt, retry: failure != LiveFailure.channelGone);
       return;
     }
     opening.complete(stream);
@@ -2406,6 +2432,60 @@ class Tuner extends ChangeNotifier {
       return;
     }
     if (identical(_live, session)) await _applyCaptions();
+  }
+
+  /// How long a 404's channel-list refresh may hold up the tune.
+  @visibleForTesting
+  Duration liveGoneRefreshTimeout = const Duration(seconds: 15);
+
+  /// [ch]'s open got a 404: its source's channel list is read again (at
+  /// most [liveGoneRefreshTimeout]); a channel moved to a new key opens
+  /// under it as part of the same tune, one still not there gets the "no
+  /// longer on the server" card and no retries (design D4). Expected, so
+  /// a breadcrumb rather than a report (error-reporting).
+  Future<void> _refreshForGone(int generation, Channel ch, _LiveSession session, int attempt) async {
+    session.startTimer?.cancel();
+    _live = null;
+    final source = session.source;
+    _diagnostics?.event('live: ${ch.number} not on the server, reading its channel list again');
+    try {
+      await app.refreshLiveSource(source, guide: false).timeout(liveGoneRefreshTimeout);
+    } on Object catch (e) {
+      _diagnostics?.event('live: channel list refresh after a 404: $e');
+    }
+    if (generation != _generation) return;
+    final moved = _followed(ch);
+    if (!identical(moved, ch)) {
+      ErrorReports.breadcrumb('tune', 'Live channel moved to a new key on the server');
+      if (channel?.id == ch.id) channel = moved;
+      await _playLive(generation, moved, attempt: attempt, rekeyed: true);
+      return;
+    }
+    ErrorReports.breadcrumb('tune', 'Live channel no longer on the server');
+    _liveFailed(generation, ch, LiveFailure.channelGone, 'not on the server',
+        source: source, attempt: attempt, retry: false);
+  }
+
+  /// [ch], or the channel it became when its source gave it a new key.
+  Channel _followed(Channel ch) {
+    final id = app.currentChannelId(ch.id);
+    if (id == ch.id) return ch;
+    return app.channels.where((c) => c.id == id).firstOrNull ?? ch;
+  }
+
+  /// [ch] is the channel on, under its old key or its new one.
+  bool _isOn(Channel ch) => channel != null && app.currentChannelId(ch.id) == channel!.id;
+
+  /// The live channel on moved to a new key at a refresh: the tuner holds
+  /// the new one, its stream playing on (live-channel-repair D3).
+  void _followMovedChannel() {
+    final ch = channel;
+    if (ch == null || !ch.isLive) return;
+    final now = _followed(ch);
+    if (identical(now, ch)) return;
+    channel = now;
+    _setLiveProgramme(now, _generation);
+    notifyListeners();
   }
 
   /// The live stream's first picture (or its first after a reconnect).
@@ -2529,7 +2609,7 @@ class Tuner extends ChangeNotifier {
     _diagnostics?.event('live: reopen #$attempt in ${wait.inSeconds} s ($cause)');
     _liveRetry?.cancel();
     _liveRetry = Timer(wait, () {
-      if (generation != _generation || channel?.id != ch.id) return;
+      if (generation != _generation || !_isOn(ch)) return;
       unawaited(_playLive(generation, ch, attempt: attempt));
     });
     notifyListeners();
@@ -2547,6 +2627,7 @@ class Tuner extends ChangeNotifier {
       LiveFailure.providerRefused => tr.refusedTheStream(name),
       LiveFailure.unsupportedScheme => tr.thisChannelsStream,
       LiveFailure.cantDecode => tr.thisDeviceCant,
+      LiveFailure.channelGone => tr.channelNoLongerOn(server),
       LiveFailure.other => tr.didntStart(ch.displayName),
     };
   }

@@ -105,6 +105,10 @@ class AppStorage {
 
   File _file(String name) => File('${root.path}/$name');
 
+  /// Where state file [name] is, for reading it in another isolate (a
+  /// saved library index, library-scan-anr D2).
+  String pathOf(String name) => _file(name).path;
+
   /// A state file's JSON as saved, without parsing it into a model; null
   /// when it's missing or unreadable.
   Future<Object?> readRaw(String name) => readJson(name);
@@ -163,8 +167,22 @@ class AppStorage {
     }
   }
 
-  Future<void> delete(String name) async {
-    final file = _file(name);
-    if (await file.exists()) await file.delete();
+  /// Deletes [name] after the writes to it asked for so far, in the same
+  /// queue, so a write still under way can't bring it back. A file that
+  /// isn't there is already deleted.
+  Future<void> delete(String name) {
+    final previous = _writes[name] ?? Future<void>.value();
+    final op = previous.catchError((Object _) {}).then((_) async {
+      try {
+        await _file(name).delete();
+      } on PathNotFoundException {
+        // Already gone.
+      }
+    });
+    _writes[name] = op;
+    op.whenComplete(() {
+      if (identical(_writes[name], op)) _writes.remove(name);
+    }).ignore();
+    return op;
   }
 }

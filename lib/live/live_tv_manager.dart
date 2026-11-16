@@ -8,6 +8,7 @@ import '../channels/channel_groups.dart';
 import '../channels/channel_numbers.dart';
 import '../data/app_storage.dart';
 import '../playback/playback_diagnostics.dart';
+import '../reporting/error_reports.dart';
 import '../server/media_server.dart';
 import 'live_cache.dart';
 import 'live_data.dart';
@@ -285,7 +286,9 @@ class LiveTvManager extends ChangeNotifier {
         settings.number = number;
         used.add(number);
         if (back == null) next = number + 1;
-        source.chosen[info.key] = settings;
+        source.chosen[info.key] = settings
+          ..sourceName = info.name
+          ..sourceNumber = info.number;
       }
     }
     _schedules.clear();
@@ -312,9 +315,34 @@ class LiveTvManager extends ChangeNotifier {
       bool guide = true,
       required Set<int> Function() taken,
       required List<ChannelGroup> groups,
-      Duration? window}) async {
+      void Function(String from, String to)? moved,
+      Duration? window}) {
+    // One refresh of a source at a time; asking again while it runs waits
+    // for that one (a tune's 404 waits on the hourly refresh, say).
+    if (_inFlight[source.id] case final running?) {
+      // A guide-only refresh running doesn't answer for the channel list.
+      if (!channels || running.channels) return running.done;
+      return running.done.then((_) => refresh(source,
+          channels: channels, guide: guide, taken: taken, groups: groups, moved: moved, window: window));
+    }
     final client = clientFor(source);
-    if (client == null || !_refreshing.add(source.id)) return false;
+    if (client == null || _refreshing.contains(source.id)) return Future.value(false);
+    final run = _refresh(source, client,
+        channels: channels, guide: guide, taken: taken, groups: groups, moved: moved, window: window);
+    _inFlight[source.id] = (done: run, channels: channels);
+    return run.whenComplete(() => _inFlight.remove(source.id));
+  }
+
+  final _inFlight = <String, ({Future<bool> done, bool channels})>{};
+
+  Future<bool> _refresh(LiveSource source, LiveSourceClient client,
+      {required bool channels,
+      required bool guide,
+      required Set<int> Function() taken,
+      required List<ChannelGroup> groups,
+      void Function(String from, String to)? moved,
+      Duration? window}) async {
+    _refreshing.add(source.id);
     final entry = entryFor(source);
     final now = _now();
     var groupsChanged = false;
@@ -323,9 +351,11 @@ class LiveTvManager extends ChangeNotifier {
       if (channels) {
         final guideBefore = (source.guideUrl, source.guideFile);
         final fresh = await client.fetchChannels();
-        final hadGuide = {for (final c in entry.channels) if (c.hasGuide) c.key};
+        final before = entry.channels;
+        final hadGuide = {for (final c in before) if (c.hasGuide) c.key};
         entry.channels = [for (final c in fresh) hadGuide.contains(c.key) ? c.copyWith(hasGuide: true) : c];
-        groupsChanged |= await _applyChannelList(source, taken: taken(), groups: groups, now: now);
+        groupsChanged |=
+            await _applyChannelList(source, taken: taken(), groups: groups, now: now, before: before, moved: moved);
         entry.state.channelsAt = now;
         await cache.saveChannels(source.id, entry.channels);
         if (guideBefore != (source.guideUrl, source.guideFile)) await save();
@@ -413,9 +443,27 @@ class LiveTvManager extends ChangeNotifier {
 
   /// Departures and returns after [source]'s channel list changed.
   Future<bool> _applyChannelList(LiveSource source,
-      {required Set<int> taken, required List<ChannelGroup> groups, required DateTime now}) async {
-    final present = {for (final c in entryFor(source).channels) c.key};
+      {required Set<int> taken,
+      required List<ChannelGroup> groups,
+      required DateTime now,
+      List<LiveChannelInfo> before = const [],
+      void Function(String from, String to)? moved}) async {
+    final fresh = entryFor(source).channels;
+    final present = {for (final c in fresh) c.key};
+    // Saved before the source's number and name were kept: from the list
+    // the source had until now.
+    final was = {for (final c in before) c.key: c};
+    for (final e in source.chosen.entries) {
+      final info = was[e.key];
+      if (info == null || e.value.sourceName != null) continue;
+      e.value
+        ..sourceName = info.name
+        ..sourceNumber = info.number;
+    }
     var changed = false;
+    if (source.kind == LiveSourceKind.server) {
+      changed |= _rekey(source, fresh, groups: groups, taken: taken, moved: moved);
+    }
     for (final key in [...source.chosen.keys]) {
       if (present.contains(key)) continue;
       final id = LiveRef.channelId(source.id, key);
@@ -441,7 +489,97 @@ class LiveTvManager extends ChangeNotifier {
       }
     }
     source.forgetDeparted(now);
+    for (final c in fresh) {
+      source.chosen[c.key]
+        ?..sourceName = c.name
+        ..sourceNumber = c.number;
+    }
     await save();
+    return changed;
+  }
+
+  /// Chosen and departed channels of server source [source] whose keys
+  /// [fresh] no longer has, moved to the new key of the same channel
+  /// (live-tv-sources "Stable live channel identity", design D3): the one
+  /// new channel with the same source number and name, else the one with
+  /// the same name while only one missing channel has it. [moved] hears
+  /// each old and new channel id. True when [groups] changed.
+  bool _rekey(LiveSource source, List<LiveChannelInfo> fresh,
+      {required List<ChannelGroup> groups, required Set<int> taken, void Function(String from, String to)? moved}) {
+    final present = {for (final c in fresh) c.key};
+    final missing = <String, LiveChannelSettings>{
+      for (final e in source.chosen.entries)
+        if (!present.contains(e.key)) e.key: e.value,
+      for (final e in source.departed.entries)
+        if (!present.contains(e.key)) e.key: e.value.settings,
+    };
+    if (missing.isEmpty) return false;
+    final candidates = [
+      for (final c in fresh)
+        if (!source.chosen.containsKey(c.key) && !source.departed.containsKey(c.key)) c,
+    ];
+    if (candidates.isEmpty) return false;
+    String norm(String? s) => (s ?? '').trim().toLowerCase();
+    final matches = <String, LiveChannelInfo>{};
+    final claimed = <String>{};
+
+    // Each side's channels by [keyOf] / [candidateKey] (null: not matched
+    // this way); a key held by exactly one on each side is a match.
+    void pass(String? Function(LiveChannelSettings s) keyOf, String Function(LiveChannelInfo c) candidateKey) {
+      final wanted = <String, List<String>>{};
+      for (final e in missing.entries) {
+        if (matches.containsKey(e.key)) continue;
+        if (keyOf(e.value) case final k?) wanted.putIfAbsent(k, () => []).add(e.key);
+      }
+      final offered = <String, List<LiveChannelInfo>>{};
+      for (final c in candidates) {
+        if (!claimed.contains(c.key)) offered.putIfAbsent(candidateKey(c), () => []).add(c);
+      }
+      for (final w in wanted.entries) {
+        final hits = offered[w.key];
+        if (w.value.length != 1 || hits == null || hits.length != 1) continue;
+        matches[w.value.single] = hits.single;
+        claimed.add(hits.single.key);
+      }
+    }
+
+    // Pass 1: the same source number and name.
+    String both(String? number, String? name) => '${norm(number)}\u0000${norm(name)}';
+    pass((s) => norm(s.sourceNumber).isEmpty || norm(s.sourceName).isEmpty ? null : both(s.sourceNumber, s.sourceName),
+        (c) => both(c.number, c.name));
+    // Pass 2: the same name, when only one on each side has it.
+    pass((s) => norm(s.sourceName).isEmpty ? null : norm(s.sourceName), (c) => norm(c.name));
+    if (matches.isEmpty) return false;
+
+    final entry = entryFor(source);
+    final used = {...taken, for (final c in source.chosen.values) c.number};
+    var changed = false;
+    for (final m in matches.entries) {
+      final from = LiveRef.channelId(source.id, m.key), to = LiveRef.channelId(source.id, m.value.key);
+      final chosen = source.chosen.remove(m.key);
+      if (chosen != null) {
+        source.chosen[m.value.key] = chosen;
+      } else {
+        final back = source.departed.remove(m.key)!;
+        final settings = back.settings;
+        used.remove(settings.number);
+        if (used.contains(settings.number)) settings.number = ChannelNumbers.nextFree(used, from: settings.number);
+        used.add(settings.number);
+        source.chosen[m.value.key] = settings;
+        for (final g in groups) {
+          if (back.groupIds.contains(g.id) && !g.channelIds.contains(to)) {
+            g.channelIds = [...g.channelIds, to];
+            changed = true;
+          }
+        }
+      }
+      // The same channel's programmes, until the guide refresh replaces them.
+      if (entry.guide.remove(m.key) case final programmes?) entry.guide[m.value.key] = programmes;
+      _schedules.remove(from);
+      moved?.call(from, to);
+    }
+    PlaybackDiagnostics.note('LIVE', '${source.id}: re-keyed ${matches.length} channels');
+    ErrorReports.breadcrumb('server', 'Re-keyed ${matches.length} live channels', data: {'count': matches.length});
     return changed;
   }
 

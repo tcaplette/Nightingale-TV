@@ -3,6 +3,7 @@
 // stream (404), so playback shows "No signal", as with no server at all.
 import 'dart:convert';
 import 'dart:io';
+import 'dart:math';
 
 import '../test/fixtures.dart';
 
@@ -101,7 +102,12 @@ class FakeJellyfin {
       });
     } else if (path == '/Items') {
       final list = _items(q['ParentId'] ?? '', (q['IncludeItemTypes'] ?? '').split(','));
-      json({'Items': list, 'TotalRecordCount': list.length, 'StartIndex': 0});
+      // Pages as Jellyfin sends them, so a large library is never one
+      // answer (this server runs in the app's process).
+      final start = int.tryParse(q['StartIndex'] ?? '') ?? 0;
+      final limit = int.tryParse(q['Limit'] ?? '') ?? list.length;
+      final page = start >= list.length ? const <Map<String, Object?>>[] : list.sublist(start, min(list.length, start + limit));
+      json({'Items': page, 'TotalRecordCount': list.length, 'StartIndex': start});
     } else if (RegExp(r'^/Items/[^/]+/Images/(Logo|Primary)$').hasMatch(path)) {
       // A 1×1 PNG, only for a request with the sign-in.
       final auth = '${request.headers.value('authorization')} ${request.headers.value('x-emby-token')} ${q['api_key']}';
@@ -120,8 +126,18 @@ class FakeJellyfin {
     await response.close();
   }
 
+  /// [_listing]s by parent and types: each worked out once, as the pages
+  /// of one listing are asked for one after another.
+  final _listings = <String, List<Map<String, Object?>>>{};
+
   List<Map<String, Object?>> _items(String parent, List<String> types) {
     if (types.contains('Folder')) return folders[parent] ?? const [];
+    // Collections change during a test: never kept.
+    if (collections.containsKey(parent)) return _listing(parent, types);
+    return _listings.putIfAbsent('$parent|${types.join(',')}', () => _listing(parent, types));
+  }
+
+  List<Map<String, Object?>> _listing(String parent, List<String> types) {
     if (collections[parent] case final ids?) {
       return [
         for (final i in [...items.episodes, ...items.movies])

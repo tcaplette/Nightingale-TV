@@ -168,4 +168,48 @@ void main() {
             .having((e) => e.failure, 'failure', LiveFailure.tunersBusy)
             .having((e) => e.message, 'message', contains('Could not tune'))));
   });
+
+  group('a channel the DVR no longer lists (live-channel-repair)', () {
+    Map<String, Object?> without(String id) {
+      final lineup = fixture('channels');
+      final container = lineup['MediaContainer'] as Map<String, Object?>;
+      container['Channel'] = [for (final c in container['Channel'] as List) if ((c as Map)['id'] != id) c];
+      return lineup;
+    }
+
+    const cantTune = {
+      'MediaContainer': {'size': 0, 'message': 'Could not tune channel. Please check your tuner or antenna.', 'status': -1},
+    };
+
+    test("Plex's 200 \"Could not tune\" for a channel gone from the lineup is a channel gone", () async {
+      var lineup = fixture('channels');
+      final c = plex({
+        ...server(),
+        'GET /$epg/lineups/dvr/channels': (_) => lineup,
+        'POST /livetv/dvrs/2/channels/fake71.test/tune': (_) => cantTune,
+      });
+      await c.liveTv.channels();
+      lineup = without('fake71.test');
+      await expectLater(c.liveTv.open('fake71.test'),
+          throwsA(isA<LiveTvException>().having((e) => e.failure, 'failure', LiveFailure.channelGone)));
+      // Read again, the lineup no longer offers it at all.
+      await expectLater(c.liveTv.open('fake71.test'),
+          throwsA(isA<LiveTvException>().having((e) => e.failure, 'failure', LiveFailure.channelGone)));
+    });
+
+    test('a failed tune of a channel still listed stays a failure to start', () async {
+      final c = plex({...server(), 'POST /livetv/dvrs/2/channels/fake71.test/tune': (_) => cantTune});
+      await expectLater(c.liveTv.open('fake71.test'),
+          throwsA(isA<LiveTvException>().having((e) => e.failure, 'failure', LiveFailure.other)));
+    });
+
+    test('a channel no DVR lists any more, on a fresh start, is a channel gone', () async {
+      final gone = plex({
+        ...server(),
+        'GET /$epg/lineups/dvr/channels': (_) => without('fake41.test'),
+      });
+      await expectLater(gone.liveTv.open('fake41.test'),
+          throwsA(isA<LiveTvException>().having((e) => e.failure, 'failure', LiveFailure.channelGone)));
+    });
+  });
 }

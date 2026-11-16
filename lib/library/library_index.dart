@@ -1,5 +1,6 @@
+import 'package:flutter/foundation.dart' show visibleForTesting;
+
 import '../commercials/commercial_pool.dart';
-import '../playback/playback_diagnostics.dart';
 import '../server/media_server.dart';
 import '../profiles/profile.dart';
 import '../l10n/tr.dart';
@@ -612,7 +613,7 @@ class ShowIndexer {
         keyOf[s.id] = key;
       }
       if (group.length > 1) {
-        PlaybackDiagnostics.note('SCAN', 'merged ${[for (final s in group) '"${s.name}" (${s.year ?? '-'})'].join(' + ')} → $key');
+        notes.add('merged ${[for (final s in group) '"${s.name}" (${s.year ?? '-'})'].join(' + ')} → $key');
       }
     }
 
@@ -641,6 +642,10 @@ class ShowIndexer {
   /// The shows with episodes.
   late final List<SeriesEntry> series;
 
+  /// The diagnostics lines of the grouping (`merged …`), for the caller to
+  /// write on the main isolate (library-scan-anr D2).
+  final notes = <String>[];
+
   /// Each episode's show key, show name and season, in the order given;
   /// null for a copy of an earlier one.
   late final List<({String key, String name, int? season})?> episodes;
@@ -648,50 +653,155 @@ class ShowIndexer {
   /// [items] as shows (D1). Items with a year (or provider ids) group first;
   /// then a yearless item joins the one show of its name, or stays its own
   /// show when the name has shows of several years.
+  ///
+  /// Candidate groups are found by lookups (library-scan-anr D1), so the
+  /// time grows with the number of items, not its square.
   static List<List<ShowItem>> _group(List<ShowItem> items) {
+    // Every hash lookup happens here, once per id and per name; the passes
+    // below only follow references.
+    final cells = <String, _IdCell>{};
+    final providerBits = <String, int>{};
+    final byKey = <String, _NameGroups>{};
+    final info = [for (final s in items) _GroupItem(s, cells, providerBits, byKey)];
+
     final groups = <List<ShowItem>>[];
-    bool conflicts(List<ShowItem> g, ShowItem s) =>
-        g.any((o) => ShowIdentity.providersAgree(o.providerIds, s.providerIds) == false);
-    bool sharesProvider(List<ShowItem> g, ShowItem s) =>
-        g.any((o) => ShowIdentity.providersAgree(o.providerIds, s.providerIds) == true);
-    void join(ShowItem s, List<ShowItem>? g) => g == null ? groups.add([s]) : g.add(s);
+    // The providers of each group's ids: bits, and any past the 62nd.
+    final groupMask = <int>[];
+    final groupExtra = <Set<String>?>[];
+    var datedPass = true;
+    var datedCount = 0;
+
+    // The first group holding one of [s]'s ids.
+    int? sharing(_GroupItem s) {
+      int? first;
+      for (final cell in s.ids) {
+        final g = cell.group;
+        if (g != null && (first == null || g < first)) first = g;
+      }
+      return first;
+    }
+
+    // Asked only when no group shares an id with [s]: then any provider in
+    // common means the provider gives the two different ids.
+    bool conflicts(int g, _GroupItem s) {
+      if (groupMask[g] & s.mask != 0) return true;
+      final mine = s.extra, theirs = groupExtra[g];
+      return mine != null && theirs != null && mine.any(theirs.contains);
+    }
+
+    void add(_GroupItem s, int g) {
+      groups[g].add(s.item);
+      // [s] joins the first group holding any of its ids, so [g] is never
+      // later than the group an id already names.
+      for (final cell in s.ids) {
+        cell.group = g;
+      }
+      groupMask[g] |= s.mask;
+      if (s.extra case final extra?) (groupExtra[g] ??= {}).addAll(extra);
+      final name = s.name;
+      if (datedPass) {
+        final list = (name.byYear ??= {}).putIfAbsent(s.year!, () => []);
+        if (!list.contains(g)) list.add(g);
+      }
+      if (datedPass || g < datedCount) {
+        final dated = name.dated ??= [];
+        if (!dated.contains(g)) dated.add(g);
+      }
+    }
+
+    void create(_GroupItem s) {
+      final g = groups.length;
+      groups.add([]);
+      groupMask.add(0);
+      groupExtra.add(null);
+      if (!datedPass) (s.name.undated ??= []).add(g);
+      add(s, g);
+    }
 
     final unknown = [for (final s in items) if (s.isUnknown) s];
-    final dated = [for (final s in items) if (!s.isUnknown && s.identity.year != null) s];
-    final yearless = [for (final s in items) if (!s.isUnknown && s.identity.year == null) s];
+    final dated = [for (final s in info) if (!s.item.isUnknown && s.year != null) s];
+    final yearless = [for (final s in info) if (!s.item.isUnknown && s.year == null) s];
     for (final s in dated) {
-      join(
-          s,
-          groups.where((g) => sharesProvider(g, s)).firstOrNull ??
-              groups
-                  .where((g) => !conflicts(g, s) && g.any((o) => o.identity.key == s.identity.key && o.identity.year == s.identity.year))
-                  .firstOrNull);
+      var g = sharing(s);
+      if (g == null) {
+        for (final c in s.name.byYear?[s.year] ?? const <int>[]) {
+          if ((g == null || c < g) && !conflicts(c, s)) g = c;
+        }
+      }
+      g == null ? create(s) : add(s, g);
     }
-    final datedGroups = [...groups];
+    datedPass = false;
+    datedCount = groups.length;
     for (final s in yearless) {
-      final byProvider = groups.where((g) => sharesProvider(g, s)).firstOrNull;
-      if (byProvider != null) {
-        byProvider.add(s);
+      if (sharing(s) case final g?) {
+        add(s, g);
         continue;
       }
-      final named = [
-        for (final g in datedGroups)
-          if (!conflicts(g, s) && g.any((o) => o.identity.key == s.identity.key)) g,
-      ];
-      if (named.length == 1) {
-        named.single.add(s);
+      int? named;
+      var several = false;
+      for (final g in s.name.dated ?? const <int>[]) {
+        if (conflicts(g, s)) continue;
+        if (named != null) several = true;
+        named = g;
+      }
+      if (named != null && !several) {
+        add(s, named);
         continue;
       }
       // No dated show of the name, or several (ambiguous): one yearless show.
-      join(
-          s,
-          groups
-              .where((g) => !datedGroups.contains(g) && !conflicts(g, s) && g.first.identity.key == s.identity.key)
-              .firstOrNull);
+      final g = (s.name.undated ?? const <int>[]).where((g) => !conflicts(g, s)).firstOrNull;
+      g == null ? create(s) : add(s, g);
     }
     if (unknown.isNotEmpty) groups.add(unknown);
     return groups;
   }
+
+  /// [_group], for the equivalence test.
+  @visibleForTesting
+  static List<List<ShowItem>> groupForTest(List<ShowItem> items) => _group(items);
+}
+
+/// A provider id while [ShowIndexer] groups: the first group holding it.
+class _IdCell {
+  int? group;
+}
+
+/// The groups of one cleaned name while [ShowIndexer] groups: by year (dated
+/// pass), dated groups with a member of the name, and the groups the
+/// yearless pass made for it.
+class _NameGroups {
+  Map<int, List<int>>? byYear;
+  List<int>? dated;
+  List<int>? undated;
+}
+
+/// A show item with what grouping needs looked up once.
+class _GroupItem {
+  _GroupItem(this.item, Map<String, _IdCell> cells, Map<String, int> providerBits, Map<String, _NameGroups> byKey)
+      : year = item.identity.year,
+        name = byKey.putIfAbsent(item.identity.key, _NameGroups.new) {
+    for (final id in item.providerIds) {
+      final cell = cells.putIfAbsent(id, _IdCell.new);
+      if (ids.contains(cell)) continue;
+      ids.add(cell);
+      final provider = id.substring(0, id.indexOf(':') + 1);
+      final bit = providerBits.putIfAbsent(provider, () => providerBits.length);
+      if (bit < 62) {
+        mask |= 1 << bit;
+      } else {
+        (extra ??= {}).add(provider);
+      }
+    }
+  }
+
+  final ShowItem item;
+  final int? year;
+  final _NameGroups name;
+  final ids = <_IdCell>[];
+
+  /// The providers of [item]'s ids: bits, and any past the 62nd.
+  int mask = 0;
+  Set<String>? extra;
 }
 
 /// Snapshot of the playable parts of the user's libraries.
@@ -707,6 +817,7 @@ class LibraryIndex {
     this.rootsByItem = const {},
     this.roots = const {},
     this.missingRoots = const {},
+    this.scanNotes = const [],
   }) : _byId = {for (final e in [...episodes, ...movies, ...commercials, ...songs, ...musicVideos]) e.id: e};
 
   final List<SeriesEntry> series;
@@ -733,6 +844,10 @@ class LibraryIndex {
   /// Resolved roots the server had nothing under, or no longer has.
   final Set<String> missingRoots;
   final DateTime fetchedAt;
+
+  /// The scan's diagnostics lines (`merged …`), written to the diagnostics
+  /// log by whoever built this index, on the main isolate. Never saved.
+  final List<String> scanNotes;
   final Map<String, MediaEntry> _byId;
 
   /// The episodes and movies under each root, in no order.
@@ -896,6 +1011,16 @@ class LibraryIndex {
   /// an index saved before the rule, re-keyed without a scan. Episode ids
   /// stay; a copy of an episode another of the show's items holds goes.
   LibraryIndex rekeyed() {
+    final shows = rekeyShows(series, episodes);
+    return withShows(shows.series, shows.episodes, scanNotes: shows.notes);
+  }
+
+  /// The show work of [rekeyed]: [series] merged by [ShowIdentity], and
+  /// [episodes] moved under the merged shows (a copy another of the show's
+  /// items holds goes). Plain lists in and out, so it can run in a worker
+  /// isolate on only the parts it needs (library-scan-anr D2).
+  static ({List<SeriesEntry> series, List<MediaEntry> episodes, List<String> notes}) rekeyShows(
+      List<SeriesEntry> series, List<MediaEntry> episodes) {
     final shows = ShowIndexer([
       for (final s in series)
         ShowItem(
@@ -911,22 +1036,31 @@ class LibraryIndex {
       for (final e in episodes)
         (showId: e.seriesKey, showName: e.seriesName, season: e.season, number: e.episode, title: e.title),
     ]);
-    return LibraryIndex(
+    return (
       series: shows.series,
       episodes: [
         for (final (i, e) in episodes.indexed)
           if (shows.episodes[i] case final show?) e.withShow(show.key, show.name, show.season),
       ],
-      movies: movies,
-      commercials: commercials,
-      songs: songs,
-      musicVideos: musicVideos,
-      fetchedAt: fetchedAt,
-      rootsByItem: rootsByItem,
-      roots: roots,
-      missingRoots: missingRoots,
+      notes: shows.notes,
     );
   }
+
+  /// This index with other shows and episodes, the rest kept.
+  LibraryIndex withShows(List<SeriesEntry> series, List<MediaEntry> episodes, {List<String> scanNotes = const []}) =>
+      LibraryIndex(
+        series: series,
+        episodes: episodes,
+        movies: movies,
+        commercials: commercials,
+        songs: songs,
+        musicVideos: musicVideos,
+        fetchedAt: fetchedAt,
+        rootsByItem: rootsByItem,
+        roots: roots,
+        missingRoots: missingRoots,
+        scanNotes: scanNotes,
+      );
 
   late final Map<String, SeriesEntry> seriesByKey = {for (final s in series) s.key: s};
 
@@ -1150,6 +1284,7 @@ class LibraryIndex {
       songs: music(songItems, MediaKind.song),
       musicVideos: music(musicVideoItems, MediaKind.musicVideo),
       fetchedAt: fetchedAt ?? DateTime.now(),
+      scanNotes: shows.notes,
     );
   }
 

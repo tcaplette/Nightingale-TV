@@ -77,10 +77,10 @@ Make TV feel like TV again, with ads between and during shows. Being experimenta
 
 ## Install
 
-Nightingale TV is free and open source. On Android there are three ways to get it, all built from the same source code:
+Nightingale TV is free and open source. On Android there are three ways to get it, all built from this source code (the Google Play version also has a purchase module that isn't published here):
 
-- **Buy it from the store** (coming soon). It will be sold on **Google Play** for Android TV, Google TV, phones and tablets, and updates by itself. Buying it is the easy way to get Nightingale TV, and it supports the project.
-- **Download it for free** from [Releases](https://github.com/tcaplette/Nightingale-TV/releases). The official APKs are the same app as the store version, signed with the same key, but they don't update by themselves. See [On Android](#on-android).
+- **Buy it on Google Play** (coming soon), for Android TV, Google TV, phones and tablets: free for 14 days, then a one-time $4.99 (USD; Play shows your local price) unlocks it for good, and it updates by itself. Buying it supports the project.
+- **Download it for free** from [Releases](https://github.com/tcaplette/Nightingale-TV/releases): the same Nightingale TV with nothing locked, signed with the same key, so the two install over each other and keep your setup. The APKs don't update by themselves. See [On Android](#on-android).
 - **Build it yourself, for free.** See [Building from source](#building-from-source).
 
 The desktop version (Linux) is free on [Releases](https://github.com/tcaplette/Nightingale-TV/releases), or you can build it yourself. See [On a computer](#on-a-computer).
@@ -104,8 +104,8 @@ On Android the app fills the screen and keeps it on while it's in front. On a ph
 
 #### Store version, official APKs and your own build
 
-- **The store version and the official APKs are the same app**, **Nightingale TV**. Each installs over the other and keeps every profile, channel and setting.
-- **Your own build is a separate app**, **Nightingale TV (own build)**. It installs beside the store version with its own profiles, channels and settings. The **About this install** section of **Backup & restore** says which one you're in.
+- **The Google Play version and the official APKs have the same app id and setup**, **Nightingale TV**. Each installs over the other and keeps every profile, channel and setting. The Google Play version has the 14-day free trial and the one-time purchase; the official APKs are free with nothing locked, and don't update by themselves.
+- **Your own build is a separate app**, **Nightingale TV (own build)**. It installs beside the Google Play version with its own profiles, channels and settings, and nothing in it is locked. The **About this install** section of **Backup & restore** says which one you're in.
 - **Moving your setup across:** in **Backup & restore**, pick **Move my setup to …** (or **Bring my setup here from …**). The other app opens and asks before restoring. It works with just a remote. A backup file works too (see [Moving to a new device](#moving-to-a-new-device)).
 - **Don't uninstall first.** Uninstalling either app deletes its setup unless you've moved it or saved a backup file.
 
@@ -269,17 +269,21 @@ You can leave the two password lines out and pass them when building instead: `N
 tool/build_apk.sh           # build the four APKs in dist/ and print their sizes
 ```
 
+`tool/build_apk.sh` also saves the debug information of each architecture's compiled Dart code, as `dist/symbols/libapp-<abi>.debug` (`NTV_DIST=dist/<version>` puts the APKs and their `symbols/` folder in a release's own folder). It builds the split APKs one architecture at a time for this, then checks that every `libapp.so` in every APK has the build ID of its saved debug file, and fails naming the APK and architecture when one doesn't. The debug files never go inside an APK. Keep them with the release: [`tool/symbolize_event.py`](#error-reports) reads them.
+
 Release builds stop with these instructions if there's no key. They never fall back to a debug key, because Android won't install a properly signed update over a debug-signed app without uninstalling it, and that loses your profiles.
 
 **Your build is a separate app from the store version.** Only builds signed with the official key (its fingerprint is in `android/official_signing_cert.txt`) get the store's app id. Every other build, debug builds included, is **Nightingale TV (own build)** (`com.coffeehauslabs.nightingale_tv.selfbuilt`); see [Store version, official APKs and your own build](#store-version-official-apks-and-your-own-build).
 
+The Android app has two flavors. **`free`** is what `flutter run`, `flutter test` and `tool/build_apk.sh` build: no Google Play Billing, no trial, nothing locked. **`play`** is the Google Play bundle, with Google Play Billing, the 14-day trial and the one-time unlock. Its purchase module (`android/app/src/play/`) isn't in this repository, so every build from source is the free flavor, and `tool/build_bundle.sh` stops with a message without it. To try the trial and the Unlock screen without Google Play, run a debug build with the stand-in store, `flutter run --dart-define=NTV_FAKE_STORE=buy` (or `pending`, `cancel`, `error`, `offline`), and add `--dart-define=NTV_TRIAL_OFFSET_DAYS=15` to start 15 days into the trial. The build scripts refuse to run when `error_reporting.env` sets either.
+
 Every APK has the build number from `pubspec.yaml` (`version: x.y.z+<build>`) as its version code, with nothing added per architecture, so official APKs and the store bundle of the same version line up.
 
 ```bash
-tool/build_bundle.sh        # official key only: the Google Play bundle, dist/nightingale-tv_<version>.aab
+tool/build_bundle.sh        # official key only: the Google Play bundle (play flavor), dist/nightingale-tv_<version>.aab
 ```
 
-`tool/build_bundle.sh` refuses to run with any key not in `official_signing_cert.txt`.
+`tool/build_bundle.sh` refuses to run with any key not in `official_signing_cert.txt`. It saves the bundle's debug files the same way, in `dist/symbols/play/` (the play flavor's code isn't the APKs'), and checks the bundle's build IDs against them.
 
 ### Building for Linux
 
@@ -292,6 +296,8 @@ flutter run -d linux        # NIGHTINGALE_TV_WINDOWED=1 runs it in a window
 tool/install.sh             # build the package and install or update it with apt
 tool/build_deb.sh           # only build the package in dist/
 ```
+
+`tool/build_deb.sh` and `tool/build_linux_release.sh` (the tarball the server image downloads) save the compiled Dart code's debug information as `dist/symbols/libapp-linux-x64.debug`, check the build ID of the shipped `libapp.so` against it, and check that the `.deb` or tarball holds no debug file. The Linux release workflow keeps the file as a workflow artifact, not on the release.
 
 ## Privacy
 
@@ -309,6 +315,8 @@ Official builds (Google Play, the APKs and `.deb` on Releases, and the server im
 
 Builds you make yourself send nothing: reporting needs an address that's only in official builds (see [Building from source](#building-from-source)).
 
+**Reading an ANR or native crash** (for the developer): Dart errors arrive with their function and file names, but a freeze (ANR) or native crash reports the app's compiled Dart code as raw addresses in `libapp.so`. Each official release keeps that code's debug files in `dist/<version>/symbols/` (saved by the build scripts, never inside an APK, bundle, `.deb` or tarball). `tool/symbolize_event.py <event-id>` fetches the event from GlitchTip (with the login in the git-ignored `glitchtip-credentials.txt`), works out which library each APK offset is, and prints the frames innermost first, each `libapp.so` frame as a Dart function with its file and line. `--dist` names the release folder when it isn't `dist/<version>`, and `--apk` the APK a device ran (for a Google Play install, its `split_config.<abi>.apk`). Releases before these files were kept (1.2.4 and earlier) can't be symbolized this way; the tool says so and prints the frames by library and address.
+
 ## Reporting a problem
 
 Found a bug or have an idea? Open an issue on [GitHub Issues](https://github.com/tcaplette/Nightingale-TV/issues/new/choose) and pick **Bug report** or **Feature request**. The form asks for the version, how you installed it, your device and your media server, which is what's needed to track a problem down. If the app sent an error report, add the ID from **Error reports** in the menu.
@@ -319,7 +327,7 @@ Nightingale TV is **free and open source software**, licensed under the [GNU Gen
 
 You're free to use, study, copy, modify and redistribute it, and even sell it. If you distribute it, modified or not, you must pass on the same freedoms: share the source code under the GPL and keep the copyright and license notices. Nightingale TV comes with no warranty; see the license for details.
 
-The version sold on Google Play is built from this same source code under the same license. Buying it pays for the convenience of a store install and supports the project.
+The Google Play version is this app with a Google Play purchase module added (the 14-day free trial and the one-time unlock). That module isn't published in this repository; everything here is the whole app, free, with nothing locked. Buying the Google Play version pays for the convenience of a store install and supports the project.
 
 "Nightingale TV" and its logo identify this project. If you publish your own modified version, please give it a different name and icon so people can tell the two apart.
 

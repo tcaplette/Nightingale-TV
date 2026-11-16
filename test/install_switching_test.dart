@@ -44,7 +44,8 @@ void main() {
       expect(const InstallInfo(ownBuild: false).sourceLine, 'Official Nightingale TV APK');
       expect(ownBuild.sourceLine, 'Your own build');
       expect(ownBuild.switching, contains('separate app, "Nightingale TV"'));
-      expect(ownBuild.switching, contains('Buying it supports the project'));
+      expect(ownBuild.switching, contains('The Google Play version installs beside this one'));
+      expect(ownBuild.switching, contains("It's free for 14 days, then a one-time purchase supports the project"));
     });
 
     test('the names of this app and the other one', () {
@@ -178,7 +179,7 @@ void main() {
       await show(tester, const BackupScreen());
       expect(find.text('ABOUT THIS INSTALL'), findsOneWidget);
       expect(find.text('Your own build'), findsOneWidget);
-      expect(find.textContaining('The store version installs beside this one'), findsOneWidget);
+      expect(find.textContaining('The Google Play version installs beside this one'), findsOneWidget);
       expect(find.text(InstallInfo.uninstallWarning), findsOneWidget);
       expect(find.textContaining('Move my setup'), findsNothing);
       // Back up now still has focus.
