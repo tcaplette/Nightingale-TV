@@ -330,10 +330,15 @@ class TvButton extends StatelessWidget {
     this.expand = false,
     this.danger = false,
     this.maxLines = 1,
+    this.badge = 0,
   });
 
   final String label;
   final IconData? icon;
+
+  /// A count shown in a pill after the label (the menu's waiting shares);
+  /// none at 0.
+  final int badge;
   final VoidCallback? onPressed;
   final bool autofocus;
   final FocusNode? focusNode;
@@ -382,6 +387,14 @@ class TvButton extends StatelessWidget {
                       overflow: TextOverflow.ellipsis,
                       style: g.display(30, weight: FontWeight.w600, color: fg)),
                 ),
+                if (badge > 0) ...[
+                  const SizedBox(width: 14),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 2),
+                    decoration: BoxDecoration(color: g.nowLine, borderRadius: BorderRadius.circular(40)),
+                    child: Text('$badge', style: g.display(26, weight: FontWeight.w800, color: Colors.white)),
+                  ),
+                ],
               ],
             ),
           ),
@@ -741,12 +754,17 @@ class TvPointerButton extends StatefulWidget {
     required this.onPressed,
     this.highlighted = false,
     this.onHover,
+    this.image,
   });
 
   final String label;
   final IconData icon;
   final VoidCallback onPressed;
   final bool highlighted;
+
+  /// Drawn instead of [icon] (a watch-party reaction); with an empty
+  /// [label], it's all the button shows.
+  final Widget? image;
 
   /// Called when the pointer moves onto the button. An owner that passes it
   /// keeps the one highlight itself (pointer and D-pad share it), so the
@@ -786,9 +804,11 @@ class _TvPointerButtonState extends State<TvPointerButton> {
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(widget.icon, size: 30, color: on ? g.onFocus : g.text),
-              const SizedBox(width: 12),
-              Text(widget.label, style: g.display(28, weight: FontWeight.w700, color: on ? g.onFocus : g.text)),
+              widget.image ?? Icon(widget.icon, size: 30, color: on ? g.onFocus : g.text),
+              if (widget.label.isNotEmpty) ...[
+                const SizedBox(width: 12),
+                Text(widget.label, style: g.display(28, weight: FontWeight.w700, color: on ? g.onFocus : g.text)),
+              ],
             ],
           ),
         ),

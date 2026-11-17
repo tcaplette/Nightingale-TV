@@ -16,6 +16,8 @@ import 'break_plan_editor_screen.dart';
 import 'icon_picker_screen.dart';
 import 'menu_screen.dart' show confirm, showMessage;
 import 'retro_look_screen.dart';
+import 'share_notice.dart';
+import 'sharing_screen.dart' show ShareChannelsScreen;
 import 'source_picker_screen.dart';
 import 'widgets/channel_logo.dart';
 import 'widgets/adaptive.dart';
@@ -322,6 +324,7 @@ class _ChannelEditorScreenState extends State<ChannelEditorScreen> {
             ),
           ],
         ),
+        ..._shareDetails(context, ch),
         const SizedBox(height: 36),
         Row(
           children: [
@@ -362,6 +365,13 @@ class _ChannelEditorScreenState extends State<ChannelEditorScreen> {
               icon: Icons.add,
               onPressed: () => app.updateChannel(ch, number: ch.number + 1),
             ),
+            if (_canShare(context, ch))
+              TvButton(
+                label: tr.sharingShareEllipsis,
+                icon: Icons.ios_share,
+                onPressed: () => Navigator.of(context)
+                    .push<void>(MaterialPageRoute(builder: (_) => ShareChannelsScreen(initial: {ch.id}))),
+              ),
           ],
         ),
         // Always there on a channel that plays programs: a button leaving
@@ -380,8 +390,10 @@ class _ChannelEditorScreenState extends State<ChannelEditorScreen> {
                   icon: Icons.shuffle,
                   onPressed: () async {
                     final tuner = AppScope.tunerOf(context);
+                    final notice = app.shareStopNotice(ch);
                     await app.reshuffleChannel(ch);
                     if (tuner.channel?.id == ch.id) await tuner.reschedule();
+                    if (context.mounted) await afterShareEdit(context, ch, notice);
                   },
                 ),
               if (ch.isCustom)
@@ -402,8 +414,10 @@ class _ChannelEditorScreenState extends State<ChannelEditorScreen> {
                   label: order.label,
                   icon: ch.order == order ? Icons.radio_button_checked : Icons.radio_button_off,
                   onPressed: () async {
+                    final notice = order == ch.order ? null : app.shareStopNotice(ch);
                     await app.updateChannel(ch, order: order);
                     if (context.mounted) await _retuneIfWatching(context, ch);
+                    if (context.mounted) await afterShareEdit(context, ch, notice);
                   },
                 ),
             ],
@@ -647,6 +661,7 @@ class _ChannelEditorScreenState extends State<ChannelEditorScreen> {
   Future<void> _editContent(BuildContext context, Channel ch) async {
     final app = AppScope.read(context);
     final tuner = AppScope.tunerOf(context);
+    final notice = app.shareStopNotice(ch);
     await Navigator.of(context).push<void>(MaterialPageRoute(
       builder: (route) => SourcePickerScreen(
         title: tr.contentOf(ch.displayName),
@@ -664,6 +679,45 @@ class _ChannelEditorScreenState extends State<ChannelEditorScreen> {
         },
       ),
     ));
+    if (context.mounted) await afterShareEdit(context, ch, notice);
+  }
+
+  /// Share… is offered on a channel that can be shared, in a build and
+  /// profile with sharing set up.
+  bool _canShare(BuildContext context, Channel ch) {
+    // Screens shown on their own (a web admin preview, tests) have no
+    // household: no sharing there.
+    final household = context.getInheritedWidgetOfExactType<HouseholdScope>()?.notifier;
+    final profile = household?.current;
+    final sharing = household?.sharing;
+    if (sharing == null || profile == null || !sharing.isLinked(profile)) return false;
+    return !ch.isSharedCopy && AppScope.read(context).shareProblem(ch) == null;
+  }
+
+  /// A shared copy's details: who shared it, the match count, Keep
+  /// updated, or "No longer updated".
+  List<Widget> _shareDetails(BuildContext context, Channel ch) {
+    final link = ch.share;
+    if (link == null || !link.isCopy) return const [];
+    final g = context.guide;
+    final app = AppScope.read(context);
+    return [
+      const SizedBox(height: 24),
+      Text(tr.sharingSharedBy(link.ownerName ?? '', link.ownerHandle ?? ''), style: g.body(28, weight: FontWeight.w600)),
+      Text(tr.sharingMatched(link.matched, link.total), style: g.body(24, color: g.textDim)),
+      const SizedBox(height: 12),
+      if (link.ended)
+        Text(tr.sharingNoLongerUpdated, style: g.body(26, weight: FontWeight.w600, color: g.accent))
+      else
+        Wrap(spacing: 16, runSpacing: 8, crossAxisAlignment: WrapCrossAlignment.center, children: [
+          TvToggle(
+            label: tr.sharingKeepUpdated,
+            on: link.keepUpdated,
+            onPressed: () => app.setKeepUpdated(ch, !link.keepUpdated),
+          ),
+          Text(tr.sharingKeepUpdatedHelp(link.ownerName ?? ''), style: g.body(22, color: g.textDim)),
+        ]),
+    ];
   }
 
   Future<void> _remove(BuildContext context, Channel ch) async {

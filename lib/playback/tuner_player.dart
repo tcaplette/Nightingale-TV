@@ -133,6 +133,12 @@ abstract class TunerPlayer implements PlayerReadings {
   /// at every tune.
   Future<void> setVolume(double volume);
 
+  /// Playback speed, 0.9–1.1, with the pitch kept (watch-together D3: a
+  /// ±5% nudge corrects small drift without a seek). It holds for what's
+  /// playing and everything opened after; the tuner sets it back to 1 at
+  /// every tune.
+  Future<void> setSpeed(double speed);
+
   /// The player moved on to the queued item, by itself at the end of the
   /// item playing or by [advance].
   Stream<void> get advanced;
@@ -439,6 +445,16 @@ class MediaKitTunerPlayer implements TunerPlayer {
     _volume = volume.clamp(0.0, 1.0);
     for (final deck in [_onAir, ?_spare]) {
       await deck.player.setVolume(_volume * 100);
+    }
+  }
+
+  /// mpv's speed; its scaletempo filter keeps the pitch (audio-pitch-correction
+  /// is on by default).
+  @override
+  Future<void> setSpeed(double speed) async {
+    final s = speed.clamp(0.9, 1.1);
+    for (final deck in [_onAir, ?_spare]) {
+      await deck.player.setRate(s);
     }
   }
 

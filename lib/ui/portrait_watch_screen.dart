@@ -9,11 +9,14 @@ import '../channels/channel_groups.dart';
 import '../channels/schedule.dart';
 import '../theme/tv_theme.dart';
 import 'captions_picker.dart';
+import '../sharing/share_client.dart';
+import '../sharing/watch_party.dart';
 import 'format.dart';
 import 'guide_view.dart';
 import 'tv_screen.dart';
 import 'widgets/broadcast_cards.dart';
 import 'widgets/channel_logo.dart';
+import 'widgets/friend_avatar_stack.dart';
 import 'widgets/new_tag.dart';
 import 'widgets/screen_layout.dart';
 import 'widgets/transport_bar.dart';
@@ -35,6 +38,11 @@ class PortraitWatchScreen extends StatefulWidget {
     this.onTouch,
     this.numberEntry,
     this.toast,
+    this.watchPrivately,
+    this.watchTogether,
+    this.partyBar,
+    this.party,
+    this.watchersOf,
   });
 
   /// The TV screen's picture, drawn in the player.
@@ -55,6 +63,24 @@ class PortraitWatchScreen extends StatefulWidget {
   /// The channel number being typed, or tuned to, for the player's corner.
   final String? numberEntry;
   final String? toast;
+
+  /// Watch privately (friend-presence): a button after Captions, while
+  /// Show what I'm watching is Friends.
+  final ({String label, IconData icon, VoidCallback onPressed})? watchPrivately;
+
+  /// Watch together (watch-together): a button after Captions, before
+  /// Watch privately.
+  final ({String label, IconData icon, VoidCallback onPressed})? watchTogether;
+
+  /// In a watch party: its members, reactions, Invite and Leave, under the
+  /// player.
+  final Widget? partyBar;
+
+  /// In a watch party, the transport acts on the whole party.
+  final WatchParty? party;
+
+  /// The friends watching a shared channel, for its row and the now panel.
+  final List<ShareProfile> Function(Channel? channel)? watchersOf;
 
   /// A channel row's height, in canvas units.
   static const rowHeight = 150.0;
@@ -189,6 +215,7 @@ class PortraitWatchScreenState extends State<PortraitWatchScreen> {
         children: [
           ColoredBox(color: Colors.black, child: SizedBox(height: padding.top)),
           _player(g),
+          ?widget.partyBar,
           if (tuned != null)
             PortraitNowPanel(
               channel: tuned,
@@ -197,6 +224,7 @@ class PortraitWatchScreenState extends State<PortraitWatchScreen> {
               gutter: layout.gutter,
               schedule: tuner.schedule,
               behind: tuner.shifted ? tuner.behind : null,
+              watchers: widget.watchersOf?.call(tuned) ?? const [],
             ),
           GuideTabRow(
             tabs: tabs,
@@ -230,6 +258,7 @@ class PortraitWatchScreenState extends State<PortraitWatchScreen> {
                           tuned: isTuned,
                           gutter: layout.gutter,
                           focusNode: isTuned ? _tunedRow : null,
+                          watchers: widget.watchersOf?.call(ch) ?? const [],
                           onTap: () {
                             widget.onTouch?.call();
                             widget.onTune(ch);
@@ -299,6 +328,7 @@ class PortraitWatchScreenState extends State<PortraitWatchScreen> {
                         Positioned.fill(
                           child: TransportBar(
                             tuner: tuner,
+                            party: widget.party,
                             compact: true,
                             onInteract: _showControls,
                           ),
@@ -334,6 +364,20 @@ class PortraitWatchScreenState extends State<PortraitWatchScreen> {
                               _PlayerButton(label: captionsButtonLabel(tuner), icon: Icons.closed_caption, onPressed: () {
                                 widget.onTouch?.call();
                                 onCaptions();
+                              }),
+                            ],
+                            if (widget.watchTogether case final b?) ...[
+                              const SizedBox(width: 12),
+                              _PlayerButton(label: b.label, icon: b.icon, onPressed: () {
+                                widget.onTouch?.call();
+                                b.onPressed();
+                              }),
+                            ],
+                            if (widget.watchPrivately case final b?) ...[
+                              const SizedBox(width: 12),
+                              _PlayerButton(label: b.label, icon: b.icon, onPressed: () {
+                                widget.onTouch?.call();
+                                b.onPressed();
                               }),
                             ],
                           ],
@@ -418,12 +462,16 @@ class PortraitNowPanel extends StatelessWidget {
       required this.inBreak,
       required this.gutter,
       this.schedule,
-      this.behind});
+      this.behind,
+      this.watchers = const []});
 
   final Channel channel;
   final DateTime now;
   final bool inBreak;
   final double gutter;
+
+  /// Friends watching this shared channel (friend-presence).
+  final List<ShareProfile> watchers;
 
   /// The schedule what's on screen comes from (the channel's own if null).
   final ProgramSchedule? schedule;
@@ -460,6 +508,7 @@ class PortraitNowPanel extends StatelessWidget {
                     style: g.display(26, weight: FontWeight.w700, color: g.accent)),
               ),
               if (channel.isLive) ...[const SizedBox(width: 12), const LiveTag(size: 24)],
+              if (watchers.isNotEmpty) ...[const SizedBox(width: 12), FriendAvatarStack(friends: watchers, size: 44)],
               if (behind case final b?) ...[
                 const SizedBox(width: 12),
                 Text(formatBehind(b), style: g.display(26, weight: FontWeight.w700, color: g.accent)),
@@ -531,10 +580,14 @@ class _ChannelRow extends StatelessWidget {
     required this.onTap,
     required this.onLongPress,
     this.focusNode,
+    this.watchers = const [],
   });
 
   final Channel channel;
   final ProgramSchedule? schedule;
+
+  /// Friends watching this shared channel (friend-presence).
+  final List<ShareProfile> watchers;
   final DateTime now;
   final bool tuned;
   final double gutter;
@@ -586,6 +639,11 @@ class _ChannelRow extends StatelessWidget {
                                 overflow: TextOverflow.ellipsis,
                                 style: g.display(22, weight: FontWeight.w600, color: dim)),
                           ),
+                          if (watchers.isNotEmpty) ...[
+                            const SizedBox(width: 8),
+                            FriendAvatarStack(friends: watchers, size: 30),
+                            const SizedBox(width: 8),
+                          ],
                           if (tuned) Icon(Icons.volume_up, size: 26, color: focused ? g.onFocus : g.accent),
                         ],
                       ),
@@ -613,7 +671,12 @@ class _ChannelRow extends StatelessWidget {
                             borderRadius: BorderRadius.circular(3),
                           ),
                         ),
-                      if (on?.next case final next?)
+                      if (watchers.isNotEmpty && p != null && p.isOnAt(now))
+                        Text(watchingLabel(watchers),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: g.body(22, weight: FontWeight.w700, color: focused ? g.onFocus : g.accent))
+                      else if (on?.next case final next?)
                         Text('${formatTime(next.start)}  ${next.title}',
                             maxLines: 1, overflow: TextOverflow.ellipsis, style: g.body(22, color: dim)),
                     ],

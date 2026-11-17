@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 
 import '../../platform/platform_info.dart';
 import '../../playback/tuner.dart';
+import '../../sharing/party_transport.dart';
+import '../../sharing/watch_party.dart';
 import '../format.dart';
 import 'overlay_style.dart';
 import '../../l10n/tr.dart';
@@ -27,9 +29,12 @@ Duration transportStep({required bool forward, required Duration heldFor}) {
 /// handles the keys. [compact]: the portrait player's version, over the picture,
 /// with no title and icons only.
 class TransportBar extends StatefulWidget {
-  const TransportBar({super.key, required this.tuner, this.focused, this.onInteract, this.compact = false});
+  const TransportBar({super.key, required this.tuner, this.focused, this.onInteract, this.compact = false, this.party});
 
   final Tuner tuner;
+
+  /// In a watch party, the buttons act on the whole party.
+  final WatchParty? party;
   final TransportFocus? focused;
 
   /// A button or the seek bar was used.
@@ -65,6 +70,7 @@ class _TransportBarState extends State<TransportBar> {
   Widget build(BuildContext context) {
     final g = OverlayStyle.of(context);
     final tuner = widget.tuner;
+    final transport = Transport(tuner, widget.party);
     final compact = widget.compact;
     final line = tuner.timeline;
     final atLive = !tuner.paused && line.to.difference(line.position) < const Duration(seconds: 1);
@@ -78,22 +84,22 @@ class _TransportBarState extends State<TransportBar> {
             icon: Icons.skip_previous,
             compact: compact,
             focused: widget.focused == TransportFocus.restart,
-            onPressed: () => _used(() => unawaited(tuner.restart()))),
+            onPressed: () => _used(() => unawaited(transport.restart()))),
         _TransportButton(
             label: tr.back10,
             icon: Icons.replay_10,
             compact: compact,
-            onPressed: () => _used(() => tuner.skip(const Duration(seconds: -10)))),
+            onPressed: () => _used(() => transport.skip(const Duration(seconds: -10)))),
         _TransportButton(
             label: tuner.paused ? tr.play : tr.pause,
             icon: tuner.paused ? Icons.play_arrow : Icons.pause,
             compact: compact,
-            onPressed: () => _used(() => unawaited(tuner.togglePause()))),
+            onPressed: () => _used(() => unawaited(transport.togglePause()))),
         _TransportButton(
             label: tr.forward30,
             icon: Icons.forward_30,
             compact: compact,
-            onPressed: () => _used(() => tuner.skip(const Duration(seconds: 30)))),
+            onPressed: () => _used(() => transport.skip(const Duration(seconds: 30)))),
         _TransportButton(
             label: tr.live2,
             icon: Icons.circle,
@@ -101,7 +107,7 @@ class _TransportBarState extends State<TransportBar> {
             iconColor: atLive ? const Color(0xFFE53935) : null,
             compact: compact,
             focused: widget.focused == TransportFocus.live,
-            onPressed: () => _used(() => unawaited(tuner.goLive()))),
+            onPressed: () => _used(() => unawaited(transport.goLive()))),
       ],
     );
     final size = compact ? 24.0 : 26.0;
@@ -118,7 +124,7 @@ class _TransportBarState extends State<TransportBar> {
     final seek = _SeekBar(
       line: line,
       focused: widget.focused == TransportFocus.seekBar,
-      onSeek: (t) => _used(() => tuner.seekTo(t)),
+      onSeek: (t) => _used(() => transport.seekTo(t)),
     );
     if (compact) {
       return Container(

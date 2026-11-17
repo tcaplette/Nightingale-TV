@@ -67,3 +67,10 @@ AppLocalizations get tr => stringsFor(currentLanguage);
 /// `intl`'s date data; the app's entry points wait for it, and [format.dart]
 /// asks for it too, so code that has no entry point can't miss it.
 final Future<void> languageDataReady = initializeDateFormatting();
+
+/// "Sam", "Sam and Alex", "Sam, Alex and Kim".
+String joinNames(List<String> names) => switch (names.length) {
+      0 => '',
+      1 => names.single,
+      _ => tr.and(names.sublist(0, names.length - 1).join(', '), names.last),
+    };

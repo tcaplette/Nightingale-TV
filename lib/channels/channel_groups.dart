@@ -27,22 +27,26 @@ class ChannelGroup {
 abstract final class GuideTabs {
   static const all = 'all';
   static const favorites = 'favorites';
+
+  /// Channels added from friends' shares (channel-sharing).
+  static const shared = 'auto:shared';
   static const live = 'auto:live';
   static const movies = 'auto:movies';
   static const music = 'auto:music';
   static const kids = 'auto:kids';
 
   /// The tabs worked out from the lineup (never stored).
-  static const automatic = [live, movies, music, kids];
+  static const automatic = [shared, live, movies, music, kids];
 
   /// For new profiles and profiles from before tabs.
-  static const defaultOrder = [all, favorites, live, movies, music, kids];
+  static const defaultOrder = [all, favorites, shared, live, movies, music, kids];
 
   static bool isAutomatic(String id) => automatic.contains(id);
 
   static String? builtinName(String id) => switch (id) {
         all => tr.all,
         favorites => tr.favorites,
+        shared => tr.sharedTab,
         live => tr.liveTv2,
         movies => tr.movies,
         music => tr.music,
@@ -54,6 +58,7 @@ abstract final class GuideTabs {
   static String? rule(String id) => switch (id) {
         all => tr.everyChannel,
         favorites => tr.channelsYouMarked,
+        shared => tr.sharedTabRule,
         live => tr.channelsFromYour,
         movies => tr.channelsThatPlay,
         music => tr.musicVideoAnd,
@@ -63,8 +68,9 @@ abstract final class GuideTabs {
 
   /// [order] with every built-in tab and every group in it once: missing
   /// built-ins go where the default order has them (Live TV, newer than the
-  /// rest, just before Movies), missing groups after Favorites; ids of
-  /// deleted groups are dropped. All always comes first.
+  /// rest, just before Movies; Shared, newer still, after the profile's last
+  /// own group, else after Favorites), missing groups after Favorites; ids
+  /// of deleted groups are dropped. All always comes first.
   static List<String> normalize(List<String> order, Iterable<ChannelGroup> groups) {
     final groupIds = [for (final g in groups) g.id];
     final known = {...defaultOrder, ...groupIds};
@@ -78,11 +84,16 @@ abstract final class GuideTabs {
         result.insert(result.indexOf(movies), live);
         continue;
       }
+      if (id == shared) continue;
       final before = defaultOrder.sublist(0, i).lastWhere(result.contains, orElse: () => all);
       result.insert(result.indexOf(before) + 1, id);
     }
     for (final id in groupIds) {
       if (!result.contains(id)) result.insert(result.indexOf(favorites) + 1, id);
+    }
+    if (!result.contains(shared)) {
+      final lastGroup = result.lastIndexWhere(groupIds.contains);
+      result.insert(lastGroup >= 0 ? lastGroup + 1 : result.indexOf(favorites) + 1, shared);
     }
     return result;
   }
@@ -134,6 +145,7 @@ class AutoGroups {
   bool contains(String tabId, Channel c) => switch (tabId) {
         GuideTabs.all => true,
         GuideTabs.favorites => c.favorite,
+        GuideTabs.shared => c.isSharedCopy,
         GuideTabs.live => isLive(c),
         GuideTabs.movies => isMovies(c),
         GuideTabs.music => isMusic(c),

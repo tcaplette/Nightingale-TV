@@ -292,6 +292,11 @@ class ExoTunerPlayer implements TunerPlayer {
   @override
   Future<void> setVolume(double volume) => _call<void>('setVolume', {'volume': volume.clamp(0.0, 1.0)});
 
+  /// ExoPlayer's playback speed, pitch kept (Sonic). Passthrough audio
+  /// can't change speed; the party's follower sees that and seeks instead.
+  @override
+  Future<void> setSpeed(double speed) => _call<void>('setSpeed', {'speed': speed.clamp(0.9, 1.1)});
+
   @override
   Future<void> dispose() async {
     if (_disposed) return;

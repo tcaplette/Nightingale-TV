@@ -1,0 +1,9 @@
+{
+  "site_url": "<https://your invite host>",
+  "smtp_host": "<SMTP host, e.g. smtp.resend.com>",
+  "smtp_port": "<SMTP port, e.g. 465>",
+  "smtp_user": "<SMTP user, e.g. resend>",
+  "smtp_pass": "<your SMTP password or API key>",
+  "smtp_admin_email": "<sender address, e.g. noreply@example.org>",
+  "smtp_sender_name": "<sender name, e.g. Nightingale TV>"
+}

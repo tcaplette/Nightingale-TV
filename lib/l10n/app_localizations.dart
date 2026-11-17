@@ -8901,6 +8901,906 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'{count, plural, =1{1 channel no longer on the server} other{{count} channels no longer on the server}}'**
   String channelsNoLongerOnServer(int count);
+
+  /// No description provided for @sharing.
+  ///
+  /// In en, this message translates to:
+  /// **'Sharing'**
+  String get sharing;
+
+  /// No description provided for @sharingIntroTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Add friends who use Nightingale TV'**
+  String get sharingIntroTitle;
+
+  /// No description provided for @sharingIntroWhat.
+  ///
+  /// In en, this message translates to:
+  /// **'Sharing lets you add friends who also use Nightingale TV. Each Nightingale profile has its own share account.'**
+  String get sharingIntroWhat;
+
+  /// No description provided for @sharingIntroStored.
+  ///
+  /// In en, this message translates to:
+  /// **'What\'s stored: your email, your share profile, your friends, and later what you share and watch.'**
+  String get sharingIntroStored;
+
+  /// No description provided for @sharingIntroNoVideo.
+  ///
+  /// In en, this message translates to:
+  /// **'No video is ever sent between users.'**
+  String get sharingIntroNoVideo;
+
+  /// No description provided for @sharingSetUp.
+  ///
+  /// In en, this message translates to:
+  /// **'Set up'**
+  String get sharingSetUp;
+
+  /// No description provided for @sharingEmailPrompt.
+  ///
+  /// In en, this message translates to:
+  /// **'Enter your email. We\'ll send you a 6-digit code to sign in.'**
+  String get sharingEmailPrompt;
+
+  /// No description provided for @sharingEmailLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Email'**
+  String get sharingEmailLabel;
+
+  /// No description provided for @sharingSendCode.
+  ///
+  /// In en, this message translates to:
+  /// **'Send code'**
+  String get sharingSendCode;
+
+  /// No description provided for @sharingNotAnEmail.
+  ///
+  /// In en, this message translates to:
+  /// **'Enter an email address, such as name@example.com.'**
+  String get sharingNotAnEmail;
+
+  /// No description provided for @sharingCodeSent.
+  ///
+  /// In en, this message translates to:
+  /// **'We sent a 6-digit code to {email}. Enter it here.'**
+  String sharingCodeSent(Object email);
+
+  /// No description provided for @sharingCodeLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'6-digit code'**
+  String get sharingCodeLabel;
+
+  /// No description provided for @sharingWrongCode.
+  ///
+  /// In en, this message translates to:
+  /// **'That code isn\'t right'**
+  String get sharingWrongCode;
+
+  /// No description provided for @sharingTooManyWrong.
+  ///
+  /// In en, this message translates to:
+  /// **'Too many wrong codes. Send a new code.'**
+  String get sharingTooManyWrong;
+
+  /// No description provided for @sharingSendNewCode.
+  ///
+  /// In en, this message translates to:
+  /// **'Send a new code'**
+  String get sharingSendNewCode;
+
+  /// No description provided for @sharingSendNewCodeIn.
+  ///
+  /// In en, this message translates to:
+  /// **'Send a new code ({seconds} s)'**
+  String sharingSendNewCodeIn(Object seconds);
+
+  /// No description provided for @sharingOtherEmail.
+  ///
+  /// In en, this message translates to:
+  /// **'Use another email'**
+  String get sharingOtherEmail;
+
+  /// No description provided for @sharingUnavailable.
+  ///
+  /// In en, this message translates to:
+  /// **'Sharing is unavailable right now. Try again later.'**
+  String get sharingUnavailable;
+
+  /// No description provided for @sharingProfileTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Your share profile'**
+  String get sharingProfileTitle;
+
+  /// No description provided for @sharingProfileIntro.
+  ///
+  /// In en, this message translates to:
+  /// **'Friends see this. Your email is never shown.'**
+  String get sharingProfileIntro;
+
+  /// No description provided for @sharingNameLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Display name'**
+  String get sharingNameLabel;
+
+  /// No description provided for @sharingHandleLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Handle'**
+  String get sharingHandleLabel;
+
+  /// No description provided for @sharingHandleRules.
+  ///
+  /// In en, this message translates to:
+  /// **'Use 3–20 letters, numbers or _.'**
+  String get sharingHandleRules;
+
+  /// No description provided for @sharingHandleTaken.
+  ///
+  /// In en, this message translates to:
+  /// **'That handle is taken.'**
+  String get sharingHandleTaken;
+
+  /// No description provided for @sharingNameRequired.
+  ///
+  /// In en, this message translates to:
+  /// **'Enter a display name.'**
+  String get sharingNameRequired;
+
+  /// No description provided for @sharingAvatar.
+  ///
+  /// In en, this message translates to:
+  /// **'Avatar'**
+  String get sharingAvatar;
+
+  /// No description provided for @sharingStationLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Station name (optional)'**
+  String get sharingStationLabel;
+
+  /// No description provided for @sharingAddFriend.
+  ///
+  /// In en, this message translates to:
+  /// **'Add friend'**
+  String get sharingAddFriend;
+
+  /// No description provided for @sharingCodeHelp.
+  ///
+  /// In en, this message translates to:
+  /// **'A friend enters this code in Nightingale TV under Sharing → Add friend, or opens the link. It works once and expires in 7 days.'**
+  String get sharingCodeHelp;
+
+  /// No description provided for @sharingNewCode.
+  ///
+  /// In en, this message translates to:
+  /// **'New code'**
+  String get sharingNewCode;
+
+  /// No description provided for @sharingSendInvite.
+  ///
+  /// In en, this message translates to:
+  /// **'Send invite'**
+  String get sharingSendInvite;
+
+  /// No description provided for @sharingEnterCode.
+  ///
+  /// In en, this message translates to:
+  /// **'Enter a code'**
+  String get sharingEnterCode;
+
+  /// No description provided for @sharingInviteText.
+  ///
+  /// In en, this message translates to:
+  /// **'Add me as a friend on Nightingale TV: {link}'**
+  String sharingInviteText(Object link);
+
+  /// No description provided for @sharingFriends.
+  ///
+  /// In en, this message translates to:
+  /// **'Friends'**
+  String get sharingFriends;
+
+  /// No description provided for @sharingNoFriends.
+  ///
+  /// In en, this message translates to:
+  /// **'No friends yet. Share your code to add one.'**
+  String get sharingNoFriends;
+
+  /// No description provided for @sharingBlocked.
+  ///
+  /// In en, this message translates to:
+  /// **'Blocked'**
+  String get sharingBlocked;
+
+  /// No description provided for @sharingRemoveFriend.
+  ///
+  /// In en, this message translates to:
+  /// **'Remove friend'**
+  String get sharingRemoveFriend;
+
+  /// No description provided for @sharingRemoveFriendConfirm.
+  ///
+  /// In en, this message translates to:
+  /// **'Remove {name} as a friend? You both stop being friends.'**
+  String sharingRemoveFriendConfirm(Object name);
+
+  /// No description provided for @sharingBlock.
+  ///
+  /// In en, this message translates to:
+  /// **'Block'**
+  String get sharingBlock;
+
+  /// No description provided for @sharingBlockConfirm.
+  ///
+  /// In en, this message translates to:
+  /// **'Block {name}? This removes them as a friend, and they can\'t use your codes.'**
+  String sharingBlockConfirm(Object name);
+
+  /// No description provided for @sharingUnblock.
+  ///
+  /// In en, this message translates to:
+  /// **'Unblock'**
+  String get sharingUnblock;
+
+  /// No description provided for @sharingUnblockConfirm.
+  ///
+  /// In en, this message translates to:
+  /// **'Unblock {name}? They can add you again with a new code.'**
+  String sharingUnblockConfirm(Object name);
+
+  /// No description provided for @sharingSignOutConfirm.
+  ///
+  /// In en, this message translates to:
+  /// **'Sign out of sharing on this profile? Your share account and friends stay. Sign in again with your email.'**
+  String get sharingSignOutConfirm;
+
+  /// No description provided for @sharingDeleteAccount.
+  ///
+  /// In en, this message translates to:
+  /// **'Delete sharing account'**
+  String get sharingDeleteAccount;
+
+  /// No description provided for @sharingDeleteConfirm.
+  ///
+  /// In en, this message translates to:
+  /// **'This deletes your share account, your share profile (@{handle}), your friends, your invites and everything stored for it, and signs it out on every device. It can\'t be undone.'**
+  String sharingDeleteConfirm(Object handle);
+
+  /// No description provided for @sharingDeleted.
+  ///
+  /// In en, this message translates to:
+  /// **'Your sharing account was deleted.'**
+  String get sharingDeleted;
+
+  /// No description provided for @sharingCodeFieldLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Friend\'s code'**
+  String get sharingCodeFieldLabel;
+
+  /// No description provided for @sharingNotACode.
+  ///
+  /// In en, this message translates to:
+  /// **'A code has 6 letters and numbers, such as AB3K·9Q.'**
+  String get sharingNotACode;
+
+  /// No description provided for @sharingAddFriendQuestion.
+  ///
+  /// In en, this message translates to:
+  /// **'Add {name} (@{handle}) as a friend?'**
+  String sharingAddFriendQuestion(Object name, Object handle);
+
+  /// No description provided for @sharingOwnCode.
+  ///
+  /// In en, this message translates to:
+  /// **'That\'s your own code'**
+  String get sharingOwnCode;
+
+  /// No description provided for @sharingInviteGone.
+  ///
+  /// In en, this message translates to:
+  /// **'This invite has expired or was already used'**
+  String get sharingInviteGone;
+
+  /// No description provided for @sharingTooManyTries.
+  ///
+  /// In en, this message translates to:
+  /// **'Too many tries. Try again later'**
+  String get sharingTooManyTries;
+
+  /// No description provided for @sharingNowFriends.
+  ///
+  /// In en, this message translates to:
+  /// **'You and {name} are friends now.'**
+  String sharingNowFriends(Object name);
+
+  /// No description provided for @sharingSwitchToAdult.
+  ///
+  /// In en, this message translates to:
+  /// **'Switch to an adult profile to add friends.'**
+  String get sharingSwitchToAdult;
+
+  /// No description provided for @sharingEditProfile.
+  ///
+  /// In en, this message translates to:
+  /// **'Edit'**
+  String get sharingEditProfile;
+
+  /// No description provided for @sharingStation.
+  ///
+  /// In en, this message translates to:
+  /// **'Station: {station}'**
+  String sharingStation(Object station);
+
+  /// No description provided for @sharingLiveCantShare.
+  ///
+  /// In en, this message translates to:
+  /// **'Live channels play from your own tuner and can\'t be shared'**
+  String get sharingLiveCantShare;
+
+  /// No description provided for @sharingMusicCantShare.
+  ///
+  /// In en, this message translates to:
+  /// **'Music channels can\'t be shared'**
+  String get sharingMusicCantShare;
+
+  /// No description provided for @sharingCopyCantShare.
+  ///
+  /// In en, this message translates to:
+  /// **'Channels shared with you can\'t be shared again'**
+  String get sharingCopyCantShare;
+
+  /// No description provided for @sharingTooBig.
+  ///
+  /// In en, this message translates to:
+  /// **'Channels with more than 20,000 programs can\'t be shared'**
+  String get sharingTooBig;
+
+  /// No description provided for @sharingNoneMatch.
+  ///
+  /// In en, this message translates to:
+  /// **'None of these programs are on your servers'**
+  String get sharingNoneMatch;
+
+  /// No description provided for @sharingUpdateApp.
+  ///
+  /// In en, this message translates to:
+  /// **'Update Nightingale TV to add this channel.'**
+  String get sharingUpdateApp;
+
+  /// No description provided for @sharingStopsFollowing.
+  ///
+  /// In en, this message translates to:
+  /// **'This channel won\'t follow {name}\'s changes any more.'**
+  String sharingStopsFollowing(Object name);
+
+  /// No description provided for @sharingNewShares.
+  ///
+  /// In en, this message translates to:
+  /// **'{name} shared {count, plural, =1{1 channel} other{{count} channels}} with you. Open Menu → Sharing to add {count, plural, =1{that channel} other{those channels}}.'**
+  String sharingNewShares(Object name, int count);
+
+  /// No description provided for @sharingNewSharesMany.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 channel was} other{{count} channels were}} shared with you. Open Menu → Sharing to add {count, plural, =1{that channel} other{those channels}}.'**
+  String sharingNewSharesMany(int count);
+
+  /// No description provided for @sharingSharedWithYou.
+  ///
+  /// In en, this message translates to:
+  /// **'Shared with you'**
+  String get sharingSharedWithYou;
+
+  /// No description provided for @sharingNothingShared.
+  ///
+  /// In en, this message translates to:
+  /// **'Nothing is waiting. Channels your friends share with you appear here.'**
+  String get sharingNothingShared;
+
+  /// No description provided for @sharingMatched.
+  ///
+  /// In en, this message translates to:
+  /// **'Matched {matched} of {total} programs'**
+  String sharingMatched(Object matched, Object total);
+
+  /// No description provided for @sharingAddedAs.
+  ///
+  /// In en, this message translates to:
+  /// **'Added as channel {number}'**
+  String sharingAddedAs(Object number);
+
+  /// No description provided for @sharingDecline.
+  ///
+  /// In en, this message translates to:
+  /// **'Decline'**
+  String get sharingDecline;
+
+  /// No description provided for @sharingShareChannels.
+  ///
+  /// In en, this message translates to:
+  /// **'Share channels'**
+  String get sharingShareChannels;
+
+  /// No description provided for @sharingShareChannelsHelp.
+  ///
+  /// In en, this message translates to:
+  /// **'Friends get a description of each channel, which their app rebuilds from their own servers. No video is sent.'**
+  String get sharingShareChannelsHelp;
+
+  /// No description provided for @sharingChannelsYouShare.
+  ///
+  /// In en, this message translates to:
+  /// **'Channels you share'**
+  String get sharingChannelsYouShare;
+
+  /// No description provided for @sharingNoChannelsShared.
+  ///
+  /// In en, this message translates to:
+  /// **'You aren\'t sharing any channels.'**
+  String get sharingNoChannelsShared;
+
+  /// No description provided for @sharingStopSharing.
+  ///
+  /// In en, this message translates to:
+  /// **'Stop sharing'**
+  String get sharingStopSharing;
+
+  /// No description provided for @sharingStopSharingConfirm.
+  ///
+  /// In en, this message translates to:
+  /// **'Stop sharing {name}? Friends keep their copies, but they won\'t get your changes.'**
+  String sharingStopSharingConfirm(Object name);
+
+  /// No description provided for @sharingWith.
+  ///
+  /// In en, this message translates to:
+  /// **'With {names}'**
+  String sharingWith(Object names);
+
+  /// No description provided for @sharingShareWith.
+  ///
+  /// In en, this message translates to:
+  /// **'Share with'**
+  String get sharingShareWith;
+
+  /// No description provided for @sharingShare.
+  ///
+  /// In en, this message translates to:
+  /// **'Share'**
+  String get sharingShare;
+
+  /// No description provided for @sharingGetLink.
+  ///
+  /// In en, this message translates to:
+  /// **'Get a link'**
+  String get sharingGetLink;
+
+  /// No description provided for @sharingSharedWith.
+  ///
+  /// In en, this message translates to:
+  /// **'Shared with {names}'**
+  String sharingSharedWith(Object names);
+
+  /// No description provided for @sharingLinkHelp.
+  ///
+  /// In en, this message translates to:
+  /// **'Whoever uses this code within 7 days becomes your friend and gets these channels. It works once.'**
+  String get sharingLinkHelp;
+
+  /// No description provided for @sharingChannelsInviteText.
+  ///
+  /// In en, this message translates to:
+  /// **'Here are some channels from my Nightingale TV: {link}'**
+  String sharingChannelsInviteText(Object link);
+
+  /// No description provided for @sharingPickChannel.
+  ///
+  /// In en, this message translates to:
+  /// **'Pick at least one channel.'**
+  String get sharingPickChannel;
+
+  /// No description provided for @sharingPickFriend.
+  ///
+  /// In en, this message translates to:
+  /// **'Pick at least one friend, or use Get a link.'**
+  String get sharingPickFriend;
+
+  /// No description provided for @sharingNoFriendsToShare.
+  ///
+  /// In en, this message translates to:
+  /// **'No friends yet. Get a link to share with someone new.'**
+  String get sharingNoFriendsToShare;
+
+  /// No description provided for @sharingShareEllipsis.
+  ///
+  /// In en, this message translates to:
+  /// **'Share…'**
+  String get sharingShareEllipsis;
+
+  /// No description provided for @sharingSharedBy.
+  ///
+  /// In en, this message translates to:
+  /// **'Shared by {name} (@{handle})'**
+  String sharingSharedBy(Object name, Object handle);
+
+  /// No description provided for @sharingKeepUpdated.
+  ///
+  /// In en, this message translates to:
+  /// **'Keep updated'**
+  String get sharingKeepUpdated;
+
+  /// No description provided for @sharingKeepUpdatedHelp.
+  ///
+  /// In en, this message translates to:
+  /// **'Follow {name}\'s changes to this channel'**
+  String sharingKeepUpdatedHelp(Object name);
+
+  /// No description provided for @sharingNoLongerUpdated.
+  ///
+  /// In en, this message translates to:
+  /// **'No longer updated'**
+  String get sharingNoLongerUpdated;
+
+  /// No description provided for @sharingChannelsOffer.
+  ///
+  /// In en, this message translates to:
+  /// **'{name} (@{handle}) shared these channels with you: {names}. Add {name} as a friend and get them?'**
+  String sharingChannelsOffer(Object name, Object handle, Object names);
+
+  /// No description provided for @sharingNowFriendsChannels.
+  ///
+  /// In en, this message translates to:
+  /// **'You and {name} are friends now. Their channels are waiting under Shared with you.'**
+  String sharingNowFriendsChannels(Object name);
+
+  /// No description provided for @sharedTab.
+  ///
+  /// In en, this message translates to:
+  /// **'Shared'**
+  String get sharedTab;
+
+  /// No description provided for @sharedTabRule.
+  ///
+  /// In en, this message translates to:
+  /// **'Channels you added from your friends\' shares'**
+  String get sharedTabRule;
+
+  /// No description provided for @presenceSetting.
+  ///
+  /// In en, this message translates to:
+  /// **'Show what I\'m watching'**
+  String get presenceSetting;
+
+  /// No description provided for @presenceSettingValue.
+  ///
+  /// In en, this message translates to:
+  /// **'Show what I\'m watching: {value}'**
+  String presenceSettingValue(Object value);
+
+  /// No description provided for @presenceQuestion.
+  ///
+  /// In en, this message translates to:
+  /// **'Let your friends see what you\'re watching?'**
+  String get presenceQuestion;
+
+  /// No description provided for @presenceExplain.
+  ///
+  /// In en, this message translates to:
+  /// **'While you watch, friends see the show or movie and the channel. Nothing else, and nothing once you stop. Watch privately, in the player\'s buttons, hides it until you close the app. You can change this in Sharing at any time.'**
+  String get presenceExplain;
+
+  /// No description provided for @presenceWatchingOn.
+  ///
+  /// In en, this message translates to:
+  /// **'Watching {title} on {channel}'**
+  String presenceWatchingOn(Object title, Object channel);
+
+  /// No description provided for @presenceWatchingChannel.
+  ///
+  /// In en, this message translates to:
+  /// **'Watching {channel}'**
+  String presenceWatchingChannel(Object channel);
+
+  /// No description provided for @presenceIsWatching.
+  ///
+  /// In en, this message translates to:
+  /// **'{name} is watching'**
+  String presenceIsWatching(Object name);
+
+  /// No description provided for @presenceAndOthersWatching.
+  ///
+  /// In en, this message translates to:
+  /// **'{name} and {count, plural, =1{1 friend are} other{{count} friends are}} watching'**
+  String presenceAndOthersWatching(Object name, int count);
+
+  /// No description provided for @presenceWatchingToo.
+  ///
+  /// In en, this message translates to:
+  /// **'{name} is watching too'**
+  String presenceWatchingToo(Object name);
+
+  /// No description provided for @presenceAndOthersWatchingToo.
+  ///
+  /// In en, this message translates to:
+  /// **'{name} and {count, plural, =1{1 friend are} other{{count} friends are}} watching too'**
+  String presenceAndOthersWatchingToo(Object name, int count);
+
+  /// No description provided for @presenceNoticeOne.
+  ///
+  /// In en, this message translates to:
+  /// **'{name} is watching now'**
+  String presenceNoticeOne(Object name);
+
+  /// No description provided for @presenceNoticeMany.
+  ///
+  /// In en, this message translates to:
+  /// **'{names} are watching now'**
+  String presenceNoticeMany(Object names);
+
+  /// No description provided for @watchPrivately.
+  ///
+  /// In en, this message translates to:
+  /// **'Watch privately'**
+  String get watchPrivately;
+
+  /// No description provided for @watchingPrivately.
+  ///
+  /// In en, this message translates to:
+  /// **'Watching privately'**
+  String get watchingPrivately;
+
+  /// No description provided for @watchTogether.
+  ///
+  /// In en, this message translates to:
+  /// **'Watch together'**
+  String get watchTogether;
+
+  /// No description provided for @partyStartTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Watch {title} together'**
+  String partyStartTitle(Object title);
+
+  /// No description provided for @partyStartHelp.
+  ///
+  /// In en, this message translates to:
+  /// **'Everyone plays it from their own servers, in sync. Pick up to 7 friends, or get a link.'**
+  String get partyStartHelp;
+
+  /// No description provided for @partyNoFriends.
+  ///
+  /// In en, this message translates to:
+  /// **'No friends yet: get a link to invite someone.'**
+  String get partyNoFriends;
+
+  /// No description provided for @partyGetLink.
+  ///
+  /// In en, this message translates to:
+  /// **'Get a link'**
+  String get partyGetLink;
+
+  /// No description provided for @partyStart.
+  ///
+  /// In en, this message translates to:
+  /// **'Start'**
+  String get partyStart;
+
+  /// No description provided for @partyLinkHelp.
+  ///
+  /// In en, this message translates to:
+  /// **'Anyone who opens this link becomes your friend and can join.'**
+  String get partyLinkHelp;
+
+  /// No description provided for @partyInviteBanner.
+  ///
+  /// In en, this message translates to:
+  /// **'{name} invited you to watch {title} together'**
+  String partyInviteBanner(Object name, Object title);
+
+  /// No description provided for @partyInviteBannerNoTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'{name} invited you to watch together'**
+  String partyInviteBannerNoTitle(Object name);
+
+  /// No description provided for @partyJoin.
+  ///
+  /// In en, this message translates to:
+  /// **'Join'**
+  String get partyJoin;
+
+  /// No description provided for @partyNotNow.
+  ///
+  /// In en, this message translates to:
+  /// **'Not now'**
+  String get partyNotNow;
+
+  /// No description provided for @partyJoinQuestion.
+  ///
+  /// In en, this message translates to:
+  /// **'Join {name}\'s watch party?'**
+  String partyJoinQuestion(Object name);
+
+  /// No description provided for @partyOn.
+  ///
+  /// In en, this message translates to:
+  /// **'{title} on {channel}'**
+  String partyOn(Object title, Object channel);
+
+  /// No description provided for @partyInSync.
+  ///
+  /// In en, this message translates to:
+  /// **'In sync'**
+  String get partyInSync;
+
+  /// No description provided for @partyCatchingUp.
+  ///
+  /// In en, this message translates to:
+  /// **'Catching up'**
+  String get partyCatchingUp;
+
+  /// No description provided for @partyNotOnServers.
+  ///
+  /// In en, this message translates to:
+  /// **'Not on your servers'**
+  String get partyNotOnServers;
+
+  /// No description provided for @partyMissingTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Not on your servers: {title}'**
+  String partyMissingTitle(Object title);
+
+  /// No description provided for @partyMissingRejoin.
+  ///
+  /// In en, this message translates to:
+  /// **'You\'ll rejoin at the next program.'**
+  String get partyMissingRejoin;
+
+  /// No description provided for @partyInvite.
+  ///
+  /// In en, this message translates to:
+  /// **'Invite'**
+  String get partyInvite;
+
+  /// No description provided for @partyLeave.
+  ///
+  /// In en, this message translates to:
+  /// **'Leave'**
+  String get partyLeave;
+
+  /// No description provided for @partyStay.
+  ///
+  /// In en, this message translates to:
+  /// **'Stay'**
+  String get partyStay;
+
+  /// No description provided for @partyLeaveQuestion.
+  ///
+  /// In en, this message translates to:
+  /// **'Leave the watch party?'**
+  String get partyLeaveQuestion;
+
+  /// No description provided for @partyLeaveHostDetail.
+  ///
+  /// In en, this message translates to:
+  /// **'You\'re the host, so the party ends for everyone.'**
+  String get partyLeaveHostDetail;
+
+  /// No description provided for @partyLeaveGuestDetail.
+  ///
+  /// In en, this message translates to:
+  /// **'You\'ll go back to your own channels.'**
+  String get partyLeaveGuestDetail;
+
+  /// No description provided for @partyHost.
+  ///
+  /// In en, this message translates to:
+  /// **'Host'**
+  String get partyHost;
+
+  /// No description provided for @partyJoined.
+  ///
+  /// In en, this message translates to:
+  /// **'{name} joined'**
+  String partyJoined(Object name);
+
+  /// No description provided for @partyLeft.
+  ///
+  /// In en, this message translates to:
+  /// **'{name} left'**
+  String partyLeft(Object name);
+
+  /// No description provided for @partyPaused.
+  ///
+  /// In en, this message translates to:
+  /// **'{name} paused'**
+  String partyPaused(Object name);
+
+  /// No description provided for @partyResumed.
+  ///
+  /// In en, this message translates to:
+  /// **'{name} resumed'**
+  String partyResumed(Object name);
+
+  /// No description provided for @partySkipped.
+  ///
+  /// In en, this message translates to:
+  /// **'{name} skipped'**
+  String partySkipped(Object name);
+
+  /// No description provided for @partyRestarted.
+  ///
+  /// In en, this message translates to:
+  /// **'{name} restarted the program'**
+  String partyRestarted(Object name);
+
+  /// No description provided for @partyWentLive.
+  ///
+  /// In en, this message translates to:
+  /// **'{name} went back to live'**
+  String partyWentLive(Object name);
+
+  /// No description provided for @partyEnded.
+  ///
+  /// In en, this message translates to:
+  /// **'{name} ended the watch party'**
+  String partyEnded(Object name);
+
+  /// No description provided for @partyLost.
+  ///
+  /// In en, this message translates to:
+  /// **'Lost the watch party'**
+  String get partyLost;
+
+  /// No description provided for @partyFull.
+  ///
+  /// In en, this message translates to:
+  /// **'That watch party is full'**
+  String get partyFull;
+
+  /// No description provided for @partyOver.
+  ///
+  /// In en, this message translates to:
+  /// **'That watch party has ended'**
+  String get partyOver;
+
+  /// No description provided for @partyWatchParties.
+  ///
+  /// In en, this message translates to:
+  /// **'Watch parties'**
+  String get partyWatchParties;
+
+  /// No description provided for @partyNoInvites.
+  ///
+  /// In en, this message translates to:
+  /// **'No watch party invites right now.'**
+  String get partyNoInvites;
+
+  /// No description provided for @partyChannelName.
+  ///
+  /// In en, this message translates to:
+  /// **'Watch party · {channel}'**
+  String partyChannelName(Object channel);
+
+  /// No description provided for @partyReactions.
+  ///
+  /// In en, this message translates to:
+  /// **'Reactions'**
+  String get partyReactions;
+
+  /// No description provided for @partyInvited.
+  ///
+  /// In en, this message translates to:
+  /// **'Invited {names}'**
+  String partyInvited(Object names);
 }
 
 class _AppLocalizationsDelegate

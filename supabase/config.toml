@@ -1,0 +1,25 @@
+# Nightingale TV sharing backend. Same layout as `supabase init`.
+# Deployed with ./deploy.sh (psql + Management API), not `supabase link`; see SELF_HOSTING.md.
+# verify_jwt is off everywhere: the user-facing functions check the caller with Auth themselves.
+project_id = "nightingale-tv"
+
+[functions.make-invite]
+verify_jwt = false
+[functions.peek-invite]
+verify_jwt = false
+[functions.redeem-invite]
+verify_jwt = false
+[functions.delete-account]
+verify_jwt = false
+[functions.invite-preview]
+verify_jwt = false
+[functions.server-time]
+verify_jwt = false
+[functions.share-channels]
+verify_jwt = false
+[functions.start-party]
+verify_jwt = false
+[functions.join-party]
+verify_jwt = false
+[functions.leave-party]
+verify_jwt = false

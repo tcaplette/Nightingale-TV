@@ -148,6 +148,10 @@ abstract final class InstallSwitching {
     return await _channel.invokeMethod<bool>('askForSetup') ?? false;
   }
 
+  /// A sharing invite link that opened the app (share-accounts D3), until
+  /// the sharing code takes it and sets this back to null. Unchecked here.
+  static final inviteLink = ValueNotifier<String?>(null);
+
   static bool _listening = false;
 
   /// Starts passing on handovers: one that started the app, and any later.
@@ -156,8 +160,19 @@ abstract final class InstallSwitching {
     _listening = true;
     _channel.setMethodCallHandler((call) async {
       if (call.method == 'handoverArrived') await _take();
+      if (call.method == 'inviteLinkArrived') await _takeLink();
     });
     unawaited(_take());
+    unawaited(_takeLink());
+  }
+
+  static Future<void> _takeLink() async {
+    try {
+      final link = await _channel.invokeMethod<String>('takeInviteLink');
+      if (link != null) inviteLink.value = link;
+    } on Object catch (e) {
+      debugPrint('Invite link unavailable: $e');
+    }
   }
 
   static Future<void> _take() async {
@@ -179,5 +194,6 @@ abstract final class InstallSwitching {
     debugInfo = null;
     debugSend = null;
     pending.value = null;
+    inviteLink.value = null;
   }
 }

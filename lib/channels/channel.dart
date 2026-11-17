@@ -362,6 +362,145 @@ class ChannelSource {
       );
 }
 
+/// Which side of a share a channel is on (channel-sharing D5).
+enum ShareRole {
+  /// The sender's own channel, shared.
+  out,
+
+  /// A receiver's copy of someone's shared channel.
+  incoming;
+
+  String get json => this == out ? 'out' : 'in';
+
+  static ShareRole? parse(Object? s) => switch (s) {
+        'out' => out,
+        'in' => incoming,
+        _ => null,
+      };
+}
+
+/// A channel's place in a share (channel-sharing D5), saved in
+/// `channels.json` and so in backups. Never a token or an email.
+class ShareLink {
+  const ShareLink({
+    required this.id,
+    required this.role,
+    this.owner,
+    this.ownerName,
+    this.ownerHandle,
+    this.station,
+    this.version = 0,
+    this.keepUpdated = true,
+    this.matched = 0,
+    this.total = 0,
+    this.ended = false,
+    this.edited = false,
+    this.hash,
+  });
+
+  /// The shared channel's id on the backend.
+  final String id;
+  final ShareRole role;
+
+  /// A copy's sender: account id, display name, handle and station.
+  final String? owner;
+  final String? ownerName;
+  final String? ownerHandle;
+  final String? station;
+
+  /// The recipe version last published (sender) or applied (receiver).
+  final int version;
+
+  /// A copy follows the sender's new versions.
+  final bool keepUpdated;
+
+  /// A copy's match count against the receiver's library.
+  final int matched;
+  final int total;
+
+  /// The share ended (stopped, the channel removed, unfriended, an account
+  /// deleted): "No longer updated".
+  final bool ended;
+
+  /// The receiver changed the copy's programs or blocks: it's theirs now,
+  /// and is no longer rebuilt from the recipe.
+  final bool edited;
+
+  /// The sender's last published recipe hash.
+  final String? hash;
+
+  bool get isCopy => role == ShareRole.incoming;
+
+  /// A copy whose programs still come from its recipe.
+  bool get followsRecipe => isCopy && !edited;
+
+  ShareLink copyWith({
+    int? version,
+    bool? keepUpdated,
+    int? matched,
+    int? total,
+    bool? ended,
+    bool? edited,
+    String? Function()? hash,
+    String? ownerName,
+    String? ownerHandle,
+    String? station,
+  }) =>
+      ShareLink(
+        id: id,
+        role: role,
+        owner: owner,
+        ownerName: ownerName ?? this.ownerName,
+        ownerHandle: ownerHandle ?? this.ownerHandle,
+        station: station ?? this.station,
+        version: version ?? this.version,
+        keepUpdated: keepUpdated ?? this.keepUpdated,
+        matched: matched ?? this.matched,
+        total: total ?? this.total,
+        ended: ended ?? this.ended,
+        edited: edited ?? this.edited,
+        hash: hash != null ? hash() : this.hash,
+      );
+
+  Map<String, Object?> toJson() => {
+        'id': id,
+        'role': role.json,
+        if (owner != null) 'owner': owner,
+        if (ownerName != null) 'ownerName': ownerName,
+        if (ownerHandle != null) 'ownerHandle': ownerHandle,
+        if (station != null && station!.isNotEmpty) 'station': station,
+        'version': version,
+        if (isCopy) 'keepUpdated': keepUpdated,
+        if (isCopy) 'matched': matched,
+        if (isCopy) 'total': total,
+        if (ended) 'ended': true,
+        if (edited) 'edited': true,
+        if (hash != null) 'hash': hash,
+      };
+
+  static ShareLink? fromJson(Object? j) {
+    if (j is! Map) return null;
+    final id = j['id'], role = ShareRole.parse(j['role']);
+    if (id is! String || role == null) return null;
+    int n(Object? v) => v is num ? v.toInt() : 0;
+    return ShareLink(
+      id: id,
+      role: role,
+      owner: j['owner'] as String?,
+      ownerName: j['ownerName'] as String?,
+      ownerHandle: j['ownerHandle'] as String?,
+      station: j['station'] as String?,
+      version: n(j['version']),
+      keepUpdated: j['keepUpdated'] as bool? ?? true,
+      matched: n(j['matched']),
+      total: n(j['total']),
+      ended: j['ended'] as bool? ?? false,
+      edited: j['edited'] as bool? ?? false,
+      hash: j['hash'] as String?,
+    );
+  }
+}
+
 class Channel {
   Channel({
     required this.id,
@@ -384,6 +523,7 @@ class Channel {
     this.slotRule,
     this.slotCarry,
     this.generation = 0,
+    this.share,
   });
 
   /// A live channel (live-tv-sources): it plays its source's stream and has
@@ -473,6 +613,13 @@ class Channel {
   /// D10).
   int generation;
 
+  /// Where the channel stands in a share (channel-sharing): shared by this
+  /// profile, or a copy of someone else's. Null for neither.
+  ShareLink? share;
+
+  /// A copy added from someone's share.
+  bool get isSharedCopy => share?.isCopy ?? false;
+
   bool get isLive => live != null;
 
   /// A music channel (songs or music videos).
@@ -514,6 +661,7 @@ class Channel {
         slotRule: slotRule,
         slotCarry: slotCarry,
         generation: generation,
+        share: share,
       );
 
   Map<String, Object?> toJson() => {
@@ -539,6 +687,7 @@ class Channel {
         if (slotRule != null) 'slot': slotRule!.toJson(),
         if (slotCarry != null) 'slotCarry': slotCarry!.toJson(),
         if (generation != 0) 'generation': generation,
+        if (share != null) 'share': share!.toJson(),
       };
 
   factory Channel.fromJson(Map<String, Object?> j) => Channel(
@@ -568,6 +717,7 @@ class Channel {
         slotRule: SlotRule.fromJson(j['slot']),
         slotCarry: SlotCarry.fromJson(j['slotCarry']),
         generation: j['generation'] as int? ?? 0,
+        share: ShareLink.fromJson(j['share']),
       );
 }
 

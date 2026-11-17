@@ -82,6 +82,23 @@ jobs:
             echo "::warning::No NTV_ERROR_DSN secret: this release won't send error reports."
           fi
 
+      # Sharing (share-accounts D2): the backend's address, public key and
+      # invite-link host from the repository secrets NTV_SHARE_URL,
+      # NTV_SHARE_KEY and NTV_SHARE_HOST, when all three are set; without
+      # them the release has no sharing.
+      - name: Sharing backend
+        env:
+          NTV_SHARE_URL: ${{ secrets.NTV_SHARE_URL }}
+          NTV_SHARE_KEY: ${{ secrets.NTV_SHARE_KEY }}
+          NTV_SHARE_HOST: ${{ secrets.NTV_SHARE_HOST }}
+        run: |
+          if [[ -n "$NTV_SHARE_URL" && -n "$NTV_SHARE_KEY" && -n "$NTV_SHARE_HOST" ]]; then
+            printf 'NTV_SHARE_URL=%s\nNTV_SHARE_KEY=%s\nNTV_SHARE_HOST=%s\n' \
+              "$NTV_SHARE_URL" "$NTV_SHARE_KEY" "$NTV_SHARE_HOST" > sharing.env
+          else
+            echo "::warning::NTV_SHARE_URL, NTV_SHARE_KEY or NTV_SHARE_HOST is missing: this release has no sharing."
+          fi
+
       # The Linux app with the web admin in its web/ folder; fails when the
       # web admin doesn't build.
       - name: Build and package

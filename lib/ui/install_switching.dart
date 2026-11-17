@@ -13,6 +13,7 @@ import '../theme/tv_theme.dart';
 import 'backup_screen.dart' show confirmRestore;
 import 'menu_screen.dart' show confirm, showMessage;
 import 'profiles_screen.dart' show grownUpCheck;
+import 'widgets/keep_focus_on_top.dart';
 import 'widgets/tv_focus.dart';
 import '../l10n/tr.dart';
 
@@ -211,6 +212,9 @@ class _InstallSwitchingHostState extends State<InstallSwitchingHost> {
 
   bool _busy = false;
 
+  /// Focus stays on this host's dialog while one is up.
+  late final _keepFocus = KeepFocusOnTop(active: () => _busy);
+
   Household get _household => widget.household;
 
   @override
@@ -218,58 +222,17 @@ class _InstallSwitchingHostState extends State<InstallSwitchingHost> {
     super.initState();
     InstallSwitching.listen();
     InstallSwitching.pending.addListener(_onPending);
-    FocusManager.instance.addListener(_keepFocusOnTop);
+    _keepFocus.start();
     WidgetsBinding.instance.addPostFrameCallback((_) => unawaited(_start()));
   }
 
   @override
   void dispose() {
     InstallSwitching.pending.removeListener(_onPending);
-    FocusManager.instance.removeListener(_keepFocusOnTop);
+    _keepFocus.stop();
     super.dispose();
   }
 
-  /// This host's dialogs can open while the app is still starting: a screen
-  /// that arrives under one afterwards (the TV screen, after syncing) takes
-  /// focus with its autofocus. Focus goes back to the dialog on top.
-  void _keepFocusOnTop() {
-    final node = FocusManager.instance.primaryFocus;
-    final focused = node?.context;
-    if (!_busy || node == null || focused == null || !focused.mounted) return;
-    if (ModalRoute.of(focused)?.isCurrent ?? true) {
-      _onTop = node;
-      return;
-    }
-    final back = _onCurrentRoute(_onTop) ? _onTop! : _topScope();
-    if (back != null) {
-      scheduleMicrotask(() {
-        back.requestFocus();
-        _hideKeyboard();
-      });
-    }
-  }
-
-  static bool _onCurrentRoute(FocusNode? node) {
-    final context = node?.context;
-    return context != null && context.mounted && (ModalRoute.of(context)?.isCurrent ?? false);
-  }
-
-  /// When the dialog's autofocus and a screen's under it land in the same
-  /// frame, the dialog never shows as focused, so [_onTop] is unset. Its
-  /// focus scope still remembers the control it focused: go back to that.
-  static FocusScopeNode? _topScope() {
-    for (final node in FocusManager.instance.rootScope.descendants) {
-      if (node is FocusScopeNode && node.focusedChild != null && _onCurrentRoute(node)) return node;
-    }
-    return null;
-  }
-
-  /// A text field focused under one of this host's dialogs (a phone's
-  /// sign-in) leaves its keyboard over the dialog: hidden.
-  static void _hideKeyboard() => unawaited(SystemChannels.textInput.invokeMethod<void>('TextInput.hide'));
-
-  /// The last control focused on the top route.
-  FocusNode? _onTop;
 
   Future<void> _start() async {
     await _handlePending();
@@ -297,7 +260,7 @@ class _InstallSwitchingHostState extends State<InstallSwitchingHost> {
     final info = await InstallSwitching.info();
     if (info == null || !context.mounted) return;
     _busy = true;
-    _hideKeyboard();
+    KeepFocusOnTop.hideKeyboard();
     try {
       switch (handover) {
         case SetupReceived(:final bytes):
@@ -332,7 +295,7 @@ class _InstallSwitchingHostState extends State<InstallSwitchingHost> {
     final context = _context;
     if (context == null || !context.mounted || _busy) return;
     _busy = true;
-    _hideKeyboard();
+    KeepFocusOnTop.hideKeyboard();
     try {
       final choice = await _showBothInstalled(context, info);
       if (choice == null || !context.mounted || !await _unlocked(context)) return;

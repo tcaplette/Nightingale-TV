@@ -106,6 +106,18 @@ abstract final class PlatformInfo {
   static bool get hasTouch => isAndroid && !isTelevision;
 
   /// Opens [url] in the browser; false when there's none to open it.
+  /// Phones and tablets: the system share sheet with [text] (share-accounts
+  /// Send invite). False where there's none (TVs, Linux) or it failed.
+  static Future<bool> shareText(String text, {required String title}) async {
+    if (!isAndroid || isTelevision) return false;
+    try {
+      return await _channel.invokeMethod<bool>('shareText', {'text': text, 'title': title}) ?? false;
+    } on Object catch (e) {
+      debugPrint('Could not share: $e');
+      return false;
+    }
+  }
+
   static Future<bool> openUrl(String url) async {
     try {
       if (isAndroid) return await _channel.invokeMethod<bool>('openUrl', url) ?? false;

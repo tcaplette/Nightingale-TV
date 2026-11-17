@@ -9,6 +9,7 @@ import 'package:flutter/services.dart';
 
 import '../playback/tuner.dart';
 import '../profiles/household.dart';
+import '../sharing/party_reactions.dart';
 import 'firewall_check.dart';
 import 'key_dispatch.dart';
 import 'remote_page.dart';
@@ -91,6 +92,11 @@ class RemoteControl extends ChangeNotifier {
 
   /// Told of every key or tune command (the still-watching count, idle-power).
   void Function()? onCommand;
+
+  /// A channel tapped on the phone, as the TV screen tunes one (in a watch
+  /// party it asks "Leave the watch party?" first); attached by the TV
+  /// screen. Without it, the tuner tunes.
+  Future<bool> Function(int number)? tuneRequest;
 
   bool enabled = false;
   HttpServer? _server;
@@ -461,7 +467,20 @@ class RemoteControl extends ChangeNotifier {
             final number = body['number'];
             if (number is! int) throw const FormatException('Expected a channel number');
             await _wake?.call();
-            _json(response, {'tuned': await tuner?.tuneNumber(number) ?? false});
+            final tune = tuneRequest ?? tuner?.tuneNumber;
+            _json(response, {'tuned': await tune?.call(number) ?? false});
+          case '/api/react':
+            // A reaction as the TV's profile, while its TV is in a watch
+            // party; one per second, as on the TV (watch-together).
+            final emoji = body['emoji'];
+            if (emoji is! String || !partyReactions.contains(emoji)) throw const FormatException('Unknown reaction');
+            final party = household.sharing?.party;
+            if (party == null || !party.active) {
+              response.statusCode = HttpStatus.conflict;
+              _json(response, {'error': 'not in a watch party'});
+              return;
+            }
+            _json(response, {'sent': party.react(emoji)});
           default:
             response.statusCode = HttpStatus.notFound;
         }
@@ -510,6 +529,8 @@ class RemoteControl extends ChangeNotifier {
       'now': now.toIso8601String(),
       if (channel != null) 'channel': {'number': channel.number, 'name': channel.displayName},
       'program': program,
+      // The reaction pad shows while the TV is in a watch party.
+      'party': (household.sharing?.party.active ?? false) ? {'active': true, 'reactions': partyReactions} : null,
       'channels': [
         for (final c in app.channels)
           {

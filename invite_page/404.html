@@ -1,0 +1,234 @@
+<!doctype html>
+<!--
+  Nightingale TV invite page for self-hosted sharing (see SELF_HOSTING.md).
+  Serves https://<host>/ntv/i/<CODE> on any static host: GitHub Pages and most
+  others answer unknown paths with 404.html, which is this same file. It also
+  works as index.html?code=<CODE>. Settings live in config.js next to this file.
+  Every value from the preview is inserted with textContent, never as HTML.
+  404.html must stay identical to index.html.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<meta name="robots" content="noindex">
+<title>You’ve been invited to Nightingale TV</title>
+<style>
+  :root {
+    --bg: #f6f3ee; --card: #ffffff; --ink: #1d1a17; --ink-2: #5d564f;
+    --line: #e2dbd2; --accent: #8a4b2a; --on-accent: #ffffff;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #161412; --card: #221f1c; --ink: #f3eee8; --ink-2: #b4aba1;
+      --line: #3a342f; --accent: #e0a47a; --on-accent: #1d1a17;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink);
+    font: 17px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  main { max-width: 620px; margin: 0 auto; padding: 36px 16px 48px; display: grid; gap: 22px; }
+  .label { margin: 0; font-size: 13px; letter-spacing: .12em; text-transform: uppercase; color: var(--ink-2); }
+  h1 { margin: 0; font-size: clamp(26px, 6.4vw, 40px); line-height: 1.15; overflow-wrap: anywhere; }
+  h2 { margin: 0 0 6px; font-size: 20px; }
+  .handle { font-weight: 400; color: var(--ink-2); }
+  .lede, .small { margin: 0; color: var(--ink-2); overflow-wrap: anywhere; }
+  .small { font-size: 14px; }
+  .head { display: grid; gap: 10px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; }
+  .channels { list-style: none; margin: 4px 0 0; padding: 0; display: grid; gap: 8px; }
+  .channels li { padding: 10px 14px; font-weight: 600; overflow-wrap: anywhere; }
+  .code-card { padding: 24px 20px; display: grid; gap: 14px; justify-items: center; text-align: center; }
+  .code-label { margin: 0; font-size: 13px; letter-spacing: .12em; text-transform: uppercase; color: var(--ink-2); }
+  .code { margin: 0; font: 700 clamp(40px, 13vw, 64px)/1 ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace; letter-spacing: .08em; }
+  .steps { margin: 0; color: var(--ink-2); }
+  .btn {
+    display: inline-block; padding: 12px 20px; border-radius: 999px; border: 1px solid var(--accent);
+    background: var(--accent); color: var(--on-accent); font: 600 16px/1 inherit; text-decoration: none; cursor: pointer;
+  }
+  .btn.ghost { background: transparent; color: var(--accent); }
+  .btn:focus-visible { outline: 3px solid var(--ink); outline-offset: 3px; }
+  .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+  [hidden] { display: none !important; }
+</style>
+</head>
+<body>
+<main>
+  <header class="head">
+    <p class="label">Nightingale TV</p>
+    <h1 id="title">You’ve been invited to Nightingale TV</h1>
+    <p class="lede" id="lede" hidden></p>
+    <ul class="channels" id="channels" hidden></ul>
+    <p class="small" id="expires" hidden></p>
+  </header>
+
+  <section class="card code-card" id="code-card" hidden>
+    <p class="code-label">Your invite code</p>
+    <p class="code"><span id="code" aria-hidden="true"></span><span class="sr" id="code-sr"></span></p>
+    <button type="button" class="btn" id="copy">Copy code</button>
+    <span class="sr" role="status" aria-live="polite" id="copied"></span>
+    <p class="steps"><strong>To add it:</strong> Open Nightingale TV → Sharing → Add friend → Enter a code, and type the code above.</p>
+  </section>
+
+  <section>
+    <h2>Get the app</h2>
+    <p class="lede">Nightingale TV runs on Android TV, Google TV, Android phones and Linux. After installing, open the app and enter the code above.</p>
+    <p><a class="btn ghost" id="get-app" rel="noopener" href="#">Download Nightingale TV</a></p>
+  </section>
+</main>
+<script>
+(function () {
+  "use strict";
+  // 6 characters, without I, L, O, 0 and 1 (the app's code alphabet).
+  var CODE_RE = /^[A-HJKMNP-Z2-9]{6}$/;
+  var $ = function (id) { return document.getElementById(id); };
+
+  function clean(raw) { return String(raw || "").toUpperCase().replace(/[\s.·-]+/g, ""); }
+  function text(v, max) { return typeof v === "string" && v.trim() ? v.trim().slice(0, max) : null; }
+
+  // The code from /…/ntv/i/<CODE> or from ?code=<CODE>.
+  var m = location.pathname.match(/\/ntv\/i\/([^/]+)\/?$/);
+  var raw = new URLSearchParams(location.search).get("code") || (m ? decodeURIComponent(m[1]) : "");
+  var code = clean(raw);
+  // The site's base: what comes before /ntv/i/, or this page's folder.
+  var base = m ? location.pathname.slice(0, m.index + 1)
+               : location.pathname.replace(/[^/]*$/, "");
+
+  function show(id, on) { $(id).hidden = !on; }
+  function setTitle(parts) {
+    var h = $("title");
+    h.textContent = "";
+    parts.forEach(function (p) {
+      var node = p.cls ? document.createElement(p.cls === "strong" ? "strong" : "span") : null;
+      if (node) {
+        if (p.cls !== "strong") node.className = p.cls;
+        node.textContent = p.t;
+        h.appendChild(node);
+      } else {
+        h.appendChild(document.createTextNode(p.t));
+      }
+    });
+  }
+
+  function showCode() {
+    $("code").textContent = code.slice(0, 4) + "·" + code.slice(4);
+    $("code-sr").textContent = code;
+    show("code-card", true);
+  }
+
+  function render(state, data) {
+    if (state === "invalid") {
+      $("title").textContent = "This link isn’t a valid invite.";
+      $("lede").textContent = "Check that you copied the whole link.";
+      show("lede", true);
+      return;
+    }
+    if (state === "gone") {
+      $("title").textContent = "This invite has expired or was already used.";
+      $("lede").textContent = "Ask your friend for a new one.";
+      show("lede", true);
+      return;
+    }
+    showCode();
+    if (state === "limited") {
+      $("title").textContent = "Too many tries. Try again later.";
+      return;
+    }
+    if (state !== "preview") return;
+    var from = data.from || {};
+    var name = text(from.name, 60);
+    var handle = text(from.handle, 40);
+    if (data.kind === "friend") {
+      var parts = [{ t: name, cls: "strong" }];
+      if (handle) parts.push({ t: " " }, { t: "(@" + handle + ")", cls: "handle" });
+      parts.push({ t: " wants to be friends on Nightingale TV" });
+      setTitle(parts);
+    } else if (data.kind === "channels") {
+      var list = (Array.isArray(data.channels) ? data.channels : []).slice(0, 50)
+        .map(function (c) { return text(c && c.name, 80); }).filter(Boolean);
+      setTitle([{ t: name, cls: "strong" },
+        { t: " shared " + list.length + (list.length === 1 ? " channel" : " channels") + " with you" }]);
+      var station = text(from.station, 60);
+      if (station) { $("lede").textContent = "From " + station; show("lede", true); }
+      var ul = $("channels");
+      list.forEach(function (n) {
+        var li = document.createElement("li");
+        li.className = "card";
+        li.textContent = n;
+        ul.appendChild(li);
+      });
+      show("channels", list.length > 0);
+    } else if (data.kind === "watch") {
+      setTitle([{ t: name, cls: "strong" }, { t: " invited you to watch " },
+        { t: text(data.show && data.show.title, 120), cls: "strong" }]);
+    }
+    if (data.expires_at) {
+      var d = new Date(data.expires_at);
+      if (!isNaN(d.getTime())) {
+        $("expires").textContent = "Invite expires " +
+          d.toLocaleDateString(undefined, { year: "numeric", month: "long", day: "numeric" });
+        show("expires", true);
+      }
+    }
+  }
+
+  // Only previews with the expected shape are shown; anything else keeps the plain invite.
+  function valid(d) {
+    if (!d || typeof d !== "object" || !d.from || !text(d.from.name, 60)) return false;
+    if (d.kind === "friend") return true;
+    if (d.kind === "channels") return Array.isArray(d.channels) && d.channels.length > 0;
+    if (d.kind === "watch") return !!(d.show && text(d.show.title, 120));
+    return false;
+  }
+
+  $("copy").addEventListener("click", function () {
+    var done = function () {
+      $("copy").textContent = "Copied";
+      $("copied").textContent = "Code copied";
+      setTimeout(function () { $("copy").textContent = "Copy code"; $("copied").textContent = ""; }, 2000);
+    };
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(code).then(done, function () {});
+    }
+  });
+
+  function start() {
+    var cfg = window.NTV_INVITE || {};
+    if (cfg.GET_APP_URL) $("get-app").href = cfg.GET_APP_URL;
+    else $("get-app").parentNode.hidden = true;
+    if (!CODE_RE.test(code)) return render("invalid");
+    if (!cfg.INVITE_API) return render("none");
+    var url;
+    try { url = new URL(cfg.INVITE_API); } catch (e) { return render("none"); }
+    url.searchParams.set("code", code);
+    var ctrl = window.AbortController ? new AbortController() : null;
+    var timer = setTimeout(function () { if (ctrl) ctrl.abort(); }, 5000);
+    fetch(url.toString(), { credentials: "omit", referrerPolicy: "no-referrer", cache: "no-store",
+                            signal: ctrl ? ctrl.signal : undefined })
+      .then(function (res) {
+        // The body is always read, so the request finishes whatever the status.
+        return res.text().then(function (body) {
+          if (res.status === 404) return render("gone");
+          if (res.status === 429) return render("limited");
+          if (!res.ok) return render("none");
+          var d;
+          try { d = JSON.parse(body); } catch (e) { return render("none"); }
+          render(valid(d) ? "preview" : "none", d);
+        });
+      })
+      .catch(function () { render("none"); })
+      .then(function () { clearTimeout(timer); });
+  }
+
+  var s = document.createElement("script");
+  s.src = base + "config.js";
+  s.onload = start;
+  s.onerror = start;
+  document.head.appendChild(s);
+})();
+</script>
+</body>
+</html>

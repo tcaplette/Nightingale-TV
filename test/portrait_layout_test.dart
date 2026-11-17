@@ -5,6 +5,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:nightingale_tv/channels/channel.dart';
+import 'package:nightingale_tv/sharing/share_client.dart';
+import 'package:nightingale_tv/sharing/share_service.dart';
+import 'package:nightingale_tv/ui/sharing_screen.dart';
 import 'package:nightingale_tv/ui/source_picker_screen.dart';
 import 'package:nightingale_tv/app_scope.dart';
 import 'package:nightingale_tv/backup/backup_archive.dart';
@@ -30,6 +33,7 @@ import 'package:nightingale_tv/ui/widgets/tv_focus.dart';
 
 import 'language_arb_support.dart';
 import 'portrait_harness.dart';
+import 'sharing_fakes.dart';
 
 /// Opens what's checked, in an app showing [PortraitHarness.show].
 typedef Opener = Future<void> Function(WidgetTester tester, PortraitHarness h);
@@ -104,8 +108,59 @@ void layoutSweep({List<Size> windows = const [narrowPhone, pixel8, tabletUpright
     }
   }
 
+  /// Sharing on the fake backend (share-accounts). [signedIn] links the
+  /// profile; [linked] also gives it a share profile, a friend and a
+  /// blocked account with long names. [asked]: Show what I'm watching was
+  /// answered (friend-presence); if not, the question is the page.
+  Opener sharing({bool signedIn = false, bool linked = false, bool asked = true}) => (tester, h) async {
+        final backend = FakeShareBackend();
+        if (linked) {
+          backend.profile = {
+            'user_id': FakeShareBackend.userId,
+            if (asked) 'presence': 'friends',
+            'display_name': 'Maximiliane Alexandra W',
+            'handle': 'maximiliane_alexandr',
+            'avatar': 'penguin',
+            'avatar_color': 3,
+            'station': 'Maximiliane\'s Late Night TV',
+          };
+          backend.friends.add(const ShareProfile(
+              userId: 'user-long', name: 'Bartholomew Fitzgerald Jr', handle: 'bartholomew_fitzgera', avatar: 'whale'));
+          backend.blocked.add(const ShareProfile(userId: 'user-blocked', name: 'Someone Blocked', handle: 'someone_blocked'));
+        }
+        // Real time: the sign-in's refresh timer isn't the test clock's.
+        await tester.runAsync(() async {
+          final service = h.household.sharing = ShareService(h.household, h.household.root,
+              url: 'https://share.test',
+              key: 'sb_publishable_test',
+              host: 'coffeehauslabs.example',
+              httpClient: backend.client,
+              watchLifecycle: false);
+          await service.load();
+          if (signedIn || linked) {
+            final client = await service.setUp(h.household.current!);
+            await client!.verifyCode('sam@example.com', FakeShareBackend.otp);
+          }
+        });
+        addTearDown(() => tester.runAsync(() async {
+              h.household.sharing?.dispose();
+              h.household.sharing = null;
+            }));
+        await screen((_) => const SharingScreen())(tester, h);
+      };
+
   final checks = <String, Opener>{
     'menu': screen((_) => const MenuScreen()),
+    'sharing': sharing(),
+    'sharing profile form': sharing(signedIn: true),
+    'sharing linked': sharing(linked: true),
+    'sharing show what I\'m watching': sharing(linked: true, asked: false),
+    'sharing enter a code': (tester, h) async {
+      await sharing(linked: true)(tester, h);
+      await reveal(tester, find.text(translated('Enter a code')));
+      await tester.tap(find.text(translated('Enter a code')).last);
+      await settle(tester);
+    },
     'sign-in': screen((_) => const LoginScreen(message: 'Couldn\'t reach the server at http://192.168.1.10:8096')),
     'sync': screen((_) => const SyncScreen()),
     'profile picker': screen((_) => const ProfilePickerScreen()),

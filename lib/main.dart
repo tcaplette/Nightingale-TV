@@ -39,12 +39,15 @@ import 'setup/accounts.dart';
 import 'setup/server_db.dart';
 import 'setup/setup_server.dart';
 import 'setup/web_files.dart';
+import 'sharing/share_service.dart';
+import 'sharing/sharing.dart';
 import 'store/unlock.dart';
 import 'theme/tv_theme.dart';
 import 'ui/backup_screen.dart';
 import 'ui/install_switching.dart';
 import 'ui/login_screen.dart';
 import 'ui/profiles_screen.dart';
+import 'ui/sharing_screen.dart';
 import 'ui/sleep_overlay.dart';
 import 'ui/sync_screen.dart';
 import 'ui/tv_screen.dart';
@@ -128,6 +131,17 @@ Future<void> main(List<String> args) async {
     watchRemoteLifecycle(remote);
   }
 
+  // Sharing (share-accounts), in release builds with a sharing backend only:
+  // the device's share sign-ins, read before the first profile starts.
+  final sharing = household.sharing = ShareService.forHousehold(household);
+  await sharing?.load();
+  // Closing the app takes down what it published (friend-presence).
+  if (sharing != null) {
+    // Closing the app leaves its party (a host's ends it).
+    exitHooks.add(sharing.party.leaveBeforeStop);
+    exitHooks.add(sharing.presence.clearBeforeStop);
+  }
+
   runApp(NightingaleTvApp(household: household));
   await household.start();
   PlaybackDiagnostics.mark('profile started');
@@ -162,6 +176,8 @@ Future<void> _serverMain() async {
       '(time zone ${Platform.environment['TZ'] ?? DateTime.now().timeZoneName}, ${DateTime.now().timeZoneName}).');
 
   final env = Platform.environment;
+  // No sharing in server mode or its web admin (share-accounts).
+  Sharing.serverMode = true;
   final household = Household(await AppStorage.open(), serverMode: true);
   household.backups = BackupScheduler(household, BackupStore(Directory('${household.root.root.path}/backups')));
   // Error reports (error-reporting): on unless NTV_ERROR_REPORTS=0, after
@@ -374,13 +390,18 @@ class _ShellState extends State<_Shell> {
                     child: InstallSwitchingHost(
                         household: widget.household,
                         navigator: _navigator,
-                        // The sleep timer's warning and sleep screen, over
-                        // every screen (none before a profile is watching).
-                        child: SleepOverlay(
-                            child: switch (androidBack) {
-                          final back? => BackKeyWatcher(bridge: back, child: child!),
-                          null => child!,
-                        }))))),
+                        // Sharing invite links (share-accounts): Sharing
+                        // opens on the code once a profile is watching.
+                        child: SharingInviteHost(
+                            household: widget.household,
+                            navigator: _navigator,
+                            // The sleep timer's warning and sleep screen, over
+                            // every screen (none before a profile is watching).
+                            child: SleepOverlay(
+                                child: switch (androidBack) {
+                              final back? => BackKeyWatcher(bridge: back, child: child!),
+                              null => child!,
+                            })))))),
         // The Unlock screen in place of the home screen once the Play
         // version's trial is over (play-unlock).
         home: UnlockGate(household: widget.household, child: widget.home),
@@ -426,6 +447,7 @@ class _ProfileSessionState extends State<ProfileSession> {
   late final SleepTimer _sleep = SleepTimer(_tuner);
   late final StillWatching _still = StillWatching(_tuner, _sleep);
   late final RemoteControl? _remote = HouseholdScope.read(context).remote;
+  late final ShareService? _sharing = HouseholdScope.read(context).sharing;
 
   /// Android: stops playback in the background and tunes back in on return.
   AppLifecycleListener? _lifecycle;
@@ -448,7 +470,13 @@ class _ProfileSessionState extends State<ProfileSession> {
     // sends them at once.
     exitHooks.add(_tuner.flushReports);
     if (PlatformInfo.isAndroid) _lifecycle = AppLifecycleListener(onHide: _onHide, onShow: _onShow);
+    // Asleep, sharing sends nothing either (share-accounts).
+    _sharing?.presence.tuner = _tuner;
+    _sharing?.party.tuner = _tuner;
+    _sleep.addListener(_sleepChanged);
   }
+
+  void _sleepChanged() => _sharing?.asleep = _sleep.phase == SleepPhase.asleep;
 
   /// Out of sight (Home, another app, screen off): nothing plays, transcodes
   /// or reports, since Android may end the process at any time from here.
@@ -487,6 +515,10 @@ class _ProfileSessionState extends State<ProfileSession> {
     exitHooks.remove(_tuner.flushReports);
     if (_remote?.tuner == _tuner) _remote?.tuner = null;
     if (_remote?.onCommand == _remoteCommand) _remote?.onCommand = null;
+    _sleep.removeListener(_sleepChanged);
+    if (identical(_sharing?.presence.tuner, _tuner)) _sharing?.presence.tuner = null;
+    if (identical(_sharing?.party.tuner, _tuner)) _sharing?.party.tuner = null;
+    _sharing?.asleep = false;
     _still.dispose();
     _sleep.dispose();
     final tuner = _tuner;

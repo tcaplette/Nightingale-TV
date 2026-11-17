@@ -18,7 +18,8 @@ import java.util.concurrent.Executors
 
 /** The official app and the own build side by side (install-switching D4, D6):
  *  what kind of install this is, whether the other one is installed, and
- *  handing a backup file straight to it (lib/platform/install_info.dart). */
+ *  handing a backup file straight to it (lib/platform/install_info.dart).
+ *  Also hands sharing invite links to Dart (share-accounts D3). */
 class InstallSwitching(private val activity: Activity) : MethodChannel.MethodCallHandler {
     private val io = Executors.newSingleThreadExecutor()
     private val main = Handler(Looper.getMainLooper())
@@ -27,6 +28,9 @@ class InstallSwitching(private val activity: Activity) : MethodChannel.MethodCal
 
     /** What the other app sent, until Dart takes it. */
     private var pending: Map<String, Any?>? = null
+
+    /** An invite link that opened the app, until Dart takes it. */
+    private var pendingLink: String? = null
 
     private val ownId: String get() = activity.packageName
     private val ownBuild: Boolean get() = ownId.endsWith(SELF_BUILT)
@@ -40,6 +44,10 @@ class InstallSwitching(private val activity: Activity) : MethodChannel.MethodCal
             "takeHandover" -> {
                 result.success(pending)
                 pending = null
+            }
+            "takeInviteLink" -> {
+                result.success(pendingLink)
+                pendingLink = null
             }
             else -> result.notImplemented()
         }
@@ -106,6 +114,14 @@ class InstallSwitching(private val activity: Activity) : MethodChannel.MethodCal
     fun onIntent(intent: Intent?): Boolean {
         when (intent?.action) {
             ACTION_SEND_SETUP -> deliver(mapOf("kind" to "send"))
+            // Only the release manifest's App Link filter sends these, for the
+            // invite-link host; Dart checks the host and the code again.
+            Intent.ACTION_VIEW -> {
+                val uri = intent.data ?: return false
+                if (uri.scheme != "https" || uri.path?.startsWith(INVITE_PATH) != true) return false
+                pendingLink = uri.toString()
+                channel?.invokeMethod("inviteLinkArrived", null)
+            }
             ACTION_RECEIVE_SETUP -> {
                 @Suppress("DEPRECATION")
                 val uri: Uri? = intent.clipData?.takeIf { it.itemCount > 0 }?.getItemAt(0)?.uri
@@ -143,6 +159,7 @@ class InstallSwitching(private val activity: Activity) : MethodChannel.MethodCal
 
     companion object {
         const val SELF_BUILT = ".selfbuilt"
+        const val INVITE_PATH = "/ntv/i/"
         const val ACTION_RECEIVE_SETUP = "com.coffeehauslabs.nightingale_tv.action.RECEIVE_SETUP"
         const val ACTION_SEND_SETUP = "com.coffeehauslabs.nightingale_tv.action.SEND_SETUP"
 

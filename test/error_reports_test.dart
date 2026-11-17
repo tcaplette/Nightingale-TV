@@ -17,8 +17,8 @@ import 'package:sentry_flutter/sentry_flutter.dart';
 void main() {
   group('ReportScrubber', () {
     final s = ReportScrubber(
-      names: ['Living Room Plex', 'plexbox.lan', 'howard', 'Mom', 'Kids', "Howard's Shield"],
-      folders: ['/home/howard', '/home/howard/.local/share/com.coffeehauslabs.nightingale_tv'],
+      names: ['Living Room Plex', 'plexbox.lan', 'alex', 'Mom', 'Kids', "Alex's Shield"],
+      folders: ['/home/alex', '/home/alex/.local/share/com.coffeehauslabs.nightingale_tv'],
     );
 
     test('Plex part URL loses the address and the token', () {
@@ -47,9 +47,9 @@ void main() {
       final out = s.scrub('https://emby.example.com:8920/emby/Videos/123/master.m3u8?api_key=deadbeefdeadbeefdeadbeef00');
       expect(out, '<server>/emby/Videos/123/master.m3u8');
       final header = s.scrub(
-          'X-Emby-Authorization: MediaBrowser Client="Nightingale TV", Device="Howard\'s Shield", DeviceId="x", Version="1.2.2", Token="a1b2c3"');
+          'X-Emby-Authorization: MediaBrowser Client="Nightingale TV", Device="Alex\'s Shield", DeviceId="x", Version="1.2.2", Token="a1b2c3"');
       expect(header, 'X-Emby-Authorization: <redacted>');
-      expect(s.scrub('{"AccessToken":"9f8e7d6c5b4a","User":{"Name":"howard"}}'),
+      expect(s.scrub('{"AccessToken":"9f8e7d6c5b4a","User":{"Name":"alex"}}'),
           '{"AccessToken":"<redacted>","User":{"Name":"<name>"}}');
     });
 
@@ -66,18 +66,18 @@ void main() {
     });
 
     test('household names as whole words, any case', () {
-      expect(s.scrub('Signed in to Living Room Plex as Howard'), 'Signed in to <name> as <name>');
+      expect(s.scrub('Signed in to Living Room Plex as Alex'), 'Signed in to <name> as <name>');
       expect(s.scrub('Profile mom started; Kids next'), 'Profile <name> started; <name> next');
       expect(s.scrub('Moment of truth'), 'Moment of truth', reason: 'only whole words');
       expect(s.scrub('host plexbox.lan unreachable'), 'host <name> unreachable');
     });
 
     test('file paths under home and app data', () {
-      expect(s.scrub('Cannot open file, path = \'/home/howard/.local/share/com.coffeehauslabs.nightingale_tv/profiles/1.json\''),
+      expect(s.scrub('Cannot open file, path = \'/home/alex/.local/share/com.coffeehauslabs.nightingale_tv/profiles/1.json\''),
           'Cannot open file, path = \'~/profiles/1.json\'');
       expect(s.scrub('/home/someone/Videos/a.mkv'), '~/Videos/a.mkv');
       expect(s.scrub('/data/user/0/com.coffeehauslabs.nightingale_tv/files/x.json'), '~/files/x.json');
-      expect(s.scrub('file:///home/howard/x.log'), 'file://~/x.log');
+      expect(s.scrub('file:///home/alex/x.log'), 'file://~/x.log');
     });
 
     test('stack frames and versions are left readable', () {
@@ -94,19 +94,19 @@ void main() {
             type: 'ServerException',
             value: 'Living Room Plex answered 500',
             stackTrace: SentryStackTrace(frames: [
-              SentryStackFrame(absPath: 'file:///home/howard/src/a.dart', fileName: 'a.dart', function: 'f'),
+              SentryStackFrame(absPath: 'file:///home/alex/src/a.dart', fileName: 'a.dart', function: 'f'),
             ]),
           ),
         ],
-        breadcrumbs: [Breadcrumb(category: 'server', message: 'howard signed in', data: {'url': 'http://plexbox.lan:32400/?token=1'})],
+        breadcrumbs: [Breadcrumb(category: 'server', message: 'alex signed in', data: {'url': 'http://plexbox.lan:32400/?token=1'})],
         tags: {'note': 'Kids'},
         user: SentryUser(id: 'u1', ipAddress: '1.2.3.4'),
-        serverName: 'howard-pc',
-        contexts: Contexts(device: SentryDevice(name: "Howard's Shield", model: 'SHIELD Android TV')),
+        serverName: 'alex-pc',
+        contexts: Contexts(device: SentryDevice(name: "Alex's Shield", model: 'SHIELD Android TV')),
       );
       s.scrubEvent(event);
       final json = jsonEncode(event.toJson());
-      for (final leak in ['192.168', 'abc123', 'Mom', 'Living Room', 'howard', 'Kids', 'plexbox', '1.2.3.4', 'Shield"']) {
+      for (final leak in ['192.168', 'abc123', 'Mom', 'Living Room', 'alex', 'Kids', 'plexbox', '1.2.3.4', 'Shield"']) {
         expect(json, isNot(contains(leak)), reason: leak);
       }
       expect(event.user, isNull);

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -197,11 +198,15 @@ void main() {
       BackupScheduler.firstCheck = first;
       backups.dispose();
     });
+    // Saved once the scheduler says so: the store can list the file before
+    // its save has finished, and the folder goes at the end of the test.
+    final saved = Completer<void>();
+    backups.addListener(() {
+      if (!saved.isCompleted) saved.complete();
+    });
     backups.start();
     expect(household.app, isNull, reason: 'nothing on screen to wait for');
-    for (var i = 0; i < 200 && await store.newest() == null; i++) {
-      await Future<void>.delayed(const Duration(milliseconds: 25));
-    }
+    await saved.future.timeout(const Duration(seconds: 5));
     final newest = await store.newest();
     expect(newest, isNotNull);
     expect(newest!.kind, 'daily');

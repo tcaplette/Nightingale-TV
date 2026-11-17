@@ -775,6 +775,27 @@ List<String> buildPlaylist(LibraryIndex library, ChannelSource source, PlaybackO
   }
 
   final (:shows, :movies) = _select(library, source);
+  return _ordered(shows, movies, order, seed);
+}
+
+/// [ids] (episodes and movies) in [order], as [buildPlaylist] orders a
+/// source's: a shared channel's copy reordered or reshuffled by its
+/// receiver (channel-sharing). Ids the library doesn't have are left out.
+List<String> orderItems(LibraryIndex library, Iterable<String> ids, PlaybackOrder order, {required int seed}) {
+  final wanted = ids.toSet();
+  final shows = <String, List<MediaEntry>>{};
+  final movies = <MediaEntry>[];
+  for (final s in library.series) {
+    final eps = [for (final e in library.episodesBySeries[s.key] ?? const <MediaEntry>[]) if (wanted.contains(e.id)) e];
+    if (eps.isNotEmpty) shows[s.key] = eps;
+  }
+  for (final m in library.movies) {
+    if (wanted.contains(m.id)) movies.add(m);
+  }
+  return _ordered(shows, movies, order, seed);
+}
+
+List<String> _ordered(Map<String, List<MediaEntry>> shows, List<MediaEntry> movies, PlaybackOrder order, int seed) {
   final rng = Random(seed);
   final List<MediaEntry> ordered;
   switch (order) {

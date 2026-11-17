@@ -17,10 +17,13 @@ import '../platform/orientation.dart';
 import '../platform/platform_info.dart';
 import '../playback/device_effects.dart';
 import '../playback/playback_diagnostics.dart';
+import '../remote/remote_control.dart' show RemoteControl;
 import '../playback/sleep_timer.dart';
 import '../playback/exo_tuner_player.dart';
 import '../playback/tuner.dart';
 import '../reporting/video_report.dart';
+import 'widgets/friend_avatar_stack.dart';
+import 'widgets/friends_watching_card.dart';
 import 'widgets/crt_effects.dart';
 import '../theme/tv_theme.dart';
 import 'format.dart';
@@ -28,6 +31,21 @@ import 'guide_view.dart';
 import 'menu_screen.dart';
 import 'portrait_watch_screen.dart';
 import 'captions_picker.dart';
+import '../sharing/party_reactions.dart';
+import '../sharing/party_transport.dart';
+import '../sharing/presence.dart';
+import '../sharing/share_client.dart';
+import '../sharing/watch_party.dart';
+import 'sharing_screen.dart'
+    show
+        FloatingReactions,
+        PartyInviteBanner,
+        PartyMembersChip,
+        ReactionImage,
+        confirmLeaveParty,
+        joinWatchParty,
+        partyOf,
+        showWatchTogether;
 import 'sleep_picker.dart';
 import 'widgets/broadcast_cards.dart';
 import 'widgets/channel_logo.dart';
@@ -124,6 +142,7 @@ class _TvScreenState extends State<TvScreen> {
   @override
   void initState() {
     super.initState();
+    if (PlaybackDiagnostics.enabled) HardwareKeyboard.instance.addHandler(_noteKey);
     FullScreen.instance.addListener(_fullScreenChanged);
     DeviceEffects.instance.addListener(_effectsChanged);
     _effectsFellBack = DeviceEffects.instance.shaderTurnedOff;
@@ -241,6 +260,31 @@ class _TvScreenState extends State<TvScreen> {
   void didChangeDependencies() {
     super.didChangeDependencies();
     _sleep ??= AppScope.sleepOf(context)?..woke.addListener(_woke);
+    if (_presence == null) {
+      // Friend presence: the banner chip, Watch privately, and the notice
+      // on connect, shown like the share notice.
+      _presence = context.getInheritedWidgetOfExactType<HouseholdScope>()?.notifier?.sharing?.presence;
+      _presence?.notice.addListener(_presenceNoticed);
+      WidgetsBinding.instance.addPostFrameCallback((_) => _presenceNoticed());
+    }
+    if (_remote == null) {
+      _remote = context.getInheritedWidgetOfExactType<HouseholdScope>()?.notifier?.remote;
+      _remote?.tuneRequest = _remoteTune;
+    }
+    if (_party == null) {
+      _party = partyOf(context);
+      _party?.banner.addListener(_inviteChanged);
+      _partyToasts = _party?.toasts.listen((message) {
+        if (mounted) _showToast(message);
+      });
+    }
+    if (_shareNotice == null) {
+      // New shares waiting (channel-sharing): a toast over the picture,
+      // never taking focus from playback.
+      _shareNotice = context.getInheritedWidgetOfExactType<HouseholdScope>()?.notifier?.sharing?.channels.notice
+        ?..addListener(_shareNoticed);
+      WidgetsBinding.instance.addPostFrameCallback((_) => _shareNoticed());
+    }
     final portrait = ScreenLayout.of(context).isPortrait;
     if (_portrait != null && _portrait != portrait) {
       // The focused control may have gone with the old layout.
@@ -252,8 +296,222 @@ class _TvScreenState extends State<TvScreen> {
     _portrait = portrait;
   }
 
+  ValueNotifier<String?>? _shareNotice;
+  Presence? _presence;
+
+  /// Watch together: the party row, the invite banner and the toasts.
+  WatchParty? _party;
+  StreamSubscription<String>? _partyToasts;
+  final _bannerFocus = FocusNode(debugLabel: 'party invite');
+  FocusNode? _beforeBanner;
+
+  bool get _inParty => _party?.active ?? false;
+  bool get _inviteUp => _party?.banner.value != null;
+
+  void _inviteChanged() {
+    if (!mounted) return;
+    if (!_inviteUp && _bannerFocus.hasFocus) _bannerDone();
+    setState(() {});
+  }
+
+  /// The phone remote's tap-to-tune: as digits typed on the remote, so a
+  /// watch party asks before leaving.
+  RemoteControl? _remote;
+
+  Future<bool> _remoteTune(int number) async {
+    if (!mounted) return false;
+    _cancelExit();
+    if (!await _leaveFirst() || !mounted) return false;
+    final ok = await AppScope.tunerOf(context).tuneNumber(number);
+    if (ok && mounted) {
+      _bar = false;
+      _showChannel();
+    }
+    return ok;
+  }
+
+  /// Diagnostics builds: each key and what has the focus, for keys that
+  /// seem to do nothing.
+  bool _noteKey(KeyEvent event) {
+    if (event is KeyDownEvent) {
+      PlaybackDiagnostics.note('KEY', '${event.logicalKey.keyLabel} focus=${FocusManager.instance.primaryFocus?.toStringShort()}');
+    }
+    return false;
+  }
+
+  /// The first Up from the player, or from the guide's top row (D8).
+  bool _focusInvite() {
+    if (!_inviteUp) return false;
+    _beforeBanner = FocusManager.instance.primaryFocus;
+    _bannerFocus.requestFocus();
+    setState(() {});
+    return true;
+  }
+
+  /// The focus goes back where it was before the banner had it.
+  void _bannerDone() {
+    final back = _beforeBanner;
+    _beforeBanner = null;
+    if (back != null && back.context != null && back != _bannerFocus) {
+      back.requestFocus();
+    } else {
+      _focus.requestFocus();
+    }
+    if (mounted) setState(() {});
+  }
+
+  void _inviteNotNow() {
+    _party?.hideBanner();
+    _bannerDone();
+  }
+
+  Future<void> _joinInvite() async {
+    final party = _party, invite = party?.banner.value;
+    if (party == null || invite == null) return;
+    party.hideBanner();
+    _bannerDone();
+    if (!await _leaveFirst()) return;
+    if (!mounted) return;
+    if (await joinWatchParty(context, party, invite.party) && mounted) {
+      if (_guideOpen) {
+        _closeGuide();
+      } else {
+        _showChannel();
+      }
+    }
+  }
+
+  /// In a party, asks "Leave the watch party?" first: true when the viewer
+  /// isn't in one or left (a guest is back on its own lineup, on [to] when
+  /// given).
+  Future<bool> _leaveFirst({Channel? to}) async {
+    final party = _party;
+    if (party == null || !party.active) return true;
+    _cancelExit();
+    final leave = await confirmLeaveParty(context, host: party.isHost);
+    if (!mounted) return false;
+    if (!leave) {
+      if (!_guideOpen || ScreenLayout.of(context).isPortrait) _focus.requestFocus();
+      return false;
+    }
+    await party.leave(to: to);
+    return true;
+  }
+
+  /// Watch together, or (the host) inviting more.
+  Future<void> _watchTogether() async {
+    _cancelExit();
+    final tuner = AppScope.tunerOf(context);
+    await showWatchTogether(context, title: tuner.program?.title ?? tuner.channel?.displayName ?? '');
+    if (mounted && !_focus.hasFocus && (!_guideOpen || ScreenLayout.of(context).isPortrait)) _focus.requestFocus();
+  }
+
+  void _react(String emoji) => _party?.react(emoji);
+
+  /// Watch together is offered on a Nightingale channel, outside a party.
+  bool get _offerWatchTogether => _party?.canStartOn(_tuner?.channel) ?? false;
+
+  /// The party's controls in the portrait layout, under the player: the
+  /// members with Invite (the host) and Leave, then the six reactions across
+  /// the width, every one in reach of a thumb.
+  Widget _portraitPartyBar() {
+    final party = _party!;
+    final g = context.guide;
+    final gutter = ScreenLayout.of(context).gutter;
+    Widget button(Widget child, VoidCallback onTap, {String? label}) => Semantics(
+          button: true,
+          label: label,
+          child: GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: () {
+              _cancelExit();
+              onTap();
+            },
+            child: Container(
+              height: 76,
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              decoration: BoxDecoration(
+                color: g.panel,
+                borderRadius: BorderRadius.circular(38),
+                border: Border.all(color: g.cellBorder, width: 2),
+              ),
+              child: Center(child: child),
+            ),
+          ),
+        );
+    Widget labelled(IconData icon, String text) => Row(mainAxisSize: MainAxisSize.min, children: [
+          Icon(icon, size: 34, color: g.text),
+          const SizedBox(width: 8),
+          Text(text, style: g.display(26, weight: FontWeight.w700)),
+        ]);
+    return ColoredBox(
+      color: Colors.black,
+      child: Padding(
+        padding: EdgeInsets.fromLTRB(gutter, 10, gutter, 10),
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          Row(children: [
+            Expanded(
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: FittedBox(fit: BoxFit.scaleDown, child: PartyMembersChip(party: party, size: 40, compact: true)),
+              ),
+            ),
+            if (party.isHost && party.hasRoom) ...[
+              const SizedBox(width: 8),
+              button(labelled(Icons.person_add, tr.partyInvite), () => unawaited(_watchTogether()), label: tr.partyInvite),
+            ],
+            const SizedBox(width: 8),
+            button(labelled(Icons.logout, tr.partyLeave), () => unawaited(_leaveFirst()), label: tr.partyLeave),
+          ]),
+          const SizedBox(height: 10),
+          Row(children: [
+            for (final (i, e) in partyReactions.indexed) ...[
+              if (i > 0) const SizedBox(width: 8),
+              Expanded(child: button(ReactionImage(e, size: 48), () => _react(e))),
+            ],
+          ]),
+        ]),
+      ),
+    );
+  }
+
+  /// "Tyler and Sam are watching now", for 6 seconds, without focus.
+  void _presenceNoticed() {
+    final message = _presence?.notice.value;
+    if (message == null || !mounted) return;
+    _presence!.notice.value = null;
+    _showToast(message, for_: const Duration(seconds: 6));
+  }
+
+  /// Watch privately is offered while Show what I'm watching is Friends.
+  bool get _offerPrivate => _presence?.attached == true && _presence?.setting == PresenceSetting.friends;
+
+  void _togglePrivate() {
+    final p = _presence;
+    if (p == null) return;
+    p.private.value = !p.private.value;
+    setState(() {});
+  }
+
+  /// Friends watching [ch], when it's shared.
+  List<ShareProfile> _watchers(Channel? ch) => _presence?.onChannel(ch) ?? const [];
+
+  void _shareNoticed() {
+    final message = _shareNotice?.value;
+    if (message == null || !mounted) return;
+    _shareNotice!.value = null;
+    _showToast(message, for_: const Duration(seconds: 8));
+  }
+
   @override
   void dispose() {
+    if (_remote?.tuneRequest == _remoteTune) _remote?.tuneRequest = null;
+    HardwareKeyboard.instance.removeHandler(_noteKey);
+    _shareNotice?.removeListener(_shareNoticed);
+    _presence?.notice.removeListener(_presenceNoticed);
+    _party?.banner.removeListener(_inviteChanged);
+    unawaited(_partyToasts?.cancel());
+    _bannerFocus.dispose();
     FullScreen.instance.removeListener(_fullScreenChanged);
     DeviceEffects.instance.removeListener(_effectsChanged);
     _bannerTimer?.cancel();
@@ -417,10 +675,10 @@ class _TvScreenState extends State<TvScreen> {
     return was;
   }
 
-  void _showToast(String message) {
+  void _showToast(String message, {Duration for_ = const Duration(seconds: 3)}) {
     _toastTimer?.cancel();
     setState(() => _toast = message);
-    _toastTimer = Timer(const Duration(seconds: 3), () {
+    _toastTimer = Timer(for_, () {
       if (mounted) setState(() => _toast = null);
     });
   }
@@ -429,6 +687,8 @@ class _TvScreenState extends State<TvScreen> {
     _digits = '';
     // A surf shows only the banner.
     _bar = false;
+    // Changing the channel leaves a watch party, once asked.
+    if (!await _leaveFirst()) return;
     await action();
     if (mounted) _showChannel();
   }
@@ -446,6 +706,7 @@ class _TvScreenState extends State<TvScreen> {
     final number = int.tryParse(_digits);
     setState(() => _digits = '');
     if (number == null) return;
+    if (!await _leaveFirst() || !mounted) return;
     final ok = await AppScope.tunerOf(context).tuneNumber(number);
     if (!mounted) return;
     if (ok) {
@@ -461,12 +722,13 @@ class _TvScreenState extends State<TvScreen> {
   void _exitFullScreen() => unawaited(FullScreen.instance.exit());
 
   /// The portrait watch screen tunes without leaving.
-  void _tuneFromList(Channel ch) {
+  Future<void> _tuneFromList(Channel ch) async {
     _cancelExit();
     final tuner = AppScope.tunerOf(context);
     _digits = '';
     if (tuner.channel?.id == ch.id) return;
-    tuner.tune(ch);
+    if (!await _leaveFirst(to: ch) || !mounted) return;
+    if (tuner.channel?.id != ch.id) unawaited(tuner.tune(ch));
     // The tuner takes the channel at once; the panel and highlight follow
     // before the picture does.
     setState(() {});
@@ -480,6 +742,9 @@ class _TvScreenState extends State<TvScreen> {
       setState(() => _digits = '');
     } else if (FullScreen.instance.isOn && !ScreenLayout.of(context).isPortrait) {
       _exitFullScreen();
+    } else if (_inParty) {
+      // Back from the player asks before leaving the party (D8).
+      unawaited(_leaveFirst());
     } else if (_exitTimer?.isActive ?? false) {
       _exitTimer!.cancel();
       final tuner = AppScope.tunerOf(context);
@@ -506,9 +771,12 @@ class _TvScreenState extends State<TvScreen> {
     _showChannel();
   }
 
-  void _watch(Channel ch) {
+  Future<void> _watch(Channel ch) async {
     final tuner = AppScope.tunerOf(context);
-    if (tuner.channel?.id != ch.id) tuner.tune(ch);
+    if (tuner.channel?.id != ch.id) {
+      if (!await _leaveFirst(to: ch) || !mounted) return;
+      if (tuner.channel?.id != ch.id) unawaited(tuner.tune(ch));
+    }
     _closeGuide();
   }
 
@@ -532,8 +800,9 @@ class _TvScreenState extends State<TvScreen> {
       await _tuneAfterSleep();
       if (!mounted) return;
     }
+    // A party guest's channel is the party's, never in the lineup.
     final current = tuner.channel;
-    if (current != null && !app.channels.any((c) => c.id == current.id)) {
+    if (current != null && !tuner.partyGuest && !app.channels.any((c) => c.id == current.id)) {
       if (app.channels.isNotEmpty) {
         await tuner.tune(app.channels.first);
       } else {
@@ -575,6 +844,16 @@ class _TvScreenState extends State<TvScreen> {
     if (_wake()) return KeyEventResult.handled;
     if (key == LogicalKeyboardKey.keyS) {
       if (event is KeyDownEvent) _openSleep();
+      return KeyEventResult.handled;
+    }
+    // A watch-party invite: the first Up from the player takes it, and
+    // Back dismisses it (D8). Channel keys go on tuning.
+    if (_inviteUp && key == LogicalKeyboardKey.arrowUp && _rowFocus == null && !_bar && _digits.isEmpty) {
+      if (event is KeyDownEvent) _focusInvite();
+      return KeyEventResult.handled;
+    }
+    if (_inviteUp && isBackKey(key)) {
+      if (event is KeyDownEvent) _party?.hideBanner();
       return KeyEventResult.handled;
     }
     // Before Android's Back, which leaves the row rather than the app.
@@ -649,15 +928,32 @@ class _TvScreenState extends State<TvScreen> {
     return KeyEventResult.handled;
   }
 
-  /// The on-screen button row, left to right.
-  List<({String label, IconData icon, VoidCallback onPressed})> _rowButtons() => [
-        (label: tr.guide2, icon: Icons.grid_view, onPressed: _openGuide),
-        (label: tr.menu, icon: Icons.settings, onPressed: _openMenu),
-        if (_sleep != null) (label: tr.sleep, icon: Icons.bedtime, onPressed: _openSleep),
+  /// The on-screen button row, left to right. In a watch party it starts
+  /// with the party row (D8): Invite (the host), the six reactions, Leave.
+  List<({String label, IconData icon, VoidCallback onPressed, String? emoji})> _rowButtons() => [
+        if (_party case final party? when party.active) ...[
+          if (party.isHost && party.hasRoom)
+            (label: tr.partyInvite, icon: Icons.person_add, onPressed: _watchTogether, emoji: null),
+          for (final e in partyReactions) (label: '', icon: Icons.mood, onPressed: () => _react(e), emoji: e),
+          (label: tr.partyLeave, icon: Icons.logout, onPressed: () => unawaited(_leaveFirst()), emoji: null),
+        ],
+        (label: tr.guide2, icon: Icons.grid_view, onPressed: _openGuide, emoji: null),
+        (label: tr.menu, icon: Icons.settings, onPressed: _openMenu, emoji: null),
+        if (_sleep != null) (label: tr.sleep, icon: Icons.bedtime, onPressed: _openSleep, emoji: null),
         // After Sleep, so the D-pad paths to Menu and Sleep stay as they were.
-        (label: captionsButtonLabel(AppScope.tunerOf(context)), icon: Icons.closed_caption, onPressed: _openCaptions),
+        (label: captionsButtonLabel(AppScope.tunerOf(context)), icon: Icons.closed_caption, onPressed: _openCaptions, emoji: null),
+        // After Captions and Sleep, before Watch privately (D8).
+        if (_offerWatchTogether) (label: tr.watchTogether, icon: Icons.celebration, onPressed: _watchTogether, emoji: null),
+        // Last of the regular buttons, so every path to the others stays.
+        if (_offerPrivate)
+          (
+            label: _presence!.private.value ? tr.watchingPrivately : tr.watchPrivately,
+            icon: _presence!.private.value ? Icons.visibility_off : Icons.visibility,
+            onPressed: _togglePrivate,
+            emoji: null,
+          ),
         if (FullScreen.instance.isOn && !PlatformInfo.isTelevision)
-          (label: tr.exitFullScreen, icon: Icons.fullscreen_exit, onPressed: _exitFullScreen),
+          (label: tr.exitFullScreen, icon: Icons.fullscreen_exit, onPressed: _exitFullScreen, emoji: null),
       ];
 
   /// The D-pad on the on-screen button row (dpad-buttons D3). Up reaches it
@@ -668,7 +964,9 @@ class _TvScreenState extends State<TvScreen> {
     if (!_buttons) return false;
     // Any key keeps the controls up.
     _armBanner();
-    final at = _rowFocus;
+    // A button can leave the row while it's up (Watch privately, when the
+    // setting goes Off).
+    final at = _rowFocus == null ? null : min(_rowFocus!, _rowButtons().length - 1);
     if (at == null) {
       // Up from the seek bar, or with only the banner and row up.
       if (key != LogicalKeyboardKey.arrowUp || (_bar && _barFocus != TransportFocus.seekBar)) return false;
@@ -718,17 +1016,19 @@ class _TvScreenState extends State<TvScreen> {
     final play = key == LogicalKeyboardKey.mediaPlay, pause = key == LogicalKeyboardKey.mediaPause;
     final rewind = key == LogicalKeyboardKey.mediaRewind, forward = key == LogicalKeyboardKey.mediaFastForward;
     if (!(toggle || play || pause || rewind || forward)) return false;
-    if (!AppScope.read(context).settings.playback.pauseAndRewind) return false;
+    // In a party they act for everyone, whatever the setting.
+    if (!AppScope.read(context).settings.playback.pauseAndRewind && !tuner.inParty) return false;
     if (tuner.channel?.isLive ?? false) {
       if (event is KeyDownEvent) _showToast(TvScreen.liveCantPause);
       return true;
     }
+    final transport = Transport(tuner, _party);
     if (rewind || forward) {
       _skip(forward, event);
     } else if (event is KeyDownEvent) {
-      if (toggle) unawaited(tuner.togglePause());
-      if (play) unawaited(tuner.resume());
-      if (pause) unawaited(tuner.pause());
+      if (toggle) unawaited(transport.togglePause());
+      if (play) unawaited(transport.resume());
+      if (pause) unawaited(transport.pause());
     }
     if (!ScreenLayout.of(context).isPortrait) _showControls();
     return true;
@@ -737,7 +1037,7 @@ class _TvScreenState extends State<TvScreen> {
   void _skip(bool forward, KeyEvent event) {
     final now = DateTime.now();
     if (event is KeyDownEvent) _skipDown = now;
-    AppScope.tunerOf(context).skip(transportStep(forward: forward, heldFor: now.difference(_skipDown)));
+    Transport(AppScope.tunerOf(context), _party).skip(transportStep(forward: forward, heldFor: now.difference(_skipDown)));
   }
 
   /// The D-pad on the transport bar, and what opens it (timeshift D8). True
@@ -755,7 +1055,7 @@ class _TvScreenState extends State<TvScreen> {
       }
       // Select resumes while paused, and otherwise opens the guide.
       if (select && tuner.paused) {
-        if (down) unawaited(tuner.resume());
+        if (down) unawaited(Transport(tuner, _party).resume());
         return true;
       }
       return false;
@@ -770,7 +1070,7 @@ class _TvScreenState extends State<TvScreen> {
       if (left || right) {
         _skip(right, event);
       } else if (select) {
-        if (down) unawaited(tuner.togglePause());
+        if (down) unawaited(Transport(tuner, _party).togglePause());
       } else if (below) {
         setState(() => _barFocus = TransportFocus.restart);
       } else {
@@ -787,7 +1087,8 @@ class _TvScreenState extends State<TvScreen> {
     } else if (up) {
       setState(() => _barFocus = TransportFocus.seekBar);
     } else if (select && down) {
-      unawaited(_barFocus == TransportFocus.restart ? tuner.restart() : tuner.goLive());
+      final transport = Transport(tuner, _party);
+      unawaited(_barFocus == TransportFocus.restart ? transport.restart() : transport.goLive());
     }
     _showBanner();
     return true;
@@ -839,6 +1140,39 @@ class _TvScreenState extends State<TvScreen> {
     return KeyEventResult.handled;
   }
 
+  Widget _inviteBanner(PartyInvite invite) => PartyInviteBanner(
+        key: ValueKey(invite.party),
+        invite: invite,
+        focusNode: _bannerFocus,
+        onJoin: () => unawaited(_joinInvite()),
+        onNotNow: _inviteNotNow,
+        onDone: _bannerDone,
+      );
+
+  /// [child] with the invite banner over its top, while there's one (the
+  /// guide and the portrait layout; the TV screen places its own).
+  Widget _withInvite(Widget child) {
+    final party = _party;
+    if (party == null) return child;
+    return ValueListenableBuilder<PartyInvite?>(
+      valueListenable: party.banner,
+      builder: (context, invite, _) => Stack(fit: StackFit.expand, children: [
+        child,
+        if (invite != null)
+          Positioned(
+            top: MediaQuery.paddingOf(context).top + (ScreenLayout.of(context).isPortrait ? 12 : 40),
+            left: 24,
+            right: 24,
+            child: Center(
+              child: ScreenLayout.of(context).isPortrait
+                  ? FittedBox(fit: BoxFit.scaleDown, child: _inviteBanner(invite))
+                  : _inviteBanner(invite),
+            ),
+          ),
+      ]),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final tuner = AppScope.tunerOf(context);
@@ -848,8 +1182,8 @@ class _TvScreenState extends State<TvScreen> {
         autofocus: true,
         onKeyEvent: _onKey,
         child: ListenableBuilder(
-          listenable: Listenable.merge([tuner, AppScope.read(context)]),
-          builder: (context, _) => _themed(
+          listenable: Listenable.merge([tuner, AppScope.read(context), ?_presence, ?_presence?.private, ?_party]),
+          builder: (context, _) => _withInvite(_themed(
             context,
             tuner,
             PortraitWatchScreen(
@@ -863,10 +1197,23 @@ class _TvScreenState extends State<TvScreen> {
                   ? (_digits.isNotEmpty ? '${_digits}_' : '${tuner.channel?.number ?? ''}')
                   : null,
               toast: _toast,
-              onTune: _tuneFromList,
+              onTune: (ch) => unawaited(_tuneFromList(ch)),
               onMenu: _openMenu,
               onCaptions: _openCaptions,
               onSleep: _sleep == null ? null : _openSleep,
+              watchPrivately: _offerPrivate
+                  ? (
+                      label: _presence!.private.value ? tr.watchingPrivately : tr.watchPrivately,
+                      icon: _presence!.private.value ? Icons.visibility_off : Icons.visibility,
+                      onPressed: _togglePrivate,
+                    )
+                  : null,
+              watchTogether: _offerWatchTogether
+                  ? (label: tr.watchTogether, icon: Icons.celebration, onPressed: () => unawaited(_watchTogether()))
+                  : null,
+              partyBar: _inParty ? _portraitPartyBar() : null,
+              party: _party,
+              watchersOf: _watchers,
               onFullScreen: () {
                 _cancelExit();
                 unawaited(FullScreen.instance.enter());
@@ -876,13 +1223,17 @@ class _TvScreenState extends State<TvScreen> {
                 _wake();
               },
             ),
-          ),
+          )),
         ),
       );
     }
     if (_guideOpen) {
-      return GuideView(
-          onWatch: _watch, onClose: _closeGuide, onMenu: _openMenu, onSleep: _sleep == null ? null : _openSleep);
+      return _withInvite(GuideView(
+          onWatch: (ch) => unawaited(_watch(ch)),
+          onClose: _closeGuide,
+          onMenu: _openMenu,
+          onSleep: _sleep == null ? null : _openSleep,
+          onUpFromTop: _focusInvite));
     }
     return Focus(
       focusNode: _focus,
@@ -904,7 +1255,7 @@ class _TvScreenState extends State<TvScreen> {
         child: ColoredBox(
           color: Colors.black,
           child: ListenableBuilder(
-            listenable: Listenable.merge([tuner, AppScope.read(context), ?_sleep]),
+            listenable: Listenable.merge([tuner, AppScope.read(context), ?_sleep, ?_presence, ?_presence?.private, ?_party, ?_party?.banner]),
             builder: (context, _) => _themed(context, tuner, Stack(
               fit: StackFit.expand,
               children: [
@@ -941,6 +1292,7 @@ class _TvScreenState extends State<TvScreen> {
                           viewTime: tuner.viewNow(),
                           behind: tuner.shifted ? tuner.behind : null,
                           sleep: sleepLine(_sleep),
+                          watchers: _watchers(tuner.channel),
                         ),
                 ),
                 if (_bar && tuner.canTimeshift)
@@ -949,37 +1301,63 @@ class _TvScreenState extends State<TvScreen> {
                     right: 0,
                     bottom: 0,
                     child: TransportBar(
-                        tuner: tuner, focused: _rowFocus == null ? _barFocus : null, onInteract: _showBanner),
+                        tuner: tuner,
+                        party: _party,
+                        focused: _rowFocus == null ? _barFocus : null,
+                        onInteract: _showBanner),
                   ),
                 if (tuner.paused && !_bar && _digits.isEmpty && !tuner.changingChannel)
                   const Positioned(top: 60, right: 90, child: PausedChip()),
                 if (_toast != null)
-                  Positioned(top: 60, left: 0, right: 0, child: Center(child: TvToast(_toast!))),
+                  // Below the button row while it's up.
+                  Positioned(top: _buttons ? 150 : 60, left: 0, right: 0, child: Center(child: TvToast(_toast!))),
                 Positioned(
                   top: 48,
                   left: 60,
+                  right: 60,
                   child: IgnorePointer(
                     ignoring: !_buttons,
                     child: AnimatedOpacity(
                       opacity: _buttons ? 1 : 0,
                       duration: const Duration(milliseconds: 220),
-                      child: Row(
-                        children: [
-                          for (final (i, b) in _rowButtons().indexed) ...[
-                            if (i > 0) const SizedBox(width: 16),
-                            TvPointerButton(
-                              label: b.label,
-                              icon: b.icon,
-                              highlighted: _rowFocus == i,
-                              onHover: () => setState(() => _rowFocus = i),
-                              onPressed: b.onPressed,
-                            ),
-                          ],
-                        ],
+                      // A party row and long labels fit by scaling down.
+                      child: Align(
+                        alignment: Alignment.centerLeft,
+                        child: FittedBox(
+                          fit: BoxFit.scaleDown,
+                          alignment: Alignment.centerLeft,
+                          child: Row(
+                            children: [
+                              if (_party case final party? when party.active) ...[
+                                PartyMembersChip(party: party),
+                                const SizedBox(width: 16),
+                              ],
+                              for (final (i, b) in _rowButtons().indexed) ...[
+                                if (i > 0) SizedBox(width: b.emoji != null ? 10 : 16),
+                                TvPointerButton(
+                                  label: b.label,
+                                  icon: b.icon,
+                                  image: b.emoji == null ? null : ReactionImage(b.emoji!, size: 40),
+                                  highlighted: _rowFocus != null && min(_rowFocus!, _rowButtons().length - 1) == i,
+                                  onHover: () => setState(() => _rowFocus = i),
+                                  onPressed: b.onPressed,
+                                ),
+                              ],
+                            ],
+                          ),
+                        ),
                       ),
                     ),
                   ),
                 ),
+                if (_party?.banner.value case final invite?)
+                  Positioned(
+                    // Below the button row while it's up.
+                    top: _buttons ? 150 : 40,
+                    left: 60,
+                    right: 60,
+                    child: Center(child: _inviteBanner(invite)),
+                  ),
               ],
             )),
           ),
@@ -1051,7 +1429,11 @@ class TvPicture extends StatelessWidget {
                     : tr.upNextAt(formatTime((tuner.segment ?? tuner.program!).end.add(tuner.behind))),
               ),
             ),
-          if (tuner.channel case final ch? when tuner.status == TunerStatus.offAir && tuner.segment?.offline == true)
+          // A watch-party program this library doesn't have (watch-together D6).
+          if (tuner.partyMissing case final title? when title.isNotEmpty)
+            _CanvasCard(
+                child: StatusCard(icon: Icons.cloud_off, title: tr.partyMissingTitle(title), message: tr.partyMissingRejoin))
+          else if (tuner.channel case final ch? when tuner.status == TunerStatus.offAir && tuner.segment?.offline == true)
             _CanvasCard(child: offlineCardFor(AppScope.read(context), ch, backAt: tuner.segment!.end))
           else if (tuner.status == TunerStatus.offAir)
             _CanvasCard(
@@ -1141,6 +1523,10 @@ class TvPicture extends StatelessWidget {
                 sleeping: sleep?.armed ?? false,
               ),
             ),
+          // Friends on this shared channel (friend-presence), under the clock.
+          Positioned(top: 150, right: 90, child: FriendsWatchingCard(channel: on)),
+          // Watch-party reactions, rising up the right side (D8).
+          if (partyOf(context) case final party?) Positioned.fill(child: FloatingReactions(party: party)),
           if (dimmed) const IgnorePointer(child: ColoredBox(color: Color(0xB3000000))),
         ],
       ),
@@ -1238,10 +1624,14 @@ class ChannelBanner extends StatelessWidget {
       this.backOnAir,
       this.viewTime,
       this.behind,
-      this.sleep});
+      this.sleep,
+      this.watchers = const []});
 
   final Channel channel;
   final ScheduledProgram? program;
+
+  /// Friends watching this shared channel (friend-presence).
+  final List<ShareProfile> watchers;
 
   /// A commercial break in [program] is on.
   final bool inBreak;
@@ -1301,10 +1691,11 @@ class ChannelBanner extends StatelessWidget {
                   children: [
                     if (channel.isLive) ...[const LiveTag(size: 32), const SizedBox(width: 18)],
                     if (p?.isPremiere ?? false) ...[const NewTag(size: 32), const SizedBox(width: 18)],
-                    Expanded(
+                    Flexible(
                       child: Text(p?.title ?? tr.tuning2,
                           maxLines: 1, overflow: TextOverflow.ellipsis, style: g.display(60, weight: FontWeight.w800)),
                     ),
+                    if (watchers.isNotEmpty) ...[const SizedBox(width: 24), FriendAvatarStack(friends: watchers, size: 52)],
                   ],
                 ),
                 if (p != null)

@@ -11,11 +11,15 @@ import '../channels/channel.dart';
 import '../channels/channel_groups.dart';
 import '../channels/schedule.dart';
 import '../platform/platform_info.dart';
+import '../playback/sleep_timer.dart';
 import '../playback/tuner.dart';
+import '../sharing/presence.dart';
+import '../sharing/share_client.dart';
 import '../theme/tv_theme.dart';
 import 'format.dart';
 import 'widgets/retro_frame.dart';
 import 'widgets/channel_logo.dart';
+import 'widgets/friend_avatar_stack.dart';
 import 'widgets/nightingale_mark.dart';
 import 'widgets/new_tag.dart';
 import 'widgets/tv_focus.dart';
@@ -24,7 +28,13 @@ import '../l10n/tr.dart';
 /// The program guide: info panel + live preview on top, channel grid below.
 class GuideView extends StatefulWidget {
   const GuideView(
-      {super.key, required this.onWatch, required this.onClose, required this.onMenu, this.onSleep, this.clock = DateTime.now});
+      {super.key,
+      required this.onWatch,
+      required this.onClose,
+      required this.onMenu,
+      this.onSleep,
+      this.onUpFromTop,
+      this.clock = DateTime.now});
 
   final ValueChanged<Channel> onWatch;
   final VoidCallback onClose;
@@ -32,6 +42,10 @@ class GuideView extends StatefulWidget {
 
   /// Opens the sleep timer picker; null without a sleep timer.
   final VoidCallback? onSleep;
+
+  /// Up from the guide's top row: true when something above took it (a
+  /// watch-party invite banner).
+  final bool Function()? onUpFromTop;
 
   /// The time now (tests move it).
   final DateTime Function() clock;
@@ -162,8 +176,27 @@ class _GuideViewState extends State<GuideView> with SingleTickerProviderStateMix
     _selectTab(tabs[j]);
   }
 
+  /// Friends watching shared channels (friend-presence): the guide follows
+  /// them while it's open.
+  Presence? _presence;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final presence = context.getInheritedWidgetOfExactType<HouseholdScope>()?.notifier?.sharing?.presence;
+    if (!identical(presence, _presence)) {
+      _presence?.removeListener(_presenceChanged);
+      _presence = presence?..addListener(_presenceChanged);
+    }
+  }
+
+  void _presenceChanged() {
+    if (mounted) setState(() {});
+  }
+
   @override
   void dispose() {
+    _presence?.removeListener(_presenceChanged);
     _clock?.cancel();
     _fling.dispose();
     _focus.dispose();
@@ -171,6 +204,9 @@ class _GuideViewState extends State<GuideView> with SingleTickerProviderStateMix
   }
 
   void _tick() {
+    // Asleep, the guide is under the sleep screen: nothing to redraw
+    // (idle-power). It catches up at the next tick after waking.
+    if (AppScope.sleepOf(context)?.phase == SleepPhase.asleep) return;
     setState(() {
       _now = widget.clock();
       if (_cursorTime.isBefore(_now)) _cursorTime = _now;
@@ -285,6 +321,8 @@ class _GuideViewState extends State<GuideView> with SingleTickerProviderStateMix
           _headerFocus = null;
           _tabsFocused = true;
         });
+      } else if (key == LogicalKeyboardKey.arrowUp) {
+        widget.onUpFromTop?.call();
       } else if (isBackKey(key)) {
         setState(() => _headerFocus = null);
       } else if (key == LogicalKeyboardKey.keyM || key == LogicalKeyboardKey.contextMenu) {
@@ -469,6 +507,7 @@ class _GuideViewState extends State<GuideView> with SingleTickerProviderStateMix
                             focused: i == _row && !_menuFocused && !_tabsFocused,
                             focusedProgram: i == _row && !_menuFocused && !_tabsFocused ? focusedProgram : null,
                             isTuned: AppScope.tunerOf(context).channel?.id == channels[i].id,
+                            watchers: _presence?.onChannel(channels[i]) ?? const [],
                             windowStart: _windowStart,
                             window: _window,
                             rangeEnd: _rangeEnd,
@@ -1001,6 +1040,7 @@ class _GuideRow extends StatelessWidget {
     required this.now,
     required this.onHoverProgram,
     required this.onTap,
+    this.watchers = const [],
   });
 
   static TextStyle numberStyle(GuideTheme g) => g.display(40, weight: FontWeight.w800, color: g.accent);
@@ -1022,6 +1062,9 @@ class _GuideRow extends StatelessWidget {
   final DateTime now;
   final ValueChanged<ScheduledProgram?> onHoverProgram;
   final VoidCallback onTap;
+
+  /// Friends watching this shared channel now (friend-presence).
+  final List<ShareProfile> watchers;
 
   @override
   Widget build(BuildContext context) {
@@ -1082,6 +1125,10 @@ class _GuideRow extends StatelessWidget {
                         style: g.display(24, weight: FontWeight.w600, color: g.text),
                       ),
                     ),
+                    if (watchers.isNotEmpty) ...[
+                      const SizedBox(width: 6),
+                      FriendAvatarStack(friends: watchers, size: 32),
+                    ],
                     if (isTuned) Icon(Icons.volume_up, size: 24, color: g.accent),
                   ],
                 ),
@@ -1123,6 +1170,7 @@ class _GuideRow extends StatelessWidget {
                       continuesLeft: p.start.isBefore(windowStart),
                       continuesRight: p.end.isAfter(windowEnd),
                       inBlock: p.blockTitle != null,
+                      watching: watchers.isNotEmpty && p.isOnAt(now) ? watchingLabel(watchers) : null,
                       onHover: () => onHoverProgram(p),
                       onTap: onTap,
                     ),
@@ -1168,6 +1216,7 @@ class _ProgramCell extends StatelessWidget {
     required this.inBlock,
     required this.onHover,
     required this.onTap,
+    this.watching,
   });
 
   /// Height of the programming block label above a block's cells.
@@ -1181,6 +1230,9 @@ class _ProgramCell extends StatelessWidget {
   final bool inBlock;
   final VoidCallback onHover;
   final VoidCallback onTap;
+
+  /// "Tyler is watching", in the program on now (friend-presence).
+  final String? watching;
 
   @override
   Widget build(BuildContext context) {
@@ -1239,13 +1291,22 @@ class _ProgramCell extends StatelessWidget {
                   ),
                 ],
               ),
-              Text(
-                program.detail,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                softWrap: false,
-                style: g.body(inBlock ? 17 : 20, color: focused ? g.onFocus : g.textDim),
-              ),
+              if (watching case final line?)
+                Text(
+                  line,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  softWrap: false,
+                  style: g.body(inBlock ? 17 : 20, weight: FontWeight.w700, color: focused ? g.onFocus : g.accent),
+                )
+              else
+                Text(
+                  program.detail,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  softWrap: false,
+                  style: g.body(inBlock ? 17 : 20, color: focused ? g.onFocus : g.textDim),
+                ),
             ],
           ),
         ),

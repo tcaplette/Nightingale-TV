@@ -1,0 +1,6 @@
+The six reaction images (joy, wow, heart, clap, scream, popcorn) are drawn from
+Noto Color Emoji by Google, scaled to 96 x 96 pixels.
+
+Noto Color Emoji images are licensed under the Apache License, Version 2.0:
+https://www.apache.org/licenses/LICENSE-2.0
+Source: https://github.com/googlefonts/noto-emoji

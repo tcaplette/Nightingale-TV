@@ -17,6 +17,11 @@ source tool/debug_files.sh
 # without it the app is built with reporting off.
 DEFINES=()
 [[ -f error_reporting.env ]] && DEFINES=(--dart-define-from-file=error_reporting.env)
+# Sharing (share-accounts D2): the backend's address, public key and
+# invite-link host live in the git-ignored sharing.env (the official backend's,
+# or your own: sharing.env.example, SELF_HOSTING.md); without it the app is
+# built with no sharing at all.
+[[ -f sharing.env ]] && DEFINES+=(--dart-define-from-file=sharing.env)
 
 # pubspec "1.0.0+1" is already a valid Debian version. The UTC build time
 # after it makes every build newer than the last, so apt always upgrades

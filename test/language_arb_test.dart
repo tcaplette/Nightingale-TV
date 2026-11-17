@@ -24,6 +24,7 @@ const _sameAsEnglish = <String>{
   'Alternative',
   'Animation',
   'Arcade',
+  'Avatar',
   'BACKUPS',
   'Backups',
   'Badges',

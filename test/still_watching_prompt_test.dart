@@ -143,6 +143,28 @@ void main() {
     await h.end(tester);
   });
 
+  testWidgets('asleep over the guide: nothing is redrawn (idle-power)', (tester) async {
+    await start(tester);
+    await tester.sendKeyEvent(LogicalKeyboardKey.select);
+    await tester.pump(const Duration(milliseconds: 400));
+    expect(guide, findsOneWidget);
+    // Awake, the guide's 5-second clock redraws it.
+    await tester.binding.delayed(const Duration(seconds: 6));
+    expect(tester.element(guide).dirty, isTrue);
+    await tester.pump();
+    await untilPrompt(tester);
+    await pass(tester, const Duration(seconds: 71));
+    await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 20)));
+    await tester.pump();
+    expect(h.sleep!.phase, SleepPhase.asleep);
+    expect(guide, findsOneWidget, reason: 'still under the sleep screen');
+    await tester.pump(const Duration(seconds: 1));
+    // Two of its clock ticks go by: it isn't redrawn.
+    await tester.binding.delayed(const Duration(seconds: 12));
+    expect(tester.element(guide).dirty, isFalse);
+    await h.end(tester);
+  });
+
   testWidgets('no answer: at 0 the sound fades and the app sleeps; waking tunes again and waits the full time',
       (tester) async {
     await start(tester);

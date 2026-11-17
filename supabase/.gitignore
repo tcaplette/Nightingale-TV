@@ -1,0 +1,9 @@
+# Private files (see the repo's .gitignore and SELF_HOSTING.md)
+functions/.env
+auth-config.json
+.temp/
+.branches/
+.secrets.json
+.auth-merged.json
+functions/.env.bak-*
+auth-config.json.bak-*

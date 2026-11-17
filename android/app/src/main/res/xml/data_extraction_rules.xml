@@ -1,6 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- Android 12 and newer: Google backup and device-to-device transfer copy
-     only the newest Nightingale TV backup (backup-restore D13). -->
+     only the newest Nightingale TV backup (backup-restore D13).
+     Share sign-ins (files/share_sessions.json, share-accounts D4) stay
+     out with everything else. -->
 <data-extraction-rules>
     <cloud-backup>
         <include domain="file" path="backups/cloud/"/>

@@ -47,6 +47,19 @@ val releaseKeyIsOfficial: Boolean = run {
     sha256 in fingerprints(rootProject.file("official_signing_cert.txt"))
 }
 
+// The invite-link host (share-accounts D3), from the git-ignored sharing.env
+// at the repository root. Without it the release manifest's App Link filter
+// names sharing.invalid, which never resolves, so it never matches.
+val shareHost: String = rootProject.file("../sharing.env").let { env ->
+    if (!env.exists()) return@let null
+    env.readLines()
+        .map { it.trim() }
+        .firstOrNull { it.startsWith("NTV_SHARE_HOST=") }
+        ?.substringAfter('=')
+        ?.trim()
+        ?.takeIf { it.isNotEmpty() }
+} ?: "sharing.invalid"
+
 android {
     namespace = "com.coffeehauslabs.nightingale_tv"
     compileSdk = flutter.compileSdkVersion
@@ -67,6 +80,7 @@ android {
         // (force-version-code-ignoring-abi in gradle.properties).
         versionCode = flutter.versionCode
         versionName = flutter.versionName
+        manifestPlaceholders["shareHost"] = shareHost
     }
 
     signingConfigs {

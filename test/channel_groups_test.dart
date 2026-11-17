@@ -90,7 +90,7 @@ void main() {
     test("a saved order from before Live TV gets it just before Movies (the spec's upgrade)", () {
       final groups = [ChannelGroup(id: 'group:sat', name: 'Saturday')];
       expect(GuideTabs.normalize(['all', 'favorites', 'group:sat', 'auto:music', 'auto:movies', 'auto:kids'], groups),
-          ['all', 'favorites', 'group:sat', 'auto:music', 'auto:live', 'auto:movies', 'auto:kids']);
+          ['all', 'favorites', 'group:sat', 'auto:shared', 'auto:music', 'auto:live', 'auto:movies', 'auto:kids']);
       expect(GuideTabs.builtinName(GuideTabs.live), 'Live TV');
       expect(GuideTabs.rule(GuideTabs.live), isNotNull);
     });
@@ -162,7 +162,7 @@ void main() {
     test('All is first and never hidden; new groups go after Favorites; deleted ones drop', () {
       final groups = [ChannelGroup(id: 'group:a', name: 'A'), ChannelGroup(id: 'group:b', name: 'B')];
       expect(GuideTabs.normalize(['auto:music', 'group:a', 'group:old', 'all'], groups),
-          ['all', 'favorites', 'group:b', 'auto:live', 'auto:movies', 'auto:music', 'auto:kids', 'group:a']);
+          ['all', 'favorites', 'group:b', 'auto:live', 'auto:movies', 'auto:music', 'auto:kids', 'group:a', 'auto:shared']);
       final tabs = resolveGuideTabs(
           visible: lineup, groups: const [], order: GuideTabs.defaultOrder, hidden: {GuideTabs.all}, auto: auto());
       expect(tabs.first.id, GuideTabs.all);

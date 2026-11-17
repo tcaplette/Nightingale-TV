@@ -1,3 +1,4 @@
+import '../sharing/share_service.dart';
 import 'dart:async';
 import 'dart:io';
 import 'dart:math';
@@ -58,6 +59,9 @@ class Household extends ChangeNotifier {
 
   /// The phone remote, when the app runs one (not in most tests).
   RemoteControl? remote;
+
+  /// Sharing, in builds that have it (share-accounts); null otherwise.
+  ShareService? sharing;
 
   /// Live TV export, when the app runs it (not in most tests).
   ExportService? export;
@@ -305,7 +309,9 @@ class Household extends ChangeNotifier {
       background: background,
       exportBusy: exportStreaming,
       analysisAllowed: analysisQueue?.allowedFor(p.id),
-      safetyBackup: backups == null ? null : (reason) => backups!.safetyBackup(reason));
+      safetyBackup: backups == null ? null : (reason) => backups!.safetyBackup(reason),
+      // Linked profiles ask for provider ids (channel-sharing D2).
+      sharingLinked: () => sharing?.isLinked(p) ?? false);
 
   /// Waits for every state file write asked for so far, the household's and
   /// each open profile's.

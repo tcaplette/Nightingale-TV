@@ -1,4 +1,4 @@
 {
-    "cmake.sourceDirectory": "/home/howard/Documents/Flutter/Nightingale-TV/linux",
+    "cmake.sourceDirectory": "${workspaceFolder}/linux",
     "java.configuration.updateBuildConfiguration": "automatic"
 }

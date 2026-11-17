@@ -162,6 +162,26 @@ class SlotLayout {
   }
 
 
+  /// A break of exactly [length] starting at [start], filled from [role]'s
+  /// pool in [clips] as any slot's last break is (best fit, framed by
+  /// bumpers, the last clip cut to end on time). Watch-together D5: a party
+  /// member fills the host's break window with their own commercials.
+  /// Offsets are from [start]; with no clips anywhere, one offline segment
+  /// covers it all (the break card).
+  static List<LayoutSegment> fillBreak({
+    required Duration length,
+    required DateTime start,
+    required ClipSource clips,
+    required CustomRoles roles,
+    required int seed,
+    BreakRole role = BreakRole.mid,
+  }) {
+    final out = <LayoutSegment>[];
+    if (length <= Duration.zero) return out;
+    _fill(out, role, Duration.zero, length, true, start, clips, roles, seed, <String>{}, 'party break', offline: true);
+    return out;
+  }
+
   /// The segment playing [offset] into the slot (the last one past its end).
   LayoutSegment at(Duration offset) {
     var lo = 0, hi = segments.length - 1;

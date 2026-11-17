@@ -14,6 +14,7 @@ import android.net.Uri
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MimeTypes
 import androidx.media3.common.PlaybackException
+import androidx.media3.common.PlaybackParameters
 import androidx.media3.common.Player
 import androidx.media3.common.Timeline
 import androidx.media3.common.TrackSelectionOverride
@@ -153,6 +154,7 @@ class ExoTunerHost(
                 "subtitles" -> player.setSubtitles(Subs.from(call.argument<Map<String, Any?>>("subtitles")))
                 "setLeveling" -> player.setLeveling(call.argument<Boolean>("on") ?: false)
                 "setVolume" -> player.setVolume(call.argument<Number>("volume")?.toFloat() ?: 1f)
+                "setSpeed" -> player.setSpeed(call.argument<Number>("speed")?.toFloat() ?: 1f)
                 "stats" -> {
                     result.success(player.stats())
                     return
@@ -268,6 +270,9 @@ class ExoTunerHost(
          *  kept across a rebuild. */
         private var volume = 1f
 
+        /** Playback speed (watch-together D3's drift nudge); pitch stays, Sonic stretches time. */
+        private var speed = 1f
+
         /** This open's state, for events and the diagnostics. */
         private var completed = false
         private var hadPicture = false
@@ -335,6 +340,7 @@ class ExoTunerHost(
             player.addAnalyticsListener(this)
             player.setVideoFrameMetadataListener(frames)
             player.volume = volume
+            if (speed != 1f) player.playbackParameters = PlaybackParameters(speed, 1f)
             player.trackSelectionParameters = player.trackSelectionParameters.buildUpon()
                 .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, subs == Subs.Off)
                 .build()
@@ -592,6 +598,11 @@ class ExoTunerHost(
         fun setVolume(v: Float) {
             volume = v.coerceIn(0f, 1f)
             player.volume = volume
+        }
+
+        fun setSpeed(v: Float) {
+            speed = v.coerceIn(0.9f, 1.1f)
+            player.playbackParameters = PlaybackParameters(speed, 1f)
         }
 
         fun resume() {

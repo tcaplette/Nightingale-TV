@@ -162,6 +162,19 @@ class MainActivity : FlutterActivity() {
                             false
                         }
                     )
+                    // Send invite (share-accounts): the system share sheet
+                    // with the invite link, on phones and tablets.
+                    "shareText" -> result.success(
+                        try {
+                            val send = Intent(Intent.ACTION_SEND)
+                                .setType("text/plain")
+                                .putExtra(Intent.EXTRA_TEXT, call.argument<String>("text"))
+                            startActivity(Intent.createChooser(send, call.argument<String>("title")))
+                            true
+                        } catch (e: Exception) {
+                            false
+                        }
+                    )
                     // The sleep timer (sleep-timer spec): asleep, the device's
                     // own screensaver and sleep take over; awake, held on again.
                     "keepScreenOn" -> {

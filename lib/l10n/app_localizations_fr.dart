@@ -5488,4 +5488,618 @@ class AppLocalizationsFr extends AppLocalizations {
     );
     return '$_temp0';
   }
+
+  @override
+  String get sharing => 'Partage';
+
+  @override
+  String get sharingIntroTitle =>
+      'Ajoutez des amis qui utilisent Nightingale TV';
+
+  @override
+  String get sharingIntroWhat =>
+      'Le partage vous permet d\'ajouter des amis qui utilisent aussi Nightingale TV. Chaque profil Nightingale a son propre compte de partage.';
+
+  @override
+  String get sharingIntroStored =>
+      'Ce qui est enregistré : votre e-mail, votre profil de partage, vos amis et, plus tard, ce que vous partagez et regardez.';
+
+  @override
+  String get sharingIntroNoVideo =>
+      'Aucune vidéo n\'est jamais envoyée entre utilisateurs.';
+
+  @override
+  String get sharingSetUp => 'Configurer';
+
+  @override
+  String get sharingEmailPrompt =>
+      'Saisissez votre e-mail. Nous vous enverrons un code à 6 chiffres pour vous connecter.';
+
+  @override
+  String get sharingEmailLabel => 'E-mail';
+
+  @override
+  String get sharingSendCode => 'Envoyer le code';
+
+  @override
+  String get sharingNotAnEmail =>
+      'Saisissez une adresse e-mail, par exemple nom@example.com.';
+
+  @override
+  String sharingCodeSent(Object email) {
+    return 'Nous avons envoyé un code à 6 chiffres à $email. Saisissez-le ici.';
+  }
+
+  @override
+  String get sharingCodeLabel => 'Code à 6 chiffres';
+
+  @override
+  String get sharingWrongCode => 'Ce code n\'est pas correct';
+
+  @override
+  String get sharingTooManyWrong =>
+      'Trop de codes erronés. Demandez un nouveau code.';
+
+  @override
+  String get sharingSendNewCode => 'Envoyer un nouveau code';
+
+  @override
+  String sharingSendNewCodeIn(Object seconds) {
+    return 'Envoyer un nouveau code ($seconds s)';
+  }
+
+  @override
+  String get sharingOtherEmail => 'Utiliser un autre e-mail';
+
+  @override
+  String get sharingUnavailable =>
+      'Le partage n\'est pas disponible pour le moment. Réessayez plus tard.';
+
+  @override
+  String get sharingProfileTitle => 'Votre profil de partage';
+
+  @override
+  String get sharingProfileIntro =>
+      'Vos amis voient ceci. Votre e-mail n\'est jamais affiché.';
+
+  @override
+  String get sharingNameLabel => 'Nom affiché';
+
+  @override
+  String get sharingHandleLabel => 'Identifiant';
+
+  @override
+  String get sharingHandleRules => '3 à 20 lettres, chiffres ou _.';
+
+  @override
+  String get sharingHandleTaken => 'Cet identifiant est déjà pris.';
+
+  @override
+  String get sharingNameRequired => 'Saisissez un nom affiché.';
+
+  @override
+  String get sharingAvatar => 'Avatar';
+
+  @override
+  String get sharingStationLabel => 'Nom de la station (facultatif)';
+
+  @override
+  String get sharingAddFriend => 'Ajouter un ami';
+
+  @override
+  String get sharingCodeHelp =>
+      'Un ami saisit ce code dans Nightingale TV, sous Partage → Ajouter un ami, ou ouvre le lien. Il fonctionne une fois et expire au bout de 7 jours.';
+
+  @override
+  String get sharingNewCode => 'Nouveau code';
+
+  @override
+  String get sharingSendInvite => 'Envoyer l\'invitation';
+
+  @override
+  String get sharingEnterCode => 'Saisir un code';
+
+  @override
+  String sharingInviteText(Object link) {
+    return 'Ajoutez-moi comme ami sur Nightingale TV : $link';
+  }
+
+  @override
+  String get sharingFriends => 'Amis';
+
+  @override
+  String get sharingNoFriends =>
+      'Pas encore d\'amis. Partagez votre code pour en ajouter.';
+
+  @override
+  String get sharingBlocked => 'Bloqués';
+
+  @override
+  String get sharingRemoveFriend => 'Retirer l\'ami';
+
+  @override
+  String sharingRemoveFriendConfirm(Object name) {
+    return 'Retirer $name de vos amis ? Vous ne serez plus amis, ni l\'un ni l\'autre.';
+  }
+
+  @override
+  String get sharingBlock => 'Bloquer';
+
+  @override
+  String sharingBlockConfirm(Object name) {
+    return 'Bloquer $name ? Cette personne est retirée de vos amis et ne peut plus utiliser vos codes.';
+  }
+
+  @override
+  String get sharingUnblock => 'Débloquer';
+
+  @override
+  String sharingUnblockConfirm(Object name) {
+    return 'Débloquer $name ? Cette personne pourra vous ajouter de nouveau avec un nouveau code.';
+  }
+
+  @override
+  String get sharingSignOutConfirm =>
+      'Déconnecter ce profil du partage ? Votre compte de partage et vos amis sont conservés. Reconnectez-vous avec votre e-mail.';
+
+  @override
+  String get sharingDeleteAccount => 'Supprimer le compte de partage';
+
+  @override
+  String sharingDeleteConfirm(Object handle) {
+    return 'Cela supprime votre compte de partage, votre profil de partage (@$handle), vos amis, vos invitations et tout ce qui y est enregistré, et le déconnecte sur tous les appareils. Cette action est définitive.';
+  }
+
+  @override
+  String get sharingDeleted => 'Votre compte de partage a été supprimé.';
+
+  @override
+  String get sharingCodeFieldLabel => 'Code de l\'ami';
+
+  @override
+  String get sharingNotACode =>
+      'Un code compte 6 lettres et chiffres, par exemple AB3K·9Q.';
+
+  @override
+  String sharingAddFriendQuestion(Object name, Object handle) {
+    return 'Ajouter $name (@$handle) comme ami ?';
+  }
+
+  @override
+  String get sharingOwnCode => 'C\'est votre propre code';
+
+  @override
+  String get sharingInviteGone =>
+      'Cette invitation a expiré ou a déjà été utilisée';
+
+  @override
+  String get sharingTooManyTries => 'Trop d\'essais. Réessayez plus tard';
+
+  @override
+  String sharingNowFriends(Object name) {
+    return '$name et vous êtes maintenant amis.';
+  }
+
+  @override
+  String get sharingSwitchToAdult =>
+      'Passez à un profil adulte pour ajouter des amis.';
+
+  @override
+  String get sharingEditProfile => 'Modifier';
+
+  @override
+  String sharingStation(Object station) {
+    return 'Station : $station';
+  }
+
+  @override
+  String get sharingLiveCantShare =>
+      'Les chaînes en direct passent par votre propre tuner et ne peuvent pas être partagées';
+
+  @override
+  String get sharingMusicCantShare =>
+      'Les chaînes musicales ne peuvent pas être partagées';
+
+  @override
+  String get sharingCopyCantShare =>
+      'Les chaînes partagées avec vous ne peuvent pas être repartagées';
+
+  @override
+  String get sharingTooBig =>
+      'Les chaînes de plus de 20 000 programmes ne peuvent pas être partagées';
+
+  @override
+  String get sharingNoneMatch =>
+      'Aucun de ces programmes n\'est sur vos serveurs';
+
+  @override
+  String get sharingUpdateApp =>
+      'Mettez Nightingale TV à jour pour ajouter cette chaîne.';
+
+  @override
+  String sharingStopsFollowing(Object name) {
+    return 'Cette chaîne ne suivra plus les modifications de $name.';
+  }
+
+  @override
+  String sharingNewShares(Object name, int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count chaînes',
+      one: '1 chaîne',
+    );
+    String _temp1 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: 'les ajouter',
+      one: 'l\'ajouter',
+    );
+    return '$name a partagé $_temp0 avec vous. Ouvrez Menu → Partage pour $_temp1.';
+  }
+
+  @override
+  String sharingNewSharesMany(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count chaînes ont été partagées',
+      one: '1 chaîne a été partagée',
+    );
+    String _temp1 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: 'les ajouter',
+      one: 'l\'ajouter',
+    );
+    return '$_temp0 avec vous. Ouvrez Menu → Partage pour $_temp1.';
+  }
+
+  @override
+  String get sharingSharedWithYou => 'Partagé avec vous';
+
+  @override
+  String get sharingNothingShared =>
+      'Rien en attente. Les chaînes que vos amis partagent avec vous apparaissent ici.';
+
+  @override
+  String sharingMatched(Object matched, Object total) {
+    return '$matched programmes sur $total trouvés';
+  }
+
+  @override
+  String sharingAddedAs(Object number) {
+    return 'Ajoutée comme chaîne $number';
+  }
+
+  @override
+  String get sharingDecline => 'Refuser';
+
+  @override
+  String get sharingShareChannels => 'Partager des chaînes';
+
+  @override
+  String get sharingShareChannelsHelp =>
+      'Vos amis reçoivent une description de chaque chaîne, que leur appli reconstruit à partir de leurs propres serveurs. Aucune vidéo n\'est envoyée.';
+
+  @override
+  String get sharingChannelsYouShare => 'Chaînes que vous partagez';
+
+  @override
+  String get sharingNoChannelsShared => 'Vous ne partagez aucune chaîne.';
+
+  @override
+  String get sharingStopSharing => 'Arrêter le partage';
+
+  @override
+  String sharingStopSharingConfirm(Object name) {
+    return 'Arrêter de partager $name ? Vos amis gardent leur copie, mais ne recevront plus vos modifications.';
+  }
+
+  @override
+  String sharingWith(Object names) {
+    return 'Avec $names';
+  }
+
+  @override
+  String get sharingShareWith => 'Partager avec';
+
+  @override
+  String get sharingShare => 'Partager';
+
+  @override
+  String get sharingGetLink => 'Obtenir un lien';
+
+  @override
+  String sharingSharedWith(Object names) {
+    return 'Partagé avec $names';
+  }
+
+  @override
+  String get sharingLinkHelp =>
+      'La personne qui utilise ce code dans les 7 jours devient votre ami et reçoit ces chaînes. Il ne fonctionne qu\'une fois.';
+
+  @override
+  String sharingChannelsInviteText(Object link) {
+    return 'Voici quelques chaînes de mon Nightingale TV : $link';
+  }
+
+  @override
+  String get sharingPickChannel => 'Choisissez au moins une chaîne.';
+
+  @override
+  String get sharingPickFriend =>
+      'Choisissez au moins un ami, ou utilisez Obtenir un lien.';
+
+  @override
+  String get sharingNoFriendsToShare =>
+      'Pas encore d\'amis. Obtenez un lien pour partager avec quelqu\'un de nouveau.';
+
+  @override
+  String get sharingShareEllipsis => 'Partager…';
+
+  @override
+  String sharingSharedBy(Object name, Object handle) {
+    return 'Partagée par $name (@$handle)';
+  }
+
+  @override
+  String get sharingKeepUpdated => 'Garder à jour';
+
+  @override
+  String sharingKeepUpdatedHelp(Object name) {
+    return 'Suivre les modifications de $name sur cette chaîne';
+  }
+
+  @override
+  String get sharingNoLongerUpdated => 'N\'est plus mise à jour';
+
+  @override
+  String sharingChannelsOffer(Object name, Object handle, Object names) {
+    return '$name (@$handle) a partagé ces chaînes avec vous : $names. Ajouter $name comme ami et les recevoir ?';
+  }
+
+  @override
+  String sharingNowFriendsChannels(Object name) {
+    return 'Vous et $name êtes amis maintenant. Ses chaînes vous attendent dans Partagé avec vous.';
+  }
+
+  @override
+  String get sharedTab => 'Partagées';
+
+  @override
+  String get sharedTabRule =>
+      'Chaînes ajoutées depuis les partages de vos amis';
+
+  @override
+  String get presenceSetting => 'Montrer ce que je regarde';
+
+  @override
+  String presenceSettingValue(Object value) {
+    return 'Montrer ce que je regarde : $value';
+  }
+
+  @override
+  String get presenceQuestion => 'Laisser vos amis voir ce que vous regardez ?';
+
+  @override
+  String get presenceExplain =>
+      'Pendant que vous regardez, vos amis voient la série ou le film et la chaîne. Rien d\'autre, et plus rien dès que vous arrêtez. Regarder en privé, dans les boutons du lecteur, le masque jusqu\'à la fermeture de l\'app. Vous pouvez changer cela dans Partage à tout moment.';
+
+  @override
+  String presenceWatchingOn(Object title, Object channel) {
+    return 'Regarde $title sur $channel';
+  }
+
+  @override
+  String presenceWatchingChannel(Object channel) {
+    return 'Regarde $channel';
+  }
+
+  @override
+  String presenceIsWatching(Object name) {
+    return '$name regarde';
+  }
+
+  @override
+  String presenceAndOthersWatching(Object name, int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count amis regardent',
+      one: '1 ami regardent',
+    );
+    return '$name et $_temp0';
+  }
+
+  @override
+  String presenceWatchingToo(Object name) {
+    return '$name regarde aussi';
+  }
+
+  @override
+  String presenceAndOthersWatchingToo(Object name, int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count amis regardent',
+      one: '1 ami regardent',
+    );
+    return '$name et $_temp0 aussi';
+  }
+
+  @override
+  String presenceNoticeOne(Object name) {
+    return '$name regarde en ce moment';
+  }
+
+  @override
+  String presenceNoticeMany(Object names) {
+    return '$names regardent en ce moment';
+  }
+
+  @override
+  String get watchPrivately => 'Regarder en privé';
+
+  @override
+  String get watchingPrivately => 'En privé';
+
+  @override
+  String get watchTogether => 'Regarder ensemble';
+
+  @override
+  String partyStartTitle(Object title) {
+    return 'Regarder $title ensemble';
+  }
+
+  @override
+  String get partyStartHelp =>
+      'Chacun le lit depuis ses propres serveurs, en même temps. Choisissez jusqu\'à 7 amis ou obtenez un lien.';
+
+  @override
+  String get partyNoFriends =>
+      'Pas encore d\'amis : obtenez un lien pour inviter quelqu\'un.';
+
+  @override
+  String get partyGetLink => 'Obtenir un lien';
+
+  @override
+  String get partyStart => 'Lancer';
+
+  @override
+  String get partyLinkHelp =>
+      'Toute personne qui ouvre ce lien devient votre ami et peut se joindre à vous.';
+
+  @override
+  String partyInviteBanner(Object name, Object title) {
+    return '$name vous invite à regarder $title ensemble';
+  }
+
+  @override
+  String partyInviteBannerNoTitle(Object name) {
+    return '$name vous invite à regarder ensemble';
+  }
+
+  @override
+  String get partyJoin => 'Rejoindre';
+
+  @override
+  String get partyNotNow => 'Plus tard';
+
+  @override
+  String partyJoinQuestion(Object name) {
+    return 'Rejoindre la séance de $name ?';
+  }
+
+  @override
+  String partyOn(Object title, Object channel) {
+    return '$title sur $channel';
+  }
+
+  @override
+  String get partyInSync => 'Synchronisé';
+
+  @override
+  String get partyCatchingUp => 'Rattrapage';
+
+  @override
+  String get partyNotOnServers => 'Pas sur vos serveurs';
+
+  @override
+  String partyMissingTitle(Object title) {
+    return 'Pas sur vos serveurs : $title';
+  }
+
+  @override
+  String get partyMissingRejoin => 'Vous reprendrez au programme suivant.';
+
+  @override
+  String get partyInvite => 'Inviter';
+
+  @override
+  String get partyLeave => 'Quitter';
+
+  @override
+  String get partyStay => 'Rester';
+
+  @override
+  String get partyLeaveQuestion => 'Quitter la séance ?';
+
+  @override
+  String get partyLeaveHostDetail =>
+      'Vous êtes l\'hôte : la séance se termine pour tout le monde.';
+
+  @override
+  String get partyLeaveGuestDetail => 'Vous retrouverez vos propres chaînes.';
+
+  @override
+  String get partyHost => 'Hôte';
+
+  @override
+  String partyJoined(Object name) {
+    return '$name a rejoint la séance';
+  }
+
+  @override
+  String partyLeft(Object name) {
+    return '$name est parti';
+  }
+
+  @override
+  String partyPaused(Object name) {
+    return '$name a mis en pause';
+  }
+
+  @override
+  String partyResumed(Object name) {
+    return '$name a repris';
+  }
+
+  @override
+  String partySkipped(Object name) {
+    return '$name s\'est déplacé dans le programme';
+  }
+
+  @override
+  String partyRestarted(Object name) {
+    return '$name a relancé le programme';
+  }
+
+  @override
+  String partyWentLive(Object name) {
+    return '$name est revenu au direct';
+  }
+
+  @override
+  String partyEnded(Object name) {
+    return '$name a terminé la séance';
+  }
+
+  @override
+  String get partyLost => 'Séance perdue';
+
+  @override
+  String get partyFull => 'Cette séance est complète';
+
+  @override
+  String get partyOver => 'Cette séance est terminée';
+
+  @override
+  String get partyWatchParties => 'Séances à plusieurs';
+
+  @override
+  String get partyNoInvites => 'Aucune invitation pour l\'instant.';
+
+  @override
+  String partyChannelName(Object channel) {
+    return 'Séance · $channel';
+  }
+
+  @override
+  String get partyReactions => 'Réactions';
+
+  @override
+  String partyInvited(Object names) {
+    return 'Invités : $names';
+  }
 }

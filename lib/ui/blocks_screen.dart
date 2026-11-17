@@ -8,6 +8,7 @@ import '../channels/program_block.dart';
 import '../channels/schedule.dart';
 import '../theme/tv_theme.dart';
 import 'format.dart';
+import 'share_notice.dart';
 import 'menu_screen.dart';
 import 'source_picker_screen.dart';
 import 'widgets/channel_logo.dart';
@@ -781,6 +782,8 @@ class _BlockEditorScreenState extends State<BlockEditorScreen> {
       return;
     }
     final oldChannelId = widget.block?.channelId;
+    final copy = app.channelById(_draft.channelId) ?? (oldChannelId == null ? null : app.channelById(oldChannelId));
+    final notice = copy == null ? null : app.shareStopNotice(copy);
     if (_newChannel) {
       final ch = await app.createBlockChannel(_draft.title);
       _draft.channelId = ch.id;
@@ -788,6 +791,7 @@ class _BlockEditorScreenState extends State<BlockEditorScreen> {
     await app.saveBlock(_draft);
     final tuned = tuner.channel?.id;
     if (tuned != null && (tuned == _draft.channelId || tuned == oldChannelId)) await tuner.retune();
+    if (mounted) await afterShareEdit(context, copy, notice);
     if (mounted) Navigator.of(context).pop();
   }
 
@@ -799,8 +803,11 @@ class _BlockEditorScreenState extends State<BlockEditorScreen> {
     if (!ok || !mounted) return;
     final app = AppScope.read(context);
     final tuner = AppScope.tunerOf(context);
+    final copy = app.channelById(widget.block!.channelId);
+    final notice = copy == null ? null : app.shareStopNotice(copy);
     await app.deleteBlock(widget.block!);
     if (tuner.channel?.id == widget.block!.channelId) await tuner.retune();
+    if (mounted) await afterShareEdit(context, copy, notice);
     if (mounted) Navigator.of(context).pop();
   }
 }

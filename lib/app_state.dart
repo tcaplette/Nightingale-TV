@@ -53,6 +53,9 @@ import 'server/server_set.dart';
 import 'ui/format.dart';
 import 'l10n/tr.dart';
 import 'reporting/error_reports.dart';
+import 'sharing/channel_recipe.dart';
+import 'sharing/recipe_cache.dart';
+import 'sharing/recipe_matcher.dart';
 import 'reporting/report_breadcrumbs.dart';
 
 /// A choice for the maximum streaming bitrate: Original (no [kbps]) or a
@@ -538,8 +541,10 @@ class AppState extends ChangeNotifier {
       this.exportBusy,
       this.analysisAllowed,
       this.safetyBackup,
+      bool Function()? sharingLinked,
       @visibleForTesting this._sessionClient})
-      : icons = CustomIconStore(storage.logosDir) {
+      : sharingLinked = sharingLinked ?? _notLinked,
+        icons = CustomIconStore(storage.logosDir) {
     analysisAllowed?.addListener(_onAnalysisAllowed);
     playbackActivity.addListener(_pushBudget);
     playingBitrate.addListener(_pushBudget);
@@ -548,6 +553,13 @@ class AppState extends ChangeNotifier {
     _syncStaleCheck();
     live.addListener(_onLiveChanged);
   }
+
+  static bool _notLinked() => false;
+
+  /// Whether this profile is linked to sharing (channel-sharing D2): its
+  /// scans then ask every server for provider ids, as multi-server ones do,
+  /// so the channels it shares carry them.
+  bool Function() sharingLinked;
 
   // ---- Launch: background requests wait for the first picture --------------
 
@@ -2333,8 +2345,10 @@ class AppState extends ChangeNotifier {
         } else {
           syncStatus = tr.connectingTo(session?.serverName ?? tr.yourServerLower);
           notifyListeners();
-          fresh = await fetchLibraryIndex(c, pools: settings.commercialPools, channelRoots: _channelRoots(),
-              onStatus: (s) {
+          fresh = await fetchLibraryIndex(c,
+              pools: settings.commercialPools,
+              channelRoots: _channelRoots(),
+              providerIds: sharingLinked(), onStatus: (s) {
             syncStatus = s;
             notifyListeners();
           }, onLibraries: _labelLibraryRoots);
@@ -2364,6 +2378,8 @@ class AppState extends ChangeNotifier {
       }
       if (_hasGenerated) {
         _mergeLibraryIntoChannels(previous, plansBefore);
+        // Shared copies follow the receiver's library (channel-sharing D7).
+        await _rematchSharedCopies();
       } else {
         _schedules.clear();
         _setChannels(_generated());
@@ -2618,7 +2634,9 @@ class AppState extends ChangeNotifier {
     final retired = <Channel>[];
     for (final ch in _channels) {
       if (ch.isLive) continue;
-      if (ch.blockOnly) {
+      // Block-only channels, and shared copies whose programs come from
+      // their recipe (re-matched after the scan, channel-sharing D7).
+      if (ch.blockOnly || _fromRecipe(ch)) {
         _schedules.remove(ch.id);
         continue;
       }
@@ -2998,7 +3016,8 @@ class AppState extends ChangeNotifier {
     if (number != null) _renumber(ch, number);
     if (order != null && order != ch.order && !ch.blockOnly) {
       ch.order = order;
-      _rebase(ch, buildPlaylist(library, ch.source, order, seed: ch.seed), DateTime.now());
+      _rebase(ch, _replaylist(ch), DateTime.now());
+      _contentEdited(ch);
     }
     _setChannels(_channels);
     await _saveChannels();
@@ -3050,6 +3069,7 @@ class AppState extends ChangeNotifier {
     final at = now ?? DateTime.now();
     ch.source = source;
     if (!_rebase(ch, playlist, at)) ch.anchor = at;
+    _contentEdited(ch);
     _setChannels(_channels);
     await _saveChannels();
   }
@@ -3064,7 +3084,8 @@ class AppState extends ChangeNotifier {
   Future<void> reshuffleChannel(Channel ch, {DateTime? now}) async {
     if (!canReshuffle(ch)) throw StateError(tr.onlyShuffledChannels);
     ch.generation++;
-    _rebase(ch, buildPlaylist(library, ch.source, ch.order, seed: ch.seed), now ?? DateTime.now());
+    _rebase(ch, _replaylist(ch), now ?? DateTime.now());
+    _contentEdited(ch);
     _setChannels(_channels);
     await _saveChannels();
   }
@@ -3614,6 +3635,13 @@ class AppState extends ChangeNotifier {
       block.playlist = blockPlaylist(block);
       block.anchor = DateTime(today.year, today.month, today.day);
     }
+    // A shared copy's blocks are its programming (channel-sharing).
+    if (existing >= 0 && _blocks[existing].channelId != block.channelId) {
+      if (channelById(_blocks[existing].channelId) case final was?) _contentEdited(was);
+    }
+    if (channelById(block.channelId) case final ch? when existing < 0 || !_sameJson(_blocks[existing].toJson(), block.toJson())) {
+      if (_contentEdited(ch)) await _saveChannels();
+    }
     if (existing < 0) {
       _blocks = [..._blocks, block];
     } else {
@@ -3627,6 +3655,9 @@ class AppState extends ChangeNotifier {
 
   Future<void> deleteBlock(ProgramBlock block) async {
     final generated = _blocks.any((b) => b.id == block.id && b.generated != null);
+    if (channelById(block.channelId) case final ch?) {
+      if (_contentEdited(ch)) await _saveChannels();
+    }
     _blocks = _blocks.where((b) => b.id != block.id).toList();
     _autoGroups = null;
     _schedules.clear();
@@ -3701,6 +3732,230 @@ class AppState extends ChangeNotifier {
   }
 
   static bool _sameJson(Object? a, Object? b) => a.toString() == b.toString();
+
+
+  // ---- Shared channels (channel-sharing) --------------------------------------
+
+  /// The receivers' recipe cache, outside backups (D5).
+  late final recipeCache = RecipeCache(storage);
+
+  /// Why [ch] can't be shared, or null when it can.
+  String? shareProblem(Channel ch) {
+    if (ch.isLive) return tr.sharingLiveCantShare;
+    if (ch.isMusic) return tr.sharingMusicCantShare;
+    return null;
+  }
+
+  /// [ch] as a recipe, from this profile's library.
+  ChannelRecipe recipeOf(Channel ch, {String station = ''}) =>
+      ChannelRecipe.fromChannel(ch, _blocks, library, station: station);
+
+  /// [recipe] matched against this profile's library (all its servers).
+  Future<RecipeMatch> matchRecipe(ChannelRecipe recipe) => RecipeMatcher.run(recipe, library);
+
+  /// A copy whose programs come from its recipe rather than a source.
+  bool _fromRecipe(Channel ch) => ch.isSharedCopy && !ch.source.hasPicks;
+
+  /// [ch]'s playlist rebuilt in its order: from its source, or for a copy
+  /// whose programs come from its recipe, its own programs reordered.
+  List<String> _replaylist(Channel ch) => _fromRecipe(ch)
+      ? orderItems(library, ch.playlist, ch.order, seed: ch.seed)
+      : buildPlaylist(library, ch.source, ch.order, seed: ch.seed);
+
+  /// What to say once a content edit has taken [ch] off its sender's
+  /// changes; null when it isn't a copy that follows them.
+  String? shareStopNotice(Channel ch) {
+    final link = ch.share;
+    if (link == null || !link.followsRecipe) return null;
+    return tr.sharingStopsFollowing(link.ownerName ?? '');
+  }
+
+  /// The receiver changed [ch]'s programs or blocks: a copy no longer
+  /// follows its sender (D7). True when that changed something.
+  bool _contentEdited(Channel ch) {
+    final link = ch.share;
+    if (link == null || !link.isCopy || link.edited) return false;
+    ch.share = link.copyWith(edited: true, keepUpdated: false);
+    PlaybackDiagnostics.note('SHARE', 'copy ${ch.number} edited: no longer updated');
+    return true;
+  }
+
+  /// The shared copies, and channels this profile shares.
+  List<Channel> get sharedCopies => [for (final c in _channels) if (c.isSharedCopy) c];
+  List<Channel> get sharedOut => [for (final c in _channels) if (c.share?.role == ShareRole.out) c];
+
+  /// The copy of shared channel [sharedId], if this profile has one.
+  Channel? copyOf(String sharedId) => _channels.where((c) => c.isSharedCopy && c.share!.id == sharedId).firstOrNull;
+
+  /// Sets [ch]'s share link (null: none) and saves.
+  Future<void> setShareLink(Channel ch, ShareLink? link) async {
+    ch.share = link;
+    _setChannels(_channels);
+    await _saveChannels();
+  }
+
+  /// Turns a copy's Keep updated on or off. Turned back on after the
+  /// receiver's own edits, the copy follows its recipe again: rebuilt from
+  /// it now, keeping the program on the air, and newer versions on connect.
+  Future<void> setKeepUpdated(Channel ch, bool on, {DateTime? now}) async {
+    final link = ch.share;
+    if (link == null || !link.isCopy) return;
+    if (!on || link.ended || !link.edited) {
+      await setShareLink(ch, link.copyWith(keepUpdated: on && !link.ended));
+      return;
+    }
+    ch.source = const ChannelSource(includeEpisodes: false);
+    ch.share = link.copyWith(keepUpdated: true, edited: false);
+    final recipe = await recipeCache.get(link.id);
+    if (recipe != null) _applyRecipe(ch, recipe, await matchRecipe(recipe), version: link.version, now: now);
+    _setChannels(_channels);
+    await _saveChannels();
+    await _saveBlocks();
+  }
+
+  /// Adds a copy of [recipe] (shared as [link]) to the lineup: the next free
+  /// number after the profile's channels, on the air at once. Its recipe is
+  /// cached for re-matching. Throws [StateError] when nothing matches.
+  Future<Channel> addSharedCopy(ChannelRecipe recipe, Map<String, Object?> recipeJson, ShareLink link,
+      {RecipeMatch? match}) async {
+    final m = match ?? await matchRecipe(recipe);
+    if (m.none) throw StateError(tr.sharingNoneMatch);
+    final now = DateTime.now();
+    final id = 'user:${now.microsecondsSinceEpoch.toRadixString(36)}';
+    final number = ChannelNumbers.nextGenerated(_channels);
+    final ch = Channel(
+      id: id,
+      number: number,
+      name: recipe.name.isEmpty ? tr.myChannel : recipe.name,
+      // A server image becomes the default number badge.
+      icon: recipe.icon ?? ChannelIcon(kind: ChannelIconKind.badge, value: '$number', color: 0xFF2E5AAC),
+      source: const ChannelSource(includeEpisodes: false),
+      order: recipe.order,
+      playlist: m.playlist,
+      // The sender's anchor: with the same library, the same guide.
+      anchor: recipe.anchor,
+      auto: false,
+      blockOnly: recipe.blockOnly,
+      commercialPlan: recipe.breaks,
+      logoMode: recipe.logoMode,
+      retro: recipe.retro,
+      slotRule: recipe.slot,
+      share: link.copyWith(matched: m.matched, total: m.total),
+    );
+    await recipeCache.put(link.id, recipeJson);
+    _blocks = [..._blocks, ..._copyBlocks(ch, recipe, m)];
+    _autoGroups = null;
+    _schedules.clear();
+    _setChannels([..._channels, ch]);
+    await _saveChannels();
+    await _saveBlocks();
+    PlaybackDiagnostics.note('SHARE', 'added ${ch.number} ${ch.name}: matched ${m.matched} of ${m.total}');
+    return ch;
+  }
+
+  List<ProgramBlock> _copyBlocks(Channel ch, ChannelRecipe recipe, RecipeMatch m) => [
+        for (final (i, b) in recipe.blocks.indexed)
+          ProgramBlock(
+            id: 'block:${ch.id}#$i',
+            title: b.title,
+            channelId: ch.id,
+            days: b.days,
+            startMinute: b.startMinute,
+            endMinute: b.endMinute,
+            seasonStart: b.seasonStart,
+            seasonEnd: b.seasonEnd,
+            source: const ChannelSource(includeEpisodes: false),
+            order: b.order,
+            lineup: m.blockLineups[i],
+            playlist: m.blockPlaylists[i],
+            anchor: b.anchor,
+            enabled: b.enabled,
+          ),
+      ];
+
+  /// Rebuilds copy [ch] from [recipe] (a newer version with [version], or
+  /// its cached recipe after a scan) through the edit path that keeps the
+  /// program on the air (D7). The receiver's name, number and icon are kept.
+  Future<void> applySharedRecipe(Channel ch, ChannelRecipe recipe,
+      {Map<String, Object?>? recipeJson, int? version, RecipeMatch? match, DateTime? now}) async {
+    if (_applyRecipe(ch, recipe, match ?? await matchRecipe(recipe), version: version, now: now)) {
+      _setChannels(_channels);
+      await _saveChannels();
+      await _saveBlocks();
+    }
+    if (recipeJson != null) await recipeCache.put(ch.share!.id, recipeJson);
+  }
+
+  /// Returns whether anything changed.
+  bool _applyRecipe(Channel ch, ChannelRecipe recipe, RecipeMatch m, {int? version, DateTime? now}) {
+    final link = ch.share;
+    if (link == null || !link.followsRecipe) return false;
+    final at = now ?? DateTime.now();
+    final planBefore = planFor(ch);
+    final ruleBefore = ch.effectiveSlotRule;
+    var changed = false;
+    if (version != null) {
+      // A new version brings the sender's settings, not their name or icon.
+      changed = ch.order != recipe.order ||
+          ch.blockOnly != recipe.blockOnly ||
+          ch.commercialPlan != recipe.breaks ||
+          ch.logoMode != recipe.logoMode ||
+          ch.slotRule != recipe.slot ||
+          !_sameJson(ch.retro.toJson(), recipe.retro.toJson());
+      ch
+        ..order = recipe.order
+        ..blockOnly = recipe.blockOnly
+        ..commercialPlan = recipe.breaks
+        ..logoMode = recipe.logoMode
+        ..retro = recipe.retro
+        ..slotRule = recipe.slot;
+    }
+    final playlistChanged = !listEquals(ch.playlist, m.playlist);
+    if (playlistChanged || changed) {
+      if (!_rebase(ch, m.playlist, at, planBefore: planBefore, ruleBefore: (rule: ruleBefore))) ch.anchor = at;
+      changed = true;
+    }
+    final wanted = _copyBlocks(ch, recipe, m);
+    final mine = [for (final b in _blocks) if (b.channelId == ch.id) b];
+    final sameBlocks = mine.length == wanted.length &&
+        [for (final (i, b) in mine.indexed) _sameJson(b.toJson(), wanted[i].toJson())].every((same) => same);
+    if (!sameBlocks) {
+      _blocks = [for (final b in _blocks) if (b.channelId != ch.id) b, ...wanted];
+      _autoGroups = null;
+      changed = true;
+    }
+    final next = link.copyWith(version: version ?? link.version, matched: m.matched, total: m.total);
+    if (next.version != link.version || next.matched != link.matched || next.total != link.total) changed = true;
+    ch.share = next;
+    if (changed) {
+      _schedules.remove(ch.id);
+      PlaybackDiagnostics.note('SHARE',
+          'copy ${ch.number} ${version == null ? 're-matched' : 'updated to v$version'}: ${m.matched} of ${m.total}');
+    }
+    return changed;
+  }
+
+  /// Matches every copy that follows its recipe again (after a scan).
+  Future<void> _rematchSharedCopies() async {
+    var changed = false;
+    for (final ch in sharedCopies) {
+      if (!ch.share!.followsRecipe) continue;
+      final recipe = await recipeCache.get(ch.share!.id);
+      if (recipe == null) continue;
+      if (_applyRecipe(ch, recipe, await matchRecipe(recipe))) changed = true;
+    }
+    if (changed) {
+      _setChannels(_channels);
+      await _saveBlocks();
+    }
+  }
+
+  /// Marks copy [ch]'s share ended: kept on the lineup, "No longer updated".
+  Future<void> endShare(Channel ch) async {
+    final link = ch.share;
+    if (link == null || !link.isCopy || link.ended) return;
+    await setShareLink(ch, link.copyWith(ended: true, keepUpdated: false));
+  }
 
   // ---- Persistence --------------------------------------------------------
 

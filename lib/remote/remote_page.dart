@@ -85,6 +85,10 @@ const _template = r'''<!doctype html>
   .pair input:focus { outline: none; border-color: var(--accent); }
   .pair button { padding: 12px 20px; background: var(--accent); color: var(--on-accent); border-color: var(--accent); }
   .pair .msg { color: var(--red); min-height: 1.3em; margin: 14px 0 0; }
+  .react { margin: -4px 0 16px; }
+  .react h2 { font-size: 13px; font-weight: 700; color: var(--dim); margin: 0 4px 8px; }
+  .react .emoji { display: grid; grid-template-columns: repeat(6, 1fr); gap: 8px; }
+  .react button { font-size: 28px; padding: 10px 0; line-height: 1; }
   [hidden] { display: none !important; }
 </style>
 </head>
@@ -110,6 +114,11 @@ const _template = r'''<!doctype html>
     <div class="bar"><i id="bar"></i></div>
   </section>
   <div class="who"><span id="who"></span><span id="status"></span></div>
+
+  <section class="react" id="react" hidden aria-label="@@reactions@@">
+    <h2>@@reactions@@</h2>
+    <div class="emoji" id="emoji"></div>
+  </section>
 
   <div class="tabs" role="tablist">
     <button role="tab" aria-selected="true" data-tab="remote">@@tabRemote@@</button>
@@ -292,7 +301,23 @@ const _template = r'''<!doctype html>
       $('who').textContent = '';
       $('bar').style.width = '0';
       $('list').replaceChildren();
+      $('react').hidden = true;
       return;
+    }
+    // The watch party's reactions, while the TV is in one.
+    const party = s.party && s.party.active;
+    $('react').hidden = !party;
+    if (party && $('emoji').childElementCount !== s.party.reactions.length) {
+      $('emoji').replaceChildren(...s.party.reactions.map((e) => {
+        const btn = document.createElement('button');
+        btn.textContent = e;
+        btn.setAttribute('aria-label', e);
+        btn.addEventListener('click', () => {
+          if (navigator.vibrate) navigator.vibrate(12);
+          post('/api/react', { emoji: e });
+        });
+        return btn;
+      }));
     }
     const p = s.program, c = s.channel;
     $('num').textContent = c ? c.number : '–';
@@ -390,6 +415,7 @@ Map<String, String> remotePageTexts() => {
       'commercialBreak': tr.commercialBreak,
       'watching': tr.remoteWatching('{name}'),
       'kidName': tr.remoteKidName('{name}'),
+      'reactions': tr.partyReactions,
     };
 
 /// The page, in the language the TV is showing.

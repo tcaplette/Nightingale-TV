@@ -60,6 +60,7 @@ Make TV feel like TV again, with ads between and during shows. Being experimenta
 - **Several servers in one lineup.** Add more servers to a profile in Menu → **Servers**, in any mix (Jellyfin at home and a friend's Plex, say). Their libraries become one, and something on two servers appears once and plays from the first in your **Play from** order that answers. Give a slow remote server its own **Quality limit**. If one server is down, the others keep playing.
 - **Profiles.** Everyone gets their own channels, blocks and settings. Kid profiles only see content rated for their age. Grown-up profiles and settings can be locked with a PIN.
 - **Phone remote.** Turn it on in the menu, scan the QR code, and your phone's browser becomes the remote. There's nothing to install. See [Phone remote](#phone-remote).
+- **Sharing with friends.** Add friends who also use Nightingale TV, with a 6-character code, a link or a QR code, and share channels you built: they arrive as a recipe your friend's app rebuilds from their own servers. In the official builds, or in your own builds with your own backend. See [Sharing](#sharing).
 - **Backup and restore.** Your whole setup is backed up every day something changes, and before anything that replaces a lot at once. Restore a backup, save it to a file, or move it to another device through your phone or computer. See [Backup and restore](#backup-and-restore).
 
 ### Watch on your other screens
@@ -96,7 +97,7 @@ One app covers Android TVs, phones and tablets (Android 7.0 or newer). Each rele
 | `nightingale-tv_<version>_universal.apk` | Any of them, if you're not sure. It's several times larger. |
 | `nightingale-tv_<version>_x86_64.apk` | Android Studio emulators on a PC |
 
-`<version>` is the release's version and build number, such as `1.2.4+5006`.
+`<version>` is the release's version and build number, such as `1.2.6+5008`.
 
 On a phone or tablet, open the APK on the device and allow *Install unknown apps* when asked. On a TV, turn on *Developer options* and *USB debugging* (or *Network debugging*), then run `adb install nightingale-tv_<version>_arm64-v8a.apk` from your computer, or copy the APK over with a file manager app and open it there. To update, install the next release's APK over the old one; your profiles stay.
 
@@ -118,7 +119,7 @@ The desktop version runs on 64-bit (x86-64) Linux. Each release has two download
 | `nightingale-tv_<version>.<build time>_amd64.deb` | Ubuntu 24.04 or newer, Debian 13 or newer, and distributions based on them (Linux Mint 22, Pop!_OS 24.04…) |
 | `nightingale-tv-linux-x64-<x.y.z>.tar.gz` | Other distributions (Arch, Fedora, openSUSE…) from 2024 or newer |
 
-For 1.2.4 these are `nightingale-tv_1.2.4+5006.20261110045935_amd64.deb` and `nightingale-tv-linux-x64-1.2.4.tar.gz`.
+For 1.2.6 these are `nightingale-tv_1.2.6+5008.20261117214230_amd64.deb` and `nightingale-tv-linux-x64-1.2.6.tar.gz`.
 
 **The .deb:** in the folder it's in, run `sudo apt install ./nightingale-tv_*_amd64.deb` (the `./` matters: without it apt looks online). apt also installs the libraries Nightingale TV needs, ffmpeg included. Then open **Nightingale TV** from your app menu, or run `nightingale-tv`. To update, install the next release's `.deb` the same way; your profiles and settings stay. It needs Ubuntu 24.04 or newer because it uses libmpv version 2, and Ubuntu 22.04 only has version 1. On 22.04, build it yourself.
 
@@ -189,6 +190,7 @@ Menu → **Phone remote** turns it on, on Android TV and the desktop version. Sc
 
   With the `.tar.gz`, allow the port the screen shows instead, usually `sudo ufw allow 8642/tcp`.
 - The remote only works on your home network. Don't open a port for it on your router.
+- **In a watch party** the phone also shows a reaction pad, which sends reactions as the TV's profile and goes away when the TV leaves the party.
 
 ## Backup and restore
 
@@ -196,7 +198,7 @@ Menu → **Backup & restore** (grown-ups only, when there are kid profiles) list
 
 **A backup holds** every profile with its PIN and all its channels, groups, blocks, commercial settings and custom images, plus the Live TV export and phone remote settings.
 
-**It never holds** server sign-ins or paired phones, so a backup file can't get anyone into your server. A restored profile asks you to sign in once unless it's still signed in on this TV. The library index and media analysis are rebuilt by themselves.
+**It never holds** server sign-ins, sharing sign-ins or paired phones, so a backup file can't get anyone into your server or your sharing account. A restored profile asks you to sign in once unless it's still signed in on this TV. The library index and media analysis are rebuilt by themselves.
 
 **Restoring** replaces everything on this device, after backing up the current setup first ("Before restore"). Channels come back on the same schedule, so the same show is on the air as on the old device.
 
@@ -206,6 +208,104 @@ Menu → **Backup & restore** (grown-ups only, when there are kid profiles) list
 - **Any device, Android TVs included:** on the old device, Backup & restore → **Use your phone or computer**, scan the code and tap **Download backup**. On the new one, choose **Restore from a backup** → **Use your phone or computer**, scan its code and tap **Restore from a file**. The phone and both devices need to be on the same Wi-Fi.
 - **Android's own backup:** with Google backup on, Android keeps your newest Nightingale TV backup in your Google account, and a reinstall offers to **Restore it**.
 - **Live TV export moves with the backup.** The restored computer answers as the same tuners, so Plex and Jellyfin keep their setup. Turn export off on the old one.
+
+## Sharing
+
+Menu → **Sharing** lets you add friends who also use Nightingale TV. It's on grown-up profiles only; kid profiles never have it. The official builds (Google Play, and the APKs and `.deb` on Releases) share on the official network. Builds from source can run their own sharing backend: see [Running your own sharing backend](#running-your-own-sharing-backend). Each build only reaches friends on its own network.
+
+- **Setting up.** Choose **Set up**, enter your email, and type the 6-digit code that arrives by email. There's no password. Then pick a display name, a handle such as `@tyler`, an avatar from the built-in set, and, if you like, a station name. Each Nightingale profile has its own sharing account, so the same email on another TV signs in to the same account and friends.
+- **Adding friends.** **Add friend** shows your code (such as `AB3K·9Q`), its link and a QR code. A friend types the code in their Nightingale TV under Sharing → **Add friend** → **Enter a code**, or opens the link, and you're friends on both sides. On a phone or tablet, **Send invite** shares the link through any app. A code works once and expires after 7 days; **New code** replaces it at once. On Android, opening an invite link goes straight to Nightingale TV.
+- **Friends** can be removed, or blocked: a blocked account stops being your friend and can't use your codes. The **Blocked** list unblocks them.
+- **No video is ever sent between users.** Each person plays from their own media server.
+
+### Sharing channels
+
+**Share channels** sends friends channels you've built, such as "90s Sitcoms" or a Saturday-morning block. Check one or more channels, then pick friends, or choose **Get a link**. A link gives a code, link and QR code (and **Send invite** on phones and tablets). Whoever uses it within 7 days becomes your friend and gets the channels; it works once. A channel's details also have **Share…**. Live channels (they play from your own tuner) and music channels can't be shared, and the list says why. Neither can a channel with more than 20,000 programs.
+
+**What's sent is a recipe, not video.** A shared channel is a description of what it plays, which your friend's app rebuilds from their own servers:
+
+- **It holds** the channel's name, its icon when it's a built-in one, your station name, the play order and start time, the break plan's lengths, the slot length, the retro look and logo setting, the programming blocks (name, days, times, order and programs), and every program in play order: an episode as its show's TVDB/TMDB/IMDb ids, name and year plus season, episode number, title and runtime; a movie as its ids, title, year and runtime.
+- **It never holds** server addresses or names, item ids, file or stream paths, tokens, images, commercial, bumper or slot pools, or play counts. A channel with a server image as its icon arrives with a number badge instead.
+
+To fill in provider ids, a profile that's set up for sharing asks all its servers for them during library scans, as a profile with several servers does.
+
+**Shared with you.** New shares wait under Sharing → **Shared with you**, with who sent them and how much of each channel your servers have ("Matched 38 of 42 programs"). **Add** puts the channel on your lineup with the next free number, on the air at once, and under the guide's **Shared** tab. **Decline** removes it from the list. If none of its programs are on your servers, only Decline is offered. The menu's Sharing entry shows how many shares are waiting, and the TV shows a short notice when new ones arrive. The notice never takes focus from what you're watching.
+
+**Matching.** Shows match by a shared provider id, otherwise by name and year. Episodes match by season and episode number (by title when they have no numbers). Movies match by provider id, otherwise by title and the same year; a movie with no year never matches by title alone. Programs you don't have are left out, and the rest keep the sender's order and play with your runtimes. With the same library, your guide for the channel matches the sender's. After every library scan the copy is matched again, so episodes you add later join it in their places.
+
+**Keep updated** (in the copy's details, on by default). When the sender changes a shared channel, your copy picks the change up the next time your app connects, without moving what's on the air. Your own name, number and icon stay. Renaming, renumbering, changing the icon, retro look, logo or break plan keeps it on. Changing the copy's programs or blocks turns it off and says so; turning it back on rebuilds the copy from the sender's channel. If the sender stops sharing, removes the channel or stops being your friend, or either account is deleted, the copy stays on your lineup, marked "No longer updated".
+
+**Channels you share** lists each shared channel with the friends who have it. **Stop sharing** ends it for everyone; their copies stay, without your later changes.
+
+### Friends watching
+
+With **Show what I'm watching** on Friends, your friends see what you're watching, and you see what they're watching:
+
+- **Sharing → Friends:** each friend's line says "Watching *The Office* on 90s Sitcoms" while they watch.
+- **Guide:** on a channel you share or added from a share, the friends on that same channel show as avatars on its row, and "Tyler is watching" in the program on now.
+- **Player:** tuning to a shared channel a friend is on shows "Tyler is watching too" in the corner for 5 seconds, and the banner shows their avatars. Opening the app shows "Tyler and Sam are watching now" once, when friends are on channels you have.
+
+None of it takes focus from what you're watching. The question is asked once, as the last step of setting up sharing (or the first time Sharing opens after updating), and the setting is under Sharing at any time. **Watch privately**, in the player's buttons, hides what you watch until you turn it off or close the app. See [What friends can see](#what-friends-can-see).
+
+**What's stored, and where.** The official builds' sharing uses a hosted backend run for this project ([Supabase](https://supabase.com)); a self-hosted build uses its owner's. It holds your email, your share profile (name, handle, avatar and station name), your friends and blocks, the invite codes you made, and the recipes of channels you share. A recipe can be read only by you and by friends whose share of it is active. Your email is never shown to anyone, friends included. The invite page (on coffeehauslabs.com for the official builds) shows a live code's name, handle and station, and nothing for a used or expired code. The sign-in itself stays on the device: it isn't in profiles or backups, and a restore keeps it. The app only contacts the backend while a signed-in profile is on screen, never in the background or while asleep, and not at all for profiles that aren't set up.
+
+**Sign out** unlinks the profile on this device only; your account and friends stay. **Delete sharing account** deletes the account, its share profile, its friendships, invites and everything stored for it, and signs it out on every device.
+
+If the backend can't be reached, Sharing says "Sharing is unavailable right now"; watching TV is never affected.
+
+### Watching together
+
+**Watch together**, in the player's buttons on a Nightingale channel (after Captions and Sleep), starts a watch party for what's on: pick up to 7 friends, or choose **Get a link** for a code, link and QR code (and **Send invite** on phones and tablets). A party holds up to 8 people. Live channels don't offer it, since they play from your own tuner, and kid profiles never have it.
+
+- **How it stays in sync without video.** No picture or sound goes between members. The host's app sends only the timing: which program is on (described as a shared channel describes it, by show ids, season and episode, or a movie's ids, title and year), where it is, and whether it's paused. Each member's app plays its own copy from its own servers at that position, timed by the sharing backend's clock. A member more than 2 seconds off jumps to the right place; smaller drift is corrected by playing 5% faster or slower for a moment, which you won't hear. When the host's program ends, everyone moves to the host's next program. Joining late starts at the current position. Each member's app sends a few small messages a minute, well under 1 MB in 10 minutes.
+- **A program you don't have.** If your servers have no copy of what's on, you see "Not on your servers: *The Office*. You'll rejoin at the next program." The party row and reactions keep working, and your picture comes back when a program you have starts.
+- **Breaks.** When the host's channel goes to a commercial break, each member plays a break of the same length from their own commercials and bumpers, or the break card if they have none. The program resumes for everyone together.
+- **Pause and skip for everyone.** Any member's Pause/Play, Back 10, Forward 30, Restart and Live act on the whole party within 2 seconds, and every screen says who did it ("Sam paused"). The host's rewind window is the party's.
+- **Reactions.** While the controls are up, the party row shows everyone's avatars (the host's marked), whether you're "In sync", "Catching up" or "Not on your servers", **Invite** (for the host), six reactions (😂 😮 ❤️ 👏 😱 🍿) and **Leave**. A reaction floats up the side of everyone's picture with your avatar for 3 seconds; one per second each. The D-pad, an air mouse and touch all work, and a paired [phone remote](#phone-remote) shows a reaction pad while its TV is in a party. "Sam joined" and "Sam left" show for 3 seconds. Nothing in a party takes focus from what you're watching.
+- **Invites.** A friend whose app is open sees "Tyler invited you to watch *The Office* together" at the top, with **Join** and **Not now**. The first Up (from the picture, or from the guide's top row) reaches it, a mouse or finger can tap it, and Back dismisses it; channel up and down still change channels. It goes after 30 seconds. Open invites stay in Sharing → **Watch parties** until the party ends. A watch link makes whoever opens it your friend and asks "Join Tyler's watch party?".
+- **Leaving.** Back, changing the channel, picking another channel in the guide, or tapping a channel on the phone remote asks "Leave the watch party?" on the TV first (Stay is the button already selected). A member who leaves goes back to their own channels, on the channel they had before joining. When the host leaves, closes the app, or is gone for 60 seconds, the party ends for everyone: "Tyler ended the watch party". Sending the app to the background or to sleep leaves the party.
+
+**What a party stores.** The backend keeps the party (its host, the channel's name and the latest timing), who's in it and who was invited. Only its members and invitees can read them, and only members receive its messages. A party is deleted with its host's sharing account, and a member's rows with theirs.
+
+### Running your own sharing backend
+
+If you cloned this repository, your builds have no Sharing until you give them a backend of your own. The official backend's keys aren't in the repository. You need three things: a database (a [Supabase](https://supabase.com) project, and the free plan is enough), an SMTP relay to email the sign-in codes, and a static website for invite links. Everything you need to deploy is in this repository: the database schema and data rules in `supabase/migrations/`, the Edge Functions in `supabase/functions/`, the deploy script `supabase/deploy.sh`, and the invite page in `invite_page/`.
+
+**A self-hosted backend is its own network.** People on your builds can be friends with each other, but not with people on the official builds.
+
+Every private value goes into a git-ignored file. Copy each committed `*.example` file and fill in the copy. You need `bash`, `curl`, `python3` and `psql` on the computer you deploy from. [SELF_HOSTING.md](SELF_HOSTING.md) explains each step in full. In short:
+
+1. **The database.** Make a Supabase project and keep its database password. Then `cp supabase-credentials.example.txt supabase-credentials.txt` and fill in:
+   - `SUPABASE_PROJECT_REF`, the id in the dashboard address;
+   - `SUPABASE_ACCESS_TOKEN`, from **Account → Access Tokens**;
+   - `SUPABASE_DB_PASSWORD`;
+   - `SUPABASE_DB_HOST`, the session pooler's host, under **Connect → Session pooler**.
+2. **The SMTP relay.** Supabase's built-in mailer is only for testing, so sign-in codes go through your own SMTP service. Run `cp supabase/auth-config.example.json supabase/auth-config.json` and fill it in:
+
+   | Key | [Resend](https://resend.com) | Any other SMTP service |
+   | --- | --- | --- |
+   | `smtp_host` | `smtp.resend.com` | your provider's SMTP server |
+   | `smtp_port` | `465` | `465` (TLS) or `587` (STARTTLS) |
+   | `smtp_user` | `resend` | your SMTP user name |
+   | `smtp_pass` | your Resend API key (`re_…`) | your SMTP password |
+   | `smtp_admin_email` | the sender address, such as `noreply@example.org` | the same |
+   | `smtp_sender_name` | the sender's name, such as `Nightingale TV` | the same |
+   | `site_url` | your invite website, such as `https://invites.example.org` | the same |
+
+   Verify the sender's domain with your email service first (with Resend, its SPF and DKIM records under **Domains**). Until you do, codes aren't delivered. The email's subject, text, code length, expiry and rate limits stay in the committed `supabase/auth-config.base.json`, so every build sends the same email.
+3. **The function secrets.** `cp supabase/functions/.env.example supabase/functions/.env`, then set two values:
+   - `PREVIEW_SALT`: a random string, such as the output of `openssl rand -hex 24`;
+   - `INVITE_ORIGIN`: your invite website's origin, such as `https://invites.example.org`.
+4. **Deploy:** `supabase/deploy.sh all`. It applies the migrations, sends the secrets, sets the email settings and deploys every function, in that order. Each step can also run on its own: `migrations`, `secrets`, `auth` or `functions`. It checks everything before sending any request and stops with the name of anything missing, such as `smtp_pass is not filled in`. Run it again after every update of your checkout. Migrations already applied are skipped.
+5. **The invite page.** Copy `invite_page/` to a static host at the root of its own host name, such as a GitHub Pages user site or a custom domain. In the copy:
+   - fill in `config.js`;
+   - rename `.well-known/assetlinks.json.example` to `assetlinks.json` and put your signing key's SHA-256 fingerprint in it, so invite links open your app.
+6. **Point your builds at it:** `cp sharing.env.example sharing.env`, then fill in:
+   - `NTV_SHARE_URL`: `https://<project ref>.supabase.co`;
+   - `NTV_SHARE_KEY`: the project's **publishable** key, never the secret key;
+   - `NTV_SHARE_HOST`: your invite host, such as `invites.example.org`.
+7. **Build a release** with `tool/build_apk.sh`, `tool/build_linux_release.sh` or `tool/build_deb.sh`. They read `sharing.env` on their own. For releases built by GitHub Actions, add the same three values as repository secrets. Only release builds have Sharing.
+8. **Before publishing your fork**, run `tool/check_public_secrets.sh`. It fails if a value from any of the four private files appears in a file that would be published, and it never prints the value.
 
 ## Live TV export
 
@@ -242,6 +342,8 @@ To start, restore a backup from the Nightingale TV app, or start fresh and sign 
 You need [Flutter](https://flutter.dev) (on Ubuntu, `sudo snap install flutter --classic`). Run `flutter pub get` once in the project folder, and `flutter test` runs the unit tests.
 
 Your builds have [error reports](#error-reports) switched off: the app only reports when it's built with an error-tracker address, which the `tool/build_*.sh` scripts read from the git-ignored `error_reporting.env`. To send reports to a Sentry or GlitchTip project of your own, copy `error_reporting.env.example` to `error_reporting.env` and fill in its DSN.
+
+Your builds have no [Sharing](#sharing) either, unless you run your own sharing backend. It needs the backend's address, its public key and the invite-link host, which the `tool/build_*.sh` scripts read from the git-ignored `sharing.env` (`NTV_SHARE_URL`, `NTV_SHARE_KEY`, `NTV_SHARE_HOST`; see `sharing.env.example`). The official backend's values aren't provided. [Running your own sharing backend](#running-your-own-sharing-backend) sets up your own (in full in [SELF_HOSTING.md](SELF_HOSTING.md)): the backend's source is in `supabase/`, and a static invite page is in `invite_page/`. Without `sharing.env`, release builds have no Sharing menu entry and never contact a sharing backend. Debug and profile builds never have sharing, with or without the file.
 
 ### Building for Android
 
@@ -301,7 +403,31 @@ tool/build_deb.sh           # only build the package in dist/
 
 ## Privacy
 
-Nightingale TV talks to your own media servers and, if you set them up, your Live TV sources. It has no accounts, ads or tracking.
+Nightingale TV talks to your own media servers and, if you set them up, your Live TV sources and [Sharing](#sharing). It has no ads or tracking, and its only accounts are the optional sharing accounts.
+
+### Sharing accounts
+
+A sharing account exists only if you set one up under Menu → **Sharing**. Two outside services are involved in the official builds:
+
+- **[Supabase](https://supabase.com)** hosts the sharing backend. It stores your email, your share profile (name, handle, avatar and station name), your friends and blocks, your invite codes, the recipes of channels you share, and while you watch with sharing on, what friends can see (below). See [What's stored, and where](#friends-watching) for who can read what.
+- **[Resend](https://resend.com)** delivers the sign-in emails. It receives your email address and the 6-digit code each time you sign in, and nothing else: no profile, friends or viewing.
+
+Your email is never shown to anyone, friends included, and it's used only to send sign-in codes. **Delete sharing account** (Menu → Sharing) deletes the account and everything Supabase stores for it. A build you make yourself never uses either service: with [your own sharing backend](#running-your-own-sharing-backend), it uses the database and email service you set up instead.
+
+### What friends can see
+
+With **Show what I'm watching** set to **Friends** (Menu → Sharing), while you watch, your friends' apps receive:
+
+- the show's name (not the episode), or the movie's title, or a live channel's programme from its guide;
+- the channel's name;
+- for a shared channel, which shared channel it is, so their app can tell you're on the same one;
+- when you started.
+
+Nothing else: no episode titles, server names or addresses, item ids, live stream details or history. Only accepted friends can read it; blocked accounts and strangers can't.
+
+**In a watch party** the other members also receive what the host's channel is playing, as described under [Watching together](#watching-together), the members' names and avatars, and their reactions and pause or skip presses. Nothing is sent outside a party.
+
+**It's removed** within seconds when you stop watching, close the app, send it to the background (Home on a TV), the app goes to sleep, you switch profiles, sign out of sharing, turn on **Watch privately** or set the setting to **Off**. If the device loses power, friends' apps ignore it after 5 minutes. Deleting your sharing account deletes it. Kid profiles never share it. The app only talks to the sharing backend while it's on screen and awake.
 
 ### Error reports
 

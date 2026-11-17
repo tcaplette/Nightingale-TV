@@ -3755,5 +3755,524 @@
         "type": "int"
       }
     }
+  },
+  "sharing": "Sharing",
+  "sharingIntroTitle": "Add friends who use Nightingale TV",
+  "sharingIntroWhat": "Sharing lets you add friends who also use Nightingale TV. Each Nightingale profile has its own share account.",
+  "sharingIntroStored": "What's stored: your email, your share profile, your friends, and later what you share and watch.",
+  "sharingIntroNoVideo": "No video is ever sent between users.",
+  "sharingSetUp": "Set up",
+  "sharingEmailPrompt": "Enter your email. We'll send you a 6-digit code to sign in.",
+  "sharingEmailLabel": "Email",
+  "sharingSendCode": "Send code",
+  "sharingNotAnEmail": "Enter an email address, such as name@example.com.",
+  "sharingCodeSent": "We sent a 6-digit code to {email}. Enter it here.",
+  "@sharingCodeSent": {
+    "placeholders": {
+      "email": {
+        "type": "Object"
+      }
+    }
+  },
+  "sharingCodeLabel": "6-digit code",
+  "sharingWrongCode": "That code isn't right",
+  "sharingTooManyWrong": "Too many wrong codes. Send a new code.",
+  "sharingSendNewCode": "Send a new code",
+  "sharingSendNewCodeIn": "Send a new code ({seconds} s)",
+  "@sharingSendNewCodeIn": {
+    "placeholders": {
+      "seconds": {
+        "type": "Object"
+      }
+    }
+  },
+  "sharingOtherEmail": "Use another email",
+  "sharingUnavailable": "Sharing is unavailable right now. Try again later.",
+  "sharingProfileTitle": "Your share profile",
+  "sharingProfileIntro": "Friends see this. Your email is never shown.",
+  "sharingNameLabel": "Display name",
+  "sharingHandleLabel": "Handle",
+  "sharingHandleRules": "Use 3–20 letters, numbers or _.",
+  "sharingHandleTaken": "That handle is taken.",
+  "sharingNameRequired": "Enter a display name.",
+  "sharingAvatar": "Avatar",
+  "sharingStationLabel": "Station name (optional)",
+  "sharingAddFriend": "Add friend",
+  "sharingCodeHelp": "A friend enters this code in Nightingale TV under Sharing → Add friend, or opens the link. It works once and expires in 7 days.",
+  "sharingNewCode": "New code",
+  "sharingSendInvite": "Send invite",
+  "sharingEnterCode": "Enter a code",
+  "sharingInviteText": "Add me as a friend on Nightingale TV: {link}",
+  "@sharingInviteText": {
+    "placeholders": {
+      "link": {
+        "type": "Object"
+      }
+    }
+  },
+  "sharingFriends": "Friends",
+  "sharingNoFriends": "No friends yet. Share your code to add one.",
+  "sharingBlocked": "Blocked",
+  "sharingRemoveFriend": "Remove friend",
+  "sharingRemoveFriendConfirm": "Remove {name} as a friend? You both stop being friends.",
+  "@sharingRemoveFriendConfirm": {
+    "placeholders": {
+      "name": {
+        "type": "Object"
+      }
+    }
+  },
+  "sharingBlock": "Block",
+  "sharingBlockConfirm": "Block {name}? This removes them as a friend, and they can't use your codes.",
+  "@sharingBlockConfirm": {
+    "placeholders": {
+      "name": {
+        "type": "Object"
+      }
+    }
+  },
+  "sharingUnblock": "Unblock",
+  "sharingUnblockConfirm": "Unblock {name}? They can add you again with a new code.",
+  "@sharingUnblockConfirm": {
+    "placeholders": {
+      "name": {
+        "type": "Object"
+      }
+    }
+  },
+  "sharingSignOutConfirm": "Sign out of sharing on this profile? Your share account and friends stay. Sign in again with your email.",
+  "sharingDeleteAccount": "Delete sharing account",
+  "sharingDeleteConfirm": "This deletes your share account, your share profile (@{handle}), your friends, your invites and everything stored for it, and signs it out on every device. It can't be undone.",
+  "@sharingDeleteConfirm": {
+    "placeholders": {
+      "handle": {
+        "type": "Object"
+      }
+    }
+  },
+  "sharingDeleted": "Your sharing account was deleted.",
+  "sharingCodeFieldLabel": "Friend's code",
+  "sharingNotACode": "A code has 6 letters and numbers, such as AB3K·9Q.",
+  "sharingAddFriendQuestion": "Add {name} (@{handle}) as a friend?",
+  "@sharingAddFriendQuestion": {
+    "placeholders": {
+      "name": {
+        "type": "Object"
+      },
+      "handle": {
+        "type": "Object"
+      }
+    }
+  },
+  "sharingOwnCode": "That's your own code",
+  "sharingInviteGone": "This invite has expired or was already used",
+  "sharingTooManyTries": "Too many tries. Try again later",
+  "sharingNowFriends": "You and {name} are friends now.",
+  "@sharingNowFriends": {
+    "placeholders": {
+      "name": {
+        "type": "Object"
+      }
+    }
+  },
+  "sharingSwitchToAdult": "Switch to an adult profile to add friends.",
+  "sharingEditProfile": "Edit",
+  "sharingStation": "Station: {station}",
+  "@sharingStation": {
+    "placeholders": {
+      "station": {
+        "type": "Object"
+      }
+    }
+  },
+  "sharingLiveCantShare": "Live channels play from your own tuner and can't be shared",
+  "sharingMusicCantShare": "Music channels can't be shared",
+  "sharingCopyCantShare": "Channels shared with you can't be shared again",
+  "sharingTooBig": "Channels with more than 20,000 programs can't be shared",
+  "sharingNoneMatch": "None of these programs are on your servers",
+  "sharingUpdateApp": "Update Nightingale TV to add this channel.",
+  "sharingStopsFollowing": "This channel won't follow {name}'s changes any more.",
+  "@sharingStopsFollowing": {
+    "placeholders": {
+      "name": {
+        "type": "Object"
+      }
+    }
+  },
+  "sharingNewShares": "{name} shared {count, plural, =1{1 channel} other{{count} channels}} with you. Open Menu → Sharing to add {count, plural, =1{that channel} other{those channels}}.",
+  "@sharingNewShares": {
+    "placeholders": {
+      "name": {
+        "type": "Object"
+      },
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "sharingNewSharesMany": "{count, plural, =1{1 channel was} other{{count} channels were}} shared with you. Open Menu → Sharing to add {count, plural, =1{that channel} other{those channels}}.",
+  "@sharingNewSharesMany": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "sharingSharedWithYou": "Shared with you",
+  "sharingNothingShared": "Nothing is waiting. Channels your friends share with you appear here.",
+  "sharingMatched": "Matched {matched} of {total} programs",
+  "@sharingMatched": {
+    "placeholders": {
+      "matched": {
+        "type": "Object"
+      },
+      "total": {
+        "type": "Object"
+      }
+    }
+  },
+  "sharingAddedAs": "Added as channel {number}",
+  "@sharingAddedAs": {
+    "placeholders": {
+      "number": {
+        "type": "Object"
+      }
+    }
+  },
+  "sharingDecline": "Decline",
+  "sharingShareChannels": "Share channels",
+  "sharingShareChannelsHelp": "Friends get a description of each channel, which their app rebuilds from their own servers. No video is sent.",
+  "sharingChannelsYouShare": "Channels you share",
+  "sharingNoChannelsShared": "You aren't sharing any channels.",
+  "sharingStopSharing": "Stop sharing",
+  "sharingStopSharingConfirm": "Stop sharing {name}? Friends keep their copies, but they won't get your changes.",
+  "@sharingStopSharingConfirm": {
+    "placeholders": {
+      "name": {
+        "type": "Object"
+      }
+    }
+  },
+  "sharingWith": "With {names}",
+  "@sharingWith": {
+    "placeholders": {
+      "names": {
+        "type": "Object"
+      }
+    }
+  },
+  "sharingShareWith": "Share with",
+  "sharingShare": "Share",
+  "sharingGetLink": "Get a link",
+  "sharingSharedWith": "Shared with {names}",
+  "@sharingSharedWith": {
+    "placeholders": {
+      "names": {
+        "type": "Object"
+      }
+    }
+  },
+  "sharingLinkHelp": "Whoever uses this code within 7 days becomes your friend and gets these channels. It works once.",
+  "sharingChannelsInviteText": "Here are some channels from my Nightingale TV: {link}",
+  "@sharingChannelsInviteText": {
+    "placeholders": {
+      "link": {
+        "type": "Object"
+      }
+    }
+  },
+  "sharingPickChannel": "Pick at least one channel.",
+  "sharingPickFriend": "Pick at least one friend, or use Get a link.",
+  "sharingNoFriendsToShare": "No friends yet. Get a link to share with someone new.",
+  "sharingShareEllipsis": "Share…",
+  "sharingSharedBy": "Shared by {name} (@{handle})",
+  "@sharingSharedBy": {
+    "placeholders": {
+      "name": {
+        "type": "Object"
+      },
+      "handle": {
+        "type": "Object"
+      }
+    }
+  },
+  "sharingKeepUpdated": "Keep updated",
+  "sharingKeepUpdatedHelp": "Follow {name}'s changes to this channel",
+  "@sharingKeepUpdatedHelp": {
+    "placeholders": {
+      "name": {
+        "type": "Object"
+      }
+    }
+  },
+  "sharingNoLongerUpdated": "No longer updated",
+  "sharingChannelsOffer": "{name} (@{handle}) shared these channels with you: {names}. Add {name} as a friend and get them?",
+  "@sharingChannelsOffer": {
+    "placeholders": {
+      "name": {
+        "type": "Object"
+      },
+      "handle": {
+        "type": "Object"
+      },
+      "names": {
+        "type": "Object"
+      }
+    }
+  },
+  "sharingNowFriendsChannels": "You and {name} are friends now. Their channels are waiting under Shared with you.",
+  "@sharingNowFriendsChannels": {
+    "placeholders": {
+      "name": {
+        "type": "Object"
+      }
+    }
+  },
+  "sharedTab": "Shared",
+  "sharedTabRule": "Channels you added from your friends' shares",
+  "presenceSetting": "Show what I'm watching",
+  "presenceSettingValue": "Show what I'm watching: {value}",
+  "@presenceSettingValue": {
+    "placeholders": {
+      "value": {
+        "type": "Object"
+      }
+    }
+  },
+  "presenceQuestion": "Let your friends see what you're watching?",
+  "presenceExplain": "While you watch, friends see the show or movie and the channel. Nothing else, and nothing once you stop. Watch privately, in the player's buttons, hides it until you close the app. You can change this in Sharing at any time.",
+  "presenceWatchingOn": "Watching {title} on {channel}",
+  "@presenceWatchingOn": {
+    "placeholders": {
+      "title": {
+        "type": "Object"
+      },
+      "channel": {
+        "type": "Object"
+      }
+    }
+  },
+  "presenceWatchingChannel": "Watching {channel}",
+  "@presenceWatchingChannel": {
+    "placeholders": {
+      "channel": {
+        "type": "Object"
+      }
+    }
+  },
+  "presenceIsWatching": "{name} is watching",
+  "@presenceIsWatching": {
+    "placeholders": {
+      "name": {
+        "type": "Object"
+      }
+    }
+  },
+  "presenceAndOthersWatching": "{name} and {count, plural, =1{1 friend are} other{{count} friends are}} watching",
+  "@presenceAndOthersWatching": {
+    "placeholders": {
+      "name": {
+        "type": "Object"
+      },
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "presenceWatchingToo": "{name} is watching too",
+  "@presenceWatchingToo": {
+    "placeholders": {
+      "name": {
+        "type": "Object"
+      }
+    }
+  },
+  "presenceAndOthersWatchingToo": "{name} and {count, plural, =1{1 friend are} other{{count} friends are}} watching too",
+  "@presenceAndOthersWatchingToo": {
+    "placeholders": {
+      "name": {
+        "type": "Object"
+      },
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "presenceNoticeOne": "{name} is watching now",
+  "@presenceNoticeOne": {
+    "placeholders": {
+      "name": {
+        "type": "Object"
+      }
+    }
+  },
+  "presenceNoticeMany": "{names} are watching now",
+  "@presenceNoticeMany": {
+    "placeholders": {
+      "names": {
+        "type": "Object"
+      }
+    }
+  },
+  "watchPrivately": "Watch privately",
+  "watchingPrivately": "Watching privately",
+  "watchTogether": "Watch together",
+  "partyStartTitle": "Watch {title} together",
+  "@partyStartTitle": {
+    "placeholders": {
+      "title": {
+        "type": "Object"
+      }
+    }
+  },
+  "partyStartHelp": "Everyone plays it from their own servers, in sync. Pick up to 7 friends, or get a link.",
+  "partyNoFriends": "No friends yet: get a link to invite someone.",
+  "partyGetLink": "Get a link",
+  "partyStart": "Start",
+  "partyLinkHelp": "Anyone who opens this link becomes your friend and can join.",
+  "partyInviteBanner": "{name} invited you to watch {title} together",
+  "@partyInviteBanner": {
+    "placeholders": {
+      "name": {
+        "type": "Object"
+      },
+      "title": {
+        "type": "Object"
+      }
+    }
+  },
+  "partyInviteBannerNoTitle": "{name} invited you to watch together",
+  "@partyInviteBannerNoTitle": {
+    "placeholders": {
+      "name": {
+        "type": "Object"
+      }
+    }
+  },
+  "partyJoin": "Join",
+  "partyNotNow": "Not now",
+  "partyJoinQuestion": "Join {name}'s watch party?",
+  "@partyJoinQuestion": {
+    "placeholders": {
+      "name": {
+        "type": "Object"
+      }
+    }
+  },
+  "partyOn": "{title} on {channel}",
+  "@partyOn": {
+    "placeholders": {
+      "title": {
+        "type": "Object"
+      },
+      "channel": {
+        "type": "Object"
+      }
+    }
+  },
+  "partyInSync": "In sync",
+  "partyCatchingUp": "Catching up",
+  "partyNotOnServers": "Not on your servers",
+  "partyMissingTitle": "Not on your servers: {title}",
+  "@partyMissingTitle": {
+    "placeholders": {
+      "title": {
+        "type": "Object"
+      }
+    }
+  },
+  "partyMissingRejoin": "You'll rejoin at the next program.",
+  "partyInvite": "Invite",
+  "partyLeave": "Leave",
+  "partyStay": "Stay",
+  "partyLeaveQuestion": "Leave the watch party?",
+  "partyLeaveHostDetail": "You're the host, so the party ends for everyone.",
+  "partyLeaveGuestDetail": "You'll go back to your own channels.",
+  "partyHost": "Host",
+  "partyJoined": "{name} joined",
+  "@partyJoined": {
+    "placeholders": {
+      "name": {
+        "type": "Object"
+      }
+    }
+  },
+  "partyLeft": "{name} left",
+  "@partyLeft": {
+    "placeholders": {
+      "name": {
+        "type": "Object"
+      }
+    }
+  },
+  "partyPaused": "{name} paused",
+  "@partyPaused": {
+    "placeholders": {
+      "name": {
+        "type": "Object"
+      }
+    }
+  },
+  "partyResumed": "{name} resumed",
+  "@partyResumed": {
+    "placeholders": {
+      "name": {
+        "type": "Object"
+      }
+    }
+  },
+  "partySkipped": "{name} skipped",
+  "@partySkipped": {
+    "placeholders": {
+      "name": {
+        "type": "Object"
+      }
+    }
+  },
+  "partyRestarted": "{name} restarted the program",
+  "@partyRestarted": {
+    "placeholders": {
+      "name": {
+        "type": "Object"
+      }
+    }
+  },
+  "partyWentLive": "{name} went back to live",
+  "@partyWentLive": {
+    "placeholders": {
+      "name": {
+        "type": "Object"
+      }
+    }
+  },
+  "partyEnded": "{name} ended the watch party",
+  "@partyEnded": {
+    "placeholders": {
+      "name": {
+        "type": "Object"
+      }
+    }
+  },
+  "partyLost": "Lost the watch party",
+  "partyFull": "That watch party is full",
+  "partyOver": "That watch party has ended",
+  "partyWatchParties": "Watch parties",
+  "partyNoInvites": "No watch party invites right now.",
+  "partyChannelName": "Watch party · {channel}",
+  "@partyChannelName": {
+    "placeholders": {
+      "channel": {
+        "type": "Object"
+      }
+    }
+  },
+  "partyReactions": "Reactions",
+  "partyInvited": "Invited {names}",
+  "@partyInvited": {
+    "placeholders": {
+      "names": {
+        "type": "Object"
+      }
+    }
   }
 }

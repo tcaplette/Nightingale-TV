@@ -16,7 +16,7 @@ publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
 # In Windows, build-name is used as the major, minor, and patch parts
 # of the product and file versions while build-number is used as the build suffix.
-version: 1.2.5+5007
+version: 1.2.6+5008
 
 environment:
   sdk: ^3.13.5
@@ -58,6 +58,7 @@ dependencies:
   sqlite3: ^2.9.4
   # Error reports to the Nightingale TV GlitchTip project (error-reporting).
   sentry_flutter: ^10.3.0
+  supabase: ^2.16.5
 
 dev_dependencies:
   flutter_test:
@@ -103,6 +104,10 @@ flutter:
     - assets/video_test/hevc.mp4
     - assets/video_test/hevc10.mp4
     - assets/video_test/card_expected.json
+    # Built-in share profile avatars (share-accounts D6).
+    - lib/icons/avatars/
+    # The six watch-party reactions, drawn from Noto Color Emoji (watch-together).
+    - assets/reactions/
 
   fonts:
     - family: VT323

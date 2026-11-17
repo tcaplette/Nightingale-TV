@@ -23,6 +23,7 @@ import 'playback_screen.dart';
 import 'retro_look_screen.dart';
 import 'servers_screen.dart';
 import 'profiles_screen.dart';
+import 'sharing_screen.dart';
 import 'sleep_picker.dart';
 import 'widgets/adaptive.dart';
 import 'widgets/screen_layout.dart';
@@ -195,6 +196,22 @@ class _MenuScreenState extends State<MenuScreen> {
           expand: true,
           onPressed: guard(() => Navigator.of(context)
               .push(MaterialPageRoute<void>(builder: (_) => const PhoneRemoteScreen()))),
+        ),
+      ],
+      // Sharing (share-accounts): release builds with a sharing backend, adult profiles.
+      if (household.sharing != null && profile != null && !profile.isKid) ...[
+        const SizedBox(height: 18),
+        // Shares waiting in Shared with you (channel-sharing).
+        ListenableBuilder(
+          listenable: household.sharing!.channels,
+          builder: (context, _) => TvButton(
+            label: tr.sharing,
+            icon: Icons.group,
+            expand: true,
+            badge: household.sharing!.channels.waiting.length,
+            onPressed: () => Navigator.of(context)
+                .push(MaterialPageRoute<void>(builder: (_) => const SharingScreen())),
+          ),
         ),
       ],
       // A privacy choice, not household setup: never behind the PIN.

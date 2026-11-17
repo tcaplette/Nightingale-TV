@@ -311,8 +311,11 @@ class FakePlayer implements TunerPlayer {
     _moved = true;
     position = item.start ?? Duration.zero;
     _advanced.add(null);
-    scheduleMicrotask(() => showPicture(item.start ?? Duration.zero));
+    if (!holdPicture) scheduleMicrotask(() => showPicture(item.start ?? Duration.zero));
   }
+
+  /// A queued item that moved on shows no picture until [showPicture].
+  bool holdPicture = false;
 
   /// The subtitles on screen now, what each open started with, every
   /// [setSubtitles], and what the queued item shows.
@@ -347,6 +350,12 @@ class FakePlayer implements TunerPlayer {
 
   @override
   Future<void> setVolume(double volume) async => volumes.add(volume);
+
+  /// Every [setSpeed], in order.
+  final speeds = <double>[];
+
+  @override
+  Future<void> setSpeed(double speed) async => speeds.add(speed);
 
   @override
   Future<void> dispose() async {}

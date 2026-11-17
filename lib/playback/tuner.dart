@@ -17,6 +17,7 @@ import '../server/languages.dart';
 import '../server/live_tv.dart';
 import '../server/server_set.dart';
 import 'android_device_profile.dart';
+import 'party_schedule.dart';
 import 'index_cache.dart';
 import 'playback_diagnostics.dart';
 import 'playback_proxy.dart';
@@ -122,7 +123,7 @@ class Tuner extends ChangeNotifier {
   /// Pause and rewind turned off: a viewer behind goes live at once.
   void _onSettingsChanged() {
     _followMovedChannel();
-    if (shifted && !app.settings.playback.pauseAndRewind) unawaited(goLive());
+    if (shifted && !app.settings.playback.pauseAndRewind && !inParty) unawaited(goLive());
     _followPlan();
   }
 
@@ -134,7 +135,8 @@ class Tuner extends ChangeNotifier {
   /// the tuner follows the new schedule (see [reschedule]).
   void _followPlan() {
     final ch = channel;
-    if (ch == null || ch.isLive) {
+    // A party guest's breaks are the host's windows (watch-together D5).
+    if (ch == null || ch.isLive || _party != null) {
       _planSeen = null;
       return;
     }
@@ -533,6 +535,10 @@ class Tuner extends ChangeNotifier {
     tunes++;
     // A sleep timer's fade that was cancelled never leaves a channel quiet.
     unawaited(media.setVolume(1));
+    // A party's drift nudge never outlives it (watch-together D3).
+    unawaited(media.setSpeed(1));
+    // Tuning a channel is schedule mode again (watch-together D2).
+    _party = null;
     // Diagnostics: the first tune is the launch's; one after [stop] (Android
     // coming back to the front) is a resume.
     final trigger = !_tunedOnce ? 'launch' : (channel == null ? 'resume' : 'channel');
@@ -591,7 +597,7 @@ class Tuner extends ChangeNotifier {
   Future<void> reschedule() async {
     final ch = channel;
     final current = segment;
-    if (ch == null) return;
+    if (ch == null || _party != null) return;
     // Behind the schedule, playback goes on from the pinned one.
     if (shifted) return;
     if (ch.isLive) {
@@ -928,7 +934,16 @@ class Tuner extends ChangeNotifier {
     if (current.end.difference(now) < const Duration(seconds: 4)) {
       current = schedule.playbackAt(current.end);
     }
-    final startAt = current.positionAt(now);
+    var startAt = current.positionAt(now);
+    // A party guest opens ahead by what an open costs on its link, and holds
+    // the picture until the host gets there (watch-together D3).
+    partyOpenedAhead = Duration.zero;
+    if (_party != null) partyOpens++;
+    if (_party != null && current.item != null && !current.isBreak && partyLead > Duration.zero &&
+        startAt + partyLead < current.itemTo - const Duration(seconds: 4)) {
+      startAt += partyLead;
+      partyOpenedAhead = partyLead;
+    }
     // The copy it plays from (multi-server): the first in Play from whose
     // server can be used.
     final pick = current.item == null ? null : _pick(current.item!);
@@ -1913,14 +1928,14 @@ class Tuner extends ChangeNotifier {
   /// The schedule what's on screen comes from.
   ProgramSchedule? get schedule {
     final ch = channel;
-    return _pinned ?? (ch == null ? null : app.scheduleFor(ch));
+    return _party ?? _pinned ?? (ch == null ? null : app.scheduleFor(ch));
   }
 
   /// The controls apply to what's on: a generated channel, with the setting
   /// on.
   bool get canTimeshift {
     final ch = channel;
-    return ch != null && !ch.isLive && app.settings.playback.pauseAndRewind;
+    return ch != null && !ch.isLive && (app.settings.playback.pauseAndRewind || inParty);
   }
 
   /// Where key presses have moved to, shown at once (null: none pending).
@@ -2270,6 +2285,187 @@ class Tuner extends ChangeNotifier {
     _keyframeJoin = null;
     _endSegmentAt(seg.end, generation);
     _armPreload();
+  }
+
+  // ---- Watch party (watch-together D2, D3) -------------------------------------
+  // A guest plays the host's program from a [PartySchedule] instead of the
+  // channel's schedule: the same open, seek, preload and hand-over paths,
+  // with every party time already on this device's clock (no shift). The
+  // host plays its own channel as usual; [partyHosting] lets its timeshift
+  // act for the party whatever the setting.
+
+  ProgramSchedule? _party;
+
+  /// The channel a guest was on before joining, to go back to.
+  Channel? _partyReturn;
+
+  /// This device hosts a party: pause, skip, restart and Live act whatever
+  /// the Pause and rewind setting.
+  bool partyHosting = false;
+
+  /// In a party, as guest or host.
+  bool get inParty => _party != null || partyHosting;
+
+  /// Following a party as a guest.
+  bool get partyGuest => _party != null;
+
+  /// The program a guest doesn't have, while it's on (D6).
+  String? get partyMissing => switch (_party) {
+        final PartySchedule p => p.missingAt(viewNow()),
+        _ => null,
+      };
+
+  /// Where in its item the player is (drift, D3).
+  Duration get itemPosition => _itemPosition;
+
+  /// The segment plays from the static stream, so its speed can be nudged
+  /// (a server conversion seeks instead).
+  bool get canNudgeSpeed => _active == null && status == TunerStatus.playing && !_awaitingFirstFrame;
+
+  /// The open on now has shown its picture.
+  bool get pictured => status == TunerStatus.playing && !_awaitingFirstFrame;
+
+  /// Plays [schedule] on [ch] (a guest's party channel), paused at
+  /// [frozenAt] when the host is paused. The first call remembers the
+  /// channel on, for [leaveParty]. The segment on keeps playing when the new
+  /// schedule has the same piece on now: only its end and the pause change,
+  /// and drift is the follower's to correct.
+  Future<void> followParty(Channel ch, ProgramSchedule schedule, {DateTime? frozenAt}) async {
+    final first = _party == null;
+    if (first) {
+      _noteReached(atSegmentEnd: false);
+      _endShift();
+      _partyReturn = channel;
+      if (channel != null) previousChannel = channel;
+    }
+    _party = schedule;
+    channel = ch;
+    _shift = Duration.zero;
+    _pinned = null;
+    final wasPaused = paused;
+    if (frozenAt != null) {
+      _frozen = frozenAt;
+      _pausedWall ??= _clock();
+    } else {
+      _frozen = null;
+      _pausedWall = null;
+      _pausedPosition = null;
+    }
+    final now = viewNow();
+    final want = schedule.playbackAt(now);
+    final seg = segment;
+    // A piece opening (a hand-over from a card shows no picture yet) is kept
+    // too: the host's timeline for the next program arrives just after it.
+    final keep = !first &&
+        seg != null &&
+        (status == TunerStatus.playing || status == TunerStatus.tuning || _awaitingFirstFrame) &&
+        _samePiece(seg, want);
+    if (!keep) {
+      _diagnostics?.event('party: opening ${_label(want)}');
+      await _playCurrent(++_generation, trigger: first ? 'party' : 'party-move', quiet: !first, exact: true);
+      return;
+    }
+    segment = want;
+    program = schedule.programAt(want.start.isAfter(now) ? want.start : now);
+    if (frozenAt != null) {
+      _programEnd?.cancel();
+      _cancelPreloadTimers();
+      if (!wasPaused) {
+        _holdPicture();
+        await _dropPreload();
+      }
+      // Held exactly where the host is.
+      if (seg.item != null && !want.isBreak && status == TunerStatus.playing) {
+        final at = want.positionAt(frozenAt);
+        _pausedPosition = at;
+        unawaited(media.seek(at).catchError((Object _) {}));
+      }
+    } else {
+      if (wasPaused) {
+        try {
+          await media.resume();
+        } on Object catch (e) {
+          _diagnostics?.event('party resume failed ($e); reopening');
+          await _playCurrent(++_generation, trigger: 'party-move', quiet: true, exact: true);
+          return;
+        }
+      }
+      _endSegmentAt(want.end, _generation);
+      // The segment after this one may have changed with the timeline.
+      await _dropPreload();
+      if (_mayPreload && !_awaitingFirstFrame) _armPreload();
+    }
+    notifyListeners();
+  }
+
+  /// [a] and [b] are the same piece of the same item: the same part of a
+  /// program, or the same clip at the same time.
+  static bool _samePiece(ScheduledProgram a, ScheduledProgram b) {
+    if (a.item?.id != b.item?.id || a.isBreak != b.isBreak || a.offline != b.offline) return false;
+    if (a.item == null) return a.label == b.label;
+    if (!a.isBreak) return true;
+    return (a.start.difference(b.start)).abs() < const Duration(seconds: 1);
+  }
+
+  /// Seeks the segment on to [position] in its item (drift above 2 s).
+  Future<void> partySeek(Duration position) async {
+    final seg = segment;
+    if (_party == null || seg == null || seg.item == null || status != TunerStatus.playing || _awaitingFirstFrame) return;
+    PlaybackDiagnostics.note('PARTY', 'seek to ${(position.inMilliseconds / 1000).toStringAsFixed(3)}s');
+    try {
+      await media.seek(position);
+    } on Object catch (e) {
+      _diagnostics?.event('party seek failed ($e); reopening');
+      await _playCurrent(++_generation, trigger: 'party-move', quiet: true, exact: true);
+    }
+  }
+
+  /// The drift nudge's speed (1 to stop it).
+  Future<void> setPartySpeed(double speed) => media.setSpeed(speed);
+
+  /// How far ahead a party guest's opens aim (the follower's seek lead), and
+  /// how far ahead the last open did, and how many opens there were.
+  Duration partyLead = Duration.zero;
+  Duration partyOpenedAhead = Duration.zero;
+  int partyOpens = 0;
+
+  /// Holds the picture while a guest that landed ahead waits for the host,
+  /// and lets it go on ([hold] false). Not while the party is paused.
+  Future<void> partyHold(bool hold) async {
+    if (_party == null || paused || status != TunerStatus.playing) return;
+    PlaybackDiagnostics.note('PARTY', hold ? 'hold' : 'hold over');
+    try {
+      await (hold ? media.pause() : media.resume());
+    } on Object catch (e) {
+      _diagnostics?.event('party hold failed ($e)');
+    }
+  }
+
+  /// Back to schedule mode: [to], or the channel on before joining. Nothing
+  /// is tuned while the tuner is stopped (the app is out of sight): it tunes
+  /// its last channel when it comes back.
+  Future<void> leaveParty({Channel? to}) async {
+    final wasGuest = _party != null;
+    final back = to ?? _partyReturn;
+    _party = null;
+    _partyReturn = null;
+    partyHosting = false;
+    unawaited(media.setSpeed(1));
+    if (!wasGuest || channel == null) {
+      notifyListeners();
+      if (to != null && channel != null) await tune(to);
+      return;
+    }
+    _frozen = null;
+    _pausedWall = null;
+    _pausedPosition = null;
+    final ch = back == null ? null : app.channels.where((c) => c.id == app.currentChannelId(back.id)).firstOrNull;
+    final target = ch ?? app.channels.firstOrNull;
+    if (target == null) {
+      await stop();
+      return;
+    }
+    await tune(target);
   }
 
   // ---- Live channels (live-playback) -------------------------------------------
@@ -2787,6 +2983,7 @@ class Tuner extends ChangeNotifier {
     _handover = null;
     _noteReached(atSegmentEnd: false);
     _endShift();
+    _party = null;
     await _dropPreload();
     // Nothing is opening: what's queued goes now.
     _queueFinish();

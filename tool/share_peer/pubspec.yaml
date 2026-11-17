@@ -1,0 +1,8 @@
+name: share_peer
+description: A second sharing user for live checks (share-accounts, design D13). Not part of the app.
+publish_to: none
+environment:
+  sdk: ^3.13.5
+dependencies:
+  http: ^1.2.0
+  supabase: ^2.16.5

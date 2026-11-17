@@ -79,6 +79,29 @@ tool/idle_budget/seed/
 # Error reporting DSN for official builds (error-reporting change)
 /error_reporting.env
 
+# Sharing (Supabase): the backend source in supabase/ is public; only these
+# private files stay local (self-hosted-sharing). Each one has a committed
+# *.example next to it. sharing.env holds the project URL, public key and
+# invite-link host that release builds read with --dart-define-from-file; the
+# credentials file holds the access token, secret key and DB password, which
+# never go into any build. Run tool/check_public_secrets.sh before publishing.
+/sharing.env
+/supabase-credentials.txt
+/supabase/functions/.env
+/supabase/auth-config.json
+/supabase/.temp/
+/supabase/.branches/
+/supabase/.secrets.json
+/supabase/.auth-merged.json
+# Backup copies of the private files
+/sharing.env.bak-*
+/supabase-credentials.txt.bak-*
+/supabase/functions/.env.bak-*
+/supabase/auth-config.json.bak-*
+
+# The coffeehauslabs.com website (its own project, kept out of this repo)
+/website/
+
 # Plugin architecture idea notes (kept local)
 /plugin-architecture.md
 
@@ -90,3 +113,7 @@ tool/idle_budget/seed/
 
 # Weekly bug-fix notes (kept local)
 /bug-fixes-nov-08-14-2026.md
+
+# Gradle caches and build output of the vendored plugins
+/third_party/*/android/.gradle/
+/third_party/*/android/build/
