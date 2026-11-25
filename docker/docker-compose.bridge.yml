@@ -19,6 +19,9 @@ services:
       # more than six profiles, and keep both sides the same: the lineup
       # tells Plex and Jellyfin its own port.
       - "5004-5009:5004-5009"
+      # Convert for other TVs (web admin → Servers), when it's on: TVs
+      # pair with it by this address, http://<NTV_LAN_HOST>:8487.
+      - "8487:8487"
     environment:
       # The user and group that own /config (run `id` on the host to see
       # yours). The app never runs as root.

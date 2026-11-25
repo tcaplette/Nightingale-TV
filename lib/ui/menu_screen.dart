@@ -5,6 +5,7 @@ import 'package:window_manager/window_manager.dart';
 
 import '../app_exit.dart';
 import '../app_scope.dart';
+import '../server/media_server.dart' show ServerKind;
 import '../backup/backup_archive.dart';
 import '../platform/platform_info.dart';
 import '../server/server_set.dart';
@@ -21,6 +22,8 @@ import 'live_sources_screen.dart';
 import 'live_tv_export_screen.dart';
 import 'playback_screen.dart';
 import 'retro_look_screen.dart';
+import 'convert_screens.dart';
+import 'licenses_screen.dart';
 import 'servers_screen.dart';
 import 'profiles_screen.dart';
 import 'sharing_screen.dart';
@@ -235,6 +238,17 @@ class _MenuScreenState extends State<MenuScreen> {
             .push(MaterialPageRoute<void>(builder: (_) => const ServersScreen()))),
       ),
       const SizedBox(height: 18),
+      // Converting for TVs that can't play a share's file (smb-conversion).
+      if (HouseholdScope.of(context).convertHelper case final helper?) ...[
+        TvButton(
+          label: tr.convertForOthers,
+          icon: locked ? Icons.lock : Icons.swap_horiz,
+          expand: true,
+          onPressed: guard(() => Navigator.of(context)
+              .push(MaterialPageRoute<void>(builder: (_) => ConvertForOthersScreen(helper: helper)))),
+        ),
+        const SizedBox(height: 18),
+      ],
       TvButton(
         label: app.refreshing ? tr.refreshingLibrary : tr.refreshLibrary,
         icon: locked ? Icons.lock : Icons.sync,
@@ -279,6 +293,13 @@ class _MenuScreenState extends State<MenuScreen> {
               windowManager.setFullScreen(!await windowManager.isFullScreen()),
         ),
       ],
+      const SizedBox(height: 18),
+      TvButton(
+        label: tr.licencesTitle,
+        icon: Icons.gavel,
+        expand: true,
+        onPressed: () => Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const LicensesScreen())),
+      ),
       const SizedBox(height: 18),
       TvButton(
         label: tr.signOut,
@@ -353,9 +374,14 @@ class _MenuScreenState extends State<MenuScreen> {
       for (final s in app.servers.multiple ? app.servers.ordered : const <ProfileServer>[])
         Text(
           tr.perServerStats(s.name, [
-            tr.countEpisodes(counts[s.key]?.episodes ?? 0),
-            tr.countMovies(counts[s.key]?.movies ?? 0),
-            if ((counts[s.key]?.songs ?? 0) != 0) tr.countSongs(counts[s.key]!.songs),
+            // YouTube has channels, not episodes or movies.
+            if (s.kind == ServerKind.youtube)
+              tr.youTubeChannelCount(app.youTubeChannels.where((c) => c.youtube!.serverKey == s.key).length)
+            else ...[
+              tr.countEpisodes(counts[s.key]?.episodes ?? 0),
+              tr.countMovies(counts[s.key]?.movies ?? 0),
+              if ((counts[s.key]?.songs ?? 0) != 0) tr.countSongs(counts[s.key]!.songs),
+            ],
             if (s.state != ServerState.ok) s.state.label,
           ].join(' · ')),
           style: g.body(24, color: s.state == ServerState.ok ? g.textDim : g.nowLine),
@@ -457,7 +483,7 @@ class _MenuScreenState extends State<MenuScreen> {
       serverName == null ? tr.yourServerHasNothingNew : tr.serverHasNothingNew(serverName),
     );
   }
-  final list = parts.length == 1 ? parts.first : tr.and(parts.take(parts.length - 1).join(', '), parts.last);
+  final list = joinNames(parts);
   return (tr.libraryRefreshed, tr.foundNewPrograms(list));
 }
 

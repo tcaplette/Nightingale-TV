@@ -1,7 +1,7 @@
 import 'dart:async';
 import 'dart:io';
 
-import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:nightingale_tv/data/app_storage.dart';
 import 'package:nightingale_tv/platform/install_info.dart';
@@ -40,10 +40,15 @@ class _TestStore implements Store {
   }
 
   @override
+  Future<bool> redeem() async => false;
+
+  @override
   void dispose() => unawaited(_changes.close());
 }
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+
   late Directory dir;
   late AppStorage storage;
   late DateTime now;
@@ -257,6 +262,49 @@ void main() {
     });
   });
 
+  group('Google Play', () {
+    const channel = MethodChannel('nightingale_tv/store');
+    final messenger = TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+
+    setUp(() => messenger.setMockMethodCallHandler(
+        channel, (call) async => call.method == 'query' ? {'available': true, 'owned': false} : null));
+    tearDown(() => messenger.setMockMethodCallHandler(channel, null));
+
+    /// Play calling the app, as StoreBridge.kt does.
+    Future<void> fromPlay(String method, Map<String, Object?> args) async {
+      final reply = Completer<void>();
+      await messenger.handlePlatformMessage(
+          channel.name, channel.codec.encodeMethodCall(MethodCall(method, args)), (_) => reply.complete());
+      await reply.future;
+    }
+
+    test('a purchase Play reports with no purchase open (a redeemed code) unlocks at once and is cached', () async {
+      final u = make(withStore: PlayStore(), offsetDays: 15);
+      await u.start(watchLifecycle: false);
+      await settle();
+      expect(u.value.status, UnlockStatus.expired);
+      await fromPlay('purchaseChanged', {'result': 'owned', 'owned': true, 'pending': false});
+      await settle();
+      expect(u.value.status, UnlockStatus.unlocked);
+      expect((await storage.readJson(Unlock.cacheFile) as Map)['owned'], isTrue);
+    });
+
+    test('redeem opens Play\'s redeem page and says whether it opened', () async {
+      final opened = <String>[];
+      for (final answer in [true, false]) {
+        final u = make(withStore: PlayStore(openUrl: (url) async {
+          opened.add(url);
+          return answer;
+        }));
+        await u.start(watchLifecycle: false);
+        final before = u.value;
+        expect(await u.redeem(), answer);
+        expect(u.value, before);
+      }
+      expect(opened, ['https://play.google.com/redeem', 'https://play.google.com/redeem']);
+    });
+  });
+
   group('which installs are locked', () {
     test('no store (free flavor, own build, Linux): never locked and nothing asked', () async {
       final u = make(noStore: true);
@@ -348,6 +396,31 @@ void main() {
       await Future<void>.delayed(const Duration(milliseconds: 60));
       await settle();
       expect(u.value.status, UnlockStatus.unlocked);
+    });
+
+    test('redeem records the unlock without telling the app: expired until the next check', () async {
+      final fake = FakeStore('redeem', storage);
+      final u = make(withStore: fake, offsetDays: 15);
+      await u.start(watchLifecycle: false);
+      await settle();
+      expect(u.value.status, UnlockStatus.expired);
+      expect(await u.redeem(), isFalse, reason: 'opens nothing, so the app says where to redeem');
+      await settle();
+      expect(u.value.status, UnlockStatus.expired);
+      await u.refresh();
+      await settle();
+      expect(u.value.status, UnlockStatus.unlocked);
+      expect((await storage.readJson(Unlock.cacheFile) as Map)['owned'], isTrue);
+    });
+
+    test('other modes redeem nothing', () async {
+      for (final mode in ['buy', 'pending', 'cancel', 'error', 'offline']) {
+        final fake = FakeStore(mode, storage);
+        expect(await fake.redeem(), isFalse, reason: mode);
+        await storage.flush();
+        expect(await storage.readJson(FakeStore.file), isNull, reason: mode);
+        fake.dispose();
+      }
     });
 
     test('cancel and error leave it as it was', () async {

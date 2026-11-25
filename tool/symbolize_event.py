@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Prints a GlitchTip event's stack frames with Dart names (library-scan-anr D4).
+"""Prints a GlitchTip event's stack frames with Dart and engine names (library-scan-anr D4, crash-visibility D1).
 
-    tool/symbolize_event.py <event-id> [--dist DIR] [--apk FILE ...]
+    tool/symbolize_event.py <event-id> [--dist DIR] [--apk FILE ...] [--engine REVISION]
 
 An ANR or native crash reports the frames of the app's compiled Dart code as
 raw addresses in an APK ("base.apk (offset 18e8000)", 0x006a4da8). This
@@ -11,6 +11,15 @@ and runs the NDK's llvm-symbolizer on that release's saved debug files
 save) to print each libapp.so frame as a Dart function with file and line.
 Frames are printed innermost first. Frames in other libraries are printed
 with their library named; Java and Dart frames as GlitchTip has them.
+
+A native crash (sentry-native, crash-visibility D1) reports absolute
+addresses, each frame with its library's path and load address (GlitchTip
+keeps those, but drops the event's debug images and so the build IDs). Its
+libapp.so frames are named the same way, and its libflutter.so frames from
+the engine's unstripped library: flutter_infra_release's
+android-<abi>-release/symbols.zip for the release's engine revision
+(<dist>/symbols/engine.version, else --engine, else the local Flutter SDK's),
+downloaded once into ~/.cache/nightingale-symbols/.
 
 --dist is the release's folder (default dist/<version> or dist/v<version>,
 from the event's release tag). --apk names the APK(s) the device ran, when
@@ -34,6 +43,14 @@ ROOT = Path(__file__).resolve().parent.parent
 ORG = 'coffeehauslabs'
 PROJECT = 'nightingale-tv'
 LIBAPP = 'libapp.so'
+LIBFLUTTER = 'libflutter.so'
+CACHE = Path.home() / '.cache' / 'nightingale-symbols'
+ENGINE_URL = 'https://storage.googleapis.com/flutter_infra_release/flutter/{rev}/android-{abi}-release/symbols.zip'
+# Android ABI -> the engine's artifact name.
+ENGINE_ABI = {'arm64-v8a': 'arm64', 'armeabi-v7a': 'arm', 'x86_64': 'x64', 'x86': 'x86'}
+# A device architecture (GlitchTip's device context) -> Android ABI.
+ARCH_ABI = {'arm64-v8a': 'arm64-v8a', 'arm64': 'arm64-v8a', 'aarch64': 'arm64-v8a', 'armeabi-v7a': 'armeabi-v7a',
+            'arm': 'armeabi-v7a', 'x86_64': 'x86_64', 'amd64': 'x86_64', 'x86': 'x86', 'i686': 'x86'}
 
 
 # ---- ELF -------------------------------------------------------------------
@@ -139,6 +156,145 @@ def symbolize(symbolizer, debug_file, addresses):
     return result
 
 
+# ---- Native crashes (crash-visibility D1) ----------------------------------
+
+def images(event):
+    """The event's loaded libraries: [(start, end, code file, build ID or None)]."""
+    found = []
+    metas = [event.get('debug_meta') or {}]
+    metas += [e.get('data') or {} for e in event.get('entries', []) if e.get('type') in ('debugmeta', 'debug_meta')]
+    for meta in metas:
+        for img in meta.get('images') or []:
+            try:
+                start = int(str(img.get('image_addr')), 16)
+            except ValueError:
+                continue
+            size = int(img.get('image_size') or 0)
+            code_id = (img.get('code_id') or '').lower() or None
+            found.append((start, start + size, img.get('code_file') or img.get('name') or '', code_id))
+    return found
+
+
+def image_at(imgs, address):
+    for start, end, code_file, code_id in imgs:
+        if start <= address < end:
+            return start, code_file, code_id
+    return None
+
+
+def library_name(code_file):
+    """'libflutter.so' from '/data/app/…/lib/x86_64/libflutter.so' or '…/base.apk!/lib/x86_64/libflutter.so'."""
+    return re.split(r'[/!]', code_file or '')[-1] or code_file
+
+
+def abi_from_path(code_file):
+    m = re.search(r'/lib/([^/]+)/[^/]+\.so$', code_file or '')
+    if m and m.group(1) in ENGINE_ABI:
+        return m.group(1)
+    m = re.search(r'/lib/(arm64|arm|x86_64|x86)/', code_file or '')
+    return {'arm64': 'arm64-v8a', 'arm': 'armeabi-v7a', 'x86_64': 'x86_64', 'x86': 'x86'}.get(m.group(1)) if m else None
+
+
+def engine_revision(dist, given):
+    if given:
+        return given
+    if dist and (dist / 'symbols' / 'engine.version').exists():
+        return (dist / 'symbols' / 'engine.version').read_text().strip()
+    print('No engine.version with the release: using this machine\'s Flutter engine, which may differ (--engine).')
+    try:
+        out = subprocess.run(['flutter', '--version', '--machine'], capture_output=True, text=True, check=True).stdout
+        return json.loads(out[out.index('{'):])['engineRevision']
+    except (OSError, subprocess.CalledProcessError, ValueError, KeyError):
+        return None
+
+
+def engine_library(revision, abi):
+    """The engine's unstripped libflutter.so for [revision] and [abi], cached; None if unavailable."""
+    if not revision or abi not in ENGINE_ABI:
+        return None
+    lib = CACHE / revision / abi / LIBFLUTTER
+    if lib.exists():
+        return lib
+    import requests
+    url = ENGINE_URL.format(rev=revision, abi=ENGINE_ABI[abi])
+    print(f'Downloading the engine symbols: {url}')
+    r = requests.get(url, timeout=600)
+    if r.status_code != 200:
+        print(f'  not available ({r.status_code})')
+        return None
+    lib.parent.mkdir(parents=True, exist_ok=True)
+    zipped = lib.parent / 'symbols.zip'
+    zipped.write_bytes(r.content)
+    with zipfile.ZipFile(zipped) as z:
+        name = next((n for n in z.namelist() if n.endswith(LIBFLUTTER)), None)
+        if not name:
+            print('  symbols.zip has no libflutter.so')
+            return None
+        lib.write_bytes(z.read(name))
+    zipped.unlink()
+    return lib
+
+
+def sideloaded(event):
+    """True/False as the event's isSideLoaded tag says, else None."""
+    tag = next((t.get('value') for t in event.get('tags', []) if t.get('key') == 'isSideLoaded'), None)
+    return {'true': True, 'false': False}.get(str(tag).lower())
+
+
+def choose_libapp(debug_files, abi, apk_ids, side):
+    """(debug file or None, how it was chosen) for a libapp.so with no build ID.
+
+    The APKs and the Play bundle of a release have different compiled code
+    under the same file name (symbols/ and symbols/play/), so a wrong pick
+    would print wrong names. An --apk's own build ID decides; otherwise how
+    the app was installed does; otherwise only a single candidate is taken."""
+    named = {b: d for b, d in debug_files.items() if d.name == f'libapp-{abi}.debug'}
+    if apk_ids:
+        hit = next((d for b, d in named.items() if b in apk_ids), None)
+        return hit, (f'{hit}, by the --apk\'s build ID' if hit else 'no debug file has the --apk\'s build ID: shown by address')
+    free = [d for d in named.values() if d.parent.name != 'play']
+    play = [d for d in named.values() if d.parent.name == 'play']
+    if side is not None and (free or play):
+        pick = free if side else play
+        if len(pick) == 1:
+            return pick[0], f'{pick[0]}, as the app was {"sideloaded" if side else "installed from a store"} (the event has no build ID to check)'
+        return None, f'no debug file for a {"sideloaded" if side else "store"} install: shown by address (pass --apk)'
+    if len(named) == 1:
+        only = next(iter(named.values()))
+        return only, f'{only}, the only one for this ABI (the event has no build ID to check)'
+    return None, 'the event has no build ID and several debug files fit: shown by address (pass --apk)'
+
+
+def engine_mismatch(engine_id, code_id, apk_ids):
+    """Why the engine's library isn't known to be the crashed one, or None.
+
+    Another engine (a profile build, another Flutter) would name every frame
+    wrongly, so it must match the event's build ID or an APK's."""
+    if code_id:
+        return None if same_build(code_id, engine_id) else f'the event\'s build ID {code_id} isn\'t the engine\'s ({engine_id})'
+    if not apk_ids:
+        return 'neither the event nor an APK says which engine it was (pass --apk)'
+    return None if engine_id in apk_ids else f'the APK has another engine than {engine_id}'
+
+
+def same_build(code_id, file_build_id):
+    """sentry-native's code_id is the GNU build ID (some SDKs pad or cut it)."""
+    if not code_id or not file_build_id:
+        return True
+    a, b = code_id.lower(), file_build_id.lower()
+    return a.startswith(b) or b.startswith(a)
+
+
+def signal_of(event):
+    for entry in event.get('entries', []):
+        if entry.get('type') == 'exception':
+            for v in entry['data'].get('values') or []:
+                meta = ((v.get('mechanism') or {}).get('meta') or {}).get('signal') or {}
+                if meta:
+                    return f"{meta.get('name') or ''} ({meta.get('number')})".strip()
+    return None
+
+
 # ---- GlitchTip -------------------------------------------------------------
 
 def credentials(path):
@@ -210,6 +366,7 @@ def main(argv=None):
     p.add_argument('event_id')
     p.add_argument('--dist', help="the release's folder (default dist/<version> or dist/v<version>)")
     p.add_argument('--apk', action='append', default=[], help='an APK the device ran (repeatable)')
+    p.add_argument('--engine', help="the Flutter engine revision the release was built with")
     p.add_argument('--credentials', default=str(ROOT / 'glitchtip-credentials.txt'))
     p.add_argument('--org', default=ORG)
     p.add_argument('--project', default=PROJECT)
@@ -241,7 +398,18 @@ def main(argv=None):
     if not apks:
         print(f'No APKs of {version} found ({dist or "dist/"}): native frames are shown by APK offset.')
 
-    symbolizer = find_symbolizer() if debug_files else None
+    imgs = images(event)
+    signal = signal_of(event)
+    if signal:
+        print(f'Signal: {signal}')
+    native = any(library_name(c) == LIBFLUTTER for _, _, c, _ in imgs) or any(
+        library_name(f.get('package') or '') == LIBFLUTTER and f.get('image_addr')
+        for _, frames in stacks(event) for f in frames)
+    engine = {}  # abi -> (path, build id) of the engine's libflutter.so
+    revision = engine_revision(dist, args.engine) if imgs or native else None
+    if imgs or native:
+        print(f'Engine revision: {revision or "unknown"}')
+    symbolizer = find_symbolizer() if debug_files or native else None
     libs = {apk: libraries(apk) for apk in apks}
     ids = {}
 
@@ -295,6 +463,25 @@ def main(argv=None):
                 ids[key] = build_id(z.read(entry))
         return debug_files.get(ids[key])
 
+    guessed = {}
+
+    def apk_build_ids(entry):
+        found = set()
+        for apk in apks:
+            for _, _, name in libs[apk]:
+                if name == entry or name == 'base/' + entry:
+                    with zipfile.ZipFile(apk) as z:
+                        found.add(build_id(z.read(name)))
+        return found
+
+    def libapp_for(abi):
+        """The debug file of a libapp.so whose build ID the event lacks."""
+        if abi not in guessed:
+            guessed[abi], why = choose_libapp(debug_files, abi, apk_build_ids(f'lib/{abi}/{LIBAPP}') if args.apk else set(),
+                                              sideloaded(event))
+            print(f'libapp.so ({abi}): {why}')
+        return guessed[abi]
+
     status = 0
     for title, frames in stacks(event):
         print(f'\n{title}')
@@ -306,7 +493,41 @@ def main(argv=None):
             addr = f.get('instruction_addr') or f.get('instructionAddr')
             where = resolve(f.get('package')) if addr else None
             lookup = None
-            if where and where[1].endswith('/' + LIBAPP):
+            image = None
+            if addr and not where:
+                base = f.get('image_addr') or f.get('imageAddr')
+                if base and f.get('package'):
+                    image = (int(base, 16), f['package'], None)
+                elif imgs:
+                    image = image_at(imgs, int(addr, 16))
+            if image:
+                start, code_file, code_id = image
+                lib = library_name(code_file)
+                rel = int(addr, 16) - start
+                abi = abi_from_path(code_file) or ARCH_ABI.get(arch or '')
+                debug = None
+                if lib == LIBAPP:
+                    debug = debug_files.get(code_id) or next(
+                        (d for b, d in debug_files.items() if same_build(code_id, b) and code_id), None)
+                    if not debug and not code_id and abi:
+                        debug = libapp_for(abi)
+                elif lib == LIBFLUTTER and abi:
+                    if abi not in engine:
+                        path = engine_library(revision, abi)
+                        bid = build_id(path.read_bytes()) if path else None
+                        shipped = apk_build_ids(f'lib/{abi}/{LIBFLUTTER}')
+                        why = path and engine_mismatch(bid, code_id, shipped)
+                        if why:
+                            print(f'libflutter.so ({abi}): {why}: shown by address')
+                            path = None
+                        engine[abi] = (path, bid)
+                    path, _ = engine[abi]
+                    debug = path
+                where = (None, f'{lib}+{rel:#x}')
+                if debug:
+                    lookup = (debug, rel if i == 0 else rel - 1)
+                    wanted.setdefault(debug, set()).add(lookup[1])
+            if where and where[0] and where[1].endswith('/' + LIBAPP):
                 a = int(addr, 16)
                 debug = debug_for(*where)
                 thumb = abi_of(where[1]) == 'armeabi-v7a' and a & 1
@@ -328,7 +549,7 @@ def main(argv=None):
                 named = PACKAGE.match(f.get('package') or '')
                 lib = where[1] if where else (named.group('lib') if named and named.group('lib') else f.get('package') or 'unknown library')
                 why = ''
-                if where and where[1].endswith('/' + LIBAPP):
+                if where and where[0] and where[1].endswith('/' + LIBAPP):
                     status = 2
                     if abi_of(where[1]) == 'armeabi-v7a' and int(addr, 16) & 1:
                         why = ' (Thumb address)'

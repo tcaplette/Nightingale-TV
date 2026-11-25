@@ -1,8 +1,8 @@
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:nightingale_tv/backup/backup_archive.dart';
-import 'package:nightingale_tv/backup/backup_store.dart';
 import 'package:nightingale_tv/backup/transfer_server.dart';
 import 'package:nightingale_tv/profiles/household.dart';
 import 'package:nightingale_tv/remote/remote_control.dart';
@@ -15,7 +15,7 @@ void main() {
   late Household h;
   late TransferServer server;
   late Uri url;
-  final uploads = <StoredBackup>[];
+  final uploads = <Uint8List>[];
   final client = HttpClient();
 
   setUp(() async {
@@ -45,6 +45,12 @@ void main() {
   }
 
   Uri at(String path) => url.resolve(path);
+
+  /// Nothing is ever kept in `backups/`.
+  Future<void> nothingKept() async {
+    final folder = h.backups!.store.dir;
+    expect(await folder.exists() ? await folder.list(recursive: true).where((f) => f is File).toList() : const [], isEmpty);
+  }
   const action = {RemoteControl.actionHeader: '1'};
 
   test('the address holds a 128-bit token; any other address is not found', () async {
@@ -70,15 +76,15 @@ void main() {
     expect(headers.value('content-disposition'), matches(RegExp(r'attachment; filename="nightingale-tv-\d{4}-\d\d-\d\d-\d{4}\.ntvbackup"')));
     final archive = BackupArchive.check(bytes);
     expect(archive.summary.profiles, ['Mom', 'Kids']);
-    // A download isn't kept in the store.
-    expect(await h.backups!.store.list(), isEmpty);
+    // A download isn't kept.
+    await nothingKept();
   });
 
   test('an upload without the remote\'s header is refused', () async {
     final bytes = (await h.backups!.build(BackupReason.manual)).bytes;
     expect((await send('POST', at('restore'), body: bytes)).$1, HttpStatus.forbidden);
     expect(uploads, isEmpty);
-    expect(await h.backups!.store.list(), isEmpty);
+    await nothingKept();
   });
 
   test('an upload over 32 MB is refused, by its length or as it arrives', () async {
@@ -105,7 +111,7 @@ void main() {
       // The server may close the connection before the body is all sent.
     }
     expect(uploads, isEmpty);
-    expect(await h.backups!.store.list(), isEmpty);
+    await nothingKept();
   });
 
   test('a damaged upload is turned down with its reason', () async {
@@ -115,15 +121,13 @@ void main() {
     expect(uploads, isEmpty);
   });
 
-  test('a good upload is kept as "From a file" and handed to the TV', () async {
+  test('a good upload is handed to the TV as it came, and not kept', () async {
     final bytes = (await h.backups!.build(BackupReason.manual)).bytes;
     final (status, _, _) = await send('POST', at('restore'), headers: action, body: bytes);
     expect(status, HttpStatus.ok);
     expect(uploads, hasLength(1));
-    expect(uploads.single.kind, BackupReason.file);
-    expect(uploads.single.kindLabel, 'From a file');
-    final stored = await h.backups!.store.list();
-    expect(stored.single.name, uploads.single.name);
+    expect(uploads.single, bytes);
+    await nothingKept();
   });
 
   test('it stops when closed, and after its idle time', () async {

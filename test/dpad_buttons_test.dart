@@ -129,26 +129,24 @@ void main() {
       await h.end(tester);
     });
 
-    testWidgets('Right, Up, Right, Right, OK opens the sleep picker; Captions comes after; Right stops at the end',
+    testWidgets('Right, Up, Right, Right, OK opens the sleep picker; Right stops at the end; Captions is not on the row',
         (tester) async {
       await start(tester);
       await keys(tester, [right, up, right, right]);
       expect(lit(tester), ['Sleep']);
       await key(tester, right);
-      expect(lit(tester), ['Captions']);
-      await key(tester, right);
-      expect(lit(tester), ['Captions']);
-      await keys(tester, [left, left, left, left]);
+      expect(lit(tester), ['Sleep']);
+      expect(find.widgetWithText(TvPointerButton, 'Captions'), findsNothing);
+      await keys(tester, [left, left, left]);
       expect(lit(tester), ['Guide']);
       await keys(tester, [right, right, ok]);
       expect(dialog, findsOneWidget);
       expect(find.text('Sleep timer'), findsOneWidget);
       await h.end(tester);
     });
-
-    testWidgets('Right, Up, Right, Right, Right, OK opens the captions picker, Off first', (tester) async {
+    testWidgets('without the bar, Right, Down, OK opens the captions picker, Off first (subtitles)', (tester) async {
       await start(tester);
-      await keys(tester, [right, up, right, right, right, ok]);
+      await keys(tester, [right, down, ok]);
       expect(dialog, findsOneWidget);
       expect(find.descendant(of: dialog, matching: find.text('Captions')), findsOneWidget);
       expect(find.descendant(of: dialog, matching: find.text('Off')), findsOneWidget);

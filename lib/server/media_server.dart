@@ -6,7 +6,14 @@ import 'live_tv.dart';
 enum ServerKind {
   jellyfin('Jellyfin'),
   emby('Emby'),
-  plex('Plex');
+  plex('Plex'),
+
+  /// An SMB share (smb-sources): files with no media server.
+  smb('SMB'),
+
+  /// A Google account's picked YouTube subscriptions
+  /// (youtube-subscriptions D1), played in YouTube's own player.
+  youtube('YouTube');
 
   const ServerKind(this.label);
 
@@ -51,6 +58,7 @@ class ServerSession {
     this.kind = ServerKind.jellyfin,
     this.accountToken,
     this.relay = false,
+    this.clientId,
   });
 
   final String serverUrl;
@@ -77,6 +85,10 @@ class ServerSession {
   /// Plex only: [serverUrl] is Plex's relay, which limits quality.
   final bool relay;
 
+  /// YouTube only: the user's own Google client's id (D10); null for the
+  /// app's shared client. Its secret is in the secret store with the token.
+  final String? clientId;
+
   /// Jellyfin sign-ins are saved exactly as before server kinds existed.
   Map<String, Object?> toJson() => {
         'serverUrl': serverUrl,
@@ -89,12 +101,14 @@ class ServerSession {
         if (kind != ServerKind.jellyfin) 'kind': kind.name,
         if (accountToken != null) 'accountToken': accountToken,
         if (relay) 'relay': true,
+        if (clientId != null) 'clientId': clientId,
       };
 
-  ServerSession _copy({String? serverUrl, String? deviceId, String? serverId, bool? relay, String? accessToken}) =>
+  ServerSession _copy(
+          {String? serverUrl, String? deviceId, String? serverId, bool? relay, String? accessToken, String? serverName}) =>
       ServerSession(
         serverUrl: serverUrl ?? this.serverUrl,
-        serverName: serverName,
+        serverName: serverName ?? this.serverName,
         userId: userId,
         userName: userName,
         accessToken: accessToken ?? this.accessToken,
@@ -103,10 +117,14 @@ class ServerSession {
         kind: kind,
         accountToken: accountToken,
         relay: relay ?? this.relay,
+        clientId: clientId,
       );
 
   /// The same sign-in, identifying this PC as [id].
   ServerSession withDeviceId(String id) => _copy(deviceId: id);
+
+  /// The same sign-in under another [name] (a share renamed).
+  ServerSession withServerName(String name) => _copy(serverName: name);
 
   /// The same sign-in, knowing the server's [id].
   ServerSession withServerId(String id) => _copy(serverId: id);
@@ -129,6 +147,7 @@ class ServerSession {
       kind: kind,
       accountToken: json['accountToken'] as String?,
       relay: json['relay'] == true,
+      clientId: json['clientId'] as String?,
     );
   }
 }
@@ -322,6 +341,7 @@ class SubtitleTrack {
     required this.id,
     required this.codec,
     this.language,
+    this.languageTag,
     this.title,
     this.isDefault = false,
     this.isForced = false,
@@ -340,6 +360,10 @@ class SubtitleTrack {
 
   /// ISO 639-2 (`eng`), null when the server doesn't know it.
   final String? language;
+
+  /// The language as the server wrote it (`zh-Hant`, `zh-TW`, `chi`), which
+  /// can say the script or region that [language] loses (cjk-languages D6).
+  final String? languageTag;
   final String? title;
   final bool isDefault;
   final bool isForced;
@@ -382,6 +406,7 @@ class SubtitleTrack {
       other.id == id &&
       other.codec == codec &&
       other.language == language &&
+      other.languageTag == languageTag &&
       other.title == title &&
       other.isDefault == isDefault &&
       other.isForced == isForced &&
@@ -390,7 +415,7 @@ class SubtitleTrack {
       other.source == source;
 
   @override
-  int get hashCode => Object.hash(id, codec, language, title, isDefault, isForced, isExternal, position, source);
+  int get hashCode => Object.hash(id, codec, language, languageTag, title, isDefault, isForced, isExternal, position, source);
 
   @override
   String toString() => 'SubtitleTrack($id $codec ${language ?? '-'}${title == null ? '' : ' "$title"'}'

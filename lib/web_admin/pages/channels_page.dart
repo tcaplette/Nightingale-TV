@@ -79,7 +79,7 @@ class _ChannelsPageState extends State<ChannelsPage> {
     final query = _search.text.trim().toLowerCase();
     final shown = [
       for (final c in channels)
-        if (query.isEmpty || '${c['number']} ${c['name']}'.toLowerCase().contains(query)) c,
+        if (query.isEmpty || '${c['number']} ${channelLabel(c)}'.toLowerCase().contains(query)) c,
     ];
     final narrow = MediaQuery.sizeOf(context).width < 600;
     final header = <Widget>[
@@ -141,8 +141,8 @@ class _ChannelsPageState extends State<ChannelsPage> {
           child: ListTile(
             minVerticalPadding: 12,
             leading: ChannelIconView(
-                icon: icon, profileId: widget.profileId, channelId: c['id'] as String, fallbackText: c['name'] as String),
-            title: Text('${c['number']}  ${c['name']}', overflow: TextOverflow.ellipsis),
+                icon: icon, profileId: widget.profileId, channelId: c['id'] as String, fallbackText: channelLabel(c)),
+            title: Text('${c['number']}  ${channelLabel(c)}', overflow: TextOverflow.ellipsis),
             subtitle: Text(
               [
                 if (now != null) now['title'] as String,
@@ -549,7 +549,7 @@ class _ChannelEditorPageState extends State<ChannelEditorPage> {
         _catalog = catalog;
         _source = null;
         _commercials = commercials;
-        _name.text = c['name'] as String;
+        _name.text = channelLabel(c);
         _number.text = '${c['number']}';
       });
     } on Object catch (e) {
@@ -562,7 +562,7 @@ class _ChannelEditorPageState extends State<ChannelEditorPage> {
     if (r is Map<String, Object?> && mounted) {
       setState(() {
         _c = r;
-        _name.text = r['name'] as String;
+        _name.text = channelLabel(r);
         _number.text = '${r['number']}';
       });
     }

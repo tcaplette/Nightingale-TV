@@ -220,10 +220,10 @@ class ProgramBlock {
 
 /// "Every day", "Weekdays", "Weekends", or "Sat" / "Mon, Wed, Fri".
 String describeDays(Set<int> days) {
-  if (days.length == 7) return 'Every day';
-  if (days.length == 5 && days.every((d) => d <= 5)) return 'Weekdays';
-  if (days.length == 2 && days.containsAll({6, 7})) return 'Weekends';
-  return [for (var d = 1; d <= 7; d++) if (days.contains(d)) weekdayName(d)].join(', ');
+  if (days.length == 7) return tr.everyDay;
+  if (days.length == 5 && days.every((d) => d <= 5)) return tr.weekdays;
+  if (days.length == 2 && days.containsAll({6, 7})) return tr.weekends;
+  return [for (var d = 1; d <= 7; d++) if (days.contains(d)) weekdayName(d)].join(tr.listSeparator);
 }
 
 /// Whether [a] and [b] would ever be on the same channel at the same time.
@@ -252,7 +252,7 @@ ProgramBlock lateNightDefaults(ProgramBlock block) => block
 
 /// Whether the shortcut copies [channel]'s source and order: a music, live
 /// or block-only channel has nothing suitable.
-bool lateNightCopies(Channel channel) => !channel.isMusic && !channel.isLive && !channel.blockOnly;
+bool lateNightCopies(Channel channel) => !channel.isMusic && !channel.isLive && !channel.blockOnly && !channel.isYouTube;
 
 /// What a late-night block on [channel] plays: the channel's own source,
 /// TV-MA and up, or nothing picked when it has no usable source.

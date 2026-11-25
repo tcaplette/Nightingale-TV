@@ -276,7 +276,7 @@ void main() {
       }
     });
 
-    test('a launch with a daily backup due builds it only after the first picture', () async {
+    test('a launch with the automatic backup due builds it only after the first picture', () async {
       final dir2 = await Directory.systemTemp.createTemp('nightingale_tv_latency_backup');
       // 10 s and 15 s after the picture in the app; shortened here.
       final after = AppState.launchAfterPicture;
@@ -296,15 +296,15 @@ void main() {
         // The TV screen tunes the last channel as soon as the lineup shows.
         launched.playbackActivity.value = PlaybackActivity.tuning;
         await Future<void>.delayed(const Duration(milliseconds: 600));
-        expect(await backups.store.list(), isEmpty, reason: 'no backup is built while the first stream opens');
+        expect(await backups.store.latest(), isNull, reason: 'no backup is built while the first stream opens');
         launched.playbackActivity.value = PlaybackActivity.playing;
         await Future<void>.delayed(const Duration(milliseconds: 150));
-        expect(await backups.store.list(), isEmpty, reason: 'not at the picture itself');
+        expect(await backups.store.latest(), isNull, reason: 'not at the picture itself');
         final deadline = DateTime.now().add(const Duration(seconds: 3));
-        while ((await backups.store.list()).isEmpty && DateTime.now().isBefore(deadline)) {
+        while (await backups.store.latest() == null && DateTime.now().isBefore(deadline)) {
           await Future<void>.delayed(const Duration(milliseconds: 50));
         }
-        expect((await backups.store.list()).single.kind, BackupReason.daily);
+        expect((await backups.store.latest())!.reason, BackupReason.daily);
       } finally {
         backups.dispose();
         household.leave();

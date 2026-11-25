@@ -24,7 +24,7 @@ class LanguageController extends ChangeNotifier with WidgetsBindingObserver {
   String? _last;
 
   static List<String> _platformLanguages() =>
-      [for (final l in PlatformDispatcher.instance.locales) l.languageCode];
+      [for (final l in PlatformDispatcher.instance.locales) l.toLanguageTag()];
 
   /// What Automatic means on this device right now.
   String get automatic {
@@ -41,7 +41,7 @@ class LanguageController extends ChangeNotifier with WidgetsBindingObserver {
   /// The language showing now.
   String get language => _hasProfile ? resolve(_profileChoice) : resolve(_last);
 
-  Locale get locale => Locale(language);
+  Locale get locale => localeOf(language);
 
   /// What was saved for screens with no profile, at start-up.
   void restoreLast(String? language) {

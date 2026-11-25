@@ -2,6 +2,8 @@
 
 [Sharing](README.md#sharing) (friends, shared channels, what friends are watching, watching together) needs a backend. The official builds use the official one, whose keys are not in this repository. If you build Nightingale TV from source, you can run the same backend on your own [Supabase](https://supabase.com) project, send sign-in codes through your own email service, and serve invite links from your own website. This guide walks through it.
 
+Channels built from SMB shares share like any other, as a recipe each friend rebuilds from their own servers; home videos are never sent, and the backend needs nothing new for them.
+
 **A self-hosted backend is a separate network.** People on your builds can add each other as friends and share channels, but they can't add friends who use the official builds, and the reverse. Each build talks only to the backend in its own `sharing.env`.
 
 What you need:
@@ -133,7 +135,7 @@ If any of the three is empty, your builds have no Sharing.
 
 Only release builds have Sharing. `flutter run`, debug and profile builds never do.
 
-- **Android:** set up your release key as described in [Building for Android](README.md#building-for-android), then run `tool/build_apk.sh`. The APKs in `dist/` have Sharing, and Android verifies your invite host for App Links when the app is installed.
+- **Android:** set up your release key as described in [Building for Android](README.md#building-for-android), then run `tool/build_apk.sh`. The first build also builds the app's FFmpeg (it needs the Android NDK; see the same section). The APKs in `dist/` have Sharing, and Android verifies your invite host for App Links when the app is installed.
 - **Linux:** `tool/build_linux_release.sh` (or `tool/build_deb.sh` for a `.deb`); see [Building for Linux](README.md#building-for-linux).
 
 Every build script reads `sharing.env` from the repository root when it's there.

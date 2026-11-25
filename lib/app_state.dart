@@ -17,6 +17,8 @@ import 'channels/channel_numbers.dart';
 import 'channels/premieres.dart';
 import 'channels/program_block.dart';
 import 'channels/schedule.dart';
+import 'channels/server_colors.dart';
+export 'channels/server_colors.dart';
 import 'commercials/analysis/analysis_cache.dart';
 import 'commercials/analysis/detections.dart';
 import 'commercials/analysis/ffmpeg_runner.dart';
@@ -50,6 +52,13 @@ import 'server/plex/plex_client.dart';
 import 'server/plex/plex_connections.dart';
 import 'server/server_clients.dart';
 import 'server/server_set.dart';
+import 'server/smb/smb_gateway.dart';
+import 'server/smb/smb_library.dart';
+import 'server/smb/smb_profile.dart';
+import 'server/smb/smb_server.dart';
+import 'server/youtube/youtube_api.dart';
+import 'server/youtube/youtube_client_config.dart';
+import 'server/youtube/youtube_server.dart';
 import 'ui/format.dart';
 import 'l10n/tr.dart';
 import 'reporting/error_reports.dart';
@@ -57,6 +66,7 @@ import 'sharing/channel_recipe.dart';
 import 'sharing/recipe_cache.dart';
 import 'sharing/recipe_matcher.dart';
 import 'reporting/report_breadcrumbs.dart';
+import 'reporting/startup_trail.dart';
 
 /// A choice for the maximum streaming bitrate: Original (no [kbps]) or a
 /// fixed cap.
@@ -375,7 +385,10 @@ class AppSettings {
     this.lineupVersion = 0,
     this.guideRangeHours = GuideRange.defaultHours,
     Set<String>? removedLineupBlocks,
-  })  : commercialPools = commercialPools ?? [],
+    Map<String, String>? serverColors,
+    this.guideServerColors = true,
+  })  : serverColors = serverColors ?? {},
+        commercialPools = commercialPools ?? [],
         groups = groups ?? [],
         guideTabs = guideTabs ?? [...GuideTabs.defaultOrder],
         hiddenTabs = hiddenTabs ?? {},
@@ -431,6 +444,13 @@ class AppSettings {
 
   Duration get guideRange => Duration(hours: guideRangeHours);
 
+  /// Guide colours chosen for servers and M3U sources (guide-server-colors),
+  /// by server key or `live:<source id>`.
+  Map<String, String> serverColors;
+
+  /// Server colours in the guide; on unless turned off.
+  bool guideServerColors;
+
   /// The pool settings from before break plans became, with an id that's
   /// the same every time the upgrade runs.
   static const legacyPoolId = 'pool-commercials';
@@ -459,6 +479,9 @@ class AppSettings {
         'lineupVersion': lineupVersion,
         'guideRangeHours': guideRangeHours,
         if (removedLineupBlocks.isNotEmpty) 'removedLineupBlocks': removedLineupBlocks.toList(),
+        // Only when chosen, so one-server profiles save what they always did.
+        if (serverColors.isNotEmpty) 'serverColors': serverColors,
+        if (!guideServerColors) 'guideServerColors': false,
       };
 
   /// Jellyfin device IDs start with this.
@@ -489,7 +512,12 @@ class AppSettings {
       ..premieres = PremiereSettings.fromJson(j['premieres'])
       ..lineupVersion = j['lineupVersion'] as int? ?? 0
       ..guideRangeHours = GuideRange.parse(j['guideRangeHours'])
-      ..removedLineupBlocks = {...?(j['removedLineupBlocks'] as List?)?.whereType<String>()};
+      ..removedLineupBlocks = {...?(j['removedLineupBlocks'] as List?)?.whereType<String>()}
+      ..serverColors = {
+        for (final e in ((j['serverColors'] as Map?) ?? const {}).entries)
+          if (e.value is String) '${e.key}': e.value as String
+      }
+      ..guideServerColors = j['guideServerColors'] != false;
     if (j['commercialPlan'] case final Map<String, Object?> plan) {
       return withExtras(AppSettings(
         installId: installId,
@@ -540,10 +568,12 @@ class AppState extends ChangeNotifier {
       this._background = false,
       this.exportBusy,
       this.analysisAllowed,
-      this.safetyBackup,
+      this.saveUndoPoint,
       bool Function()? sharingLinked,
+      String Function()? profileName,
       @visibleForTesting this._sessionClient})
       : sharingLinked = sharingLinked ?? _notLinked,
+        _profileName = profileName ?? _noName,
         icons = CustomIconStore(storage.logosDir) {
     analysisAllowed?.addListener(_onAnalysisAllowed);
     playbackActivity.addListener(_pushBudget);
@@ -555,6 +585,224 @@ class AppState extends ChangeNotifier {
   }
 
   static bool _notLinked() => false;
+  static String _noName() => 'Profile';
+
+  /// The profile's name, its shares' history name unless one is chosen.
+  final String Function() _profileName;
+
+  // ---- Server colours in the guide (guide-server-colors) --------------------
+
+  /// Every server and M3U source that can colour the guide, in order.
+  List<({String key, ServerKind? kind, String name})> get colorSources => [
+        for (final s in servers.all) (key: s.key, kind: s.kind, name: s.name),
+        if (liveEnabled)
+          for (final src in live.sources)
+            if (src.kind == LiveSourceKind.m3u) (key: 'live:${src.id}', kind: null, name: src.name),
+      ];
+
+  Map<String, ServerColor>? _colors;
+
+  /// Each source's colour.
+  Map<String, ServerColor> get serverColors =>
+      _colors ??= ServerColor.assign([for (final s in colorSources) (key: s.key, kind: s.kind)], settings.serverColors);
+
+  /// Whether the guide shows server colours: two or more sources, and the
+  /// setting on.
+  bool get guideColorsOn => settings.guideServerColors && colorSources.length >= 2;
+
+  final _colorOfItem = <String, String?>{};
+
+  /// The key of the source [p] on [ch] plays from: the copy that will play
+  /// (multi-server), a music hour's first song's, or a live channel's
+  /// source. Null for off-air and empty time.
+  String? sourceKeyOf(Channel ch, ScheduledProgram p) {
+    if (ch.isLive) {
+      final source = ch.live == null ? null : live.sourceById(ch.live!.sourceId);
+      if (source == null || p.item == null) return null;
+      return source.kind == LiveSourceKind.m3u ? 'live:${source.id}' : _liveServer(source.serverId)?.key;
+    }
+    final item = p.songs?.firstOrNull?.item ?? p.item;
+    if (item == null) return null;
+    return _colorOfItem.putIfAbsent(item.id, () => copyToPlay(item)?.key ?? ServerSet.keyOf(item.id));
+  }
+
+  /// [p]'s colour on [ch]; null when colours are off or it has none.
+  ServerColor? colorOf(Channel ch, ScheduledProgram p) {
+    if (!guideColorsOn) return null;
+    final key = sourceKeyOf(ch, p);
+    return key == null ? null : serverColors[key];
+  }
+
+  /// The name of the source with [key].
+  String? sourceName(String key) => colorSources.where((s) => s.key == key).firstOrNull?.name;
+
+  /// [key]'s guide colour from now on.
+  Future<void> setServerColor(String key, String name) async {
+    settings.serverColors = {...settings.serverColors, key: name};
+    notifyListeners();
+    await _saveSettings();
+  }
+
+  Future<void> setGuideServerColors(bool on) async {
+    settings.guideServerColors = on;
+    notifyListeners();
+    await _saveSettings();
+  }
+
+  // ---- SMB shares (smb-sources) -------------------------------------------
+
+  /// The profile's shares: settings, passwords and clients.
+  late final smb = SmbProfile(storage,
+      profileName: _profileName, hold: _smbHold, onFilesReady: _onSmbFiles, onChanged: notifyListeners);
+
+  /// Reading shares' files holds off while the TV tunes and while asleep.
+  final _smbHold = ValueNotifier(false);
+
+  /// The profile's YouTube sign-ins: catalogs, daily limit, tokens
+  /// (youtube-subscriptions). Tokens share the SMB secret store.
+  late final youtube = YouTubeProfile(storage, smb.secrets, picksOf: youTubePicks, onChanged: notifyListeners);
+
+  /// The YouTube channel ids picked on server [key], by channel number.
+  List<String> youTubePicks(String key) => [
+        for (final c in [..._channels]..sort((a, b) => a.number.compareTo(b.number)))
+          if (c.youtube case final ref? when ref.serverKey == key) ref.channelId
+      ];
+
+  /// [ch]'s YouTube channel's own title (its catalog's), else the channel's
+  /// name.
+  String youTubeTitleOf(Channel ch) {
+    final ref = ch.youtube;
+    if (ref == null) return ch.name;
+    return youtube.serverOf(ref.serverKey)?.catalog.channels[ref.channelId]?.title ?? ch.name;
+  }
+
+  /// The profile's YouTube channels, by number.
+  List<Channel> get youTubeChannels =>
+      [for (final c in _channels) if (c.isYouTube) c]..sort((a, b) => a.number.compareTo(b.number));
+
+  /// Whether a saved sign-in of this profile is a share's, so the gateway
+  /// starts before any client is made.
+  Future<bool> _usesSmb(Object? servers) async {
+    if (session?.kind == ServerKind.smb) return true;
+    if (servers is! Map<String, Object?>) return false;
+    return [
+      for (final s in (servers['servers'] as List? ?? const []).whereType<Map<String, Object?>>())
+        ServerKind.fromJson((s['session'] as Map?)?['kind'] ?? (s['hint'] as Map?)?['kind'])
+    ].contains(ServerKind.smb);
+  }
+
+  /// A share's files became ready: the library is built again from the
+  /// saved scans, the other servers left alone.
+  void _onSmbFiles(SmbServer server, {required bool last}) {
+    if (_closed) return;
+    final key = servers.all.where((s) => identical(s.client, server)).firstOrNull?.key;
+    if (key == null) return;
+    _smbRebuild.add(key);
+    // A scan under way starts this one when it ends.
+    if (_refreshRun == null) unawaited(_rebuildSmb());
+  }
+
+  /// Shares waiting to be rebuilt from their saved scan, and those being
+  /// rebuilt by the refresh under way (no other server is scanned then).
+  final _smbRebuild = <String>{};
+  var _rebuildingNow = <String>{};
+
+  Future<void> _rebuildSmb() {
+    _rebuildingNow = {..._smbRebuild};
+    _smbRebuild.clear();
+    return refreshLibrary(background: true);
+  }
+
+  /// [key]'s scan is skipped this time: its saved part stands, or (a share
+  /// that only needs rebuilding) its saved scan.
+  bool _skipsScan(ProfileServer server) {
+    if (_rebuildingNow.isEmpty) return false;
+    final c = server.client;
+    if (_rebuildingNow.contains(server.key) && c is SmbServer) {
+      c.rebuildNext();
+      return false;
+    }
+    return true;
+  }
+
+  /// [key]'s share: its mapped folders are [mappings] from now on, with a
+  /// pool for each Commercials or Bumpers folder no pool has, and the
+  /// library refreshes.
+  Future<void> setSmbMappings(String key, List<SmbMapping> mappings, {bool refresh = true}) async {
+    final server = servers.byKey(key);
+    final c = server?.client;
+    if (server == null || c is! SmbServer) return;
+    c.config.mappings = mappings;
+    await smb.saveConfig(c.serverId);
+    await _smbPools(server);
+    notifyListeners();
+    if (refresh) unawaited(refreshLibrary(background: true));
+  }
+
+  /// A pool for each of [server]'s Commercials or Bumpers folders that no
+  /// pool has yet (a share just added, or its folders changed).
+  Future<void> _smbPools(ProfileServer server) async {
+    final c = server.client;
+    if (c is! SmbServer) return;
+    final key = server.key;
+    final before = settings.commercialPools;
+    for (final m in c.config.mappings.where((m) => m.type.isPool)) {
+      final root = ServerSet.globalId(key, smbIdOf('${m.path}/'));
+      final kind = m.type == SmbFolderType.bumpers ? PoolKind.bumpers : PoolKind.commercials;
+      if (settings.commercialPools.any((p) => p.roots.any((r) => r.itemId == root))) continue;
+      final label = '${server.name} › ${m.path.isEmpty ? server.name : m.path.split('/').last}';
+      settings.commercialPools = [
+        ...settings.commercialPools,
+        CommercialPool(
+          id: 'pool-${DateTime.now().microsecondsSinceEpoch.toRadixString(36)}',
+          name: kind == PoolKind.bumpers
+              ? tr.bumpers
+              : CommercialPool.nextName(settings.commercialPools.map((p) => p.name)),
+          kind: kind,
+          roots: [PoolRoot(itemId: root, libraryId: root, label: label)],
+        ),
+      ];
+    }
+    if (!identical(before, settings.commercialPools)) await _saveSettings();
+  }
+
+  /// Renames server [key] (a share's name is its own to choose).
+  Future<void> renameServer(String key, String name) async {
+    final server = servers.byKey(key);
+    final old = server?.session;
+    if (server == null || old == null || name.trim().isEmpty) return;
+    server.session = old.withServerName(name.trim());
+    final c = server.client;
+    // A share's client keeps its sign-in.
+    if (c is SmbServer) c.rename(name.trim());
+    if (server.isMain) {
+      await storage.writeJson(_sessionFile, server.session!.toJson(), private: true);
+    } else {
+      await _saveServers();
+    }
+    notifyListeners();
+  }
+
+  /// A share's history name and where its history is kept.
+  Future<void> setSmbHistory(String key, {String? Function()? name, bool? keepLocal}) async {
+    final c = servers.byKey(key)?.client;
+    if (c is! SmbServer) return;
+    if (name != null) c.config.historyName = name()?.trim().isEmpty ?? true ? null : name()!.trim();
+    if (keepLocal != null) c.config.keepLocal = keepLocal;
+    await smb.saveConfig(c.serverId);
+    notifyListeners();
+  }
+
+  /// Forgets what this profile kept of share [client] (it left the profile).
+  Future<void> _forgetShare(MediaServer? client) async {
+    if (client is! SmbServer) return;
+    final id = smbIdOf(client.serverId);
+    for (final f in ['smb_scan/$id.json', 'smb_probe/$id.json', 'smb_unplayable/$id.json']) {
+      await storage.delete(f);
+    }
+    await client.history.deleteLocal();
+    await smb.removeShare(client.serverId);
+  }
 
   /// Whether this profile is linked to sharing (channel-sharing D2): its
   /// scans then ask every server for provider ids, as multi-server ones do,
@@ -589,7 +837,7 @@ class AppState extends ChangeNotifier {
   }
 
   /// Runs [action] once the launch's tune has its picture and background
-  /// work may start (the daily backup check waits for it): that is
+  /// work may start (the automatic backup check waits for it): that is
   /// [launchSettleDelay] after the picture.
   void afterLaunch(void Function() action) => _afterLaunchTune(action);
 
@@ -635,9 +883,9 @@ class AppState extends ChangeNotifier {
   /// Analyze media in the background (off in most tests), while on screen.
   final bool runAnalysis;
 
-  /// Saves a safety backup of the household before a big change (reset,
+  /// Saves the undo point of the household before a big change (reset,
   /// settings upgrade), named by its reason; throws when it can't be saved.
-  final Future<void> Function(String reason)? safetyBackup;
+  final Future<void> Function(String reason)? saveUndoPoint;
 
   /// Builds the client for a saved sign-in at [start] (tests give a fake).
   final MediaServer Function(ServerSession session)? _sessionClient;
@@ -672,6 +920,9 @@ class AppState extends ChangeNotifier {
   @override
   void notifyListeners() {
     _syncAnalysisIdle();
+    // A server's state, the Play from order or a colour may have changed.
+    _colorOfItem.clear();
+    _colors = null;
     super.notifyListeners();
   }
 
@@ -1202,17 +1453,20 @@ class AppState extends ChangeNotifier {
   /// Opens the added servers' caches and routes analysis through them all,
   /// after a server joined or left (or at start). Analysis restarts on the
   /// new set.
-  Future<void> _openServerAnalysis() async {
+  /// [rebase]: channels whose clips changed are rebased and saved; not at
+  /// launch, before the saved lineup is set (it would save an empty one).
+  Future<void> _openServerAnalysis({bool rebase = true}) async {
+    // YouTube has no breaks to analyse (youtube-subscriptions D7).
     final keep = {
       for (final s in servers.added)
-        if (s.serverId != null) s.key,
+        if (s.serverId != null && s.kind != ServerKind.youtube) s.key,
     };
     for (final key in [..._addedCaches.keys]) {
       if (!keep.contains(key)) await AnalysisCache.release(_addedCaches.remove(key)!);
     }
     for (final server in servers.added) {
       final id = server.serverId;
-      if (id == null || _addedCaches.containsKey(server.key)) continue;
+      if (id == null || server.kind == ServerKind.youtube || _addedCaches.containsKey(server.key)) continue;
       final cache = await AnalysisCache.acquire(storage.analysisDir, id);
       if (_closed) {
         await AnalysisCache.release(cache);
@@ -1228,7 +1482,7 @@ class AppState extends ChangeNotifier {
         : null;
     if (_closed) return;
     await _stopAnalysis();
-    _updateCatalog();
+    _updateCatalog(rebase: rebase);
     _startAnalysis();
   }
 
@@ -1240,7 +1494,10 @@ class AppState extends ChangeNotifier {
 
   bool get _busyNow => playbackBusy.value || (exportBusy?.value ?? false);
 
-  void _updateAnalysisBusy() => _analysisBusy.value = _busyNow;
+  void _updateAnalysisBusy() {
+    _analysisBusy.value = _busyNow;
+    _smbHold.value = playbackBusy.value || _asleep;
+  }
 
   @visibleForTesting
   ValueListenable<bool> get analysisBusy => _analysisBusy;
@@ -1322,6 +1579,7 @@ class AppState extends ChangeNotifier {
   set asleep(bool value) {
     if (value == _asleep) return;
     _asleep = value;
+    _smbHold.value = playbackBusy.value || _asleep;
     _pushBudget();
   }
 
@@ -1380,8 +1638,11 @@ class AppState extends ChangeNotifier {
         }
         final kept = (template: template, directStream: decision.directStream);
         // A setting changed meanwhile cleared the decisions; this one
-        // was asked under the old one.
-        if (settings.playback.decidesLike(playback)) _decisions[key] = kept;
+        // was asked under the old one. A quality picked meanwhile changes
+        // only the cap, which is part of the key: it's kept for its cap.
+        final sameButCap = settings.playback
+            .copyWith(transcodeIfNeeded: playback.transcodeIfNeeded, bitrate: playback.preset);
+        if (sameButCap.decidesLike(playback)) _decisions[key] = kept;
         return kept;
       } finally {
         _deciding.remove(key);
@@ -1451,6 +1712,8 @@ class AppState extends ChangeNotifier {
 
   static Future<DeviceCapabilities?> _queryCapabilities() async {
     final caps = await DeviceCapabilities.query();
+    // What shares' files are checked against before anything plays.
+    SmbServer.deviceProfileNow = androidDeviceProfile(caps ?? DeviceCapabilities.fallback);
     if (PlaybackDiagnostics.enabled) {
       for (final d in caps?.decoders ?? const <String>[]) {
         PlaybackDiagnostics.note('DECODER', d);
@@ -1475,7 +1738,9 @@ class AppState extends ChangeNotifier {
   ValueListenable<AnalysisProgress> get analysisProgress => _analyzer?.progress ?? _noProgress;
 
   /// The plan [c] is set to: its own, or the main one.
-  BreakPlan configuredPlanFor(Channel c) => c.commercialPlan ?? settings.commercialPlan;
+  /// A YouTube channel's is always Off: no breaks, bumpers or analysis
+  /// (youtube-subscriptions D7).
+  BreakPlan configuredPlanFor(Channel c) => c.isYouTube ? BreakPlan.off : c.commercialPlan ?? settings.commercialPlan;
 
   /// The logo setting [c] follows: its own, or the main one.
   LogoMode logoModeFor(Channel c) => c.logoMode ?? settings.logoMode;
@@ -1486,8 +1751,9 @@ class AppState extends ChangeNotifier {
   /// The plan [c] airs with: [configuredPlanFor], or Off while none of the
   /// pools it uses has clips.
   BreakPlan planFor(Channel c) {
-    // Live channels never get breaks (live-playback).
-    if (c.isLive) return BreakPlan.off;
+    // Live and YouTube channels never get breaks (live-playback,
+    // youtube-subscriptions D7).
+    if (c.isLive || c.isYouTube) return BreakPlan.off;
     final plan = configuredPlanFor(c);
     return plan.isOff || !hasClipsFor(plan) ? BreakPlan.off : plan;
   }
@@ -1521,13 +1787,14 @@ class AppState extends ChangeNotifier {
       // The old format is kept in a backup first; the upgrade goes ahead
       // even if that fails, since the app can't refuse to start.
       try {
-        await safetyBackup?.call('before-upgrade');
+        await saveUndoPoint?.call('before-upgrade');
       } on Object catch (e) {
         debugPrint('No backup before upgrading settings: $e');
       }
     }
     if (settingsJson == null || renamed || settings.migrated) await _saveSettings();
     PlaybackDiagnostics.mark('settings read');
+    StartupTrail.step('settings read');
     // Decisions and a connection measurement saved by an older version.
     unawaited(storage.delete(legacyDecisionsFile).catchError((Object e) {
       debugPrint('Could not delete $legacyDecisionsFile: $e');
@@ -1541,10 +1808,22 @@ class AppState extends ChangeNotifier {
       return;
     }
     session = ServerSession.fromJson(sessionJson);
+    final serversJson = await storage.readJson(ServerSet.file);
+    // A share's client serves its files through the gateway, which comes
+    // first (smb-sources D3).
+    if (await _usesSmb(serversJson)) {
+      await smb.load();
+      await SmbGateway.ensureStarted();
+    }
     client = _sessionClient?.call(session!) ?? clientForSession(session!);
     // Added servers (multi-server); none for most profiles.
-    servers.load(await storage.readJson(ServerSet.file),
-        (s, key) => _sessionClient?.call(s) ?? clientForSession(s, key: key));
+    servers.load(serversJson, (s, key) => _sessionClient?.call(s) ?? clientForSession(s, key: key));
+    // Passwords no sign-in of this profile uses any more.
+    unawaited(smb.secrets.prune({
+      for (final s in servers.all)
+        if (s.session case final session? when session.kind == ServerKind.smb || session.kind == ServerKind.youtube)
+          session.accessToken
+    }));
     // A Plex server may have another address now (a phone away from home).
     if (session!.kind == ServerKind.plex) unawaited(reachServerAgain(checkFirst: true));
     // One-time sign-in upgrades; they wait for the launch's picture.
@@ -1555,25 +1834,32 @@ class AppState extends ChangeNotifier {
 
     // The saved index is read and decoded in a worker isolate meanwhile
     // (library-scan-anr D2): a large one would hold up the main thread.
-    final libraryRead = IndexBuilder.saved(storage.pathOf(_libraryFile));
+    final libraryRead = IndexBuilder.savedRead(storage.pathOf(_libraryFile));
     final channelsJson = await storage.readJson(_channelsFile);
     PlaybackDiagnostics.mark('channels read');
+    StartupTrail.step('channels read');
     // Blocks whenever they're saved: a restored lineup has them without a
     // library index.
     await _loadBlocks();
     await live.load();
     PlaybackDiagnostics.mark('live sources read');
-    final saved = await libraryRead;
+    final read = await libraryRead;
     PlaybackDiagnostics.mark('library read');
+    // The path the launch takes (crash-visibility D4): anything but the
+    // saved index means the full download first.
+    StartupTrail.step('library read', detail: channelsJson is List ? read.path : 'no lineup');
+    final saved = read.index;
     if (saved != null && channelsJson is List) {
-      library = saved;
+      // YouTube's videos come from the catalogs, which drop what's 30 days
+      // old even without a refresh (youtube-subscriptions D6).
+      library = await _withYouTubeCatalogs(saved);
       // A kid's limit may have been tightened since this was saved.
       final limit = maxRatingRank;
       if (limit != null) library = library.restrictedTo(limit);
       // Clips (and so which channels have breaks) must be known before the
       // lineup is, or every launch would shift the guide.
       if (session!.serverId case final id?) await _openAnalysis(id);
-      if (servers.multiple) await _openServerAnalysis();
+      if (servers.multiple) await _openServerAnalysis(rebase: false);
       PlaybackDiagnostics.mark('analysis cache open');
       _updateCatalog(rebase: false);
       _setChannels([for (final c in channelsJson.cast<Map<String, Object?>>()) Channel.fromJson(c)]);
@@ -1621,14 +1907,14 @@ class AppState extends ChangeNotifier {
   /// titles. A lineup from before cable-lineup is then numbered from 1 in
   /// its order, around the numbers live and user-built channels hold;
   /// newer ones keep their numbers, added channels coming after the highest
-  /// generated one. A safety backup comes first; without one, it waits for
+  /// generated one. The undo point comes first; without one, it waits for
   /// the next launch.
   Future<void> _cleanUpLineup() async {
     final from = settings.lineupVersion;
     if (from >= AppSettings.currentLineupVersion) return;
     if (_channels.any((c) => c.auto && !c.isLive)) {
       try {
-        await safetyBackup?.call(BackupReason.beforeLineupCleanup);
+        await saveUndoPoint?.call(BackupReason.beforeLineupCleanup);
       } on Object catch (e) {
         debugPrint('No backup before cleaning up the lineup; trying again next launch: $e');
         return;
@@ -1818,6 +2104,8 @@ class AppState extends ChangeNotifier {
 
   /// A client for a saved sign-in, of the server [key] (multi-server).
   MediaServer clientForSession(ServerSession session, {String key = ServerSet.mainKey}) {
+    if (session.kind == ServerKind.smb) return smb.client(session);
+    if (session.kind == ServerKind.youtube) return youtube.client(session, key);
     final client = sessionClient(session, deviceName: deviceName);
     // Plex's part paths come from the loaded library.
     _attach(client, key);
@@ -1976,7 +2264,11 @@ class AppState extends ChangeNotifier {
   /// The server already in the profile that [session] signs in to, if any.
   ProfileServer? serverLike(ServerSession session) =>
       servers.byServerId(session.serverId) ??
-      servers.all.where((s) => s.serverUrl == session.serverUrl && s.kind == session.kind).firstOrNull;
+      // Every YouTube sign-in has YouTube's address: its account id tells
+      // them apart.
+      (session.kind == ServerKind.youtube
+          ? null
+          : servers.all.where((s) => s.serverUrl == session.serverUrl && s.kind == session.kind).firstOrNull);
 
   /// Adds a signed-in server at the end of Play from, and refreshes the
   /// library in the background (D7). Throws [ServerException] when the
@@ -1992,6 +2284,7 @@ class AppState extends ChangeNotifier {
     final server = servers.add(newSession, newClient);
     _attach(newClient, server.key);
     await _saveServers();
+    await _smbPools(server);
     PlaybackDiagnostics.note('SERVER', 'added ${server.key} (${newSession.kind.label})');
     await _openServerAnalysis();
     notifyListeners();
@@ -2036,13 +2329,32 @@ class AppState extends ChangeNotifier {
     final server = servers.byKey(key);
     if (server == null || server.isMain) return;
     final serverId = server.serverId;
+    final removed = server.client;
     await _signOutOf(server);
+    await _forgetShare(removed);
     servers.remove(key);
     await storage.delete(_partFile(key));
     if (!servers.multiple) await storage.delete(_partFile(ServerSet.mainKey));
     await _saveServers();
+    // Its guide colour goes with it (guide-server-colors).
+    if (settings.serverColors.containsKey(key)) {
+      settings.serverColors = {...settings.serverColors}..remove(key);
+      await _saveSettings();
+    }
     if (serverId != null) {
       if (live.serverSourceFor(serverId) case final source?) await removeLiveSource(source);
+    }
+    // Its YouTube channels and videos go with it at once
+    // (youtube-subscriptions D12).
+    if (library.youtubeVideos.any((v) => ServerSet.keyOf(v.id) == key)) {
+      library = library.withYouTubeVideos([for (final v in library.youtubeVideos) if (ServerSet.keyOf(v.id) != key) v]);
+      await storage.writeJson(_libraryFile, library.toJson());
+    }
+    if (_channels.any((c) => c.youtube?.serverKey == key)) {
+      _channels.removeWhere((c) => c.youtube?.serverKey == key);
+      _schedules.clear();
+      _setChannels(_channels);
+      await _saveChannels();
     }
     _syncServerPings();
     await _openServerAnalysis();
@@ -2224,7 +2536,11 @@ class AppState extends ChangeNotifier {
       await _recordServerId();
     }
     await _adoptRestoredLineup();
+    await _smbPools(servers.main);
     await refreshLibrary();
+    // As at launch: what waits for the first picture (Live TV refreshes,
+    // the device name) starts after it.
+    _armLaunchGate();
   }
 
   /// A restored profile's lineup waits on disk for its sign-in (D8). On the
@@ -2234,6 +2550,10 @@ class AppState extends ChangeNotifier {
   Future<void> _adoptRestoredLineup() async {
     final hint = signInHint ?? await storage.readJson(signInHintFile);
     signInHint = null;
+    // Its Live TV sources came back with it (backup-restore): a profile
+    // that started signed out never read them, so they're read now, and
+    // refresh once the first scan is done.
+    if (hint is Map<String, Object?>) await live.load();
     if (_hasGenerated) return;
     final channelsJson = await storage.readJson(_channelsFile);
     final serverId = hint is Map<String, Object?> ? hint['serverId'] : null;
@@ -2272,6 +2592,7 @@ class AppState extends ChangeNotifier {
     _addedCaches.clear();
     // Every server's sign-in ends (multi-server).
     for (final server in servers.added) {
+      await _forgetShare(server.client);
       await _signOutOf(server);
       await storage.delete(_partFile(server.key));
     }
@@ -2284,6 +2605,7 @@ class AppState extends ChangeNotifier {
     } on ServerException {
       // Signing out locally still works if the server is unreachable.
     }
+    await _forgetShare(client);
     client?.close();
     client = null;
     session = null;
@@ -2325,7 +2647,12 @@ class AppState extends ChangeNotifier {
   /// channels are added. While a scan is running, waits for that one.
   Future<void> refreshLibrary({bool background = false}) {
     if (client == null) return Future.value();
-    return _refreshRun ??= _refreshLibrary(background: background).whenComplete(() => _refreshRun = null);
+    return _refreshRun ??= _refreshLibrary(background: background).whenComplete(() {
+      _refreshRun = null;
+      _rebuildingNow = {};
+      // Shares' files that became ready meanwhile.
+      if (_smbRebuild.isNotEmpty && !_closed) unawaited(_rebuildSmb());
+    });
   }
 
   Future<void> _refreshLibrary({bool background = false}) async {
@@ -2343,6 +2670,7 @@ class AppState extends ChangeNotifier {
         if (servers.multiple) {
           fresh = await _scanServers();
         } else {
+          if (c is SmbServer && _rebuildingNow.contains(ServerSet.mainKey)) c.rebuildNext();
           syncStatus = tr.connectingTo(session?.serverName ?? tr.yourServerLower);
           notifyListeners();
           fresh = await fetchLibraryIndex(c,
@@ -2430,6 +2758,20 @@ class AppState extends ChangeNotifier {
     }
   }
 
+  /// [index] with its YouTube videos as the YouTube servers' catalogs hold
+  /// them now.
+  Future<LibraryIndex> _withYouTubeCatalogs(LibraryIndex index) async {
+    final videos = <MediaEntry>[];
+    for (final s in servers.all) {
+      if (s.client case final YouTubeServer server) {
+        await server.ready;
+        videos.addAll(server.part().youtubeVideos);
+      }
+    }
+    if (videos.isEmpty && index.youtubeVideos.isEmpty) return index;
+    return index.withYouTubeVideos(videos);
+  }
+
   /// A server's last scanned index (multi-server), as merged.
   static String _partFile(String key) => 'library_parts/$key.json';
 
@@ -2450,7 +2792,7 @@ class AppState extends ChangeNotifier {
       }
 
       LibraryIndex? part;
-      if (server.client != null && server.state != ServerState.needsSignIn) {
+      if (server.client != null && server.state != ServerState.needsSignIn && !_skipsScan(server)) {
         for (var attempt = 0; part == null && attempt < 2; attempt++) {
           try {
             part = await _scanServer(server, status);
@@ -2469,6 +2811,12 @@ class AppState extends ChangeNotifier {
             break;
           }
         }
+      }
+      // A YouTube server's part is its catalog, never a saved copy that could
+      // hold what YouTube's rules have deleted.
+      if (server.client case final YouTubeServer yt when part == null) {
+        await yt.ready;
+        part = yt.part();
       }
       part ??= await _savedPart(server.key);
       if (part != null) parts.add(part);
@@ -2502,7 +2850,8 @@ class AppState extends ChangeNotifier {
       PlaybackDiagnostics.note('SERVER', '${server.key} ok');
       _syncServerPings();
     }
-    await storage.writeJson(_partFile(key), part.toJson());
+    // YouTube's catalog is its own saved copy.
+    if (server.kind != ServerKind.youtube) await storage.writeJson(_partFile(key), part.toJson());
     return part;
   }
 
@@ -2638,6 +2987,10 @@ class AppState extends ChangeNotifier {
       // their recipe (re-matched after the scan, channel-sharing D7).
       if (ch.blockOnly || _fromRecipe(ch)) {
         _schedules.remove(ch.id);
+        continue;
+      }
+      if (ch.youtube case final ref?) {
+        _mergeYouTube(ch, ref, previous, plansBefore, now);
         continue;
       }
       final fresh = buildPlaylist(library, ch.source, ch.order, seed: ch.seed);
@@ -2844,6 +3197,55 @@ class AppState extends ChangeNotifier {
       if (b.channelId == from) b.channelId = to;
     }
     _movedChannels[from] = to;
+  }
+
+  /// [ref]'s videos in the library, newest first (youtube-subscriptions D7).
+  List<String> youTubePlaylist(YouTubeRef ref) {
+    final series = ref.seriesKey;
+    // Refused by the player since the last refresh: never back on the air.
+    final refused = youtube.serverOf(ref.serverKey)?.catalog.refused ?? const <String>{};
+    final videos = [
+      for (final e in library.youtubeVideos)
+        if (e.seriesKey == series && ServerSet.keyOf(e.id) == ref.serverKey && !refused.contains(ServerSet.rawId(e.id))) e
+    ]..sort((a, b) => (b.added ?? DateTime(0)).compareTo(a.added ?? DateTime(0)));
+    return [for (final e in videos) e.id];
+  }
+
+  /// A YouTube channel after a refresh (D7): videos gone from its catalog
+  /// leave, and the new ones air as one newest-first run right after the
+  /// program on air, which keeps its place.
+  void _mergeYouTube(Channel ch, YouTubeRef ref, LibraryIndex previous, Map<String, BreakPlan> plansBefore, DateTime now) {
+    final fresh = youTubePlaylist(ref);
+    final onAir = ChannelSchedule.build(ch, previous, const [], _breakContext(BreakPlan.off))?.programAt(now).item?.id;
+    _rebase(ch, mergeYouTubePlaylist(ch.playlist, fresh, onAir: onAir), now, previous: previous, planBefore: BreakPlan.off);
+  }
+
+  /// [playlist] with what's not in [fresh] gone and [fresh]'s new videos
+  /// (newest first) right after [onAir], or first when nothing is on air.
+  @visibleForTesting
+  static List<String> mergeYouTubePlaylist(List<String> playlist, List<String> fresh, {String? onAir}) {
+    final wanted = fresh.toSet();
+    final known = playlist.toSet();
+    final kept = [for (final id in playlist) if (wanted.contains(id)) id];
+    final added = [for (final id in fresh) if (!known.contains(id)) id];
+    final at = onAir == null ? -1 : kept.indexOf(onAir);
+    return [...kept.sublist(0, at + 1), ...added, ...kept.sublist(at + 1)];
+  }
+
+  /// [itemId] won't play on YouTube channel [ch] (youtube-playback): it
+  /// leaves the playlist now, and the next video starts now from its
+  /// beginning. [refused] (removed, private, not embeddable): its catalog
+  /// leaves it out from the next refresh.
+  Future<void> skipYouTubeVideo(Channel ch, String itemId, {required bool refused, DateTime? now}) async {
+    final i = ch.playlist.indexOf(itemId);
+    if (i < 0) return;
+    ch.playlist = [...ch.playlist.sublist(i + 1), ...ch.playlist.sublist(0, i)];
+    ch.anchor = now ?? DateTime.now();
+    _schedules.remove(ch.id);
+    _setChannels(_channels);
+    await _saveChannels();
+    if (refused && ch.youtube != null) await youtube.serverOf(ch.youtube!.serverKey)?.refuse(itemId);
+    PlaybackDiagnostics.note('YOUTUBE', 'skipped $itemId on ${ch.number}${refused ? ' (refused)' : ''}');
   }
 
   /// Keeps [playlist]'s order, dropping items gone from the library (with
@@ -3057,6 +3459,79 @@ class AppState extends ChangeNotifier {
     return ch;
   }
 
+  /// The most YouTube channels a profile can have on servers that use
+  /// Nightingale TV's Google client, counted across all of them
+  /// (youtube-shared-client D6). Its daily allowance is shared by every
+  /// user; a server with the user's own client has no limit.
+  static const youTubeSharedLimit = 5;
+
+  /// Whether YouTube server [key] signs in with the user's own Google client
+  /// (also when it waits for a sign-in that will ask for it). In server
+  /// mode every one does (docker-youtube).
+  bool youTubeOwnClient(String key) {
+    if (GoogleClient.ownOnly) return true;
+    final server = servers.byKey(key);
+    return server?.session?.clientId != null || server?.hint?['ownClient'] == true;
+  }
+
+  /// The profile's channels on servers that use Nightingale TV's client,
+  /// leaving out server [except]'s.
+  int youTubeSharedCount({String? except}) => _channels
+      .where((c) => c.isYouTube && c.youtube!.serverKey != except && !youTubeOwnClient(c.youtube!.serverKey))
+      .length;
+
+  /// Whether YouTube server [key] can move to Nightingale TV's client: its
+  /// channels and the other shared ones stay within [youTubeSharedLimit].
+  bool youTubeFitsSharedClient(String key) =>
+      youTubeSharedCount(except: key) + _channels.where((c) => c.youtube?.serverKey == key).length <= youTubeSharedLimit;
+
+  /// Makes server [key]'s picks [picks] (the picker's Done): a channel for
+  /// each new pick, numbered as a new custom channel, named and badged as
+  /// its YouTube channel; the channels of picks left out go. On Nightingale
+  /// TV's client, throws [StateError] when a new pick would take the
+  /// profile above [youTubeSharedLimit]; a profile already above it from
+  /// before keeps its channels. Its videos come with the scan that follows.
+  Future<void> setYouTubePicks(String key, List<YouTubeSubscription> picks, {bool refresh = true}) async {
+    final wanted = {for (final p in picks) p.channelId};
+    final have = {for (final c in _channels) if (c.youtube?.serverKey == key) c.youtube!.channelId};
+    if (!youTubeOwnClient(key) &&
+        wanted.difference(have).isNotEmpty &&
+        youTubeSharedCount(except: key) + wanted.length > youTubeSharedLimit) {
+      throw StateError(tr.youTubeSharedLimit(youTubeSharedLimit));
+    }
+    final gone = have.difference(wanted);
+    _channels.removeWhere((c) => c.youtube?.serverKey == key && gone.contains(c.youtube!.channelId));
+    final now = DateTime.now();
+    for (final p in picks) {
+      if (have.contains(p.channelId)) continue;
+      final ref = YouTubeRef(serverKey: key, channelId: p.channelId);
+      _channels.add(Channel.youTube(
+        ref: ref,
+        number: ChannelNumbers.nextGenerated(_channels),
+        name: p.title,
+        icon: p.avatarUrl == null
+            ? const ChannelIcon.builtin('tv')
+            : ChannelIcon(kind: ChannelIconKind.remote, value: p.avatarUrl!),
+        playlist: youTubePlaylist(ref),
+        // Like a new custom channel, it "started" at midnight.
+        anchor: DateTime(now.year, now.month, now.day),
+      ));
+    }
+    _schedules.clear();
+    _setChannels(_channels);
+    await _saveChannels();
+    PlaybackDiagnostics.note('YOUTUBE', 'picks $key: ${wanted.length} (+${wanted.difference(have).length} -${gone.length})');
+    notifyListeners();
+    if (refresh) {
+      // A scan under way read the picks before these: another follows it,
+      // so the new channels get their videos now, not hours later.
+      final running = _refreshRun;
+      unawaited(running == null
+          ? refreshLibrary(background: true)
+          : running.then((_) {}, onError: (Object _) {}).then((_) => refreshLibrary(background: true)));
+    }
+  }
+
   /// Changes what custom channel [ch] plays. The program on the air stays
   /// on at the same point when it's still in [source]; otherwise the new
   /// playlist starts now.
@@ -3118,10 +3593,10 @@ class AppState extends ChangeNotifier {
   /// Channels the user added (custom, block and music channels) are kept
   /// with their settings, moved after the generated ones.
   ///
-  /// A safety backup is saved first; if it can't be, nothing is reset and
+  /// The undo point is saved first; if it can't be, nothing is reset and
   /// the error is thrown.
   Future<void> resetChannels() async {
-    await safetyBackup?.call('before-reset');
+    await saveUndoPoint?.call('before-reset');
     _schedules.clear();
     final fresh = _generated();
     for (final c in _channels.where((c) => !c.auto && !c.isLive)) {
@@ -3200,6 +3675,22 @@ class AppState extends ChangeNotifier {
     settings.playback = playback;
     volumeLeveling.value = playback.volumeLeveling;
     _updateCaptionSize();
+    _pushBudget();
+    notifyListeners();
+    await _saveSettings();
+  }
+
+  /// A quality picked in the player (player-options): saves [preset] as the
+  /// Maximum streaming bitrate; an Mbps preset also turns "Transcode only if
+  /// needed" on, since the cap only applies with it. Original leaves the
+  /// toggle as it is. This session's decisions are kept: they're asked per
+  /// cap, so the new cap asks its own. What's playing plays on until the
+  /// tuner applies it ([Tuner.applyQuality]).
+  Future<void> setQuality(BitratePreset preset) async {
+    final playback = settings.playback.copyWith(
+        bitrate: preset, transcodeIfNeeded: preset.kbps == null ? null : true);
+    if (playback == settings.playback) return;
+    settings.playback = playback;
     _pushBudget();
     notifyListeners();
     await _saveSettings();
@@ -3405,6 +3896,8 @@ class AppState extends ChangeNotifier {
     for (final server in servers.all) {
       server.client?.close();
     }
+    // A share's last writes land before the profile's files are let go.
+    await smb.settled();
   }
 
   // ---- Commercial pools ----------------------------------------------------
@@ -3555,6 +4048,7 @@ class AppState extends ChangeNotifier {
     if (draft.days.isEmpty) return tr.pickAtLeast;
     if (draft.startMinute == draft.endMinute) return tr.theBlockHas;
     if (!newChannel && channelById(draft.channelId) == null) return tr.chooseAChannel;
+    if (!newChannel && channelById(draft.channelId)!.isYouTube) return tr.youTubeNoBlocks;
     if (lineupMode && !draft.hasLineup) return tr.addAShow;
     if (blockPlaylist(draft).isEmpty) {
       if (lineupMode) return tr.theLineupsShows;
@@ -3742,7 +4236,11 @@ class AppState extends ChangeNotifier {
   /// Why [ch] can't be shared, or null when it can.
   String? shareProblem(Channel ch) {
     if (ch.isLive) return tr.sharingLiveCantShare;
+    if (ch.isYouTube) return tr.youTubeCantBeShared;
     if (ch.isMusic) return tr.sharingMusicCantShare;
+    // A channel of nothing but home videos has nothing to send.
+    final ids = [...ch.playlist, for (final b in _blocks) if (b.channelId == ch.id) ...b.playlist];
+    if (ids.isNotEmpty && ids.every((id) => library[id]?.isHome ?? false)) return tr.smbHomeCantShare;
     return null;
   }
 
@@ -3975,6 +4473,15 @@ class AppState extends ChangeNotifier {
 
   void _setPhase(AppPhase p) {
     phase = p;
+    // The launch's screen (crash-visibility D4); the trail stops taking
+    // steps once the launch is done.
+    final step = switch (p) {
+      AppPhase.starting => null,
+      AppPhase.signedOut => 'signed out',
+      AppPhase.syncing => 'syncing',
+      AppPhase.ready => 'ready',
+    };
+    if (step != null) StartupTrail.step(step);
     notifyListeners();
   }
 

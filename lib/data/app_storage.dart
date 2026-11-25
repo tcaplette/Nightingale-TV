@@ -126,6 +126,22 @@ class AppStorage {
 
   /// The last write queued for each file.
   final _writes = <String, Future<void>>{};
+
+  /// Every storage's writes still under way, for [flushAll].
+  static final _pending = <Future<void>>{};
+
+  static void _track(Future<void> write) {
+    _pending.add(write);
+    write.whenComplete(() => _pending.remove(write)).ignore();
+  }
+
+  /// Waits for every write asked for so far, in every storage, and those
+  /// queued meanwhile (quitting on a PC, where the process then ends).
+  static Future<void> flushAll() async {
+    while (_pending.isNotEmpty) {
+      await Future.wait([for (final w in _pending.toList()) w.catchError((Object _) {})]);
+    }
+  }
   static var _tmpCounter = 0;
 
   /// Writes atomically (temp file + rename) so a crash mid-write never leaves
@@ -136,6 +152,7 @@ class AppStorage {
     final previous = _writes[name] ?? Future<void>.value();
     final write = previous.catchError((Object _) {}).then((_) => _write(name, text, private));
     _writes[name] = write;
+    _track(write);
     write.whenComplete(() {
       if (identical(_writes[name], write)) _writes.remove(name);
     }).ignore();
@@ -180,6 +197,7 @@ class AppStorage {
       }
     });
     _writes[name] = op;
+    _track(op);
     op.whenComplete(() {
       if (identical(_writes[name], op)) _writes.remove(name);
     }).ignore();

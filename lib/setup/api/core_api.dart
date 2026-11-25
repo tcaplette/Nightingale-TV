@@ -152,7 +152,7 @@ extension _CoreApi on SetupServer {
     return _status(r);
   }
 
-  /// Restores backup [bytes] (an upload or a saved backup) through the
+  /// Restores backup [bytes] (an upload or the undo point) through the
   /// core restore path, then its accounts (design D9), keeping [by] an
   /// admin.
   Future<void> _restoreBytes(Uint8List bytes, {Account? by}) async {
@@ -182,7 +182,7 @@ extension _CoreApi on SetupServer {
 
   Future<Object?> _download(ApiRequest r) async {
     final backups = household.backups ?? (throw ApiError(HttpStatus.notFound));
-    final built = await backups.build(BackupReason.manual);
+    final built = await backups.build(BackupReason.manual, pickedFiles: PickedFiles.all);
     r.response.headers
       ..contentType = ContentType('application', 'octet-stream')
       ..set('Content-Disposition', 'attachment; filename="${TransferServer.fileName(built.createdAt)}"')
@@ -240,6 +240,24 @@ extension _CoreApi on SetupServer {
           ? null
           : {'name': step.info!.name, 'kind': step.kind.label, 'version': step.info!.version, 'url': step.info!.url},
       'quickConnect': step.quickConnectAvailable,
+      if (step.isSmb)
+        'smb': {
+          'hosts': [for (final h in step.smb.hosts) {'address': h.address, 'name': h.label}],
+          'searching': step.smb.searching,
+          'host': step.smb.host?.host,
+          'shares': [for (final s in step.smb.shares) {'name': s.name, 'comment': s.comment}],
+          'share': step.smb.share,
+          'smb1': step.smb.smb1,
+          'user': step.smb.user,
+          'folder': step.smb.folder,
+          'folders': step.smb.folders,
+          'mappings': {for (final e in step.smb.mappings.entries) e.key: e.value.name},
+          'historyName': step.smb.historyName,
+          'keepLocal': step.smb.keepLocal,
+          'writable': step.smb.writable,
+        },
+      // Adding a server, last: its guide colour (guide-server-colors).
+      if (step.stage == SignInStage.color && step.colorKey != null) 'color': _colorStepJson(s.app, step.colorKey!),
       'quickConnectCode': step.quickConnectCode,
       'plexCode': step.plexCode,
       'homeUsers': [
@@ -254,6 +272,27 @@ extension _CoreApi on SetupServer {
             'online': r.online,
             // Adding a server: already in the profile, not pickable.
             if (step.added.contains(r.clientIdentifier) && !id.contains('/again/')) 'added': true,
+          },
+      ],
+    };
+  }
+
+  /// The colour step: the added server, the colour it has now, and the
+  /// fixed set with the source using each colour.
+  Map<String, Object?> _colorStepJson(AppState app, String key) {
+    final colors = app.serverColors;
+    return {
+      'key': key,
+      'name': app.sourceName(key),
+      'selected': colors[key]?.name,
+      'palette': [
+        for (final c in ServerColor.palette)
+          {
+            'name': c.name,
+            'label': c.label,
+            'hex': _SharesApi._hex(c.cell),
+            if (colors.entries.where((e) => e.key != key && e.value.name == c.name).firstOrNull case final e?)
+              'usedBy': app.sourceName(e.key),
           },
       ],
     };
@@ -284,6 +323,10 @@ extension _CoreApi on SetupServer {
     if (s == null) throw ApiError(HttpStatus.conflict, tr.startSigningIn);
     final flow = s.flow;
     switch (action) {
+      // The step as it is now: a search or a check under way changes it
+      // by itself.
+      case 'step':
+        break;
       case 'connect':
         await flow.connect(body.string('address') ?? '');
       case 'choosePassword':
@@ -306,9 +349,49 @@ extension _CoreApi on SetupServer {
         final server = (flow.step.servers ?? const []).where((r) => r.clientIdentifier == body['id']).firstOrNull;
         if (server == null) throw ApiError(HttpStatus.badRequest, tr.noSuchServer);
         await flow.pickServer(server);
+      // SMB shares (smb-sources).
+      case 'smb':
+        await flow.startSmb();
+      case 'smbSearch':
+        await flow.searchSmb();
+      case 'smbAddress':
+        await flow.smbConnect(body.string('address') ?? '');
+      case 'smbHost':
+        final host = flow.step.smb.hosts.where((h) => h.address == body['address']).firstOrNull;
+        if (host == null) throw ApiError(HttpStatus.badRequest, tr.noSuchServer);
+        await flow.pickSmbHost(host);
+      case 'smbShare':
+        await flow.pickSmbShare(body.string('share') ?? '');
+      case 'smbSignIn':
+        final password = body.string('password') ?? '';
+        ServerLog.secret(password);
+        await flow.smbSignIn(body.string('user') ?? '', password, domain: body.string('domain') ?? '');
+      case 'smbGuest':
+        await flow.smbAsGuest();
+      case 'smbFolder':
+        await flow.openSmbFolder(body.string('path') ?? '');
+      case 'smbMap':
+        flow.mapSmbFolder(body.string('path') ?? '', SmbFolderType.fromName(body['type']));
+      case 'smbHistory':
+        flow.setSmbHistory(name: body.string('historyName'), keepLocal: body.boolean('keepLocal'));
+      case 'smbDone':
+        await flow.finishSmb(historyName: body.string('historyName'));
+      // The colour step's choice (an added server).
+      case 'color':
+        final name = body.string('name');
+        if (flow.step.stage != SignInStage.color) throw ApiError(HttpStatus.conflict, tr.couldntDoThat);
+        if (ServerColor.byName(name) == null) throw ApiError(HttpStatus.badRequest, tr.couldntDoThat);
+        await flow.chooseColor(name!);
       case 'back':
-        flow.back();
+        if (flow.step.stage == SignInStage.color) {
+          await flow.keepColor();
+        } else {
+          flow.back();
+        }
       case 'cancel':
+        // Closed on the colour step: the server is added, and keeps the
+        // colour it has.
+        if (flow.step.stage == SignInStage.color) await flow.keepColor();
         _signIns.remove(id);
         flow.dispose();
       default:

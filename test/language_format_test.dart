@@ -53,4 +53,35 @@ void main() {
       expect(inLang('es', () => weekdayName(7)), 'Dom');
     });
   });
+
+  group('Japanese and Chinese (cjk-languages D5)', () {
+    final wednesday = DateTime(2026, 11, 18, 19, 30);
+    final monday = DateTime(2026, 11, 16);
+    for (final language in ['ja', 'zh-Hans', 'zh-Hant', 'zh-Hant-HK']) {
+      test('$language uses 24-hour time and month before day', () {
+        inLang(language, () {
+          expect(formatTime(wednesday), '19:30');
+          expect(formatRange(evening, later), '19:30 – 20:00');
+          expect(formatMonthDay(11, 18), '11月18日');
+          expect(monthName(11), '11月');
+          expect(formatMoment(moment), allOf(contains('10月18日'), contains('21:05')));
+          expect(formatClockMinute(7 * 60), '07:00');
+        });
+      });
+    }
+
+    test('weekday names are the language\'s own, with no case change', () {
+      expect(inLang('ja', () => formatDate(wednesday)), '11月18日(水)');
+      expect(inLang('ja', () => weekdayName(monday.weekday)), '月');
+      expect(inLang('zh-Hans', () => weekdayName(monday.weekday)), '周一');
+      expect(inLang('zh-Hans', () => formatDate(wednesday)), '11月18日周三');
+      expect(inLang('zh-Hant', () => weekdayName(monday.weekday)), '週一');
+      expect(inLang('zh-Hant-HK', () => weekdayName(monday.weekday)), '週一');
+      expect(inLang('zh-Hant', () => formatDate(wednesday)), '11月18日週三');
+    });
+
+    test('a list of days uses 、', () {
+      expect(inLang('ja', () => describeDays({1, 3, 5})), '月、水、金');
+    });
+  });
 }

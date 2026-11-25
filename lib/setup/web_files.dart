@@ -21,9 +21,17 @@ class WebFiles {
   static const missingText = "The web admin isn't in this build. Build it with tool/build_web_admin.sh.";
 
   /// Only the setup server's own origin; WebAssembly for CanvasKit; blob:
-  /// to read files picked in the browser (uploads).
-  static const contentSecurityPolicy = "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; "
-      "style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' blob:; frame-ancestors 'none'";
+  /// to read files picked in the browser (uploads). YouTube's IFrame Player
+  /// API and its embedded player, for the Watch page (docker-youtube D5).
+  static const contentSecurityPolicy = "default-src 'self'; "
+      "script-src 'self' 'wasm-unsafe-eval' https://www.youtube.com https://s.ytimg.com; "
+      "style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' blob:; "
+      "frame-src https://www.youtube.com; frame-ancestors 'none'";
+
+  /// YouTube's embed needs to know which site it's on (error 153 without a
+  /// referrer): other sites get the server's origin only, never a path or
+  /// the setup link's token.
+  static const referrerPolicy = 'strict-origin-when-cross-origin';
 
   /// Files a new build changes without changing their names.
   static const _noCache = {'index.html', 'flutter_bootstrap.js'};
@@ -50,7 +58,7 @@ class WebFiles {
     final headers = response.headers
       ..set('Content-Security-Policy', contentSecurityPolicy)
       ..set('X-Content-Type-Options', 'nosniff')
-      ..set('Referrer-Policy', 'no-referrer');
+      ..set('Referrer-Policy', referrerPolicy);
     final index = File('${dir.path}/index.html');
     if (!await index.exists()) {
       headers

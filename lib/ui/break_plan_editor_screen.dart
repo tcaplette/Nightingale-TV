@@ -331,7 +331,7 @@ class _Examples extends StatelessWidget {
       final s = resolve(plan, Duration(minutes: minutes));
       if (!s.hasBreaks) return tr.noBreaks(name);
       final mids = s.midCount == 0 ? '' : tr.breaksInside(s.midCount);
-      return '$name: ${formatMinutes(s.slotLength)}$mids';
+      return tr.labelValue(name, '${formatMinutes(s.slotLength)}$mids');
     }
 
     final examples = [example(tr.n22MinSitcom, 22), example(tr.n44MinDrama, 44), example(tr.n100MinMovie, 100)];

@@ -93,8 +93,11 @@ class LineupServer {
   /// The channels served: visible generated ones, by number; none while
   /// signed out. Live channels are never exported (lineup-export): the
   /// server has its own Live TV, and re-serving an IPTV stream would loop
-  /// it or break the provider's connection limit.
-  List<Channel> lineupOf(AppState? app) => [for (final c in app?.channels ?? const <Channel>[]) if (!c.isLive) c];
+  /// it or break the provider's connection limit. YouTube channels play only
+  /// in YouTube's own player, so they're never exported either
+  /// (youtube-subscriptions D13).
+  List<Channel> lineupOf(AppState? app) =>
+      [for (final c in app?.channels ?? const <Channel>[]) if (!c.isLive && !c.isYouTube) c];
 
   /// The address clients reached this server at.
   static ExportUrls urlsFor(HttpRequest request) {

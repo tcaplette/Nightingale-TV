@@ -67,6 +67,9 @@ CLAUDE.md
 # Private Play Store follow-ups (release key, enrollment)
 PLAY_STORE_NOTES.md
 
+# Play testers and unlock codes (kept local)
+/play-testers-and-unlocks.txt
+
 # Release steps for agents (kept local)
 /RELEASE_NOTES_FOR_AGENTS.md
 
@@ -93,6 +96,10 @@ tool/idle_budget/seed/
 /supabase/.branches/
 /supabase/.secrets.json
 /supabase/.auth-merged.json
+# YouTube (youtube-shared-client D1): the app's shared Google client, as
+# downloaded from Google Cloud. Never committed, so forks don't spend this
+# project's quota; they bring their own file.
+/assets/youtube/client/nightingale-tv-youtube.json
 # Backup copies of the private files
 /sharing.env.bak-*
 /supabase-credentials.txt.bak-*
@@ -113,7 +120,11 @@ tool/idle_budget/seed/
 
 # Weekly bug-fix notes (kept local)
 /bug-fixes-nov-08-14-2026.md
+/bug-fixes-nov-22-28-2026.md
 
 # Gradle caches and build output of the vendored plugins
 /third_party/*/android/.gradle/
 /third_party/*/android/build/
+
+# FFmpeg for Android (tool/build_ffmpeg_android.sh)
+/android/app/src/main/jniLibs/

@@ -1,5 +1,5 @@
-/// Caption language names in each app language, by 639-2/B code (design
-/// D11). English names live in `server/languages.dart`; the completeness test
+/// Caption language names in each app language tag, by 639-2/B code
+/// (app-languages D11, cjk-languages D6). English names live in `server/languages.dart`; the completeness test
 /// checks every map has every code.
 const languageNameMaps = <String, Map<String, String>>{
   'de': {
@@ -11,7 +11,7 @@ const languageNameMaps = <String, Map<String, String>>{
     'mac': 'Mazedonisch', 'mal': 'Malayalam', 'mao': 'Maori', 'mar': 'Marathi', 'may': 'Malaiisch', 'mlt': 'Maltesisch', 'mon': 'Mongolisch', 'nep': 'Nepalesisch', 'nno': 'Norwegisch (Nynorsk)', 'nob': 'Norwegisch (Bokmål)',
     'nor': 'Norwegisch', 'pan': 'Punjabi', 'per': 'Persisch', 'pol': 'Polnisch', 'por': 'Portugiesisch', 'pus': 'Paschtu', 'rum': 'Rumänisch', 'rus': 'Russisch', 'sin': 'Singhalesisch', 'slo': 'Slowakisch',
     'slv': 'Slowenisch', 'som': 'Somali', 'spa': 'Spanisch', 'srp': 'Serbisch', 'swa': 'Suaheli', 'swe': 'Schwedisch', 'tam': 'Tamil', 'tel': 'Telugu', 'tgk': 'Tadschikisch', 'tgl': 'Tagalog',
-    'tha': 'Thailändisch', 'tib': 'Tibetisch', 'tur': 'Türkisch', 'ukr': 'Ukrainisch', 'urd': 'Urdu', 'uzb': 'Usbekisch', 'vie': 'Vietnamesisch', 'wel': 'Walisisch', 'yid': 'Jiddisch', 'yor': 'Yoruba', 'zul': 'Zulu',
+    'tha': 'Thailändisch', 'tib': 'Tibetisch', 'tur': 'Türkisch', 'ukr': 'Ukrainisch', 'urd': 'Urdu', 'uzb': 'Usbekisch', 'vie': 'Vietnamesisch', 'wel': 'Walisisch', 'yid': 'Jiddisch', 'yor': 'Yoruba', 'yue': 'Kantonesisch', 'zul': 'Zulu',
   },
   'fr': {
     'afr': 'Afrikaans', 'alb': 'Albanais', 'amh': 'Amharique', 'ara': 'Arabe', 'arm': 'Arménien', 'aze': 'Azéri', 'baq': 'Basque', 'bel': 'Biélorusse', 'ben': 'Bengali', 'bos': 'Bosnien',
@@ -22,7 +22,7 @@ const languageNameMaps = <String, Map<String, String>>{
     'mac': 'Macédonien', 'mal': 'Malayalam', 'mao': 'Maori', 'mar': 'Marathi', 'may': 'Malais', 'mlt': 'Maltais', 'mon': 'Mongol', 'nep': 'Népalais', 'nno': 'Norvégien (nynorsk)', 'nob': 'Norvégien (bokmål)',
     'nor': 'Norvégien', 'pan': 'Pendjabi', 'per': 'Persan', 'pol': 'Polonais', 'por': 'Portugais', 'pus': 'Pachto', 'rum': 'Roumain', 'rus': 'Russe', 'sin': 'Cinghalais', 'slo': 'Slovaque',
     'slv': 'Slovène', 'som': 'Somali', 'spa': 'Espagnol', 'srp': 'Serbe', 'swa': 'Swahili', 'swe': 'Suédois', 'tam': 'Tamoul', 'tel': 'Télougou', 'tgk': 'Tadjik', 'tgl': 'Tagalog',
-    'tha': 'Thaï', 'tib': 'Tibétain', 'tur': 'Turc', 'ukr': 'Ukrainien', 'urd': 'Ourdou', 'uzb': 'Ouzbek', 'vie': 'Vietnamien', 'wel': 'Gallois', 'yid': 'Yiddish', 'yor': 'Yoruba', 'zul': 'Zoulou',
+    'tha': 'Thaï', 'tib': 'Tibétain', 'tur': 'Turc', 'ukr': 'Ukrainien', 'urd': 'Ourdou', 'uzb': 'Ouzbek', 'vie': 'Vietnamien', 'wel': 'Gallois', 'yid': 'Yiddish', 'yor': 'Yoruba', 'yue': 'Cantonais', 'zul': 'Zoulou',
   },
   'es': {
     'afr': 'Afrikáans', 'alb': 'Albanés', 'amh': 'Amárico', 'ara': 'Árabe', 'arm': 'Armenio', 'aze': 'Azerbaiyano', 'baq': 'Euskera', 'bel': 'Bielorruso', 'ben': 'Bengalí', 'bos': 'Bosnio',
@@ -33,7 +33,7 @@ const languageNameMaps = <String, Map<String, String>>{
     'mac': 'Macedonio', 'mal': 'Malayalam', 'mao': 'Maorí', 'mar': 'Maratí', 'may': 'Malayo', 'mlt': 'Maltés', 'mon': 'Mongol', 'nep': 'Nepalí', 'nno': 'Noruego nynorsk', 'nob': 'Noruego bokmål',
     'nor': 'Noruego', 'pan': 'Punyabí', 'per': 'Persa', 'pol': 'Polaco', 'por': 'Portugués', 'pus': 'Pastún', 'rum': 'Rumano', 'rus': 'Ruso', 'sin': 'Cingalés', 'slo': 'Eslovaco',
     'slv': 'Esloveno', 'som': 'Somalí', 'spa': 'Español', 'srp': 'Serbio', 'swa': 'Suajili', 'swe': 'Sueco', 'tam': 'Tamil', 'tel': 'Telugu', 'tgk': 'Tayiko', 'tgl': 'Tagalo',
-    'tha': 'Tailandés', 'tib': 'Tibetano', 'tur': 'Turco', 'ukr': 'Ucraniano', 'urd': 'Urdu', 'uzb': 'Uzbeko', 'vie': 'Vietnamita', 'wel': 'Galés', 'yid': 'Yidis', 'yor': 'Yoruba', 'zul': 'Zulú',
+    'tha': 'Tailandés', 'tib': 'Tibetano', 'tur': 'Turco', 'ukr': 'Ucraniano', 'urd': 'Urdu', 'uzb': 'Uzbeko', 'vie': 'Vietnamita', 'wel': 'Galés', 'yid': 'Yidis', 'yor': 'Yoruba', 'yue': 'Cantonés', 'zul': 'Zulú',
   },
   'pt': {
     'afr': 'Africâner', 'alb': 'Albanês', 'amh': 'Amárico', 'ara': 'Árabe', 'arm': 'Armênio', 'aze': 'Azerbaijano', 'baq': 'Basco', 'bel': 'Bielorrusso', 'ben': 'Bengali', 'bos': 'Bósnio',
@@ -44,7 +44,7 @@ const languageNameMaps = <String, Map<String, String>>{
     'mac': 'Macedônio', 'mal': 'Malaiala', 'mao': 'Maori', 'mar': 'Marati', 'may': 'Malaio', 'mlt': 'Maltês', 'mon': 'Mongol', 'nep': 'Nepalês', 'nno': 'Norueguês nynorsk', 'nob': 'Norueguês bokmål',
     'nor': 'Norueguês', 'pan': 'Punjabi', 'per': 'Persa', 'pol': 'Polonês', 'por': 'Português', 'pus': 'Pashto', 'rum': 'Romeno', 'rus': 'Russo', 'sin': 'Cingalês', 'slo': 'Eslovaco',
     'slv': 'Esloveno', 'som': 'Somali', 'spa': 'Espanhol', 'srp': 'Sérvio', 'swa': 'Suaíli', 'swe': 'Sueco', 'tam': 'Tâmil', 'tel': 'Telugu', 'tgk': 'Tadjique', 'tgl': 'Tagalo',
-    'tha': 'Tailandês', 'tib': 'Tibetano', 'tur': 'Turco', 'ukr': 'Ucraniano', 'urd': 'Urdu', 'uzb': 'Uzbeque', 'vie': 'Vietnamita', 'wel': 'Galês', 'yid': 'Iídiche', 'yor': 'Iorubá', 'zul': 'Zulu',
+    'tha': 'Tailandês', 'tib': 'Tibetano', 'tur': 'Turco', 'ukr': 'Ucraniano', 'urd': 'Urdu', 'uzb': 'Uzbeque', 'vie': 'Vietnamita', 'wel': 'Galês', 'yid': 'Iídiche', 'yor': 'Iorubá', 'yue': 'Cantonês', 'zul': 'Zulu',
   },
   'it': {
     'afr': 'Afrikaans', 'alb': 'Albanese', 'amh': 'Amarico', 'ara': 'Arabo', 'arm': 'Armeno', 'aze': 'Azero', 'baq': 'Basco', 'bel': 'Bielorusso', 'ben': 'Bengalese', 'bos': 'Bosniaco',
@@ -55,6 +55,54 @@ const languageNameMaps = <String, Map<String, String>>{
     'mac': 'Macedone', 'mal': 'Malayalam', 'mao': 'Maori', 'mar': 'Marathi', 'may': 'Malese', 'mlt': 'Maltese', 'mon': 'Mongolo', 'nep': 'Nepalese', 'nno': 'Norvegese nynorsk', 'nob': 'Norvegese bokmål',
     'nor': 'Norvegese', 'pan': 'Punjabi', 'per': 'Persiano', 'pol': 'Polacco', 'por': 'Portoghese', 'pus': 'Pashto', 'rum': 'Rumeno', 'rus': 'Russo', 'sin': 'Singalese', 'slo': 'Slovacco',
     'slv': 'Sloveno', 'som': 'Somalo', 'spa': 'Spagnolo', 'srp': 'Serbo', 'swa': 'Swahili', 'swe': 'Svedese', 'tam': 'Tamil', 'tel': 'Telugu', 'tgk': 'Tagico', 'tgl': 'Tagalog',
-    'tha': 'Thailandese', 'tib': 'Tibetano', 'tur': 'Turco', 'ukr': 'Ucraino', 'urd': 'Urdu', 'uzb': 'Uzbeko', 'vie': 'Vietnamita', 'wel': 'Gallese', 'yid': 'Yiddish', 'yor': 'Yoruba', 'zul': 'Zulu',
+    'tha': 'Thailandese', 'tib': 'Tibetano', 'tur': 'Turco', 'ukr': 'Ucraino', 'urd': 'Urdu', 'uzb': 'Uzbeko', 'vie': 'Vietnamita', 'wel': 'Gallese', 'yid': 'Yiddish', 'yor': 'Yoruba', 'yue': 'Cantonese', 'zul': 'Zulu',
+  },
+  'ja': {
+    'afr': 'アフリカーンス語', 'alb': 'アルバニア語', 'amh': 'アムハラ語', 'ara': 'アラビア語', 'arm': 'アルメニア語', 'aze': 'アゼルバイジャン語', 'baq': 'バスク語', 'bel': 'ベラルーシ語', 'ben': 'ベンガル語', 'bos': 'ボスニア語',
+    'bul': 'ブルガリア語', 'bur': 'ミャンマー語', 'cat': 'カタルーニャ語', 'chi': '中国語', 'cze': 'チェコ語', 'dan': 'デンマーク語', 'dut': 'オランダ語', 'eng': '英語', 'epo': 'エスペラント語', 'est': 'エストニア語',
+    'fao': 'フェロー語', 'fil': 'フィリピノ語', 'fin': 'フィンランド語', 'fre': 'フランス語', 'geo': 'ジョージア語', 'ger': 'ドイツ語', 'gle': 'アイルランド語', 'glg': 'ガリシア語', 'gre': 'ギリシャ語', 'guj': 'グジャラート語',
+    'heb': 'ヘブライ語', 'hin': 'ヒンディー語', 'hrv': 'クロアチア語', 'hun': 'ハンガリー語', 'ice': 'アイスランド語', 'ind': 'インドネシア語', 'ita': 'イタリア語', 'jav': 'ジャワ語', 'jpn': '日本語', 'kan': 'カンナダ語',
+    'kaz': 'カザフ語', 'khm': 'クメール語', 'kir': 'キルギス語', 'kor': '韓国語', 'kur': 'クルド語', 'lao': 'ラオ語', 'lat': 'ラテン語', 'lav': 'ラトビア語', 'lit': 'リトアニア語', 'ltz': 'ルクセンブルク語',
+    'mac': 'マケドニア語', 'mal': 'マラヤーラム語', 'mao': 'マオリ語', 'mar': 'マラーティー語', 'may': 'マレー語', 'mlt': 'マルタ語', 'mon': 'モンゴル語', 'nep': 'ネパール語', 'nno': 'ノルウェー語（ニーノシュク）', 'nob': 'ノルウェー語（ブークモール）',
+    'nor': 'ノルウェー語', 'pan': 'パンジャブ語', 'per': 'ペルシア語', 'pol': 'ポーランド語', 'por': 'ポルトガル語', 'pus': 'パシュトゥー語', 'rum': 'ルーマニア語', 'rus': 'ロシア語', 'sin': 'シンハラ語', 'slo': 'スロバキア語',
+    'slv': 'スロベニア語', 'som': 'ソマリ語', 'spa': 'スペイン語', 'srp': 'セルビア語', 'swa': 'スワヒリ語', 'swe': 'スウェーデン語', 'tam': 'タミル語', 'tel': 'テルグ語', 'tgk': 'タジク語', 'tgl': 'タガログ語',
+    'tha': 'タイ語', 'tib': 'チベット語', 'tur': 'トルコ語', 'ukr': 'ウクライナ語', 'urd': 'ウルドゥー語', 'uzb': 'ウズベク語', 'vie': 'ベトナム語', 'wel': 'ウェールズ語', 'yid': 'イディッシュ語', 'yor': 'ヨルバ語',
+    'yue': '広東語', 'zul': 'ズールー語',
+  },
+  'zh-Hans': {
+    'afr': '南非荷兰语', 'alb': '阿尔巴尼亚语', 'amh': '阿姆哈拉语', 'ara': '阿拉伯语', 'arm': '亚美尼亚语', 'aze': '阿塞拜疆语', 'baq': '巴斯克语', 'bel': '白俄罗斯语', 'ben': '孟加拉语', 'bos': '波斯尼亚语',
+    'bul': '保加利亚语', 'bur': '缅甸语', 'cat': '加泰罗尼亚语', 'chi': '中文', 'cze': '捷克语', 'dan': '丹麦语', 'dut': '荷兰语', 'eng': '英语', 'epo': '世界语', 'est': '爱沙尼亚语',
+    'fao': '法罗语', 'fil': '菲律宾语', 'fin': '芬兰语', 'fre': '法语', 'geo': '格鲁吉亚语', 'ger': '德语', 'gle': '爱尔兰语', 'glg': '加利西亚语', 'gre': '希腊语', 'guj': '古吉拉特语',
+    'heb': '希伯来语', 'hin': '印地语', 'hrv': '克罗地亚语', 'hun': '匈牙利语', 'ice': '冰岛语', 'ind': '印度尼西亚语', 'ita': '意大利语', 'jav': '爪哇语', 'jpn': '日语', 'kan': '卡纳达语',
+    'kaz': '哈萨克语', 'khm': '高棉语', 'kir': '吉尔吉斯语', 'kor': '韩语', 'kur': '库尔德语', 'lao': '老挝语', 'lat': '拉丁语', 'lav': '拉脱维亚语', 'lit': '立陶宛语', 'ltz': '卢森堡语',
+    'mac': '马其顿语', 'mal': '马拉雅拉姆语', 'mao': '毛利语', 'mar': '马拉地语', 'may': '马来语', 'mlt': '马耳他语', 'mon': '蒙古语', 'nep': '尼泊尔语', 'nno': '挪威尼诺斯克语', 'nob': '挪威博克马尔语',
+    'nor': '挪威语', 'pan': '旁遮普语', 'per': '波斯语', 'pol': '波兰语', 'por': '葡萄牙语', 'pus': '普什图语', 'rum': '罗马尼亚语', 'rus': '俄语', 'sin': '僧伽罗语', 'slo': '斯洛伐克语',
+    'slv': '斯洛文尼亚语', 'som': '索马里语', 'spa': '西班牙语', 'srp': '塞尔维亚语', 'swa': '斯瓦希里语', 'swe': '瑞典语', 'tam': '泰米尔语', 'tel': '泰卢固语', 'tgk': '塔吉克语', 'tgl': '他加禄语',
+    'tha': '泰语', 'tib': '藏语', 'tur': '土耳其语', 'ukr': '乌克兰语', 'urd': '乌尔都语', 'uzb': '乌兹别克语', 'vie': '越南语', 'wel': '威尔士语', 'yid': '意第绪语', 'yor': '约鲁巴语',
+    'yue': '粤语', 'zul': '祖鲁语',
+  },
+  'zh-Hant': {
+    'afr': '南非荷蘭文', 'alb': '阿爾巴尼亞文', 'amh': '阿姆哈拉文', 'ara': '阿拉伯文', 'arm': '亞美尼亞文', 'aze': '亞塞拜然文', 'baq': '巴斯克文', 'bel': '白俄羅斯文', 'ben': '孟加拉文', 'bos': '波士尼亞文',
+    'bul': '保加利亞文', 'bur': '緬甸文', 'cat': '加泰隆尼亞文', 'chi': '中文', 'cze': '捷克文', 'dan': '丹麥文', 'dut': '荷蘭文', 'eng': '英文', 'epo': '世界語', 'est': '愛沙尼亞文',
+    'fao': '法羅文', 'fil': '菲律賓文', 'fin': '芬蘭文', 'fre': '法文', 'geo': '喬治亞文', 'ger': '德文', 'gle': '愛爾蘭文', 'glg': '加利西亞文', 'gre': '希臘文', 'guj': '古吉拉特文',
+    'heb': '希伯來文', 'hin': '印地文', 'hrv': '克羅埃西亞文', 'hun': '匈牙利文', 'ice': '冰島文', 'ind': '印尼文', 'ita': '義大利文', 'jav': '爪哇文', 'jpn': '日文', 'kan': '坎那達文',
+    'kaz': '哈薩克文', 'khm': '高棉文', 'kir': '吉爾吉斯文', 'kor': '韓文', 'kur': '庫德文', 'lao': '寮文', 'lat': '拉丁文', 'lav': '拉脫維亞文', 'lit': '立陶宛文', 'ltz': '盧森堡文',
+    'mac': '馬其頓文', 'mal': '馬拉雅拉姆文', 'mao': '毛利文', 'mar': '馬拉地文', 'may': '馬來文', 'mlt': '馬爾他文', 'mon': '蒙古文', 'nep': '尼泊爾文', 'nno': '挪威耐諾斯克文', 'nob': '挪威巴克摩文',
+    'nor': '挪威文', 'pan': '旁遮普文', 'per': '波斯文', 'pol': '波蘭文', 'por': '葡萄牙文', 'pus': '普什圖文', 'rum': '羅馬尼亞文', 'rus': '俄文', 'sin': '僧伽羅文', 'slo': '斯洛伐克文',
+    'slv': '斯洛維尼亞文', 'som': '索馬利文', 'spa': '西班牙文', 'srp': '塞爾維亞文', 'swa': '史瓦希里文', 'swe': '瑞典文', 'tam': '坦米爾文', 'tel': '泰盧固文', 'tgk': '塔吉克文', 'tgl': '塔加拉族文',
+    'tha': '泰文', 'tib': '藏文', 'tur': '土耳其文', 'ukr': '烏克蘭文', 'urd': '烏都文', 'uzb': '烏茲別克文', 'vie': '越南文', 'wel': '威爾斯文', 'yid': '意第緒文', 'yor': '約魯巴文',
+    'yue': '粵語', 'zul': '祖魯文',
+  },
+  'zh-Hant-HK': {
+    'afr': '南非荷蘭文', 'alb': '阿爾巴尼亞文', 'amh': '阿姆哈拉文', 'ara': '阿拉伯文', 'arm': '亞美尼亞文', 'aze': '阿塞拜疆文', 'baq': '巴斯克文', 'bel': '白俄羅斯文', 'ben': '孟加拉文', 'bos': '波斯尼亞文',
+    'bul': '保加利亞文', 'bur': '緬甸文', 'cat': '加泰隆尼亞文', 'chi': '中文', 'cze': '捷克文', 'dan': '丹麥文', 'dut': '荷蘭文', 'eng': '英文', 'epo': '世界語', 'est': '愛沙尼亞文',
+    'fao': '法羅文', 'fil': '菲律賓文', 'fin': '芬蘭文', 'fre': '法文', 'geo': '格魯吉亞文', 'ger': '德文', 'gle': '愛爾蘭文', 'glg': '加利西亞文', 'gre': '希臘文', 'guj': '古吉拉特文',
+    'heb': '希伯來文', 'hin': '印地文', 'hrv': '克羅地亞文', 'hun': '匈牙利文', 'ice': '冰島文', 'ind': '印尼文', 'ita': '意大利文', 'jav': '爪哇文', 'jpn': '日文', 'kan': '卡納達文',
+    'kaz': '哈薩克文', 'khm': '高棉文', 'kir': '吉爾吉斯文', 'kor': '韓文', 'kur': '庫德文', 'lao': '老撾文', 'lat': '拉丁文', 'lav': '拉脫維亞文', 'lit': '立陶宛文', 'ltz': '盧森堡文',
+    'mac': '馬其頓文', 'mal': '馬拉雅拉姆文', 'mao': '毛利文', 'mar': '馬拉地文', 'may': '馬來文', 'mlt': '馬耳他文', 'mon': '蒙古文', 'nep': '尼泊爾文', 'nno': '挪威尼諾斯克文', 'nob': '挪威博克馬爾文',
+    'nor': '挪威文', 'pan': '旁遮普文', 'per': '波斯文', 'pol': '波蘭文', 'por': '葡萄牙文', 'pus': '普什圖文', 'rum': '羅馬尼亞文', 'rus': '俄文', 'sin': '僧伽羅文', 'slo': '斯洛伐克文',
+    'slv': '斯洛文尼亞文', 'som': '索馬里文', 'spa': '西班牙文', 'srp': '塞爾維亞文', 'swa': '斯瓦希里文', 'swe': '瑞典文', 'tam': '泰米爾文', 'tel': '泰盧固文', 'tgk': '塔吉克文', 'tgl': '他加祿文',
+    'tha': '泰文', 'tib': '藏文', 'tur': '土耳其文', 'ukr': '烏克蘭文', 'urd': '烏爾都文', 'uzb': '烏茲別克文', 'vie': '越南文', 'wel': '威爾斯文', 'yid': '意第緒文', 'yor': '約魯巴文',
+    'yue': '粵語', 'zul': '祖魯文',
   },
 };

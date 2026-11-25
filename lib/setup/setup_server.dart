@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:math';
 import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart';
@@ -22,6 +23,7 @@ import '../data/app_storage.dart';
 import '../export/export_service.dart';
 import '../export/export_settings.dart';
 import '../icons/custom_icons.dart';
+import '../l10n/generated_names.dart';
 import '../live/live_download.dart';
 import '../live/live_source.dart';
 import '../live/live_source_files.dart';
@@ -36,6 +38,16 @@ import '../server/media_server.dart';
 import '../server/server_log.dart';
 import '../server/server_set.dart';
 import '../server/sign_in_flow.dart';
+import '../server/smb/smb_history.dart';
+import '../server/smb/smb_library.dart';
+import '../server/smb/smb_server.dart';
+import '../server/smb/smb_share.dart' show smbJoin;
+import '../server/youtube/google_sign_in.dart';
+import '../server/youtube/youtube_api.dart';
+import '../server/youtube/youtube_client_config.dart';
+import '../server/youtube/youtube_server.dart';
+import '../convert/convert_helper.dart';
+import 'dart:ui' show Color;
 import '../ui/format.dart';
 import 'accounts.dart';
 import 'api/routes.dart';
@@ -50,7 +62,9 @@ part 'api/channels_api.dart';
 part 'api/station_api.dart';
 part 'api/live_api.dart';
 part 'api/servers_api.dart';
+part 'api/shares_api.dart';
 part 'api/admin_api.dart';
+part 'api/youtube_api.dart';
 
 /// Server mode's web admin and its JSON API (server-setup, admin-api), on
 /// [port] (8484, or `NTV_SETUP_PORT`).
@@ -61,7 +75,7 @@ part 'api/admin_api.dart';
 /// can't send.
 class SetupServer {
   SetupServer(this.household, this.accounts,
-      {this.port = defaultPort, this.lanHost, this.signInFlow, this.serverSignInFlow, WebFiles? web})
+      {this.port = defaultPort, this.lanHost, this.signInFlow, this.serverSignInFlow, this.youTubeSignInFlow, WebFiles? web})
       : web = web ?? WebFiles.fromEnvironment(Platform.environment) {
     routes = ApiRoutes([
       ..._coreRoutes,
@@ -69,10 +83,12 @@ class SetupServer {
       ..._profileRoutes,
       ..._libraryRoutes,
       ..._serverRoutes,
+      ..._shareRoutes,
       ..._channelRoutes,
       ..._stationRoutes,
       ..._liveRoutes,
       ..._adminRoutes,
+      ..._youTubeRoutes,
     ]);
   }
 
@@ -110,6 +126,10 @@ class SetupServer {
   /// in again (multi-server).
   final SignInFlow Function(AppState app, String? againKey)? serverSignInFlow;
 
+  /// Tests: the flow for a YouTube sign-in ([againKey]: a new client on
+  /// that server), with a fake Google.
+  final SignInFlow Function(AppState app, String? againKey)? youTubeSignInFlow;
+
   /// Every API route.
   late final ApiRoutes routes;
 
@@ -129,6 +149,10 @@ class SetupServer {
 
   /// Sign-ins in progress (or just finished), by profile id.
   final _signIns = <String, _SignIn>{};
+
+  /// YouTube subscriptions last listed for a picker, by `profile/key`, so
+  /// saving picks costs no second request.
+  final _youTubeSubs = <String, List<YouTubeSubscription>>{};
 
   /// Profiles made by Start fresh, exported once signed in.
   final _fresh = <String>{};
@@ -412,4 +436,14 @@ class _SignIn {
   final AppState app;
   final SignInFlow flow;
   bool done = false;
+
+  /// A YouTube sign-in's id in its URLs (docker-youtube D2).
+  String? run;
+
+  /// The profile's servers when a YouTube sign-in started, to find the one
+  /// it adds.
+  Set<String> keysBefore = const {};
+
+  /// Google said yes and the server was made with no picks yet.
+  bool picked = false;
 }

@@ -267,7 +267,7 @@ class _SourceEditorState extends State<SourceEditor> {
         Wrap(spacing: 6, runSpacing: 6, children: [
           for (final d in decades)
             FilterChip(
-              label: Text(decadeName(d)),
+              label: Text(displayDecade(decadeName(d))),
               selected: _s.decades.contains(d),
               onSelected: (on) => _change(
                   decades: ({..._s.decades}..removeWhere((v) => !on && v == d)..addAll([if (on) d])).toList()..sort()),

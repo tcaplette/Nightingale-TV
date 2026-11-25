@@ -177,8 +177,11 @@ void main() {
       expect(cells.first.start.minute, 0);
       expect(find.textContaining('Now playing: song artist'), findsOneWidget);
       expect(find.textContaining('Up next: '), findsOneWidget);
-      // The description line has room for at least two lines (25 pt).
-      expect(tester.getSize(find.textContaining('Up next: ')).height, greaterThanOrEqualTo(55));
+      // The description line has room for at least two lines (25 pt): the
+      // space the panel gives it, not the text's own height, which is one
+      // line when only one song is left in the hour.
+      final room = find.ancestor(of: find.textContaining('Up next: '), matching: find.byType(Row)).first;
+      expect(tester.getSize(room).height, greaterThanOrEqualTo(55));
     });
   });
 }

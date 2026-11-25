@@ -1,10 +1,11 @@
 import 'dart:async';
+import 'dart:ffi';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
-import 'package:window_manager/window_manager.dart';
 
+import 'data/app_storage.dart';
 import 'platform/platform_info.dart';
 
 /// Run (briefly) before the app quits, e.g. to stop a transcode job on the
@@ -26,20 +27,34 @@ const serverExitHookTimeout = Duration(seconds: 6);
 
 /// Closes the app for good: the window on a PC, the activity on Android.
 /// Replaceable in tests.
+///
+/// On a PC the process ends at once (libc `_exit`), and its window with
+/// it. Destroying the window starts the engine's teardown, during which
+/// mpv's still-running players can call into Dart after the VM shut down
+/// ("GetFfiCallbackMetadata called after shutdown") or a destructor
+/// crashes, aborting the process with a core dump. [quitApp] has run the
+/// exit hooks and written every save by then.
 @visibleForTesting
 Future<void> Function() closeApp = () async {
   if (PlatformInfo.isDesktop) {
-    await windowManager.destroy();
+    _endProcess();
   } else {
     await SystemNavigator.pop();
   }
 };
+
+/// Ends the process now, without destructors or atexit handlers.
+void _endProcess() =>
+    DynamicLibrary.process().lookupFunction<Void Function(Int32), void Function(int)>('_exit')(0);
 
 /// Quits: runs [exitHooks], then [beforeClosing] (such as stopping
 /// playback), then closes the app.
 Future<void> quitApp({Future<void> Function()? beforeClosing}) async {
   await runExitHooks();
   await beforeClosing?.call();
+  // A PC's process ends at once ([closeApp]): saves still being written
+  // first. Android closes as it always has.
+  if (PlatformInfo.isDesktop) await AppStorage.flushAll().timeout(exitHookTimeout, onTimeout: () {});
   await closeApp();
 }
 

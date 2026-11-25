@@ -32,10 +32,15 @@ void main() {
 
   testWidgets('the picker lists Automatic and each language by its own name', (tester) async {
     await open(tester);
-    expect(find.byType(TvToggle), findsNWidgets(7));
-    for (final name in ['Automatic', 'English', 'Deutsch', 'Français', 'Español', 'Português (Brasil)', 'Italiano']) {
-      expect(find.text(name), findsWidgets, reason: name);
+    expect(find.byType(TvToggle), findsNWidgets(11));
+    for (final name in ['Automatic', 'English', 'Deutsch', 'Français', 'Español', 'Português (Brasil)', 'Italiano', '日本語', '简体中文', '繁體中文', '繁體中文（香港）']) {
+      expect(find.text(name, skipOffstage: false), findsWidgets, reason: name);
     }
+    // The last language scrolls into view when it takes focus.
+    final last = find.ancestor(of: find.text('繁體中文（香港）'), matching: find.byType(TvToggle));
+    Focus.of(tester.element(find.text('繁體中文（香港）'))).requestFocus();
+    await settle(tester);
+    expect(tester.getRect(last).bottom, lessThanOrEqualTo(1080));
     await tester.pumpWidget(const SizedBox());
   });
 
@@ -72,6 +77,7 @@ void main() {
     await settle(tester);
     expect(find.text('Automatique'), findsWidgets);
     expect(find.text('Deutsch'), findsOneWidget);
+    expect(find.text('日本語', skipOffstage: false), findsOneWidget, reason: 'Japanese keeps its own name');
     await tester.pumpWidget(const SizedBox());
   });
 }

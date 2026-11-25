@@ -300,6 +300,44 @@ void main() {
       await again.close();
     });
 
+    test('a quality picked in the player saves the cap, and an Mbps one turns converting on (player-options)', () async {
+      final app = await signedInApp(dir, fakeLibrary());
+      BitratePreset preset(int? kbps) => PlaybackSettings.presets.firstWhere((p) => p.kbps == kbps);
+      Future<Object?> saved() async =>
+          ((await app.storage.readJson('settings.json') as Map<String, Object?>)['playback'] as Map)
+              .cast<String, Object?>();
+
+      // An Mbps preset with converting off turns it on.
+      await app.setQuality(preset(4000));
+      expect(app.settings.playback, const PlaybackSettings(transcodeIfNeeded: true, maxKbps: 4000));
+      expect(app.capInEffect, 4000);
+      expect(await saved(), containsPair('transcodeIfNeeded', true));
+      expect(await saved(), containsPair('bitrate', 4000));
+
+      // Original leaves the toggle on, with no cap.
+      await app.setQuality(preset(null));
+      expect(app.settings.playback, const PlaybackSettings(transcodeIfNeeded: true));
+      expect(app.capInEffect, isNull);
+      expect(await saved(), containsPair('bitrate', 'original'));
+      expect(await saved(), containsPair('transcodeIfNeeded', true));
+
+      // Original leaves an off toggle off.
+      await app.setPlayback(const PlaybackSettings(maxKbps: 8000));
+      await app.setQuality(preset(null));
+      expect(app.settings.playback, PlaybackSettings.off);
+      expect(await saved(), containsPair('transcodeIfNeeded', false));
+
+      // It survives a restart, and other settings are untouched.
+      await app.setPlayback(const PlaybackSettings(captions: true, onScreenClock: true));
+      await app.setQuality(preset(12000));
+      final again = AppState(app.storage);
+      await again.start();
+      expect(again.settings.playback,
+          const PlaybackSettings(transcodeIfNeeded: true, maxKbps: 12000, captions: true, onScreenClock: true));
+      await app.close();
+      await again.close();
+    });
+
     test('volume leveling is saved and survives a restart', () async {
       final app = await signedInApp(dir, fakeLibrary());
       expect(app.settings.playback.volumeLeveling, isFalse);

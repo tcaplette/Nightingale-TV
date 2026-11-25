@@ -105,6 +105,7 @@ class _PinPadState extends State<_PinPad> {
             label: label,
             icon: icon,
             expand: true,
+            shrinkLabel: true,
             autofocus: autofocus,
             onPressed: onPressed ?? () => _type(label),
           ),

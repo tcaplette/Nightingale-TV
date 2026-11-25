@@ -68,6 +68,17 @@ Future<void> buyUnlock(BuildContext context) async {
   }
 }
 
+/// Redeems a Play promo code (play-promo-codes D1): the PIN on a kid
+/// profile, then Play's redeem page. Where nothing opens it (typical on a
+/// TV), a message says to redeem on a phone or computer, then Check my
+/// purchase again. The redeemed code arrives as a purchase and unlocks.
+Future<void> redeemCode(BuildContext context) async {
+  final unlock = HouseholdScope.read(context).unlock;
+  if (unlock == null || !await _grownUp(context) || !context.mounted) return;
+  if (await unlock.redeem() || !context.mounted) return;
+  await showMessage(context, title: tr.redeemCodeTitle, message: tr.redeemCodeText);
+}
+
 /// Replaces the home screen (sign-in, profile picker or TV) while the trial
 /// is over and nothing is bought. Playback stops first. When the state turns
 /// unlocked or pending, the home screen comes back without a restart, and
@@ -147,6 +158,7 @@ class UnlockScreen extends StatelessWidget {
   const UnlockScreen({super.key});
 
   static const buyKey = ValueKey('unlock-buy');
+  static const redeemKey = ValueKey('unlock-redeem');
   static const checkKey = ValueKey('unlock-check');
   static const backupKey = ValueKey('unlock-backup');
   static const exitKey = ValueKey('unlock-exit');
@@ -188,6 +200,12 @@ class UnlockScreen extends StatelessWidget {
               expand: true,
               autofocus: true,
               onPressed: () => unawaited(buyUnlock(context))),
+          TvButton(
+              key: redeemKey,
+              label: tr.redeemPlayCode,
+              icon: Icons.redeem,
+              expand: true,
+              onPressed: () => unawaited(redeemCode(context))),
           TvButton(
               key: checkKey,
               label: tr.checkMyPurchaseAgain,
@@ -253,13 +271,15 @@ class UnlockScreen extends StatelessWidget {
 }
 
 /// The menu's **Unlock Nightingale TV** (play-unlock D6), after Error
-/// reports: the days left, or Purchase pending. Outside the kid profile's
-/// menu lock; buying asks for the PIN there. Nothing when unlocked or not a
-/// locked install.
+/// reports, with **Redeem a Play code** under it (play-promo-codes D2): the
+/// days left, or Purchase pending (then no Redeem). Outside the kid
+/// profile's menu lock; buying and redeeming ask for the PIN there. Nothing
+/// when unlocked or not a locked install.
 class UnlockMenuItem extends StatelessWidget {
   const UnlockMenuItem({super.key});
 
   static const buttonKey = ValueKey('menu-unlock');
+  static const redeemKey = ValueKey('menu-redeem');
 
   @override
   Widget build(BuildContext context) {
@@ -284,6 +304,16 @@ class UnlockMenuItem extends StatelessWidget {
                 // A pending purchase is on its way: nothing to buy.
                 onPressed: pending ? null : () => unawaited(buyUnlock(context)),
               ),
+              if (!pending) ...[
+                const SizedBox(height: 18),
+                TvButton(
+                  key: redeemKey,
+                  label: tr.redeemPlayCode,
+                  icon: Icons.redeem,
+                  expand: true,
+                  onPressed: () => unawaited(redeemCode(context)),
+                ),
+              ],
               const SizedBox(height: 8),
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 32),

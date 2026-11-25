@@ -9,9 +9,12 @@
 #                                       same library (multi-server's mirrored
 #                                       test); refuses while an emulator runs
 #                                       or memory is short
+#   test_servers.sh up samba            start the SMB shares (samba/) and a
+#                                       WS-Discovery responder, beside
+#                                       whatever else is up
 #   test_servers.sh down                stop everything
 #   test_servers.sh status              what's running, and its address
-#   test_servers.sh setup <jellyfin|emby|plex>
+#   test_servers.sh setup <jellyfin|emby|plex|samba>
 #                                       start it, create the admin user and
 #                                       libraries, scan them, and add the fake
 #                                       tuner and its guide to its Live TV
@@ -19,13 +22,16 @@
 # Setup reads credentials only from the environment, never from files:
 #   jellyfin: JELLYFIN_USER, JELLYFIN_PASSWORD
 #   emby: EMBY_USER, EMBY_PASSWORD
+#   samba: SMB_USER (default smbtest), SMB_PASSWORD (for "up samba" too)
 #   plex: PLEX_CLAIM (from https://plex.tv/claim, valid 4 minutes; needed
 #         the first time only, to link the server to the test account)
-# Media comes from make_media.sh (run it first).
+# Media comes from make_media.sh (run it first), and the SMB shares' odd files
+# from make_smb_media.sh.
 set -euo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
 export TEST_MEDIA="${NIGHTINGALE_TEST_MEDIA:-$HOME/.cache/nightingale-test-media}"
+export TEST_SMB_MEDIA="${NIGHTINGALE_TEST_SMB_MEDIA:-$HOME/.cache/nightingale-test-smb-media}"
 export TEST_SERVERS_DATA="${NIGHTINGALE_TEST_SERVERS:-$HOME/.cache/nightingale-test-servers}"
 export HOST_UID="$(id -u)" HOST_GID="$(id -g)"
 JELLYFIN=http://127.0.0.1:8097
@@ -42,7 +48,7 @@ dk() {
     sg docker -c "$(printf '%q ' docker "$@")"
   fi
 }
-compose() { dk compose -f "$HERE/compose.yaml" --profile jellyfin --profile emby --profile plex --profile tuner "$@"; }
+compose() { dk compose -f "$HERE/compose.yaml" --profile jellyfin --profile emby --profile plex --profile tuner --profile samba "$@"; }
 
 running() { dk ps --format '{{.Names}}' | sed -n 's/^nightingale-//p'; }
 
@@ -67,6 +73,21 @@ up_tuner() {
   exit 1
 }
 
+# The SMB shares and the WS-Discovery responder.
+up_samba() {
+  : "${SMB_PASSWORD:?set SMB_PASSWORD}"
+  [[ -d "$TEST_MEDIA/TV" ]] || { echo "No test media in $TEST_MEDIA; run make_media.sh first." >&2; exit 1; }
+  mkdir -p "$TEST_SMB_MEDIA"
+  compose up -d --build samba
+  compose up -d wsdd
+  for _ in $(seq 1 60); do
+    (exec 3<>/dev/tcp/127.0.0.1/1447) 2>/dev/null && return 0
+    sleep 1
+  done
+  echo "Samba did not start; see: docker logs nightingale-samba" >&2
+  exit 1
+}
+
 # Memory Emby and Plex need together, beside the desktop (MiB).
 PAIR_MEMORY=3072
 
@@ -87,6 +108,7 @@ check_pair() {
 up() {
   local which="$1" keep="$1"
   if [[ "$which" == tuner ]]; then up_tuner; status; return; fi
+  if [[ "$which" == samba ]]; then up_samba; status; return; fi
   if [[ "$which" == emby+plex ]]; then
     check_pair
     keep="emby plex"
@@ -141,6 +163,8 @@ status() {
       jellyfin) echo "Jellyfin is running: $JELLYFIN (emulator: http://10.0.2.2:8097)" ;;
       emby) echo "Emby is running: $EMBY (emulator: http://10.0.2.2:8096)" ;;
       plex) echo "Plex is running: $PLEX (emulator: http://10.0.2.2:32400)" ;;
+      samba) echo "Samba is running: smb://127.0.0.1:1445/{media,archive,guest,readonly,private}, :1446/signed, :1447/{old,oldguest} (emulator: 10.0.2.2)" ;;
+      wsdd) echo "WS-Discovery responder is running: NTV-WINDOWS" ;;
       fake-tuner) echo "Fake tuner is running: $TUNER/channels.m3u, $TUNER/xmltv.xml.gz (emulator: http://10.0.2.2:5104)" ;;
       *) echo "Running: $r" ;;
     esac
@@ -361,7 +385,7 @@ setup_plex_dvr() {
 }
 
 case "${1:-}" in
-  up) [[ "${2:-}" =~ ^(jellyfin|emby|plex|tuner|emby\+plex)$ ]] || { echo "up jellyfin|emby|plex|tuner|emby+plex" >&2; exit 2; }; up "$2" ;;
+  up) [[ "${2:-}" =~ ^(jellyfin|emby|plex|tuner|samba|emby\+plex)$ ]] || { echo "up jellyfin|emby|plex|tuner|samba|emby+plex" >&2; exit 2; }; up "$2" ;;
   down) down ;;
   status) status ;;
   setup)
@@ -369,7 +393,8 @@ case "${1:-}" in
       jellyfin) setup_jellyfin ;;
       emby) setup_emby ;;
       plex) setup_plex ;;
-      *) echo "setup jellyfin|emby|plex" >&2; exit 2 ;;
+      samba) "$HERE/make_smb_media.sh"; up samba ;;
+      *) echo "setup jellyfin|emby|plex|samba" >&2; exit 2 ;;
     esac ;;
-  *) sed -n '2,24p' "$0" | sed 's/^# \{0,1\}//'; exit 2 ;;
+  *) sed -n '2,30p' "$0" | sed 's/^# \{0,1\}//'; exit 2 ;;
 esac

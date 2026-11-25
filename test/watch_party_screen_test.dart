@@ -169,13 +169,13 @@ void main() {
     expect(h.tuner.partyGuest, isTrue);
   }
 
-  testWidgets('D-pad: Watch together after Captions, the sheet, Start; then the party row and a reaction', (tester) async {
+  testWidgets('D-pad: Watch together after Sleep, the sheet, Start; then the party row and a reaction', (tester) async {
     await start(tester);
     await watch(tester);
     await key(tester, LogicalKeyboardKey.arrowRight);
     await key(tester, LogicalKeyboardKey.arrowUp);
     expect(lit(tester), ['Guide']);
-    for (final label in ['Menu', 'Sleep', 'Captions', 'Watch together']) {
+    for (final label in ['Menu', 'Sleep', 'Watch together']) {
       await key(tester, LogicalKeyboardKey.arrowRight);
       expect(lit(tester), [label]);
     }

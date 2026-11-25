@@ -3,6 +3,7 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:nightingale_tv/l10n/tr.dart';
 import 'package:nightingale_tv/commercials/commercial_pool.dart';
 import 'package:image/image.dart' as img;
 import 'package:nightingale_tv/app_state.dart';
@@ -201,6 +202,17 @@ void main() {
   });
 
   group('channels (4.6)', () {
+    test('generated names come in the request\'s language, saved names stay (cjk-languages)', () async {
+      final app = await signIn();
+      final generated = app.allChannels.firstWhere((c) => c.auto && runInLanguage('ja', () => c.displayName) != c.name);
+      final r = await admin.call('GET', '/api/v1/profiles/$id/channels/${generated.id}', headers: {'Accept-Language': 'ja'});
+      expect(r.status, 200);
+      final channel = r.json! as Map;
+      expect(channel['name'], generated.name, reason: 'the saved name is unchanged');
+      expect((channel['view'] as Map)['name'], runInLanguage('ja', () => generated.displayName));
+      expect((channel['view'] as Map)['name'], isNot(generated.name));
+    });
+
     test('renumbering: channel 2 set to 1 swaps with channel 1, as on the TV', () async {
       final app = await signIn();
       await admin.post('/api/v1/profiles/$id/channels', {'kind': 'block', 'name': 'Second'});
@@ -382,7 +394,7 @@ void main() {
       expect(((await get('/api/v1/profiles/$id/icons'))! as Map)['icons'], isEmpty);
     });
 
-    test('reset fails safely: when the safety backup can\'t be saved nothing is reset', () async {
+    test('reset fails safely: when the undo point can\'t be saved nothing is reset', () async {
       final app = await signIn();
       final ch = app.allChannels.first;
       await edit('PUT', '/api/v1/profiles/$id/channels/${ch.id}', {'name': 'Mine'});
@@ -391,7 +403,7 @@ void main() {
       household.backups = BackupScheduler(household, BackupStore(Directory(blocked.path)));
       final r = await admin.post('/api/v1/profiles/$id/channels/reset');
       expect(r.status, 409);
-      expect((r.json! as Map)['error'], startsWith("Couldn't save a safety backup first, so nothing was reset"));
+      expect((r.json! as Map)['error'], startsWith("Couldn't save a backup first, so nothing was reset"));
       expect(app.channelById(ch.id)!.name, 'Mine');
     });
 
@@ -665,26 +677,40 @@ void main() {
     });
   });
 
-  group('saved backups (4.14)', () {
-    test('list, download, restore and delete the server\'s saved backups', () async {
+  group('backups (backup-simplify D9)', () {
+    test('the automatic backup and the undo point: read, download, restore; nothing else by name', () async {
       final app = await signIn();
-      final saved = await household.backups!.backUp(BackupReason.manual);
-      final list = ((await get('/api/v1/backups'))! as Map)['backups'] as List;
-      final entry = list.cast<Map>().singleWhere((b) => b['name'] == saved!.name);
-      expect(entry['kind'], 'Made by you');
-      final download = await admin.get('/api/v1/backups/${saved!.name}');
-      expect(download.status, 200);
-      expect(BackupArchive.check(Uint8List.fromList(download.bytes)).summary.profiles, isNotEmpty);
+      expect((await get('/api/v1/backups'))! as Map, {'latest': null, 'undo': null});
+      await household.backups!.automaticCheck();
       final ch = app.allChannels.first;
-      final name = ch.name;
-      await edit('PUT', '/api/v1/profiles/$id/channels/${ch.id}', {'name': 'Changed after the backup'});
-      final restored = await admin.post('/api/v1/backups/${saved.name}/restore');
+      await edit('PUT', '/api/v1/profiles/$id/channels/${ch.id}', {'name': 'Before the reset'});
+      final names = [for (final c in app.allChannels) c.name];
+
+      // A lineup reset saves the undo point first.
+      expect((await admin.post('/api/v1/profiles/$id/channels/reset')).status, 200);
+      final listed = (await get('/api/v1/backups'))! as Map;
+      expect((listed['latest'] as Map)['profiles'], isNotEmpty);
+      final undo = listed['undo'] as Map;
+      expect(undo['reason'], 'before-reset');
+      expect(undo['label'], 'Undo lineup reset');
+      expect(undo['profiles'], isNotEmpty);
+      final download = await admin.get('/api/v1/backups/undo');
+      expect(download.status, 200);
+      expect(BackupArchive.check(Uint8List.fromList(download.bytes)).reason, BackupReason.beforeReset);
+
+      final restored = await admin.post('/api/v1/backups/undo/restore');
       expect(restored.status, 200, reason: '${restored.json}');
       final after = (await household.appForSetup(id))!;
-      expect(after.channelById(ch.id)!.name, name);
-      final deleted = await admin.call('DELETE', '/api/v1/backups/${saved.name}');
-      expect(deleted.status, 200);
-      expect((await admin.get('/api/v1/backups/${saved.name}')).status, 404);
+      expect([for (final c in after.allChannels) c.name], names);
+      expect((((await get('/api/v1/backups'))! as Map)['undo'] as Map)['label'], 'Undo restore');
+
+      // Older versions' names, and deleting, are not found.
+      const old = '20261101T120000000Z_daily.ntvbackup';
+      expect((await admin.get('/api/v1/backups/$old')).status, 404);
+      expect((await admin.post('/api/v1/backups/$old/restore')).status, 404);
+      expect((await admin.call('DELETE', '/api/v1/backups/$old')).status, 404);
+      expect((await admin.call('DELETE', '/api/v1/backups/undo')).status, 404);
+      expect(await household.backups!.store.undo(), isNotNull);
     });
   });
 }

@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:math';
+import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:qr_flutter/qr_flutter.dart';
@@ -23,9 +24,10 @@ import '../l10n/tr.dart';
 import '../reporting/error_reports.dart';
 import 'unlock_screen.dart' show unlockLine, unlockStateOf;
 
-/// Menu → Backup & restore (backup-restore D11): Back up now, opening a
-/// file, the phone or computer page, and every backup, newest first, each
-/// with Restore, Save to file and Delete.
+/// Menu → Backup & restore (backup-simplify D8): when the automatic backup
+/// was last written, Save to a file, Open a backup file, the phone or
+/// computer page, **Undo** (its action) when there is an undo point, and About this
+/// install. No list of backups.
 class BackupScreen extends StatefulWidget {
   const BackupScreen({super.key});
 
@@ -33,13 +35,12 @@ class BackupScreen extends StatefulWidget {
   State<BackupScreen> createState() => _BackupScreenState();
 }
 
-enum _Action { restore, save, delete }
-
 class _BackupScreenState extends State<BackupScreen> {
   late final Household _household = HouseholdScope.read(context);
   late final BackupScheduler _backups = _household.backups!;
 
-  List<StoredBackup>? _list;
+  /// The automatic backup and the undo point, once read.
+  ({StoredBackup? latest, StoredBackup? undo})? _stored;
   bool _files = false;
 
   /// Android: About this install.
@@ -72,8 +73,9 @@ class _BackupScreenState extends State<BackupScreen> {
   }
 
   Future<void> _reload() async {
-    final list = await _store.list();
-    if (mounted) setState(() => _list = list);
+    final latest = await _store.latest();
+    final undo = await _store.undo();
+    if (mounted) setState(() => _stored = (latest: latest, undo: undo));
   }
 
   /// Runs [task] with the busy line showing, and its [BackupException] (or
@@ -97,26 +99,24 @@ class _BackupScreenState extends State<BackupScreen> {
     }
   }
 
-  void _backUpNow() => _run(() async {
+  /// A fresh backup with every picked file, through the save dialog.
+  void _saveFile() => _run(() async {
+        final BuiltBackup built;
         try {
-          await _backups.backUp(BackupReason.manual);
-        } on BackupException {
-          rethrow;
+          built = await _backups.build(BackupReason.manual, pickedFiles: PickedFiles.all);
         } on Object catch (e, stack) {
           ErrorReports.capture(e, stack, area: 'backup');
           throw BackupException(tr.couldntSaveThe(e));
         }
-        await _reload();
+        await BackupFiles.save(TransferServer.fileName(built.createdAt), built.bytes);
       });
 
+  /// A backup file, checked in memory and confirmed; never kept.
   void _openFile() => _run(() async {
         final bytes = await BackupFiles.open(limit: TransferServer.maxUpload);
         if (bytes == null) return;
         if (bytes.length > TransferServer.maxUpload) throw BackupException(BackupArchive.tooBig);
-        BackupArchive.check(bytes);
-        final stored = await _store.save(bytes, kind: BackupReason.file);
-        _backups.changed();
-        if (mounted) await _restore(stored);
+        if (mounted) await _restore(bytes);
       });
 
   void _moveSetup(InstallInfo info) => _run(() => moveSetupTo(_household, info));
@@ -129,38 +129,17 @@ class _BackupScreenState extends State<BackupScreen> {
     if (uploaded != null && mounted) await _run(() => _restore(uploaded));
   }
 
-  Future<void> _pick(StoredBackup b) async {
-    if (_busy) return;
-    final action = await _showActions(context, b, canSave: _files);
-    if (!mounted) return;
-    switch (action) {
-      case _Action.restore:
-        await _run(() => _restore(b));
-      case _Action.save:
-        await _run(() async {
-          await BackupFiles.save(TransferServer.fileName(b.createdAt), await _store.read(b));
-        });
-      case _Action.delete:
-        final ok = await confirm(context,
-            title: tr.deleteThisBackup,
-            message: tr.itCantBe(formatMoment(b.createdAt.toLocal()), b.kindLabel),
-            action: tr.delete);
-        if (!ok || !mounted) return;
-        await _run(() async => _store.delete(b));
-        _backups.changed();
-      case null:
-        break;
-    }
-  }
+  void _undo(StoredBackup undo) => _run(() async {
+        if (mounted) await _restore(await _store.read(undo), title: undoTitle(undo));
+      });
 
-  /// Confirms, then restores [b]. The household reloads: this screen goes
-  /// away, and "Who's watching?" shows the restored profiles.
-  Future<void> _restore(StoredBackup b) async {
-    final bytes = await _store.read(b);
+  /// Confirms, then restores [bytes]. The household reloads: this screen
+  /// goes away, and "Who's watching?" shows the restored profiles.
+  Future<void> _restore(Uint8List bytes, {String? title}) async {
     final archive = BackupArchive.check(bytes);
     final plan = await BackupRestorer(_household).plan(archive);
     if (!mounted) return;
-    final ok = await confirmRestore(context, b, plan);
+    final ok = await confirmRestore(context, archive, plan, title: title);
     if (!ok || !mounted) return;
     // A profile watching stops first; the Unlock screen may have none open.
     final tuner = context.getInheritedWidgetOfExactType<AppScope>()?.tuner;
@@ -170,199 +149,84 @@ class _BackupScreenState extends State<BackupScreen> {
   @override
   Widget build(BuildContext context) {
     final g = context.guide;
-    final list = _list;
-    final last = list == null ? null : BackupStore.newestOwn(list);
+    final stored = _stored;
+    final latest = stored?.latest;
+    final undo = stored?.undo;
     final layout = ScreenLayout.of(context);
-    final rows = [
-      for (final b in list ?? const <StoredBackup>[])
-        Padding(
-          key: ValueKey(b.name),
-          padding: const EdgeInsets.only(bottom: 12),
-          child: _BackupRow(backup: b, onPressed: () => _pick(b)),
-        ),
-    ];
     final install = _install;
-    final top = [
-              if (install != null)
-                AboutThisInstall(
-                    info: install.withUnlockLine(unlockLine(unlockStateOf(_household))),
-                    onMove: () => _moveSetup(install),
-                    onBring: () => _bringSetup(install)),
-              Text(
-                last == null
-                    ? (list == null ? ' ' : tr.noBackupsYet)
-                    : tr.lastBackup(formatRecent(last.createdAt.toLocal()), last.kindInSentence),
-                style: g.body(30, weight: FontWeight.w600),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                tr.aBackupHolds,
-                style: g.body(24, color: g.textDim),
-              ),
-              const SizedBox(height: 28),
-              Wrap(
-                spacing: 16,
-                runSpacing: 16,
-                children: [
-                  TvButton(label: tr.backUpNow, icon: Icons.backup, autofocus: true, onPressed: _backUpNow),
-                  if (_files) TvButton(label: tr.openABackup, icon: Icons.file_open, onPressed: _openFile),
-                  TvButton(label: tr.useYourPhone, icon: Icons.qr_code_2, onPressed: _useOtherDevice),
-                ],
-              ),
-              SizedBox(
-                height: 64,
-                child: Align(
-                  alignment: Alignment.centerLeft,
-                  child: _busy
-                      ? SizedBox(width: 36, height: 36, child: CircularProgressIndicator(color: g.accent))
-                      : _error == null
-                          ? null
-                          : Text(_error!, style: g.body(26, weight: FontWeight.w600, color: g.nowLine)),
-                ),
-              ),
-              Text(tr.backups, style: g.display(26, weight: FontWeight.w800, color: g.accent)),
-              const SizedBox(height: 12),
+    final children = [
+      Text(
+        stored == null
+            ? ' '
+            : latest == null
+                ? tr.notBackedUpYet
+                : tr.lastBackedUp(formatRecent(latest.createdAt.toLocal())),
+        style: g.body(30, weight: FontWeight.w600),
+      ),
+      const SizedBox(height: 8),
+      Text(tr.aBackupHolds, style: g.body(24, color: g.textDim)),
+      const SizedBox(height: 28),
+      Wrap(
+        spacing: 16,
+        runSpacing: 16,
+        children: [
+          if (_files) TvButton(label: tr.saveToFile, icon: Icons.save_alt, autofocus: true, onPressed: _saveFile),
+          if (_files) TvButton(label: tr.openABackup, icon: Icons.file_open, onPressed: _openFile),
+          TvButton(label: tr.useYourPhone, icon: Icons.qr_code_2, autofocus: !_files, onPressed: _useOtherDevice),
+          if (undo != null)
+            TvButton(
+                key: const ValueKey('undo'),
+                label: undo.undoLabel,
+                icon: Icons.undo,
+                onPressed: () => _undo(undo)),
+        ],
+      ),
+      SizedBox(
+        height: 64,
+        child: Align(
+          alignment: Alignment.centerLeft,
+          child: _busy
+              ? SizedBox(width: 36, height: 36, child: CircularProgressIndicator(color: g.accent))
+              : _error == null
+                  ? null
+                  : Text(_error!, style: g.body(26, weight: FontWeight.w600, color: g.nowLine)),
+        ),
+      ),
+      if (install != null)
+        AboutThisInstall(
+            info: install.withUnlockLine(unlockLine(unlockStateOf(_household))),
+            onMove: () => _moveSetup(install),
+            onBring: () => _bringSetup(install)),
     ];
     return TvPage(
       title: tr.backupRestore,
       hints: tr.moveOkSelectEsc,
       onBack: () => Navigator.of(context).pop(),
-      // Upright, and below About this install, everything scrolls together.
-      child: layout.isPortrait || install != null
-          ? FocusTraversalGroup(
-              child: ListView(
-                  padding: layout.isPortrait
-                      ? layout.pagePadding(EdgeInsets.zero)
-                      : const EdgeInsets.fromLTRB(120, 40, 120, 32),
-                  children: [...top, ...rows]),
-            )
-          : Padding(
-        padding: const EdgeInsets.fromLTRB(120, 40, 120, 32),
-        child: FocusTraversalGroup(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              ...top,
-              Expanded(
-                child: list == null
-                    ? const SizedBox.shrink()
-                    : ListView(children: rows),
-              ),
-            ],
-          ),
-        ),
+      child: FocusTraversalGroup(
+        child: ListView(
+            padding:
+                layout.isPortrait ? layout.pagePadding(EdgeInsets.zero) : const EdgeInsets.fromLTRB(120, 40, 120, 32),
+            children: children),
       ),
     );
   }
 }
 
+/// The undo point's confirmation title: "Undo lineup reset (Nov 24, 3:05
+/// PM)".
+String undoTitle(StoredBackup undo) => tr.undoTitle(undo.undoLabel, formatMoment(undo.createdAt.toLocal()));
 
-/// One backup in the list: when, what kind, what's in it.
-class _BackupRow extends StatelessWidget {
-  const _BackupRow({required this.backup, required this.onPressed});
-
-  final StoredBackup backup;
-  final VoidCallback? onPressed;
-
-  @override
-  Widget build(BuildContext context) {
-    final g = context.guide;
-    final b = backup;
-    return TvFocusable(
-      onPressed: onPressed,
-      builder: (context, focused) {
-        final fg = focused ? g.onFocus : g.text;
-        return AnimatedContainer(
-          duration: const Duration(milliseconds: 120),
-          padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 18),
-          decoration: BoxDecoration(
-            color: focused ? g.focus : g.cell,
-            borderRadius: BorderRadius.circular(g.radius * 2),
-            border: Border.all(color: focused ? Colors.white : g.cellBorder, width: 2),
-          ),
-          // Upright: the date, then what kind and what's in it.
-          child: ScreenLayout.of(context).isPortrait
-              ? Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(formatMoment(b.createdAt.toLocal()), style: g.display(30, weight: FontWeight.w700, color: fg)),
-                    Text('${b.kindLabel} · ${b.summary.line}',
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                        style: g.body(24, color: focused ? g.onFocus : g.textDim)),
-                  ],
-                )
-              : Row(
-            children: [
-              SizedBox(
-                width: 380,
-                child: Text(formatMoment(b.createdAt.toLocal()), style: g.display(30, weight: FontWeight.w700, color: fg)),
-              ),
-              SizedBox(
-                width: 420,
-                child: Text(b.kindLabel,
-                    overflow: TextOverflow.ellipsis, style: g.body(26, weight: FontWeight.w600, color: fg)),
-              ),
-              Expanded(
-                child: Text(b.summary.line,
-                    overflow: TextOverflow.ellipsis,
-                    textAlign: TextAlign.end,
-                    style: g.body(26, color: focused ? g.onFocus : g.textDim)),
-              ),
-            ],
-          ),
-        );
-      },
-    );
-  }
-}
-
-/// A picked backup's actions: Restore, Save to file (where the device can
-/// save files) and Delete.
-Future<_Action?> _showActions(BuildContext context, StoredBackup b, {required bool canSave}) => showDialog<_Action>(
-      context: context,
-      barrierColor: Colors.black87,
-      builder: (context) {
-        final g = context.guide;
-        return _Panel(
-          children: [
-            Text(formatMoment(b.createdAt.toLocal()), style: g.display(48, weight: FontWeight.w800)),
-            const SizedBox(height: 8),
-            Text('${b.kindLabel} · ${b.summary.line}', style: g.body(28, color: g.textDim)),
-            if (b.archive.device.isNotEmpty) Text(tr.madeOn(b.archive.device), style: g.body(24, color: g.textDim)),
-            const SizedBox(height: 40),
-            Wrap(
-              spacing: 20,
-              runSpacing: 20,
-              children: [
-                TvButton(
-                    label: tr.restore,
-                    icon: Icons.settings_backup_restore,
-                    autofocus: true,
-                    onPressed: () => Navigator.pop(context, _Action.restore)),
-                if (canSave)
-                  TvButton(label: tr.saveToFile, icon: Icons.save_alt, onPressed: () => Navigator.pop(context, _Action.save)),
-                TvButton(
-                    label: tr.delete, icon: Icons.delete, danger: true, onPressed: () => Navigator.pop(context, _Action.delete)),
-                TvButton(label: tr.cancel, onPressed: () => Navigator.pop(context)),
-              ],
-            ),
-          ],
-        );
-      },
-    );
-
-/// The restore confirmation (D11): what the backup holds, that the current
-/// setup is backed up first, who will need their password, and that Live
-/// TV export moves here. Cancel has focus.
-Future<bool> confirmRestore(BuildContext context, StoredBackup b, RestorePlan plan) {
-  final s = b.summary;
+/// The restore confirmation: what the backup holds, that the current setup
+/// is backed up first, who will need their password, and that Live TV
+/// export moves here. Cancel has focus. [title] names an undo point.
+Future<bool> confirmRestore(BuildContext context, BackupArchive archive, RestorePlan plan, {String? title}) {
+  final s = archive.summary;
   final need = plan.needPassword;
   return confirm(
     context,
-    title: tr.restoreTheBackup(formatMoment(b.createdAt.toLocal())),
+    title: title ?? tr.restoreTheBackup(formatMoment(archive.createdAt.toLocal())),
     message: [
-      tr.backupProfilesChannelsBlocks(s.profiles.join(', '), tr.countChannelsWord(s.channels), tr.countBlocksWord(s.blocks)),
+      tr.backupProfilesChannelsBlocks(s.profiles.join(tr.listSeparator), tr.countChannelsWord(s.channels), tr.countBlocksWord(s.blocks)),
       if (plan.backsUpFirst)
         tr.itReplacesEverything
       else
@@ -374,8 +238,7 @@ Future<bool> confirmRestore(BuildContext context, StoredBackup b, RestorePlan pl
   );
 }
 
-String _list(List<String> names) =>
-    names.length <= 1 ? names.join() : tr.and(names.sublist(0, names.length - 1).join(', '), names.last);
+String _list(List<String> names) => joinNames(names);
 
 class _Panel extends StatelessWidget {
   const _Panel({required this.children, this.width = 980});
@@ -408,9 +271,9 @@ class _Panel extends StatelessWidget {
 
 /// "Use your phone or computer" (D12): a QR code and the address of the
 /// transfer page, which runs while this is open. Returns a backup uploaded
-/// from the page, to confirm on the TV.
-Future<StoredBackup?> showTransferDialog(BuildContext context, BackupScheduler backups) =>
-    showDialog<StoredBackup>(
+/// from the page (checked, not kept), to confirm on the TV.
+Future<Uint8List?> showTransferDialog(BuildContext context, BackupScheduler backups) =>
+    showDialog<Uint8List>(
       context: context,
       barrierColor: Colors.black87,
       builder: (context) => _TransferDialog(backups: backups),
@@ -553,29 +416,25 @@ Future<void> restoreOnFirstRun(BuildContext context) async {
   );
   if (source == null || !context.mounted) return;
   try {
-    StoredBackup? stored;
+    final Uint8List? bytes;
     if (source == 'file') {
-      final bytes = await BackupFiles.open(limit: TransferServer.maxUpload);
-      if (bytes == null) return;
-      if (bytes.length > TransferServer.maxUpload) throw BackupException(BackupArchive.tooBig);
-      BackupArchive.check(bytes);
-      stored = await backups.store.save(bytes, kind: BackupReason.file);
-      backups.changed();
+      bytes = await BackupFiles.open(limit: TransferServer.maxUpload);
+      if (bytes != null && bytes.length > TransferServer.maxUpload) throw BackupException(BackupArchive.tooBig);
     } else {
-      stored = await showTransferDialog(context, backups);
+      bytes = await showTransferDialog(context, backups);
     }
-    if (stored == null || !context.mounted) return;
-    final bytes = await backups.store.read(stored);
-    final plan = await BackupRestorer(household).plan(BackupArchive.check(bytes));
-    if (!context.mounted || !await confirmRestore(context, stored, plan) || !context.mounted) return;
+    if (bytes == null || !context.mounted) return;
+    final archive = BackupArchive.check(bytes);
+    final plan = await BackupRestorer(household).plan(archive);
+    if (!context.mounted || !await confirmRestore(context, archive, plan) || !context.mounted) return;
     await BackupRestorer(household).restore(bytes);
   } on BackupException catch (e) {
     if (context.mounted) await showMessage(context, title: tr.couldntRestore, message: e.message);
   }
 }
 
-/// The first screen on a first run that finds a backup (D14): restore the
-/// newest, or start fresh with the backups kept.
+/// The first screen on a first run that finds the automatic backup:
+/// restore it, or start fresh.
 class WelcomeBackScreen extends StatefulWidget {
   const WelcomeBackScreen({super.key, required this.backup});
 
@@ -643,7 +502,7 @@ class _WelcomeBackScreenState extends State<WelcomeBackScreen> {
                   style: g.display(44, weight: FontWeight.w700),
                 ),
                 Text(
-                  tr.channels(b.summary.profiles.join(', '), b.summary.channels),
+                  tr.channels(b.summary.profiles.join(tr.listSeparator), b.summary.channels),
                   style: g.body(30),
                 ),
                 const SizedBox(height: 20),

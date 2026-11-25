@@ -7,7 +7,8 @@
 # --repo <dir>     the tree to check (default: this repository)
 # --private <dir>  where the private files are (default: the --repo tree):
 #                    sharing.env, supabase-credentials.txt,
-#                    supabase/auth-config.json, supabase/functions/.env
+#                    supabase/auth-config.json, supabase/functions/.env,
+#                    assets/youtube/client/nightingale-tv-youtube.json
 # --list-files     only print the files that would be published, one per line
 #
 # "Would be published" means every file not ignored by the .gitignore files in the tree
@@ -36,7 +37,8 @@ import json, os, re, sys
 
 repo, private, list_only = sys.argv[1], sys.argv[2], sys.argv[3] == "1"
 PRIVATE = ["sharing.env", "supabase-credentials.txt",
-           "supabase/auth-config.json", "supabase/functions/.env"]
+           "supabase/auth-config.json", "supabase/functions/.env",
+           "assets/youtube/client/nightingale-tv-youtube.json"]
 
 # Values that are public by design: shown in every invite link or sign-in email, or the
 # SMTP provider's well-known server. They also appear in the README and the app.
@@ -160,7 +162,14 @@ for f in PRIVATE:
     if not os.path.isfile(p):
         continue
     found += 1
-    if f.endswith(".json"):
+    if f.endswith("nightingale-tv-youtube.json"):
+        # Google's download: {"installed": {"client_id", "client_secret", ...}}.
+        for section in json.load(open(p)).values():
+            if isinstance(section, dict):
+                for k in ("client_id", "client_secret"):
+                    if isinstance(section.get(k), str):
+                        add(f, k, section[k])
+    elif f.endswith(".json"):
         for k, v in json.load(open(p)).items():
             if k in AUTH_PRIVATE and isinstance(v, (str, int)) and not isinstance(v, bool):
                 add(f, k, v)

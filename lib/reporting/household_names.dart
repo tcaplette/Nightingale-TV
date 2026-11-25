@@ -2,12 +2,14 @@ import 'package:flutter/foundation.dart';
 
 import '../app_state.dart';
 import '../platform/platform_info.dart';
+import '../server/media_server.dart';
 import '../profiles/household.dart';
 import 'error_reports.dart';
 
 /// Keeps the names error reports leave out current (error-reporting D4):
 /// profile names, each loaded profile's server names, server hosts and
-/// usernames, and this device's name.
+/// usernames, its YouTube channels' and videos' titles, and this device's
+/// name.
 class HouseholdNames {
   HouseholdNames(this.household) {
     household.addListener(_householdChanged);
@@ -27,9 +29,20 @@ class HouseholdNames {
       final app = h.appFor(p.id);
       if (app == null) continue;
       for (final s in app.servers.all) {
-        names.add(s.name);
         if (s.userName case final user?) names.add(user);
+        // YouTube's own name and address aren't the household's.
+        if (s.kind == ServerKind.youtube) continue;
+        names.add(s.name);
         if (Uri.tryParse(s.serverUrl ?? '')?.host case final host? when host.isNotEmpty) names.add(host);
+      }
+      // YouTube: the picked channels' and their videos' titles never leave
+      // the device (youtube-subscriptions D13).
+      for (final c in app.youTubeChannels) {
+        names.add(c.name);
+      }
+      for (final v in app.library.youtubeVideos) {
+        names.add(v.title);
+        if (v.seriesName case final channel?) names.add(channel);
       }
     }
     return names;

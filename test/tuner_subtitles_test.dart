@@ -114,12 +114,58 @@ void main() {
       expect(Tuner(app, player: player, clock: () => now).deviceLanguage(), 'de');
     });
 
+    group('Chinese tracks in the app\'s script (cjk-languages D6)', () {
+      const simplified = SubtitleTrack(id: '10', codec: 'subrip', language: 'chi', languageTag: 'zh-Hans', title: 'Chinese (Simplified)', position: 0);
+      const traditional = SubtitleTrack(id: '11', codec: 'subrip', language: 'chi', title: 'Chinese (Traditional)', position: 1);
+      const taiwan = SubtitleTrack(id: '12', codec: 'subrip', language: 'chi', languageTag: 'zh-TW', position: 2);
+      const hongKong = SubtitleTrack(id: '13', codec: 'subrip', language: 'chi', languageTag: 'zh-HK', position: 3);
+      const cantonese = SubtitleTrack(id: '14', codec: 'subrip', language: 'yue', position: 4);
+      const untagged = SubtitleTrack(id: '15', codec: 'subrip', language: 'chi', languageTag: 'chi', position: 5);
+      const titledSimplified = SubtitleTrack(id: '16', codec: 'subrip', language: 'chi', title: '简体中文', position: 6);
+
+      test('Traditional over Simplified', () {
+        expect(chooseSubtitle(const [simplified, traditional], device: 'zh-Hant'), traditional);
+        expect(chooseSubtitle(const [titledSimplified, taiwan], device: 'zh-Hant'), taiwan);
+      });
+
+      test('Simplified over Traditional', () {
+        expect(chooseSubtitle(const [traditional, simplified], device: 'zh-Hans'), simplified);
+        expect(chooseSubtitle(const [taiwan, titledSimplified], device: 'zh-Hans'), titledSimplified);
+      });
+
+      test('Hong Kong, then Traditional, then Cantonese', () {
+        expect(chooseSubtitle(const [simplified, taiwan, cantonese, hongKong], device: 'zh-Hant-HK'), hongKong);
+        expect(chooseSubtitle(const [simplified, cantonese, taiwan], device: 'zh-Hant-HK'), taiwan);
+        expect(chooseSubtitle(const [english, simplified, cantonese], device: 'zh-Hant-HK'), cantonese);
+        expect(chooseSubtitle(const [english, untagged, cantonese], device: 'zh-Hant-HK'), cantonese);
+      });
+
+      test('an untagged Chinese track before the other script, and still chosen alone', () {
+        expect(chooseSubtitle(const [simplified, untagged], device: 'zh-Hant'), untagged);
+        expect(chooseSubtitle(const [traditional, untagged], device: 'zh-Hans'), untagged);
+        expect(chooseSubtitle(const [english, untagged], device: 'zh-Hans'), untagged);
+        expect(chooseSubtitle(const [english, untagged], device: 'zh-Hant-HK'), untagged);
+      });
+
+      test('a set caption language of Chinese also goes by script', () {
+        expect(chooseSubtitle(const [simplified, traditional], preferred: 'chi', device: 'zh-Hant'), traditional);
+      });
+
+      test('other app languages keep the server\'s order', () {
+        expect(chooseSubtitle(const [traditional, simplified], preferred: 'chi', device: 'en'), traditional);
+      });
+    });
+
     test('language names follow the app language', () {
       expect(languageName('ger'), 'German');
       activeLanguage = 'fr';
       expect(languageName('ger'), 'Allemand');
       expect(languageName('de'), 'Allemand');
       expect(languageName('zzz'), 'ZZZ');
+      activeLanguage = 'ja';
+      expect(languageName('ger'), 'ドイツ語');
+      activeLanguage = 'zh-Hant-HK';
+      expect(languageName('ger'), '德文');
     });
   });
 

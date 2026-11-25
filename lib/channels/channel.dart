@@ -501,6 +501,37 @@ class ShareLink {
   }
 }
 
+/// What a YouTube channel plays (youtube-subscriptions D7): one picked
+/// subscription of the YouTube server [serverKey].
+class YouTubeRef {
+  const YouTubeRef({required this.serverKey, required this.channelId});
+
+  final String serverKey;
+
+  /// YouTube's `UC…` id.
+  final String channelId;
+
+  /// The guide channel's id: `yt:<serverKey>:<channelId>`.
+  String get guideChannelId => 'yt:$serverKey:$channelId';
+
+  /// The series key its videos carry in the library.
+  String get seriesKey => seriesKeyOf(channelId);
+
+  static String seriesKeyOf(String channelId) => 'yt:$channelId';
+
+  Map<String, Object?> toJson() => {'server': serverKey, 'channel': channelId};
+
+  static YouTubeRef? fromJson(Object? j) => j is Map && j['server'] is String && j['channel'] is String
+      ? YouTubeRef(serverKey: j['server'] as String, channelId: j['channel'] as String)
+      : null;
+
+  @override
+  bool operator ==(Object other) => other is YouTubeRef && other.serverKey == serverKey && other.channelId == channelId;
+
+  @override
+  int get hashCode => Object.hash(serverKey, channelId);
+}
+
 class Channel {
   Channel({
     required this.id,
@@ -524,7 +555,34 @@ class Channel {
     this.slotCarry,
     this.generation = 0,
     this.share,
+    this.youtube,
   });
+
+  /// A YouTube channel (youtube-subscriptions D7): the picked
+  /// subscription's videos, newest first, with no breaks, bumpers,
+  /// premieres, blocks or retro look; named after it, with its avatar.
+  factory Channel.youTube({
+    required YouTubeRef ref,
+    required int number,
+    required String name,
+    required ChannelIcon icon,
+    required List<String> playlist,
+    required DateTime anchor,
+  }) =>
+      Channel(
+        id: ref.guideChannelId,
+        number: number,
+        name: name,
+        icon: icon,
+        source: const ChannelSource(includeEpisodes: false),
+        order: PlaybackOrder.cyclic,
+        playlist: playlist,
+        anchor: anchor,
+        auto: false,
+        logoMode: LogoMode.off,
+        premieres: false,
+        youtube: ref,
+      );
 
   /// A live channel (live-tv-sources): it plays its source's stream and has
   /// no playlist. Live channels are saved with their source, never in
@@ -617,6 +675,11 @@ class Channel {
   /// profile, or a copy of someone else's. Null for neither.
   ShareLink? share;
 
+  /// Set for a YouTube channel: the subscription it plays.
+  final YouTubeRef? youtube;
+
+  bool get isYouTube => youtube != null;
+
   /// A copy added from someone's share.
   bool get isSharedCopy => share?.isCopy ?? false;
 
@@ -627,10 +690,10 @@ class Channel {
 
   /// A channel the user built from a source of their own (custom-channels
   /// D1): not generated, not block-only, live or music.
-  bool get isCustom => !auto && !blockOnly && !isLive && !isMusic;
+  bool get isCustom => !auto && !blockOnly && !isLive && !isMusic && !isYouTube;
 
   /// Plays programs around the clock, so it can have a slot length.
-  bool get playsPrograms => !blockOnly && !isLive && !isMusic;
+  bool get playsPrograms => !blockOnly && !isLive && !isMusic && !isYouTube;
 
   /// The rule that applies: [slotRule] on a channel that plays programs.
   SlotRule? get effectiveSlotRule => playsPrograms ? slotRule : null;
@@ -662,6 +725,7 @@ class Channel {
         slotCarry: slotCarry,
         generation: generation,
         share: share,
+        youtube: youtube,
       );
 
   Map<String, Object?> toJson() => {
@@ -688,6 +752,7 @@ class Channel {
         if (slotCarry != null) 'slotCarry': slotCarry!.toJson(),
         if (generation != 0) 'generation': generation,
         if (share != null) 'share': share!.toJson(),
+        if (youtube != null) 'youtube': youtube!.toJson(),
       };
 
   factory Channel.fromJson(Map<String, Object?> j) => Channel(
@@ -718,6 +783,7 @@ class Channel {
         slotCarry: SlotCarry.fromJson(j['slotCarry']),
         generation: j['generation'] as int? ?? 0,
         share: ShareLink.fromJson(j['share']),
+        youtube: YouTubeRef.fromJson(j['youtube']),
       );
 }
 

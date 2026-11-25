@@ -35,6 +35,8 @@ abstract final class PlatformInfo {
 
   static bool get isAndroid => _platform == TargetPlatform.android;
 
+  static bool get isLinux => _platform == TargetPlatform.linux;
+
   /// A PC: window handling, F11, programs such as ffmpeg, Live TV export.
   static bool get isDesktop => switch (_platform) {
         TargetPlatform.linux || TargetPlatform.windows || TargetPlatform.macOS => true,
@@ -64,6 +66,8 @@ abstract final class PlatformInfo {
     if (!isAndroid) return;
     _channel.setMethodCallHandler((call) async {
       if (call.method == 'dpadArrow') dpadArrows.value++;
+      // Android's memory-trim levels (crash-visibility D5).
+      if (call.method == 'trimMemory' && call.arguments is String) onTrimMemory?.call(call.arguments as String);
     });
     try {
       final name = (await _channel.invokeMethod<String>('deviceName'))?.trim();
@@ -173,6 +177,44 @@ abstract final class PlatformInfo {
       return value == null || value.isEmpty ? null : value;
     } on Object {
       return null;
+    }
+  }
+
+  /// Hears Android's memory-trim levels ("RUNNING_LOW"), set by error
+  /// reporting.
+  static void Function(String level)? onTrimMemory;
+
+  /// Android's `ActivityManager.MemoryInfo` (availMem, totalMem, threshold,
+  /// lowMemory); null elsewhere or when it can't be read.
+  static Future<Map<Object?, Object?>?> memoryInfo() async {
+    if (!isAndroid) return null;
+    try {
+      return await _channel.invokeMethod<Map<Object?, Object?>>('memoryInfo');
+    } on Object {
+      return null;
+    }
+  }
+
+  /// Android 11+: why the app's previous process ended, if it ended at or
+  /// after [since] (reason, description, pss, rss in bytes); null elsewhere
+  /// or when Android doesn't say (crash-visibility D2).
+  static Future<Map<Object?, Object?>?> exitReason(DateTime since) async {
+    if (!isAndroid) return null;
+    try {
+      return await _channel.invokeMethod<Map<Object?, Object?>>('exitReason', since.millisecondsSinceEpoch);
+    } on Object {
+      return null;
+    }
+  }
+
+  /// This launch's session id, which Android writes as its clean-exit mark
+  /// when the activity finishes (crash-visibility D2).
+  static Future<void> setSessionId(String id) async {
+    if (!isAndroid) return;
+    try {
+      await _channel.invokeMethod<void>('sessionId', id);
+    } on Object catch (e) {
+      debugPrint('Session id: $e');
     }
   }
 

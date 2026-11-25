@@ -3,70 +3,37 @@ import 'dart:typed_data';
 
 import '../playback/playback_diagnostics.dart';
 import 'backup_archive.dart';
-import '../l10n/tr.dart';
+import 'undo_label.dart' as undo_label;
 
-/// A backup kept in the store.
+/// One of the two backups the store keeps: the automatic backup or the
+/// undo point.
 class StoredBackup {
-  const StoredBackup({required this.file, required this.kind, required this.savedAt, required this.archive, required this.size});
+  const StoredBackup({required this.file, required this.archive, required this.size});
 
   final File file;
 
-  /// Why it's in the store ([BackupReason]): from its file name.
-  final String kind;
-
-  /// When it was saved here, from its file name.
-  final DateTime savedAt;
-
-  /// When it was made: [savedAt], or for a file opened or uploaded, when the
-  /// backup inside it was made.
-  DateTime get createdAt => archive.createdAt;
-
-  /// Its header and content (read once, see [BackupStore.list]).
+  /// Its header and content.
   final BackupArchive archive;
   final int size;
 
-  String get name => file.uri.pathSegments.last;
+  /// When it was made.
+  DateTime get createdAt => archive.createdAt;
+
+  /// Why it was made ([BackupReason]), from its header.
+  String get reason => archive.reason;
+
   String get fingerprint => archive.fingerprint;
   BackupSummary get summary => archive.summary;
 
-  bool get isSafety => BackupReason.isSafety(kind);
-
-  /// [kindLabel] for the middle of a sentence ("Last backup: today (automatic)").
-  String get kindInSentence => switch (kind) {
-        BackupReason.daily => tr.kindSentenceAutomatic,
-        BackupReason.beforeRestore => tr.kindSentenceBeforeRestore,
-        BackupReason.beforeReset => tr.kindSentenceBeforeReset,
-        BackupReason.beforeDelete => archive.subject == null ? tr.kindSentenceBeforeDeletingAProfile : tr.kindSentenceBeforeDeleting(archive.subject!),
-        BackupReason.beforeUpgrade => tr.kindSentenceBeforeUpdate,
-        BackupReason.beforeLineupCleanup => tr.kindSentenceBeforeLineupCleanup,
-        BackupReason.file => tr.kindSentenceFromAFile,
-        BackupReason.movingToOfficial => tr.kindSentenceMovingToOfficial,
-        BackupReason.movingToOwnBuild => tr.kindSentenceMovingToOwnBuild,
-        BackupReason.fromOfficial => tr.kindSentenceFromOfficial,
-        BackupReason.fromOwnBuild => tr.kindSentenceFromOwnBuild,
-        _ => tr.kindSentenceMadeByYou,
-      };
-
-  /// "Automatic", "Before deleting Kids", "Made by you"…
-  String get kindLabel => switch (kind) {
-        BackupReason.daily => tr.automatic,
-        BackupReason.beforeRestore => tr.beforeRestore,
-        BackupReason.beforeReset => tr.beforeReset,
-        BackupReason.beforeDelete => archive.subject == null ? tr.beforeDeletingA : tr.beforeDeleting(archive.subject!),
-        BackupReason.beforeUpgrade => tr.beforeUpdate,
-        BackupReason.beforeLineupCleanup => tr.beforeLineupCleanup,
-        BackupReason.file => tr.fromAFile,
-        BackupReason.movingToOfficial => tr.movingToNightingaleTv,
-        BackupReason.movingToOwnBuild => tr.movingToNightingale,
-        BackupReason.fromOfficial => tr.fromNightingaleTv2,
-        BackupReason.fromOwnBuild => tr.fromNightingaleTv,
-        _ => tr.madeByYou,
-      };
+  /// The undo point's button: "Undo lineup reset", "Undo deleting Kids"…
+  String get undoLabel => undo_label.undoLabel(reason, archive.subject);
 }
 
-/// The `backups/` folder in the app's data folder (D10): backups named
-/// `<UTC timestamp>_<reason>.ntvbackup`, written atomically, kept by kind,
-/// and a copy of the newest in `cloud/` for Android's system backup.
+/// The `backups/` folder in the app's data folder (backup-simplify D1):
+/// two fixed files, each written atomically.
+/// - `cloud/latest.ntvbackup`, the automatic backup. It is the folder
+///   Android's system backup copies, so it is also the cloud copy.
+/// - `undo.ntvbackup`, the undo point, which Android never copies.
 class BackupStore {
   BackupStore(this.dir);
 
@@ -74,52 +41,58 @@ class BackupStore {
 
   static const extension = '.ntvbackup';
 
-  /// The 14 newest daily backups and the 10 newest safety backups are kept;
-  /// backups made by the user, opened or uploaded are kept until deleted.
-  static const keepDaily = 14;
-  static const keepSafety = 10;
-
-  /// Android's system backup copies only this folder (D13).
+  /// Android's system backup copies only this folder.
   Directory get cloudDir => Directory('${dir.path}/cloud');
-  File get cloudCopy => File('${cloudDir.path}/latest$extension');
+  File get latestFile => File('${cloudDir.path}/latest$extension');
+  File get undoFile => File('${dir.path}/undo$extension');
 
-  static final _name = RegExp(r'^(\d{8}T\d{9})Z_([a-z-]+)\.ntvbackup$');
-
-  /// Headers already read, by file name, size and time.
+  /// Headers already read, by path, size and time written.
   final _cache = <String, StoredBackup>{};
 
-  static String _stamp(DateTime t) {
-    final u = t.toUtc();
-    String two(int n) => n.toString().padLeft(2, '0');
-    return '${u.year.toString().padLeft(4, '0')}${two(u.month)}${two(u.day)}T'
-        '${two(u.hour)}${two(u.minute)}${two(u.second)}${u.millisecond.toString().padLeft(3, '0')}Z';
-  }
+  /// The automatic backup, if there is one that reads.
+  Future<StoredBackup?> latest() => _load(latestFile);
 
-  static DateTime? _parseStamp(String s) {
-    if (s.length != 18) return null;
-    int at(int from, int to) => int.parse(s.substring(from, to));
-    return DateTime.utc(at(0, 4), at(4, 6), at(6, 8), at(9, 11), at(11, 13), at(13, 15), at(15, 18));
-  }
+  /// The undo point, if there is one that reads.
+  Future<StoredBackup?> undo() => _load(undoFile);
 
-  /// Saves [bytes] (a backup file) as [kind], and returns it as listed.
-  /// Older backups of its kind are pruned, and the cloud copy follows.
-  Future<StoredBackup> save(Uint8List bytes, {required String kind, DateTime? at}) async {
-    assert(BackupReason.all.contains(kind));
-    final archive = BackupArchive.decode(bytes);
-    await dir.create(recursive: true);
-    var time = (at ?? DateTime.now()).toUtc();
-    var file = File('${dir.path}/${_stamp(time)}_$kind$extension');
-    while (await file.exists()) {
-      time = time.add(const Duration(milliseconds: 1));
-      file = File('${dir.path}/${_stamp(time)}_$kind$extension');
+  Future<StoredBackup?> _load(File f) async {
+    final FileStat stat;
+    try {
+      stat = await f.stat();
+    } on FileSystemException {
+      return null;
     }
-    await _writeAtomically(file, bytes);
-    final stored = StoredBackup(file: file, kind: kind, savedAt: time, archive: archive, size: bytes.length);
-    _cache[_key(file.uri.pathSegments.last, bytes.length)] = stored;
-    await prune();
-    await _syncCloudCopy();
-    return stored;
+    if (stat.type != FileSystemEntityType.file) return null;
+    final key = '${f.path}:${stat.size}:${stat.modified.microsecondsSinceEpoch}';
+    if (_cache[key] case final cached?) return cached;
+    try {
+      final archive = BackupArchive.decode(await f.readAsBytes());
+      _cache.removeWhere((k, _) => k.startsWith('${f.path}:'));
+      return _cache[key] = StoredBackup(file: f, archive: archive, size: stat.size);
+    } on BackupException {
+      return null; // Damaged: as if there were none; the next write replaces it.
+    } on FileSystemException {
+      return null;
+    }
   }
+
+  /// Writes [bytes] as the automatic backup, replacing the one there.
+  Future<StoredBackup> writeLatest(Uint8List bytes) => _write(latestFile, bytes);
+
+  /// Writes [bytes] as the undo point, replacing the one there.
+  Future<StoredBackup> writeUndo(Uint8List bytes) => _write(undoFile, bytes);
+
+  Future<StoredBackup> _write(File f, Uint8List bytes) async {
+    final archive = BackupArchive.decode(bytes);
+    await f.parent.create(recursive: true);
+    await _writeAtomically(f, bytes);
+    final stat = await f.stat();
+    _cache.removeWhere((k, _) => k.startsWith('${f.path}:'));
+    return _cache['${f.path}:${stat.size}:${stat.modified.microsecondsSinceEpoch}'] =
+        StoredBackup(file: f, archive: archive, size: bytes.length);
+  }
+
+  Future<Uint8List> read(StoredBackup b) => b.file.readAsBytes();
 
   /// A temp file that isn't a `.ntvbackup`, then a rename: a crash mid-write
   /// never leaves a partial backup.
@@ -134,150 +107,86 @@ class BackupStore {
     }
   }
 
-  static String _key(String name, int size) => '$name:$size';
+  // ---- Clearing out older versions' backups (D10) -----------------------------
 
-  /// Every backup, newest first. A cloud copy that Android brought back
-  /// (a reinstall or a new device) is added to the store first.
-  Future<List<StoredBackup>> list() async {
-    if (!await dir.exists()) return [];
-    final found = <StoredBackup>[];
-    final seen = <String>{};
-    await for (final f in dir.list()) {
-      if (f is! File) continue;
-      final name = f.uri.pathSegments.last;
-      final m = _name.firstMatch(name);
-      if (m == null) continue;
-      final kind = m.group(2)!;
-      final savedAt = _parseStamp(m.group(1)!);
-      if (savedAt == null || !BackupReason.all.contains(kind)) continue;
-      final size = await f.length();
-      final key = _key(name, size);
-      seen.add(key);
-      var stored = _cache[key];
-      if (stored == null) {
-        try {
-          final archive = BackupArchive.decode(await f.readAsBytes());
-          stored = _cache[key] = StoredBackup(file: f, kind: kind, savedAt: savedAt, archive: archive, size: size);
-        } on BackupException {
-          continue; // Damaged: left alone, not listed.
+  /// The names older versions gave their backups: `<UTC stamp>_<reason>`.
+  static final _oldName = RegExp(r'^(\d{8}T\d{9})Z_([a-z-]+)\.ntvbackup$');
+
+  /// An old safety backup becomes the undo point only this recent.
+  static const undoFrom = Duration(days: 7);
+
+  /// Clears out the dated backups older versions kept, once: the newest of
+  /// this device's own becomes the automatic backup when it's newer (or
+  /// there's none), the newest safety backup of the last [undoFrom] becomes
+  /// the undo point, and every other old file and leftover temp file goes.
+  /// Does nothing when there's nothing old.
+  Future<void> clearOldBackups({DateTime? now}) async {
+    if (!await dir.exists()) return;
+    final old = <({File file, String reason, DateTime savedAt})>[];
+    final partial = <File>[];
+    for (final d in [dir, cloudDir]) {
+      if (!await d.exists()) continue;
+      await for (final f in d.list()) {
+        if (f is! File) continue;
+        final name = f.uri.pathSegments.last;
+        if (name.startsWith('.') && name.endsWith('.partial')) {
+          // One of ours being written by another process would have this
+          // pid; anything else is left over from a crash.
+          if (!name.endsWith('.$pid.partial')) partial.add(f);
+          continue;
         }
+        if (d.path != dir.path) continue;
+        final m = _oldName.firstMatch(name);
+        final savedAt = m == null ? null : _parseStamp(m.group(1)!);
+        if (savedAt != null) old.add((file: f, reason: m!.group(2)!, savedAt: savedAt));
       }
-      found.add(stored);
     }
-    _cache.removeWhere((k, _) => !seen.contains(k));
-    if (await _adoptCloudCopy(found) case final adopted?) found.add(adopted);
-    return found..sort(_newestFirst);
+    if (old.isEmpty && partial.isEmpty) return;
+    old.sort((a, b) => b.savedAt.compareTo(a.savedAt));
+    final kept = <String>[];
+    // This device's own setup: not opened from a file or handed over.
+    final own = old.where((b) => b.reason != 'file' && !b.reason.startsWith('from-'));
+    final current = await latest();
+    for (final b in own) {
+      final archive = _decodeOr(await b.file.readAsBytes());
+      if (archive == null) continue;
+      if (current == null || archive.createdAt.isAfter(current.createdAt)) {
+        await writeLatest(await b.file.readAsBytes());
+        kept.add('latest');
+      }
+      break;
+    }
+    final since = (now ?? DateTime.now()).toUtc().subtract(undoFrom);
+    for (final b in old.where((b) => BackupReason.isSafety(b.reason))) {
+      if (b.savedAt.isBefore(since)) break;
+      final bytes = await b.file.readAsBytes();
+      if (_decodeOr(bytes) == null) continue;
+      await writeUndo(bytes);
+      kept.add('undo');
+      break;
+    }
+    for (final f in [...old.map((b) => b.file), ...partial]) {
+      try {
+        await f.delete();
+      } on FileSystemException {
+        // Gone already.
+      }
+    }
+    PlaybackDiagnostics.note('BACKUP',
+        'migrated: kept ${kept.isEmpty ? 'nothing' : kept.join(', ')}, removed ${old.length + partial.length - kept.length}');
   }
 
-  /// By when each backup was made, as the list shows it.
-  static int _newestFirst(StoredBackup a, StoredBackup b) {
-    final made = b.createdAt.compareTo(a.createdAt);
-    return made != 0 ? made : b.savedAt.compareTo(a.savedAt);
-  }
-
-  /// The newest backup of this device's own setup: not a file opened,
-  /// uploaded or handed over, which may not be what's here.
-  static StoredBackup? newestOwn(List<StoredBackup> list) =>
-      list.where((b) => !BackupReason.isReceived(b.kind)).firstOrNull;
-
-  /// The cloud copy, saved as a backup of its own when no backup in the
-  /// store is the same one (Android restored only the copy).
-  Future<StoredBackup?> _adoptCloudCopy(List<StoredBackup> listed) async {
-    final copy = cloudCopy;
-    if (!await copy.exists()) return null;
+  static BackupArchive? _decodeOr(Uint8List bytes) {
     try {
-      final bytes = await copy.readAsBytes();
-      final archive = BackupArchive.decode(bytes);
-      final same = listed.any((b) => b.fingerprint == archive.fingerprint && b.createdAt == archive.createdAt);
-      if (same) return null;
-      final kind = BackupReason.all.contains(archive.reason) ? archive.reason : BackupReason.manual;
-      final file = File('${dir.path}/${_stamp(archive.createdAt)}_$kind$extension');
-      if (await file.exists()) return null;
-      await _writeAtomically(file, bytes);
-      PlaybackDiagnostics.note('BACKUP', 'adopted the cloud copy as ${file.uri.pathSegments.last}');
-      return _cache[_key(file.uri.pathSegments.last, bytes.length)] =
-          StoredBackup(file: file, kind: kind, savedAt: archive.createdAt.toUtc(), archive: archive, size: bytes.length);
-    } on Object catch (e) {
-      PlaybackDiagnostics.note('BACKUP', 'cloud copy unreadable: $e');
+      return BackupArchive.decode(bytes);
+    } on BackupException {
       return null;
     }
   }
 
-  /// The newest backup, if there is one.
-  Future<StoredBackup?> newest() async => (await list()).firstOrNull;
-
-  /// [newestOwn] of the whole store.
-  Future<StoredBackup?> newestOfThisSetup() async => newestOwn(await list());
-
-  Future<Uint8List> read(StoredBackup b) => b.file.readAsBytes();
-
-  Future<void> delete(StoredBackup b) async {
-    if (await b.file.exists()) await b.file.delete();
-    _cache.remove(_key(b.name, b.size));
-    await _syncCloudCopy();
-  }
-
-  /// Keeps the newest [keepDaily] daily and [keepSafety] safety backups.
-  Future<void> prune() async {
-    final all = await list();
-    final daily = all.where((b) => b.kind == BackupReason.daily).skip(keepDaily);
-    final safety = all.where((b) => b.isSafety).skip(keepSafety);
-    for (final b in [...daily, ...safety]) {
-      PlaybackDiagnostics.note('BACKUP', 'pruned ${b.name}');
-      await b.file.delete();
-      _cache.remove(_key(b.name, b.size));
-    }
-  }
-
-  /// `cloud/latest.ntvbackup` is a copy of the newest backup of this setup
-  /// (none when there is none), rewritten atomically.
-  Future<void> _syncCloudCopy() async {
-    final newest = await _listOnly();
-    final copy = cloudCopy;
-    if (newest == null) {
-      if (await copy.exists()) await copy.delete();
-      return;
-    }
-    if (await copy.exists() && await copy.length() == newest.size) {
-      final current = await copy.readAsBytes();
-      final wanted = await newest.file.readAsBytes();
-      if (_same(current, wanted)) return;
-    }
-    await cloudDir.create(recursive: true);
-    await _writeAtomically(copy, await newest.file.readAsBytes());
-  }
-
-  /// The newest backup of this setup ([newestOwn]) without adopting the
-  /// cloud copy (which is being rewritten).
-  Future<StoredBackup?> _listOnly() async {
-    if (!await dir.exists()) return null;
-    StoredBackup? best;
-    await for (final f in dir.list()) {
-      if (f is! File) continue;
-      final m = _name.firstMatch(f.uri.pathSegments.last);
-      final savedAt = m == null ? null : _parseStamp(m.group(1)!);
-      if (savedAt == null || !BackupReason.all.contains(m!.group(2)) || BackupReason.isReceived(m.group(2)!)) continue;
-      final size = await f.length();
-      var stored = _cache[_key(f.uri.pathSegments.last, size)];
-      if (stored == null) {
-        try {
-          final archive = BackupArchive.decode(await f.readAsBytes());
-          stored = _cache[_key(f.uri.pathSegments.last, size)] =
-              StoredBackup(file: f, kind: m.group(2)!, savedAt: savedAt, archive: archive, size: size);
-        } on BackupException {
-          continue;
-        }
-      }
-      if (best == null || _newestFirst(stored, best) < 0) best = stored;
-    }
-    return best;
-  }
-
-  static bool _same(Uint8List a, Uint8List b) {
-    if (a.length != b.length) return false;
-    for (var i = 0; i < a.length; i++) {
-      if (a[i] != b[i]) return false;
-    }
-    return true;
+  static DateTime? _parseStamp(String s) {
+    if (s.length != 18) return null;
+    int at(int from, int to) => int.parse(s.substring(from, to));
+    return DateTime.utc(at(0, 4), at(4, 6), at(6, 8), at(9, 11), at(11, 13), at(13, 15), at(15, 18));
   }
 }

@@ -22,8 +22,39 @@ void main() {
     });
 
     test('no supported device language', () {
-      device = ['ja'];
+      device = ['ko-KR'];
       expect((make()..setProfile(active: true)).language, 'en');
+    });
+
+    test('a Japanese device', () {
+      device = ['ja-JP'];
+      final c = make()..setProfile(active: true);
+      expect(c.language, 'ja');
+      expect(c.locale.toLanguageTag(), 'ja');
+    });
+
+    test('a Taiwan device', () {
+      device = ['zh-Hant-TW'];
+      final c = make()..setProfile(active: true);
+      expect(c.language, 'zh-Hant');
+      expect(c.locale.toLanguageTag(), 'zh-Hant');
+    });
+
+    test('a Hong Kong device', () {
+      device = ['zh-HK'];
+      final c = make()..setProfile(active: true);
+      expect(c.language, 'zh-Hant-HK');
+      expect(c.locale.toLanguageTag(), 'zh-Hant-HK');
+    });
+
+    test('a mainland device', () {
+      device = ['zh-Hans-CN'];
+      expect((make()..setProfile(active: true)).language, 'zh-Hans');
+    });
+
+    test('a profile choice keeps its full tag', () {
+      device = ['en'];
+      expect((make()..setProfile(active: true, choice: 'zh-Hant-HK')).language, 'zh-Hant-HK');
     });
 
     test('any Portuguese device', () {

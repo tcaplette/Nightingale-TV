@@ -1,5 +1,7 @@
 package com.coffeehauslabs.nightingale_tv
 
+import android.annotation.SuppressLint
+import android.app.Activity
 import android.content.Context
 import android.graphics.Bitmap
 import android.media.MediaFormat
@@ -7,7 +9,6 @@ import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
-import android.view.Surface
 import androidx.media3.common.C
 import androidx.media3.common.Format
 import android.net.Uri
@@ -20,6 +21,9 @@ import androidx.media3.common.Timeline
 import androidx.media3.common.TrackSelectionOverride
 import androidx.media3.common.Tracks
 import androidx.media3.common.VideoSize
+import androidx.media3.common.util.GlUtil
+import androidx.media3.common.util.MediaFormatUtil
+import androidx.media3.common.util.Size
 import androidx.media3.common.text.Cue
 import androidx.media3.common.text.CueGroup
 import androidx.media3.common.util.UnstableApi
@@ -27,15 +31,19 @@ import androidx.media3.datasource.DataSource
 import androidx.media3.datasource.DataSpec
 import androidx.media3.datasource.TransferListener
 import androidx.media3.datasource.okhttp.OkHttpDataSource
+import androidx.media3.effect.DefaultVideoFrameProcessor
+import androidx.media3.effect.SingleInputVideoGraph
 import androidx.media3.exoplayer.DecoderReuseEvaluation
 import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlaybackException
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.FormatHolder
 import androidx.media3.exoplayer.LoadControl
 import androidx.media3.exoplayer.LoadingInfo
 import androidx.media3.exoplayer.analytics.PlayerId
 import androidx.media3.exoplayer.Renderer
+import androidx.media3.exoplayer.RendererCapabilities
 import androidx.media3.exoplayer.SeekParameters
 import androidx.media3.exoplayer.analytics.AnalyticsListener
 import androidx.media3.exoplayer.audio.AudioCapabilities
@@ -59,9 +67,13 @@ import androidx.media3.exoplayer.rtsp.RtspMediaSource
 import androidx.media3.exoplayer.source.SampleStream
 import androidx.media3.exoplayer.source.TrackGroupArray
 import androidx.media3.exoplayer.source.WrappingMediaSource
+import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
 import androidx.media3.exoplayer.trackselection.ExoTrackSelection
 import androidx.media3.exoplayer.upstream.Allocator
 import androidx.media3.exoplayer.video.MediaCodecVideoRenderer
+import androidx.media3.exoplayer.video.PlaybackVideoGraphWrapper
+import androidx.media3.exoplayer.video.VideoFrameReleaseControl
+import androidx.media3.exoplayer.video.VideoSink
 import androidx.media3.exoplayer.video.VideoFrameMetadataListener
 import androidx.media3.exoplayer.video.VideoRendererEventListener
 import androidx.media3.extractor.DefaultExtractorsFactory
@@ -74,7 +86,6 @@ import io.flutter.plugin.common.BinaryMessenger
 import io.flutter.plugin.common.EventChannel
 import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
-import io.flutter.view.TextureRegistry
 import okhttp3.OkHttpClient
 import java.io.ByteArrayOutputStream
 import java.util.Locale
@@ -83,18 +94,21 @@ import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicLong
 
 /** ExoPlayer behind the Dart `ExoTunerPlayer` (lib/playback/exo_tuner_player.dart):
- *  one player per Dart player, decoding with MediaCodec straight into a Flutter
- *  texture's Surface. Its configuration never depends on the playback mode
- *  (direct-play spec). Methods on `nightingale_tv/player`; each player's events
+ *  one player per Dart player, decoding with MediaCodec straight to a system
+ *  video layer below the Flutter view ([VideoLayer]). Its configuration never
+ *  depends on the playback mode (direct-play spec). Methods on `nightingale_tv/player`; each player's events
  *  on `nightingale_tv/player/<id>`. */
 @UnstableApi
 class ExoTunerHost(
-    private val context: Context,
-    private val textures: TextureRegistry,
+    private val activity: Activity,
     private val messenger: BinaryMessenger,
 ) : MethodChannel.MethodCallHandler {
 
+    private val context: Context = activity.applicationContext
+
     private val players = mutableMapOf<Long, Instance>()
+
+    private var lastId = 0L
 
     /** Keep-alive connections, shared by every player (android-playback,
      *  "Buffering on Android"). */
@@ -151,6 +165,24 @@ class ExoTunerHost(
                 "pause" -> player.pause()
                 "resume" -> player.resume()
                 "seek" -> player.seek(call.argument<Number>("ms")?.toLong() ?: 0L)
+                // Where the interface shows the picture (system-video-layer D4).
+                "place" -> player.place(
+                    call.argument<Number>("left")!!.toDouble(),
+                    call.argument<Number>("top")!!.toDouble(),
+                    call.argument<Number>("right")!!.toDouble(),
+                    call.argument<Number>("bottom")!!.toDouble(),
+                )
+                // The CRT effects on the video (system-video-layer D5).
+                "setEffects" -> player.setEffects(
+                    VideoLook.from(
+                        call.argument<List<Double>>("matrix"),
+                        call.argument<Number>("curvature")?.toDouble() ?: 0.0,
+                        call.argument<Number>("glow")?.toDouble() ?: 0.0,
+                        call.argument<List<Double>>("picture") ?: List(6) { 0.0 },
+                        call.argument<List<Double>>("overlay") ?: emptyList(),
+                    ),
+                    call.argument<Number>("kind")?.toInt() ?: 0,
+                )
                 "subtitles" -> player.setSubtitles(Subs.from(call.argument<Map<String, Any?>>("subtitles")))
                 "setLeveling" -> player.setLeveling(call.argument<Boolean>("on") ?: false)
                 "setVolume" -> player.setVolume(call.argument<Number>("volume")?.toFloat() ?: 1f)
@@ -162,6 +194,15 @@ class ExoTunerHost(
                 // The stream and decoder for a video report (video-report D8).
                 "videoReport" -> {
                     result.success(player.videoReport())
+                    return
+                }
+                // The layer's picture, and the decoder's buffer (D8).
+                "videoCapture" -> {
+                    player.captureVideo { result.success(it) }
+                    return
+                }
+                "videoBuffer" -> {
+                    player.streamBuffer { result.success(it) }
                     return
                 }
                 "dispose" -> {
@@ -188,24 +229,13 @@ class ExoTunerHost(
     /** [leveling]: volume leveling (volume-leveling spec) at creation; see
      *  [setLeveling]. */
     private inner class Instance(leveling: Boolean) :
-        Player.Listener, AnalyticsListener, TextureRegistry.SurfaceProducer.Callback, EventChannel.StreamHandler,
-        RenderHost {
+        Player.Listener, AnalyticsListener, EventChannel.StreamHandler, RenderHost {
 
-        private val producer = textures.createSurfaceProducer().apply { setSize(1920, 1080) }
-        val id: Long = producer.id()
+        val id: Long = ++lastId
 
-        /** The texture's size: the video's, so a picture of any size fills
-         *  it (the Flutter texture shows the whole buffer and ignores the
-         *  decoder's crop). Written only by [prepareSurface], on the playback
-         *  thread (video-size-surface-swap, design D2). */
-        @Volatile private var textureSize = Pair(1920, 1080)
-
-        /** The producer's Surface the player was last given, and whether
-         *  Flutter has it (false between [onSurfaceCleanup] and
-         *  [onSurfaceAvailable]). */
-        @Volatile private var surface: Surface? = null
-        @Volatile private var surfaceLive = true
-        @Volatile private var disposed = false
+        /** Where the video shows. While its surface is away (the app in the
+         *  background), there's no picture to leave a hole for. */
+        private val layer = VideoLayer(activity) { there -> if (!there) send(mapOf("e" to "noPicture")) }
 
         private val main = Handler(Looper.getMainLooper())
         private val events = EventChannel(messenger, "nightingale_tv/player/$id")
@@ -229,6 +259,13 @@ class ExoTunerHost(
         /** Volume leveling's processor while leveling is on (design D3). */
         private var leveler: LevelingAudioProcessor? = if (leveling) LevelingAudioProcessor() else null
 
+        /** For [streamBuffer], and whether the decoder was asked for SDR. */
+        private val keyframes = Keyframes()
+        @Volatile private var askedForSdr = false
+
+        /** The video effects in use (system-video-layer D5). */
+        private val effects = EffectsSwitch()
+
         /** Built in init, after everything [attach] uses. */
         private lateinit var player: ExoPlayer
 
@@ -236,7 +273,8 @@ class ExoTunerHost(
             // Picture and sound start together (video-size-surface-swap D4):
             // shared by this ExoPlayer's renderers and its load control.
             val aligner = AvStartAligner()
-            return ExoPlayer.Builder(context, Renderers(context, leveler, this, aligner))
+            return ExoPlayer.Builder(context, Renderers(context, leveler, this, aligner, effects, keyframes))
+                .setTrackSelector(DefaultTrackSelector(context))
                 .setLoadControl(
                     AlignedLoadControl(
                         // Design D7: up to 60 s ahead, never over 100 MB (4K on
@@ -245,6 +283,9 @@ class ExoTunerHost(
                             .setBufferDurationsMs(30_000, 60_000, 2_500, 5_000)
                             .setTargetBufferBytes(100 * 1024 * 1024)
                             .setPrioritizeTimeOverSizeThresholds(false)
+                            // From the last keyframe on, so the picture can
+                            // start again from memory (setEffects).
+                            .setBackBuffer(0, true)
                             .build(),
                         aligner,
                         this,
@@ -328,14 +369,14 @@ class ExoTunerHost(
 
         init {
             events.setStreamHandler(this)
-            producer.setCallback(this)
             player = buildPlayer()
             if (leveler != null) main.postDelayed(levelTicker, 5_000)
         }
 
-        /** Wires a new ExoPlayer to the texture and to this instance. */
+        /** Wires a new ExoPlayer to the layer and to this instance. */
         private fun attach(player: ExoPlayer) {
-            player.setVideoSurface(producer.surface.also { surface = it })
+            player.setVideoSurfaceView(layer.view)
+            if (effects.kind != 0) sendEffects(player)
             player.addListener(this)
             player.addAnalyticsListener(this)
             player.setVideoFrameMetadataListener(frames)
@@ -347,14 +388,15 @@ class ExoTunerHost(
         }
 
         /** Volume leveling on or off (design D4): ExoPlayer is built again
-         *  with the matching audio output, on the same texture. What played
-         *  stops; the tuner re-tunes. */
+         *  with the matching audio output, on the same layer, which the old one
+         *  gives up first. What played stops; the tuner re-tunes. */
         fun setLeveling(on: Boolean) {
             if (on == (leveler != null)) return
             stop()
             main.removeCallbacks(levelTicker)
             player.removeListener(this)
             player.removeAnalyticsListener(this)
+            player.clearVideoSurfaceView(layer.view)
             player.release()
             leveler = if (on) LevelingAudioProcessor() else null
             completed = false
@@ -365,6 +407,56 @@ class ExoTunerHost(
             player = buildPlayer()
             log("info exo: player rebuilt with volume leveling ${if (on) "on (pcm-only)" else "off"}")
             if (on) main.postDelayed(levelTicker, 5_000)
+        }
+
+        /** The channel's video effects (system-video-layer D5): [look] as
+         *  drawn now, null when nothing changes the video; [kind] is which
+         *  passes the channel needs (bits, 1 the colour matrix and 2 the
+         *  tube), which keeps the pipeline while the guide's preview draws
+         *  none. New values show from the next frame. The first
+         *  effect, and the last one gone, move the video to the other
+         *  renderer, which starts at the last keyframe from memory while the
+         *  sound plays on. */
+        fun setEffects(look: VideoLook?, kind: Int) {
+            if (effects.failed && kind != 0) return
+            val before = effects.look
+            effects.look = look
+            val size = layer.bounds?.let { Size(it.width(), it.height()) }
+            if (kind != effects.kind || (kind and 2 != 0 && size != effects.size)) {
+                effects.kind = kind
+                effects.size = size
+                if (kind != 0) sendEffects(player)
+                if (effects.on != (kind != 0)) {
+                    effects.on = kind != 0
+                    log("info exo: video effects ${if (effects.on) "on" else "off"}")
+                    selectRenderer()
+                    return
+                }
+            }
+            // A held picture is drawn again with the new values.
+            if (effects.on && !player.playWhenReady && player.playbackState == Player.STATE_READY && before !== look) {
+                player.setSeekParameters(SeekParameters.EXACT)
+                player.seekTo(player.currentPosition)
+            }
+        }
+
+        private fun sendEffects(player: ExoPlayer) =
+            player.setVideoEffects(videoEffects(context, effects.kind, effects.size, { layer.inPicture }) { effects.look })
+
+        /** Media3's effects pipeline (its codes 7000–7999), or an error no
+         *  decoder or source gave. */
+        private fun effectsFailure(error: PlaybackException) =
+            error.errorCode in 7000..7999 || error.errorCode == PlaybackException.ERROR_CODE_UNSPECIFIED
+
+        /** Selects tracks again, so the video moves to the renderer that now
+         *  takes it: any change of parameters does, and nothing more
+         *  (renderers announcing new capabilities would seek as well, and
+         *  break the sound). */
+        private fun selectRenderer() {
+            val selector = player.trackSelector as DefaultTrackSelector
+            selector.parameters = selector.buildUponParameters()
+                .setRendererDisabled(Renderers.NONE, effects.on)
+                .build()
         }
 
         // ---- Methods ----------------------------------------------------------
@@ -745,13 +837,64 @@ class ExoTunerHost(
                 "decoder_hardware" to name?.let { DeviceCapabilities.isHardware(it) },
                 "decoder_output" to decoderOutput,
                 "decoder_caps" to if (name != null && format?.sampleMimeType != null) decoderCaps(name, format.sampleMimeType!!) else null,
-                "texture_size" to "${textureSize.first}x${textureSize.second}",
                 "video_size" to lastVideoSize,
+                "layer" to layer.bounds?.let { listOf(it.left, it.top, it.right, it.bottom) },
+                "hdr" to when {
+                    !HdrRule.isHdr(format?.colorInfo?.colorTransfer) -> "sdr stream"
+                    askedForSdr -> "asked for sdr"
+                    effects.on && format != null && effects.applyTo(format) -> "sdr for effects"
+                    else -> "shown as hdr"
+                },
+                "effects" to if (!effects.on) "off" else if (format != null && !effects.applyTo(format)) "not on this stream" else if (effects.look == null) "on, none drawn" else "on",
             )
         }
 
+        /** The layer's picture at the video's own size (design D8), at most
+         *  1920×1080, its shape kept. */
+        fun captureVideo(done: (Map<String, Any?>) -> Unit) {
+            val width = lastVideoSize?.get("width") as? Int
+            val height = lastVideoSize?.get("height") as? Int
+            if (width == null || height == null) {
+                done(mapOf("error" to "no video"))
+                return
+            }
+            val scale = minOf(1.0, 1920.0 / width, 1080.0 / height)
+            VideoReport.capture(
+                layer.view, (width * scale).toInt().coerceAtLeast(16), (height * scale).toInt().coerceAtLeast(16), done,
+            )
+        }
+
+        /** The buffer the decoder in use makes for this stream: its next
+         *  keyframe through a second one ([VideoBufferProbe]). */
+        fun streamBuffer(done: (Map<String, Any?>) -> Unit) {
+            val name = videoDecoderName
+            val mime = player.videoFormat?.sampleMimeType
+            val instances = if (name != null && mime != null) decoderCaps(name, mime)["max_instances"] as? Int else null
+            val skip = when {
+                Build.VERSION.SDK_INT < 29 -> "api ${Build.VERSION.SDK_INT}"
+                name == null -> "no decoder"
+                instances == 1 -> "single instance"
+                else -> null
+            }
+            if (skip != null) {
+                done(mapOf("skipped" to skip))
+                return
+            }
+            var answered = false
+            fun answer(result: Map<String, Any?>) = main.post {
+                if (!answered) done(result)
+                answered = true
+            }
+            main.postDelayed({
+                keyframes.wanted = null
+                answer(mapOf("skipped" to "no keyframe"))
+            }, 15_000)
+            keyframes.wanted = { format, sample ->
+                Thread({ answer(VideoBufferProbe.keyframe(name!!, MediaFormatUtil.createMediaFormatFromFormat(format), sample)) }, "ntv-buffer").start()
+            }
+        }
+
         fun dispose() {
-            disposed = true
             main.removeCallbacks(ticker)
             main.removeCallbacks(levelTicker)
             events.setStreamHandler(null)
@@ -759,7 +902,7 @@ class ExoTunerHost(
             player.removeListener(this)
             player.removeAnalyticsListener(this)
             player.release()
-            producer.release()
+            layer.remove()
             encoder.shutdownNow()
         }
 
@@ -852,6 +995,16 @@ class ExoTunerHost(
 
         override fun onPlayerError(error: PlaybackException) {
             val message = error.cause?.message?.let { "${error.errorCodeName}: $it" } ?: error.errorCodeName
+            // The effects on the video failed (D5): off for good, and the
+            // item plays on without them from where it is.
+            if (effects.on && effectsFailure(error)) {
+                log("error exo: video effects failed: $message")
+                effects.failed = true
+                setEffects(null, 0)
+                send(mapOf("e" to "effectsFailed", "message" to message))
+                player.prepare()
+                return
+            }
             // The queued item failed to load (ExoPlayer says so once the item
             // playing is read to its end): it's dropped and opens at the
             // hand-over as usual, and the item playing plays on.
@@ -872,10 +1025,7 @@ class ExoTunerHost(
             send(mapOf("e" to "error", "message" to message))
         }
 
-        /** Only the size, for the picture's aspect. The texture was already
-         *  sized for it when its decoder was configured ([prepareSurface]);
-         *  the decoder's output is never moved while it runs
-         *  (video-size-surface-swap). */
+        /** The picture's shape, which Flutter places the layer by. */
         override fun onVideoSizeChanged(videoSize: VideoSize) {
             if (videoSize.width <= 0 || videoSize.height <= 0) return
             lastVideoSize = mapOf(
@@ -963,6 +1113,7 @@ class ExoTunerHost(
 
         override fun onRenderedFirstFrame(eventTime: AnalyticsListener.EventTime, output: Any, renderTimeMs: Long) {
             log("info exo: first frame at ${eventTime.currentPlaybackPositionMs} ms")
+            send(mapOf("e" to "firstFrame"))
         }
 
         override fun onVideoCodecError(eventTime: AnalyticsListener.EventTime, videoCodecError: Exception) {
@@ -973,29 +1124,8 @@ class ExoTunerHost(
             log("error exo: audio sink: ${audioSinkError.message}")
         }
 
-        // ---- The texture's Surface ------------------------------------------------
+        // ---- From the renderers (playback thread) ----------------------------------
 
-        /** Back from the background: Flutter made the texture again, at the
-         *  size last set. */
-        override fun onSurfaceAvailable() {
-            surfaceLive = true
-            player.setVideoSurface(producer.surface.also { surface = it })
-        }
-
-        override fun onSurfaceCleanup() {
-            surfaceLive = false
-            surface = null
-            player.clearVideoSurface()
-        }
-
-        /** Called on the playback thread as a decoder for [width]×[height]
-         *  is configured, before it decodes anything (design D1/D2). When the
-         *  size differs from the texture's, the texture is resized, and the
-         *  Surface returned when that replaced it (an ImageReader producer,
-         *  API 29+; a SurfaceTexture keeps its Surface): the renderer
-         *  configures the new decoder on it. ExoPlayer's own record of the
-         *  output follows on the main thread, with the latest Surface, which
-         *  the renderer already has. */
         override fun note(line: String) {
             main.post { log(line) }
         }
@@ -1004,43 +1134,36 @@ class ExoTunerHost(
             decoderOutput = format?.let { mediaFormatEntries(it) }
         }
 
-        override fun prepareSurface(width: Int, height: Int): Surface? {
-            if (width <= 0 || height <= 0) return null
-            val size = Pair(width, height)
-            if (size == textureSize) return null
-            textureSize = size
-            producer.setSize(width, height)
-            // In the background: the texture comes back at this size and
-            // onSurfaceAvailable attaches it.
-            if (!surfaceLive) return null
-            val next = producer.surface
-            if (next === surface) {
-                main.post { log("info exo: texture ${width}x${height}, same surface") }
-                return null
-            }
-            surface = next
-            main.post {
-                log("info exo: texture ${width}x${height}, new surface before the decoder starts")
-                val latest = surface
-                if (!disposed && surfaceLive && latest != null) player.setVideoSurface(latest)
-            }
-            return next
+        override fun effectsApplied(applied: Boolean) {
+            main.post { send(mapOf("e" to "effectsApplied", "v" to applied)) }
         }
+
+        override fun askedForSdr(asked: Boolean) {
+            askedForSdr = asked
+        }
+
+        override fun videoSize(size: VideoSize) {
+            main.post { onVideoSizeChanged(size) }
+        }
+
+        /** Where Flutter shows the picture, in its view's pixels. */
+        fun place(left: Double, top: Double, right: Double, bottom: Double) = layer.place(left, top, right, bottom)
     }
 }
 
 /** MediaCodec renderers. Video decodes in hardware only (android-playback):
  *  what no hardware decoder takes is converted by Jellyfin, except H.264, the
  *  conversion target, which a device with no hardware H.264 decoder decodes
- *  in software rather than not at all. HDR streams ask the decoder for SDR
- *  output (Android 13+), since the Flutter texture is SDR. With [leveler]
+ *  in software rather than not at all. HDR streams follow [HdrRule]. With [leveler]
  *  (volume leveling on), the audio goes through it. */
 @UnstableApi
 private class Renderers(
     context: Context,
     private val leveler: LevelingAudioProcessor?,
-    private val sizer: RenderHost,
+    private val host: RenderHost,
     private val aligner: AvStartAligner,
+    private val effects: EffectsSwitch,
+    private val keyframes: Keyframes,
 ) : DefaultRenderersFactory(context) {
     init {
         setEnableDecoderFallback(true)
@@ -1048,6 +1171,9 @@ private class Renderers(
             val all = MediaCodecUtil.getDecoderInfos(mimeType, secure, tunneling)
             if (!MimeTypes.isVideo(mimeType)) return@setMediaCodecSelector all
             val hardware = all.filter { DeviceCapabilities.isHardware(it) }
+            // Android's own software decoders, whose buffers are padded as an
+            // NVIDIA Shield's are: for checking the layer (D9).
+            if (VideoReport.debugFlag(context, "software_video")) return@setMediaCodecSelector all - hardware.toSet()
             if (hardware.isEmpty() && mimeType == MimeTypes.VIDEO_H264) all else hardware
         }
     }
@@ -1087,7 +1213,7 @@ private class Renderers(
         if (index < 0) return
         out[index] = AlignedAudioRenderer(
             context, codecAdapterFactory, mediaCodecSelector, enableDecoderFallback, eventHandler, eventListener, audioSink,
-            aligner, sizer,
+            aligner, host,
         )
     }
 
@@ -1101,26 +1227,81 @@ private class Renderers(
         allowedVideoJoiningTimeMs: Long,
         out: ArrayList<Renderer>,
     ) {
-        out.add(
-            SdrVideoRenderer(
-                sizer,
-                aligner,
-                MediaCodecVideoRenderer.Builder(context)
-                    .setMediaCodecSelector(mediaCodecSelector)
-                    .setAllowedJoiningTimeMs(allowedVideoJoiningTimeMs)
-                    .setEnableDecoderFallback(enableDecoderFallback)
-                    .setEventHandler(eventHandler)
-                    .setEventListener(eventListener)
-                    .setMaxDroppedFramesToNotify(MAX_DROPPED_VIDEO_FRAME_COUNT_TO_NOTIFY)
+        // Straight to the layer, and through the effects (D5).
+        for (withEffects in listOf(false, true)) {
+            out.add(
+                TunerVideoRenderer(
+                    context,
+                    host,
+                    aligner,
+                    effects,
+                    keyframes,
+                    withEffects,
+                    MediaCodecVideoRenderer.Builder(context)
+                        .setMediaCodecSelector(mediaCodecSelector)
+                        .setAllowedJoiningTimeMs(allowedVideoJoiningTimeMs)
+                        .setEnableDecoderFallback(enableDecoderFallback)
+                        .setEventHandler(eventHandler)
+                        .setEventListener(eventListener)
+                        .setMaxDroppedFramesToNotify(MAX_DROPPED_VIDEO_FRAME_COUNT_TO_NOTIFY),
+                )
             )
-        )
+        }
+    }
+
+    companion object {
+        /** An index with no renderer. */
+        const val NONE = 1_000
     }
 }
 
-/** What the renderers need from their player: [prepareSurface] sizes the
- *  Flutter texture for a decoder about to be configured (see
- *  `Instance.prepareSurface`; the Surface to configure it on when the resize
- *  replaced it, else null), and [note] writes a diagnostics line. */
+/** The next keyframe, for whoever wants it: what's queued to the decoder,
+ *  copied, once. */
+@UnstableApi
+private class Keyframes {
+    @Volatile var wanted: ((Format, ByteArray) -> Unit)? = null
+
+    fun offer(buffer: androidx.media3.decoder.DecoderInputBuffer, format: Format?) {
+        val take = wanted ?: return
+        val data = buffer.data ?: return
+        if (format == null || !buffer.isKeyFrame || buffer.isEndOfStream) return
+        val copy = data.duplicate()
+        if (copy.remaining() == 0 || copy.remaining() > 8 * 1024 * 1024) return
+        wanted = null
+        take(format, ByteArray(copy.remaining()).also { copy.get(it) })
+    }
+}
+
+/** Which of the two video renderers plays the video, and what the effects
+ *  draw. Set on the main thread. */
+@UnstableApi
+private class EffectsSwitch {
+    @Volatile var on = false
+    @Volatile var look: VideoLook? = null
+    var kind = 0
+
+    /** The layer's size, which the tube is drawn at. */
+    var size: Size? = null
+
+    /** They failed here: not tried again. */
+    var failed = false
+
+    /** Whether the GPU reads HDR video as the pipeline needs to make it SDR. */
+    val gpuToneMaps: Boolean by lazy {
+        try {
+            Build.VERSION.SDK_INT >= 29 && GlUtil.isYuvTargetExtensionSupported()
+        } catch (e: Exception) {
+            false
+        }
+    }
+
+    /** Whether they can be applied to a stream: HDR needs a GPU or a decoder
+     *  (Android 13+) that makes it SDR. One they can't plays without them. */
+    fun applyTo(format: Format) =
+        !HdrRule.isHdr(format.colorInfo?.colorTransfer) || Build.VERSION.SDK_INT >= 33 || gpuToneMaps
+}
+
+/** What the renderers tell their player. */
 private interface RenderHost {
     /** A diagnostics line. */
     fun note(line: String)
@@ -1129,34 +1310,122 @@ private interface RenderHost {
      *  D8); on the playback thread. */
     fun outputFormat(format: android.media.MediaFormat?) {}
 
-    fun prepareSurface(width: Int, height: Int): Surface?
+    /** Whether the video playing has the effects the channel asks for. */
+    fun effectsApplied(applied: Boolean) {}
+
+    /** Whether an HDR stream's decoder was asked for SDR. */
+    fun askedForSdr(asked: Boolean) {}
+
+    /** The picture's size with effects; on the playback thread. */
+    fun videoSize(size: VideoSize)
 }
 
+/** The video, straight to the layer or, [withEffects], through Media3's
+ *  effects pipeline (system-video-layer D5). Media3 keeps a pipeline once it
+ *  has made one, so there are two renderers, and [effects] says which takes
+ *  the video; the other takes none. The one that isn't playing holds no
+ *  surface, as only one producer can draw on it. */
 @UnstableApi
-private class SdrVideoRenderer(
-    private val sizer: RenderHost,
+private class TunerVideoRenderer(
+    private val context: Context,
+    private val host: RenderHost,
     private val aligner: AvStartAligner,
+    private val effects: EffectsSwitch,
+    private val keyframes: Keyframes,
+    private val withEffects: Boolean,
     builder: Builder,
 ) : MediaCodecVideoRenderer(builder) {
+    /** The surface and its size, given to the effects only while they play. */
+    private var output: Any? = null
+    private var outputSize: Size? = null
+    private var playing = false
+
+    /** The pipeline, once made, and whether it has played since it was last
+     *  emptied. */
+    private var sink: VideoSink? = null
+    private var sinkUsed = false
+
+    override fun supportsFormat(mediaCodecSelector: MediaCodecSelector, format: Format): Int =
+        if (withEffects == (effects.on && effects.applyTo(format))) super.supportsFormat(mediaCodecSelector, format)
+        else RendererCapabilities.create(C.FORMAT_UNSUPPORTED_TYPE)
+
+    override fun handleMessage(messageType: Int, message: Any?) {
+        if (!withEffects) {
+            if (messageType != Renderer.MSG_SET_VIDEO_EFFECTS) super.handleMessage(messageType, message)
+            return
+        }
+        when (messageType) {
+            Renderer.MSG_SET_VIDEO_OUTPUT -> {
+                output = message
+                if (playing) super.handleMessage(messageType, message)
+            }
+            Renderer.MSG_SET_VIDEO_OUTPUT_RESOLUTION -> {
+                outputSize = message as Size
+                if (playing && output != null) super.handleMessage(messageType, message)
+            }
+            else -> super.handleMessage(messageType, message)
+        }
+    }
+
+    // Media3 keeps the wrapper for its own libraries, but it's the only way to
+    // the pipeline's colour space and HDR handling (the version is pinned).
+    @SuppressLint("RestrictedApi")
+    override fun createPlaybackVideoGraphWrapper(
+        context: Context, videoFrameReleaseControl: VideoFrameReleaseControl,
+    ): PlaybackVideoGraphWrapper =
+        PlaybackVideoGraphWrapper.Builder(context, videoFrameReleaseControl)
+            .setEnablePlaylistMode(true)
+            .setClock(clock)
+            .setVideoGraphFactory(
+                SingleInputVideoGraph.Factory(
+                    DefaultVideoFrameProcessor.Factory.Builder()
+                        // In the stream's own gamma, as Flutter's filters work.
+                        .setSdrWorkingColorSpace(DefaultVideoFrameProcessor.WORKING_COLOR_SPACE_ORIGINAL)
+                        .build()
+                )
+            )
+            .build()
+            // HDR becomes SDR before the effects (D5, D7): by the pipeline
+            // where the GPU can, else by the decoder.
+            .also {
+                it.setRequestOpenGlToneMapping(effects.gpuToneMaps)
+                it.setIsInputSdrToneMapped(!effects.gpuToneMaps)
+            }
+            .also { sink = it.getSink(0) }
+
     // What the audio renderer aligns to (design D4): whether there's video,
-    // and the first sample queued after each playback start.
+    // and the first sample queued after each playback start. Joining a
+    // playback that's running is no start: the sound plays on.
     override fun onEnabled(joining: Boolean, mayRenderStartOfStream: Boolean) {
+        playing = true
+        if (withEffects && output != null) {
+            super.handleMessage(Renderer.MSG_SET_VIDEO_OUTPUT, output)
+            outputSize?.let { super.handleMessage(Renderer.MSG_SET_VIDEO_OUTPUT_RESOLUTION, it) }
+        }
         super.onEnabled(joining, mayRenderStartOfStream)
         aligner.videoEnabled(true)
+        host.effectsApplied(withEffects || !effects.on)
     }
 
     override fun onDisabled() {
+        playing = false
         aligner.videoEnabled(false)
         super.onDisabled()
+        if (withEffects) super.handleMessage(Renderer.MSG_SET_VIDEO_OUTPUT, null)
     }
 
     override fun onPositionReset(positionUs: Long, joining: Boolean, sampleStreamIsResetToKeyFrame: Boolean) {
+        // Media3 empties the pipeline at a reset but not when joining, where
+        // it would still hold the end of what it played before.
+        if (joining && sinkUsed) sink?.flush(true)
+        sinkUsed = sink != null
         super.onPositionReset(positionUs, joining, sampleStreamIsResetToKeyFrame)
-        aligner.videoReset()
+        if (!joining) aligner.videoReset()
     }
 
     override fun onQueueInputBuffer(buffer: androidx.media3.decoder.DecoderInputBuffer) {
         super.onQueueInputBuffer(buffer)
+        keyframes.offer(buffer, formatQueued)
         if (!buffer.isEndOfStream) aligner.videoSample(buffer.timeUs, outputStreamOffsetUs)
     }
 
@@ -1176,7 +1445,7 @@ private class SdrVideoRenderer(
                 }
                 AvStartAligner.Decision.HOLD -> return false
                 AvStartAligner.Decision.PLAY -> aligner.takeVideoSkipped()?.let {
-                    sizer.note("info exo: video before the first sound skipped: ${it / 1000} ms")
+                    host.note("info exo: video before the first sound skipped: ${it / 1000} ms")
                 }
             }
         }
@@ -1186,15 +1455,36 @@ private class SdrVideoRenderer(
         )
     }
 
-    override fun onOutputFormatChanged(format: Format, mediaFormat: MediaFormat?) {
-        super.onOutputFormatChanged(format, mediaFormat)
-        sizer.outputFormat(mediaFormat)
+    private var formatQueued: Format? = null
+
+    override fun onInputFormatChanged(formatHolder: FormatHolder): DecoderReuseEvaluation? {
+        formatQueued = formatHolder.format
+        return super.onInputFormatChanged(formatHolder)
     }
 
-    /** A decoder reused across a change of resolution keeps its old output
-     *  size and crops the new picture inside it, and the Flutter texture
-     *  ignores that crop (a 720p channel after a 1080p one showed in a
-     *  corner, or zoomed). A new resolution gets a new decoder. */
+    override fun onOutputFormatChanged(format: Format, mediaFormat: MediaFormat?) {
+        super.onOutputFormatChanged(format, mediaFormat)
+        host.outputFormat(mediaFormat)
+        if (withEffects) host.videoSize(shownSize(format, mediaFormat))
+    }
+
+    /** The picture's size, which Media3 doesn't report with effects (its
+     *  b/292111083): the part of the buffer marked as the picture, turned as
+     *  the effects turn it. */
+    private fun shownSize(format: Format, output: MediaFormat?): VideoSize {
+        val crop = output != null && listOf("crop-left", "crop-right", "crop-top", "crop-bottom").all { output.containsKey(it) }
+        var width = if (crop) output!!.getInteger("crop-right") - output.getInteger("crop-left") + 1 else format.width
+        var height = if (crop) output!!.getInteger("crop-bottom") - output.getInteger("crop-top") + 1 else format.height
+        var ratio = format.pixelWidthHeightRatio
+        if (format.rotationDegrees % 180 != 0) {
+            width = height.also { height = width }
+            ratio = 1 / ratio
+        }
+        return VideoSize(width, height, ratio)
+    }
+
+    /** A new resolution gets a new decoder, sized for it, on the same layer;
+     *  the layer keeps the last picture until the new one's first. */
     override fun canReuseCodec(
         codecInfo: MediaCodecInfo, oldFormat: Format, newFormat: Format, isNewFormatTheSameSource: Boolean,
     ): DecoderReuseEvaluation {
@@ -1211,14 +1501,21 @@ private class SdrVideoRenderer(
     override fun getMediaCodecConfiguration(
         codecInfo: MediaCodecInfo, format: Format, crypto: android.media.MediaCrypto?, codecOperatingRate: Float,
     ): MediaCodecAdapter.Configuration {
-        // No decoder exists here (the old one was released, see
-        // canReuseCodec), so this only sets the display surface the new one
-        // is configured on: nothing running is re-targeted.
-        sizer.prepareSurface(format.width, format.height)?.let { handleMessage(Renderer.MSG_SET_VIDEO_OUTPUT, it) }
         val configuration = super.getMediaCodecConfiguration(codecInfo, format, crypto, codecOperatingRate)
         val transfer = format.colorInfo?.colorTransfer
-        if (Build.VERSION.SDK_INT >= 33 && (transfer == C.COLOR_TRANSFER_ST2084 || transfer == C.COLOR_TRANSFER_HLG)) {
-            configuration.mediaFormat.setInteger(MediaFormat.KEY_COLOR_TRANSFER_REQUEST, MediaFormat.COLOR_TRANSFER_SDR_VIDEO)
+        if (HdrRule.isHdr(transfer)) {
+            // With effects it's SDR whatever the display; Media3 makes it so
+            // where the GPU can.
+            val types = if (withEffects) emptyList() else HdrRule.displayTypes(context)
+            val sdr = HdrRule.asksForSdr(transfer, types, Build.VERSION.SDK_INT) && !(withEffects && effects.gpuToneMaps)
+            if (sdr) {
+                configuration.mediaFormat.setInteger(MediaFormat.KEY_COLOR_TRANSFER_REQUEST, MediaFormat.COLOR_TRANSFER_SDR_VIDEO)
+            }
+            host.askedForSdr(sdr)
+            host.note(
+                "info exo: hdr ${if (sdr) "asked for as sdr" else if (withEffects) "toned for effects" else "left as it is"}" +
+                    if (withEffects) "" else " (display $types)"
+            )
         }
         return configuration
     }
@@ -1400,6 +1697,7 @@ private class KeyframeStartPeriod(val inner: MediaPeriod) : MediaPeriod, MediaPe
     override fun isLoading(): Boolean = inner.isLoading
     override fun reevaluateBuffer(positionUs: Long) = inner.reevaluateBuffer(positionUs)
     override fun setEndPositionUs(endPositionUs: Long): Long = inner.setEndPositionUs(endPositionUs)
+    @androidx.annotation.OptIn(androidx.media3.common.util.ExperimentalApi::class)
     override fun setUsesStreamPrerollFlags() = inner.setUsesStreamPrerollFlags()
 }
 
@@ -1483,6 +1781,7 @@ internal fun describeFormat(f: Format): Map<String, Any?> = mapOf(
     "hdr_static_info" to (f.colorInfo?.hdrStaticInfo != null),
 )
 
+@UnstableApi
 private fun colorSpaceName(v: Int) = when (v) {
     C.COLOR_SPACE_BT709 -> "bt709"
     C.COLOR_SPACE_BT601 -> "bt601"
@@ -1490,6 +1789,7 @@ private fun colorSpaceName(v: Int) = when (v) {
     else -> "$v"
 }
 
+@UnstableApi
 private fun colorTransferName(v: Int) = when (v) {
     C.COLOR_TRANSFER_SDR -> "sdr"
     C.COLOR_TRANSFER_ST2084 -> "pq"

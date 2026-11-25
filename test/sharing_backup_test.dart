@@ -58,8 +58,7 @@ void main() {
 
   test('a restore keeps this device\'s share sign-ins', () async {
     final (h, session) = await linkedHousehold();
-    final backup = (await h.backups!.backUp(BackupReason.manual))!;
-    final bytes = await h.backups!.store.read(backup);
+    final bytes = (await h.backups!.build(BackupReason.manual)).bytes;
     await BackupRestorer(h).restore(bytes);
     final after = ShareSessionStore(h.root);
     await after.load();

@@ -20,23 +20,24 @@ import '../l10n/tr.dart';
 /// Moving a setup between the official app and the own build on one device
 /// (install-switching D5, D6).
 
-/// "Move my setup to …": backs up now, labelled "Moving to …", and hands
-/// that backup to the other app, which opens on its restore confirmation.
-/// Throws [BackupException] when there's nothing to move or it can't go.
+/// "Move my setup to …": builds a backup now, with every picked Live TV
+/// file, labelled "Moving to …", and hands it to the other app, which opens
+/// on its restore confirmation. Nothing is kept here. Throws
+/// [BackupException] when there's nothing to move or it can't go.
 Future<void> moveSetupTo(Household household, InstallInfo info) async {
   final backups = household.backups!;
   if (await household.hasNoSetup()) throw BackupException(_nothingToMove);
-  final stored = await () async {
+  final built = await () async {
     try {
-      return await backups.backUp(info.ownBuild ? BackupReason.movingToOfficial : BackupReason.movingToOwnBuild);
+      return await backups.build(info.ownBuild ? BackupReason.movingToOfficial : BackupReason.movingToOwnBuild,
+          pickedFiles: PickedFiles.all);
     } on BackupException {
       rethrow;
     } on Object catch (e) {
       throw BackupException(tr.couldntSaveThe(e));
     }
   }();
-  if (stored == null) throw BackupException(_nothingToMove);
-  if (!await InstallSwitching.moveSetup(await backups.store.read(stored))) {
+  if (!await InstallSwitching.moveSetup(built.bytes)) {
     throw BackupException(tr.couldntOpen(info.counterpartName));
   }
   household.notice.value = tr.yourSetupIs(info.counterpartName);
@@ -51,17 +52,14 @@ Future<void> bringSetupFrom(InstallInfo info) async {
 }
 
 /// A setup the other app handed over: checked like an opened backup file,
-/// kept as "From …", then the normal restore confirmation. Throws
+/// then the normal restore confirmation, without keeping it. Throws
 /// [BackupException] (nothing restored) when it isn't a backup.
-Future<void> receiveSetup(BuildContext context, Household household, InstallInfo info, Uint8List bytes,
+Future<void> receiveSetup(BuildContext context, Household household, Uint8List bytes,
     {Future<void> Function()? beforeClosing}) async {
-  final backups = household.backups!;
   if (bytes.length > TransferServer.maxUpload) throw BackupException(BackupArchive.tooBig);
   final archive = BackupArchive.check(bytes);
-  final stored = await backups.store.save(bytes, kind: info.ownBuild ? BackupReason.fromOfficial : BackupReason.fromOwnBuild);
-  backups.changed();
   final plan = await BackupRestorer(household).plan(archive);
-  if (!context.mounted || !await confirmRestore(context, stored, plan) || !context.mounted) return;
+  if (!context.mounted || !await confirmRestore(context, archive, plan) || !context.mounted) return;
   await BackupRestorer(household).restore(bytes, beforeClosing: beforeClosing);
 }
 
@@ -265,8 +263,7 @@ class _InstallSwitchingHostState extends State<InstallSwitchingHost> {
       switch (handover) {
         case SetupReceived(:final bytes):
           if (!await _unlocked(context) || !context.mounted) return;
-          await receiveSetup(context, _household, info, bytes,
-              beforeClosing: stopTuner);
+          await receiveSetup(context, _household, bytes, beforeClosing: stopTuner);
         case SetupRequested():
           if (!await _unlocked(context) || !context.mounted) return;
           final ok = await confirm(context,

@@ -8,6 +8,8 @@ import 'package:nightingale_tv/app_scope.dart';
 import 'package:nightingale_tv/app_state.dart';
 import 'package:nightingale_tv/live/live_data.dart';
 import 'package:nightingale_tv/live/live_source.dart';
+import 'package:nightingale_tv/live/live_tv_manager.dart';
+import 'package:nightingale_tv/platform/backup_files.dart';
 import 'package:nightingale_tv/playback/tuner.dart';
 import 'package:nightingale_tv/profiles/household.dart';
 import 'package:nightingale_tv/profiles/profile.dart';
@@ -125,6 +127,46 @@ void main() {
     await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
     await tester.pumpAndSettle();
     expect(focusedLabel(), 'Refresh now');
+  });
+
+  testWidgets('a source missing its picked guide asks for it where files can be picked, and says so elsewhere',
+      (tester) async {
+    setWindow(tester, const Size(1920, 1080));
+    addTearDown(() => BackupFiles.debugAvailable = null);
+    await setUpApp(tester);
+    final source = app.live.sources.single;
+    await tester.runAsync(() async {
+      // As a restore that left the guide out leaves it.
+      source.guideFile = 'iptv-guide.xml';
+      await app.live.save();
+      await app.refreshLiveSource(source, channels: false);
+    });
+    expect(app.live.missingFile(source), LiveFileMissing.guide);
+    expect(app.live.entryFor(source).state.lastError, isNull);
+
+    BackupFiles.debugAvailable = true;
+    await show(tester, const LiveSourcesScreen());
+    await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 50)));
+    await tester.pumpAndSettle();
+    expect(find.text('Pick the guide file again'), findsOneWidget);
+
+    BackupFiles.debugAvailable = false;
+    await tester.pumpWidget(const SizedBox());
+    await show(tester, const LiveSourcesScreen());
+    expect(find.text("The guide file isn't on this device"), findsOneWidget);
+    expect(find.text('Pick the guide file again'), findsNothing);
+
+    // Edit says the same, not "the one chosen before"; the playlist's file
+    // is still there.
+    for (final (canPick, line) in [(true, 'Pick the guide file again'), (false, "The guide file isn't on this device")]) {
+      BackupFiles.debugAvailable = canPick;
+      await tester.pumpWidget(const SizedBox());
+      await show(tester, M3uSourceScreen(editing: source));
+      await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 50)));
+      await tester.pumpAndSettle();
+      expect(find.text(line), findsOneWidget);
+      expect(find.text('File: the one chosen before'), source.playlistFile == null ? findsNothing : findsOneWidget);
+    }
   });
 
   testWidgets("a server source's row counts the chosen channels the server dropped, until they're back", (tester) async {

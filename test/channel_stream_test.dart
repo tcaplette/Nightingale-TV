@@ -220,6 +220,7 @@ class _Harness {
       channel: channel,
       // As the real session does: a channel out of the lineup has no schedule.
       schedule: () => app.channels.any((c) => c.id == channel.id) ? app.scheduleFor(channel) : null,
+      inLineup: () => app.channels.any((c) => c.id == channel.id),
       card: (c) async {
         cardsAsked.add(c.key);
         if (c is TuningCardSpec && tuningCardTakes > Duration.zero) await Future<void>.delayed(tuningCardTakes);
@@ -545,6 +546,22 @@ void main() {
       expect(runs.every((r) => r.$1 == 'offair'), isTrue);
       expect(h.encoders, isEmpty);
       expect(h.cardsAsked.where((k) => k.startsWith('offair|Back on the air')), isNotEmpty);
+      h.expectContinuous();
+      unawaited(h.stream.stop());
+      async.flushTimers();
+    });
+  });
+
+  test('a block channel with no blocks yet plays OFF THE AIR', () async {
+    await make();
+    final ch = await app.createBlockChannel('Late Show');
+    final channel = app.channelById(ch.id)!;
+    fakeAsync((async) {
+      final h = _Harness(async, app, channel);
+      h.run(const Duration(minutes: 2));
+      expect(h.runs, isNotEmpty, reason: 'the stream has something in it');
+      expect(h.runs.every((r) => r.$1 == 'offair'), isTrue);
+      expect(h.encoders, isEmpty);
       h.expectContinuous();
       unawaited(h.stream.stop());
       async.flushTimers();

@@ -13,7 +13,7 @@ Runs [Nightingale TV](https://github.com/tcaplette/Nightingale-TV)'s channels on
    ```
    docker compose logs | grep "to set up"
    ```
-   Make the first admin account (a user name and a password), then either **Restore a backup** from the Nightingale TV app (Menu → Backup & restore → Back up now, then download it) or **Start fresh**, and sign in to your Jellyfin, Emby or Plex server.
+   Make the first admin account (a user name and a password), then either **Restore a backup** from the Nightingale TV app (Menu → Backup & restore → **Save to a file**, or **Use your phone or computer** → **Download backup**) or **Start fresh**, and sign in to your Jellyfin, Emby or Plex server.
 
 Everything else is set up in the web admin at `http://<server>:8484`, from a computer or a phone: profiles, channels and their icons, programming blocks, channel groups, commercials, Live TV sources, export, backups and users. It works with no internet connection. The **Live TV export** page lists each lineup's tuner address, M3U and XMLTV URLs.
 
@@ -35,7 +35,17 @@ Everything else is set up in the web admin at `http://<server>:8484`, from a com
 | `NTV_WEB_DIR` | the image's `web/` | where the web admin is served from (only for trying one you built) |
 | `NTV_ERROR_REPORTS` | | `0` turns off [error reports](../README.md#error-reports) to the developer |
 
-Everything is kept in `/config`: the household in `/config/com.coffeehauslabs.nightingale_tv/`, with the user accounts in `nightingale.db` there, and caches in `/config/cache/`. Ports: 8484 (web admin), 5004 and up (one per exported profile).
+## YouTube
+
+YouTube runs on the server with your own Google client only (type **TVs and Limited Input devices**, steps at [coffeehauslabs.com/ntv/youtube-client](https://coffeehauslabs.com/ntv/youtube-client)): web admin → the profile's Servers → Add a server → **YouTube** → Client ID and Client secret (or **Upload JSON file**) → the code at google.com/device → your channels. There's no channel limit. YouTube allows its videos only in its own player, so YouTube channels aren't in the M3U or HDHomeRun lineups (Plex, Jellyfin, Emby, IPTV players): watch them on the web admin's **Watch** page, which needs the browser to reach youtube.com. The token and client secret are kept encrypted in `/config`, never in backups or the log. A restored TV backup keeps its YouTube channels; **Sign in again** asks for your own client.
+
+## SMB shares and converting for TVs
+
+A profile can use **SMB shares** (a NAS, a Windows or Samba shared folder) as well as, or instead of, a media server: web admin → the profile's Servers → Add a server → SMB share. On a bridge network the server finds no hosts on its own (Docker's bridge passes no multicast); type the share's address, such as `smb://192.168.1.5/media`. Share passwords are kept encrypted in `/config` with a key file only the app's user can read, never in backups or the log. The image's FFmpeg reads the shares' files for their lengths and converts them for export.
+
+**Convert for other TVs** (web admin → Servers, admins) lets Android TVs that can't play a share's file, or can't convert it fast enough, have this server convert it. Turn it on and enter the 6-digit code it shows on the TV (Servers → Convert on other Nightingale TVs). It needs the same share in one of its profiles, converts only files in that share's mapped folders, and counts its conversions with export's streams. It listens on port 8487; with host networking TVs find it over SSDP, on a bridge network they type `http://<NTV_LAN_HOST>:8487`.
+
+Everything is kept in `/config`: the household in `/config/com.coffeehauslabs.nightingale_tv/`, with the user accounts in `nightingale.db` there, and caches in `/config/cache/`. Ports: 8484 (web admin), 5004 and up (one per exported profile), 8487 (Convert for other TVs, when on).
 
 **Networking:** `docker-compose.yml` uses host networking. If that clashes with other ports on the machine, use [`docker-compose.bridge.yml`](docker-compose.bridge.yml) and set `NTV_LAN_HOST` to the server's address.
 
@@ -50,7 +60,7 @@ Anyone can change their own password (Change password). Five wrong passwords in 
 
 **Forgotten admin password:** add `NTV_RESET_PASSWORD: "1"` to the compose file and restart. Every session ends and a new setup link is logged; open it, pick the admin account and set its new password. Other accounts and their passwords stay as they are. Remove the variable again afterwards.
 
-Backups made here hold the account names, roles and profiles, never passwords. Restored on a new server, each account that isn't there yet is added and shows **Needs a password** until an admin sets one; the admin who restored stays an admin. The TV app ignores the accounts.
+The **Backups** page shows when the server last backed up, and offers **Download a backup**, **Restore from a file** and, after a restore, a lineup reset or a removed profile, **Undo** with **Restore** and **Download**. The server keeps one automatic backup and one undo point, not a list: for history, back up `/config` with the volume. Backups made here hold the account names, roles and profiles, never passwords. Restored on a new server, each account that isn't there yet is added and shows **Needs a password** until an admin sets one; the admin who restored stays an admin. The TV app ignores the accounts.
 
 ## Updating
 

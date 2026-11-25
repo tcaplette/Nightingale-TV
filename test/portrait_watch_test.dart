@@ -8,6 +8,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:nightingale_tv/app_exit.dart';
+import 'package:nightingale_tv/channels/channel.dart';
 import 'package:nightingale_tv/channels/break_notices.dart';
 import 'package:nightingale_tv/commercials/break_plan.dart';
 import 'package:nightingale_tv/main.dart' show hasPhoneRemote;
@@ -26,6 +27,7 @@ import 'package:nightingale_tv/ui/widgets/screen_layout.dart';
 import 'package:nightingale_tv/ui/widgets/tv_canvas.dart';
 import 'package:nightingale_tv/ui/widgets/tv_focus.dart';
 
+import 'fake_playback.dart';
 import 'fixtures.dart';
 import 'portrait_harness.dart';
 
@@ -249,6 +251,24 @@ void main() {
       await tester.pump(const Duration(milliseconds: 300));
       await tester.tap(find.text('Exit full screen'));
       await tester.pump();
+      expect(FullScreen.instance.isOn, isFalse);
+      expect(find.byType(PortraitWatchScreen), findsOneWidget);
+      await tester.pump(const Duration(seconds: 6));
+    });
+
+    tvTest('Exit full screen with only a D-pad: Right, Up, Right, Right, OK (dpad-buttons)', pixel8, (tester, h) async {
+      await FullScreen.instance.enter();
+      await tester.pump(const Duration(seconds: 6));
+      for (final k in [
+        LogicalKeyboardKey.arrowRight,
+        LogicalKeyboardKey.arrowUp,
+        LogicalKeyboardKey.arrowRight,
+        LogicalKeyboardKey.arrowRight,
+        LogicalKeyboardKey.select,
+      ]) {
+        await tester.sendKeyEvent(k);
+        await tester.pump(const Duration(milliseconds: 300));
+      }
       expect(FullScreen.instance.isOn, isFalse);
       expect(find.byType(PortraitWatchScreen), findsOneWidget);
       await tester.pump(const Duration(seconds: 6));
@@ -487,9 +507,9 @@ void main() {
   group('the sleep timer in portrait', () {
     late DateTime now;
 
-    Future<PortraitHarness> start(WidgetTester tester) async {
+    Future<PortraitHarness> start(WidgetTester tester, {Size window = pixel8}) async {
       runAs(TargetPlatform.android);
-      setWindow(tester, pixel8);
+      setWindow(tester, window);
       tester.binding.defaultBinaryMessenger
           .setMockMethodCallHandler(const MethodChannel('nightingale_tv/orientation'), (call) async => null);
       now = DateTime.now();
@@ -532,6 +552,73 @@ void main() {
       await tester.pump(const Duration(milliseconds: 400));
       expect(find.byType(Dialog), findsOneWidget);
       expect(find.descendant(of: find.byType(Dialog), matching: find.text('Off')), findsOneWidget);
+      await h.end(tester);
+    });
+
+    testWidgets('a tap on the player, then Quality after Captions; 4 Mbps plays on from the same point (player-options)',
+        (tester) async {
+      final h = await start(tester);
+      await tester.tapAt(tester.getCenter(find.byType(TvPicture)), kind: PointerDeviceKind.touch);
+      await tester.pump(const Duration(milliseconds: 300));
+      final quality = find.bySemanticsLabel('Quality: Original');
+      expect(quality, findsOneWidget);
+      expect(tester.getCenter(quality).dx, greaterThan(tester.getCenter(find.bySemanticsLabel('Captions')).dx));
+      final player = h.tuner.media as FakePlayer;
+      final opens = player.opens.length;
+      final part = h.tuner.segment!;
+      await tester.tap(quality, kind: PointerDeviceKind.touch);
+      await tester.pump(const Duration(milliseconds: 400));
+      expect(find.byType(Dialog), findsOneWidget);
+      await tester.tap(find.text('4 Mbps · 720p'), kind: PointerDeviceKind.touch);
+      // Until the reopen lands (a busy machine takes longer), at most 3 s.
+      for (var i = 0; i < 300 && (i < 10 || player.opens.length <= opens); i++) {
+        await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 10)));
+        await tester.pump();
+      }
+      expect(find.byType(Dialog), findsNothing);
+      expect(h.app.capInEffect, 4000);
+      expect(player.opens.length, greaterThan(opens));
+      expect(player.opens.last.url.path, endsWith('/stream.ts'));
+      final ticks = int.parse(player.opens.last.url.queryParameters['StartTimeTicks']!);
+      expect(Duration(microseconds: ticks ~/ 10) - part.positionAt(DateTime.now()), lessThan(const Duration(seconds: 2)),
+          reason: 'the same point');
+      expect(h.tuner.segment?.item?.id, part.item?.id);
+      await h.end(tester);
+    });
+
+    testWidgets('on a YouTube channel, the row under the picture shows Quality: Auto, and a tap does nothing',
+        (tester) async {
+      final h = await start(tester);
+      h.tuner.channel = Channel.youTube(
+        ref: const YouTubeRef(serverKey: 's2', channelId: 'UCcooking'),
+        number: 501,
+        name: 'Cooking',
+        icon: const ChannelIcon.builtin('tv'),
+        playlist: const ['s2~v1'],
+        anchor: DateTime(2026, 11, 23),
+      );
+      tester.element(find.byType(PortraitWatchScreen)).markNeedsBuild();
+      await tester.pump(const Duration(milliseconds: 300));
+      final quality = find.bySemanticsLabel('Quality: Auto');
+      expect(quality, findsOneWidget);
+      expect(tester.getCenter(quality).dx, greaterThan(tester.getCenter(find.bySemanticsLabel('Captions')).dx));
+      await tester.tap(quality, kind: PointerDeviceKind.touch);
+      await tester.pump(const Duration(milliseconds: 400));
+      expect(find.byType(Dialog), findsNothing);
+      h.tuner.channel = null;
+      await h.end(tester);
+    });
+
+    testWidgets('at the narrowest phone, the row with Sleep, Menu, Captions and Quality fits', (tester) async {
+      final h = await start(tester, window: narrowPhone);
+      await tester.tapAt(tester.getCenter(find.byType(TvPicture)), kind: PointerDeviceKind.touch);
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(tester.takeException(), isNull);
+      for (final label in ['Sleep', 'Menu', 'Captions', 'Quality: Original']) {
+        final r = tester.getRect(find.bySemanticsLabel(label));
+        expect(r.left, greaterThanOrEqualTo(0), reason: label);
+        expect(r.right, lessThanOrEqualTo(narrowPhone.width), reason: label);
+      }
       await h.end(tester);
     });
 

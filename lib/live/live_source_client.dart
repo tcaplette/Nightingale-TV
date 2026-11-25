@@ -186,6 +186,9 @@ class M3uSource implements LiveSourceClient {
     var temp = false;
     if (source.guideFile case final name?) {
       file = store.fileFor(name);
+      // Left out of a backup (backup-simplify D7): no guide until it's
+      // picked again, not a failed refresh.
+      if (!await file.exists()) return const LiveGuide();
     } else if (source.guideUrl case final url?) {
       final uri = Uri.tryParse(url.trim());
       if (uri == null) throw LiveSourceException(tr.couldntReachTheGuide);

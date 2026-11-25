@@ -5,7 +5,6 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:nightingale_tv/app_scope.dart';
 import 'package:nightingale_tv/backup/backup_archive.dart';
-import 'package:nightingale_tv/backup/backup_store.dart';
 import 'package:nightingale_tv/data/app_storage.dart';
 import 'package:nightingale_tv/platform/backup_files.dart';
 import 'package:nightingale_tv/platform/install_info.dart';
@@ -72,11 +71,10 @@ void main() {
       expect(await InstallSwitching.info(), isNull);
     });
 
-    test('moved and handed-over backups have their labels, and aren\'t this setup', () {
-      expect(BackupReason.isReceived(BackupReason.fromOfficial), isTrue);
-      expect(BackupReason.isReceived(BackupReason.fromOwnBuild), isTrue);
-      expect(BackupReason.isReceived(BackupReason.file), isTrue);
-      expect(BackupReason.isReceived(BackupReason.movingToOfficial), isFalse);
+    test('a hand-over backup is labelled as moving, and is no undo point', () {
+      expect(BackupReason.movingToOfficial, 'moving-official');
+      expect(BackupReason.movingToOwnBuild, 'moving-own-build');
+      expect(BackupReason.isSafety(BackupReason.movingToOfficial), isFalse);
       expect(BackupReason.isSafety(BackupReason.movingToOwnBuild), isFalse);
     });
   });
@@ -124,7 +122,7 @@ void main() {
       dir = await Directory.systemTemp.createTemp('nightingale_tv_install_switching');
       await writeHousehold(dir, momAndKids(), fakeLibrary());
       h = await openHousehold(dir);
-      await h.backups!.backUp(BackupReason.manual);
+      await h.backups!.automaticCheck();
       await h.select(h.profiles.firstWhere((p) => p.name == 'Mom'));
       final first = h.app!.allChannels.first;
       await h.app!.updateChannel(first, name: 'Renamed');
@@ -169,8 +167,14 @@ void main() {
     await settle(tester, 3);
   }
 
-  Future<List<StoredBackup>> stored(WidgetTester tester) async =>
-      (await tester.runAsync(() => h.backups!.store.list()))!;
+  /// The files in `backups/`: never a handed-over one, on either side.
+  Future<Set<String>> stored(WidgetTester tester) async => (await tester.runAsync(() async {
+        final root = h.backups!.store.dir;
+        return {
+          for (final f in root.listSync(recursive: true))
+            if (f is File) f.path.substring(root.path.length + 1),
+        };
+      }))!;
 
   group('About this install', () {
     testWidgets('an own build says so, with the uninstall warning, and no move buttons alone', (tester) async {
@@ -182,8 +186,8 @@ void main() {
       expect(find.textContaining('The Google Play version installs beside this one'), findsOneWidget);
       expect(find.text(InstallInfo.uninstallWarning), findsOneWidget);
       expect(find.textContaining('Move my setup'), findsNothing);
-      // Back up now still has focus.
-      expect(focused(), 'Back up now');
+      // Save to a file still has focus.
+      expect(focused(), 'Save to a file');
     });
 
     testWidgets('a Play install says so and that own builds are separate', (tester) async {
@@ -199,17 +203,18 @@ void main() {
       await setUpHousehold(tester);
       await show(tester, const BackupScreen());
       expect(find.text('ABOUT THIS INSTALL'), findsNothing);
-      expect(find.text('Back up now'), findsOneWidget);
+      expect(find.text('Save to a file'), findsOneWidget);
     });
 
-    testWidgets('Move my setup with the remote backs up and hands the backup over', (tester) async {
+    testWidgets('Move my setup with the remote hands a fresh backup over, keeping no file', (tester) async {
       await setUpHousehold(tester);
       // The notice for this install of the other app was already shown.
       await tester.runAsync(() => h.root.writeJson(InstallSwitchingHost.noticeFile, {'counterpartFirstInstallTime': 1000}));
       InstallSwitching.debugInfo = ownBuildBeside;
       await show(tester, const BackupScreen());
-      expect(focused(), 'Back up now');
-      await press(tester, LogicalKeyboardKey.arrowUp);
+      final before = await stored(tester);
+      expect(focused(), 'Save to a file');
+      await press(tester, LogicalKeyboardKey.arrowDown);
       expect(focused(), 'Move my setup to Nightingale TV');
       await press(tester, LogicalKeyboardKey.arrowRight);
       expect(focused(), 'Bring my setup here from Nightingale TV');
@@ -218,9 +223,11 @@ void main() {
       await settleUntil(tester, () => sent.isNotEmpty);
       final archive = BackupArchive.check(sent.single!);
       expect(archive.summary.profiles, ['Mom', 'Kids']);
-      await settleUntil(tester, () => find.text('Moving to Nightingale TV').evaluate().isNotEmpty);
-      expect(find.text('Moving to Nightingale TV'), findsOneWidget);
+      expect(archive.reason, BackupReason.movingToOfficial);
+      expect(archive.profiles.values.first.channels.toString(), contains('Renamed'));
+      await settle(tester);
       expect(focused(), 'Move my setup to Nightingale TV');
+      expect(await stored(tester), before);
     });
 
     test('Move with nothing set up says so and sends nothing', () async {
@@ -318,7 +325,7 @@ void main() {
     testWidgets('in the official app: no thanks, the own build named', (tester) async {
       await setUpHousehold(tester);
       InstallSwitching.debugInfo = playBeside;
-      await show(tester, const Scaffold());
+      await show(tester, const Scaffold(), notice: true);
       expect(find.text('Nightingale TV (own build) is also on this device'), findsOneWidget);
       expect(find.text('Thank you for supporting Nightingale TV!'), findsNothing);
       expect(find.widgetWithText(TvButton, 'Move my setup to Nightingale TV (own build)'), findsOneWidget);
@@ -327,7 +334,7 @@ void main() {
     testWidgets('shown once per install of the other app', (tester) async {
       await setUpHousehold(tester);
       InstallSwitching.debugInfo = ownBuildBeside;
-      await show(tester, const Scaffold());
+      await show(tester, const Scaffold(), notice: true);
       await press(tester, LogicalKeyboardKey.enter); // Not now
       await settle(tester);
       expect(find.textContaining('is also on this device'), findsNothing);
@@ -344,14 +351,14 @@ void main() {
       InstallSwitching.debugInfo =
           const InstallInfo(ownBuild: true, counterpartInstalled: true, counterpartFirstInstallTime: 5000);
       await tester.pumpWidget(const SizedBox());
-      await show(tester, const Scaffold());
+      await show(tester, const Scaffold(), notice: true);
       expect(find.text('Nightingale TV is also on this device'), findsOneWidget);
     });
 
     testWidgets('Move from the notice hands the setup over', (tester) async {
       await setUpHousehold(tester);
       InstallSwitching.debugInfo = ownBuildBeside;
-      await show(tester, const Scaffold());
+      await show(tester, const Scaffold(), notice: true);
       await tester.tap(find.widgetWithText(TvButton, 'Move my setup to Nightingale TV'));
       await settleUntil(tester, () => sent.isNotEmpty);
       expect(BackupArchive.check(sent.single!).summary.profiles, ['Mom', 'Kids']);
@@ -364,33 +371,35 @@ void main() {
       await tester.runAsync(() => h.root.writeJson(InstallSwitchingHost.noticeFile, {'counterpartFirstInstallTime': 2000}));
     }
 
-    testWidgets('is kept as From …, and restored after the usual confirmation', (tester) async {
+    testWidgets('goes straight to the usual confirmation, kept nowhere, and restores', (tester) async {
       await setUpHousehold(tester);
       await noNotice(tester);
-      final backup = (await tester.runAsync(() async => h.backups!.store.read((await h.backups!.store.list()).first)))!;
+      final backup = (await tester.runAsync(() => h.backups!.build(BackupReason.movingToOfficial)))!.bytes;
       await show(tester, const Scaffold());
+      final before = await stored(tester);
       InstallSwitching.pending.value = SetupReceived(backup);
       await settleUntil(tester, () => find.textContaining('Restore the backup from').evaluate().isNotEmpty);
       expect(find.textContaining('Your current setup is backed up first.'), findsOneWidget);
       expect(focused(), 'Cancel');
-      expect((await stored(tester)).map((b) => b.kindLabel), contains('From Nightingale TV (own build)'));
+      expect(await stored(tester), before);
       await press(tester, LogicalKeyboardKey.arrowRight);
       await press(tester, LogicalKeyboardKey.enter);
       await settleUntil(tester, () => h.started && h.app == null);
-      expect((await stored(tester)).map((b) => b.kind), contains(BackupReason.beforeRestore));
+      expect(await stored(tester), {...before, 'undo.ntvbackup'});
+      expect((await tester.runAsync(() => h.backups!.store.undo()))!.reason, BackupReason.beforeRestore);
     });
 
     testWidgets('a file that isn\'t a backup is refused, nothing restored', (tester) async {
       await setUpHousehold(tester);
       await noNotice(tester);
-      final before = (await stored(tester)).length;
+      final before = await stored(tester);
       await show(tester, const Scaffold());
       InstallSwitching.pending.value = SetupReceived(Uint8List.fromList(List.filled(300, 7)));
       await settle(tester);
       expect(find.text('Couldn\'t restore'), findsOneWidget);
       expect(find.text(BackupArchive.damaged), findsOneWidget);
       expect(find.textContaining('Restore the backup from'), findsNothing);
-      expect((await stored(tester)).length, before);
+      expect(await stored(tester), before);
       expect(h.app, isNotNull);
     });
 
@@ -424,8 +433,10 @@ void main() {
       await press(tester, LogicalKeyboardKey.arrowRight);
       await press(tester, LogicalKeyboardKey.enter);
       await settleUntil(tester, () => sent.isNotEmpty);
-      expect(BackupArchive.check(sent.single!).summary.profiles, ['Mom', 'Kids']);
-      expect((await stored(tester)).map((b) => b.kindLabel), contains('Moving to Nightingale TV (own build)'));
+      final archive = BackupArchive.check(sent.single!);
+      expect(archive.summary.profiles, ['Mom', 'Kids']);
+      expect(archive.reason, BackupReason.movingToOwnBuild);
+      expect(await stored(tester), {'cloud/latest.ntvbackup'});
     });
   });
 }

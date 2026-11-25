@@ -1,6 +1,8 @@
 import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
 
+import 'guide_color_screen.dart';
+
 import '../app_scope.dart';
 import '../channels/channel.dart';
 import '../live/live_data.dart';
@@ -22,12 +24,38 @@ import 'widgets/screen_layout.dart';
 import 'widgets/tv_focus.dart';
 import '../l10n/tr.dart';
 
+/// A picked file a backup left out (backup-simplify D7): pick it again
+/// where files can be picked, else it isn't on this device.
+String missingFileLine({required bool guide, required bool canPick}) => switch ((guide, canPick)) {
+      (false, true) => tr.pickThePlaylistFileAgain,
+      (true, true) => tr.pickTheGuideFileAgain,
+      (false, false) => tr.playlistFileNotOnDevice,
+      (true, false) => tr.guideFileNotOnDevice,
+    };
+
 /// Menu → Live TV sources (live-tv-sources): the profile's sources, each
 /// with its channel count and last refresh, and adding, choosing channels,
 /// refreshing, editing and removing them. Every control is a [TvButton]
 /// (or built like one), so the D-pad, the air mouse and touch all work.
-class LiveSourcesScreen extends StatelessWidget {
+class LiveSourcesScreen extends StatefulWidget {
   const LiveSourcesScreen({super.key});
+
+  @override
+  State<LiveSourcesScreen> createState() => _LiveSourcesScreenState();
+}
+
+class _LiveSourcesScreenState extends State<LiveSourcesScreen> {
+  /// Whether this device can pick files (most Android TVs can't), which
+  /// says how a source missing its picked file gets it back.
+  bool _canPick = false;
+
+  @override
+  void initState() {
+    super.initState();
+    BackupFiles.available().then((on) {
+      if (mounted && on) setState(() => _canPick = true);
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -63,7 +91,7 @@ class LiveSourcesScreen extends StatelessWidget {
                 ),
                 const SizedBox(height: 28),
                 if (sources.isEmpty) Text(tr.noSourcesYet, style: g.body(26, color: g.textDim)),
-                for (final s in sources) _SourceRow(source: s),
+                for (final s in sources) _SourceRow(source: s, canPick: _canPick),
               ],
             ),
           );
@@ -79,9 +107,13 @@ String sourceSummary(LiveSource s, List<LiveChannelInfo> channels) =>
     tr.ofChannels(s.kind.label, channels.where((c) => s.chosen.containsKey(c.key)).length, channels.length);
 
 class _SourceRow extends StatelessWidget {
-  const _SourceRow({required this.source});
+  const _SourceRow({required this.source, required this.canPick});
 
   final LiveSource source;
+
+  /// The device can pick files: a missing one is picked again through
+  /// Edit. Elsewhere Edit offers an address instead.
+  final bool canPick;
 
   @override
   Widget build(BuildContext context) {
@@ -91,9 +123,13 @@ class _SourceRow extends StatelessWidget {
     final entry = app.live.entryFor(source);
     final state = entry.state;
     final refreshing = app.live.isRefreshing(source);
+    // A picked file a restore didn't bring: Edit picks it again.
+    final missing = refreshing ? null : app.live.missingFile(source);
     final status = refreshing
         ? tr.refreshing
-        : state.lastError != null
+        : missing != null
+            ? missingFileLine(guide: missing == LiveFileMissing.guide, canPick: canPick)
+            : state.lastError != null
             ? tr.lastRefreshFailed('${state.lastError}')
             : state.lastRefresh != null
                 ? tr.refreshed(formatRecent(state.lastRefresh!))
@@ -113,6 +149,12 @@ class _SourceRow extends StatelessWidget {
                 .push(MaterialPageRoute<void>(builder: (_) => LiveChannelPickerScreen(source: source))),
       ),
       TvButton(label: tr.refreshNow, icon: Icons.sync, onPressed: refreshing ? null : () => app.refreshLiveNow(source)),
+      if (source.kind == LiveSourceKind.m3u && app.guideColorsOn)
+        TvButton(
+            label: tr.guideColor,
+            icon: Icons.palette,
+            onPressed: () => Navigator.of(context)
+                .push(MaterialPageRoute<void>(builder: (_) => GuideColorScreen(sourceKey: 'live:${source.id}')))),
       TvButton(label: tr.edit2, icon: Icons.edit, onPressed: () => _edit(context)),
       TvButton(label: tr.remove, icon: Icons.delete, danger: true, onPressed: () => _remove(context)),
     ];
@@ -132,7 +174,7 @@ class _SourceRow extends StatelessWidget {
             const SizedBox(height: 6),
             Text(sourceSummary(source, entry.channels), style: g.body(26, weight: FontWeight.w600, color: g.accent)),
             Text(status,
-                style: g.body(24, color: state.lastError != null && !refreshing ? g.nowLine : g.textDim)),
+                style: g.body(24, color: (state.lastError != null || missing != null) && !refreshing ? g.nowLine : g.textDim)),
             if (where != null)
               Text(where, maxLines: 1, overflow: TextOverflow.ellipsis, style: g.body(22, color: g.textDim)),
             // Chosen channels the server dropped, remembered until they
@@ -442,12 +484,22 @@ class _M3uSourceScreenState extends State<M3uSourceScreen> {
           Widget fileRow({required bool guide}) {
             final picked = guide ? _guideFile : _playlistFile;
             final keep = guide ? _keepGuideFile : _keepPlaylistFile;
+            // The kept file a backup left out (backup-simplify D7): the
+            // card's line, not "the one chosen before".
+            final missing = picked == null &&
+                keep &&
+                editing != null &&
+                AppScope.read(context).live.missingFile(editing) ==
+                    (guide ? LiveFileMissing.guide : LiveFileMissing.playlist);
             return Wrap(
               spacing: 16,
               runSpacing: 12,
               crossAxisAlignment: WrapCrossAlignment.center,
               children: [
-                if (picked != null || keep)
+                if (missing)
+                  Text(missingFileLine(guide: guide, canPick: canPick),
+                      style: g.body(26, weight: FontWeight.w600, color: g.nowLine))
+                else if (picked != null || keep)
                   Text(tr.fileChosen(picked?.name ?? tr.theOneChosenBefore), style: g.body(26, weight: FontWeight.w600)),
                 if (canPick)
                   TvButton(

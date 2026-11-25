@@ -16,7 +16,7 @@ publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
 # In Windows, build-name is used as the major, minor, and patch parts
 # of the product and file versions while build-number is used as the build suffix.
-version: 1.2.6+5008
+version: 1.2.7+5009
 
 environment:
   sdk: ^3.13.5
@@ -59,6 +59,13 @@ dependencies:
   # Error reports to the Nightingale TV GlitchTip project (error-reporting).
   sentry_flutter: ^10.3.0
   supabase: ^2.16.5
+  # SMB shares (smb-sources): SMB 2 and 3 through libsmb2, whose binaries are
+  # third_party/libsmb2 (hooks below).
+  dart_smb2: 0.5.0
+  # SMB passwords are kept encrypted (AES-GCM).
+  cryptography: ^2.9.0
+  # Finding SMB hosts on the network.
+  multicast_dns: ^0.3.3
 
 dev_dependencies:
   flutter_test:
@@ -84,6 +91,11 @@ dependency_overrides:
   sentry_flutter:
     path: third_party/sentry_flutter
 
+hooks:
+  user_defines:
+    dart_smb2:
+      libsmb2: third_party/libsmb2/
+
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec
 
@@ -103,11 +115,19 @@ flutter:
     - assets/video_test/h264.mp4
     - assets/video_test/hevc.mp4
     - assets/video_test/hevc10.mp4
+    - assets/video_test/mpeg2.ts
     - assets/video_test/card_expected.json
     # Built-in share profile avatars (share-accounts D6).
     - lib/icons/avatars/
     # The six watch-party reactions, drawn from Noto Color Emoji (watch-together).
     - assets/reactions/
+    # Licences of the SMB and FFmpeg libraries the app bundles (lib/licenses.dart).
+    - assets/licenses/
+    # YouTube's embedded player page (youtube-playback D8).
+    - assets/youtube/
+    # The app's Google client for YouTube sign-in, git-ignored
+    # (youtube-shared-client D1); the folder's README says what goes there.
+    - assets/youtube/client/
 
   fonts:
     - family: VT323
@@ -132,3 +152,10 @@ flutter:
           weight: 700
         - asset: assets/fonts/BarlowCondensed-ExtraBold.ttf
           weight: 800
+    # Japanese and Chinese interface text (cjk-languages D2): a subset of
+    # Noto Sans CJK built by tool/subset_cjk_font.py, used as a fallback.
+    - family: NotoSansCJKUI
+      fonts:
+        - asset: assets/fonts/NotoSansCJK-UI-Regular.otf
+        - asset: assets/fonts/NotoSansCJK-UI-Bold.otf
+          weight: 700

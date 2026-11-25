@@ -70,7 +70,7 @@ void main() {
     final household = Household(storage, runAnalysis: false);
     final store = BackupStore(Directory('${storage.root.path}/backups'));
     household.backups = BackupScheduler(household, store);
-    final backupsBefore = (await store.list()).length;
+    final undoBefore = await store.undo();
 
     Future<void> wait(Duration d) async {
       final end = DateTime.now().add(d);
@@ -109,10 +109,10 @@ void main() {
     _say('profile ${household.current!.name}: saved lineup '
         '${[for (final c in old) '${c['number']} ${c['name']} (${c['id']})'].join(' | ')}');
     expect(app.settings.lineupVersion, AppSettings.currentLineupVersion);
-    final kinds = [for (final b in await tester.runAsync(store.list) ?? <StoredBackup>[]) b.kind];
-    _say('backups ${kinds.length} (was $backupsBefore): $kinds');
-    expect(kinds.length, greaterThan(backupsBefore));
-    expect(kinds, contains('before-lineup-cleanup'));
+    final undo = await tester.runAsync(store.undo);
+    _say('undo point ${undo?.reason} at ${undo?.createdAt} (was ${undoBefore?.reason} at ${undoBefore?.createdAt})');
+    expect(undo?.reason, 'before-lineup-cleanup');
+    expect(undo!.createdAt, isNot(undoBefore?.createdAt));
     // Old genre channels became the major genres', numbers and favorites kept.
     const becomes = {
       'auto:genre:Action & Adventure': ['auto:genre:Action', 'auto:genre:Adventure'],

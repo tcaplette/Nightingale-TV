@@ -4,8 +4,10 @@ import '../l10n/tr.dart';
 import '../platform/platform_info.dart';
 import '../reporting/error_reports.dart';
 import '../reporting/report_switch.dart';
+import '../reporting/session_record.dart';
 import '../reporting/video_report.dart';
 import '../theme/tv_theme.dart';
+import 'format.dart';
 import 'widgets/screen_layout.dart';
 import 'widgets/tv_focus.dart';
 
@@ -58,10 +60,12 @@ class _ErrorReportsScreenState extends State<ErrorReportsScreen> {
       hints: tr.moveOkSelectEscBack,
       onBack: () => Navigator.of(context).pop(),
       child: ListenableBuilder(
-        listenable: Listenable.merge([reports, VideoReports.instance]),
+        listenable: Listenable.merge([reports, VideoReports.instance, ?ErrorReports.session]),
         builder: (context, _) {
           final on = available && reports.on;
           final test = _test;
+          // Newest first (crash-visibility D6).
+          final recent = [...?ErrorReports.session?.reports].reversed.toList();
           return FocusTraversalGroup(
             child: ListView(
               padding: ScreenLayout.of(context).pagePadding(const EdgeInsets.fromLTRB(100, 40, 100, 40)),
@@ -81,6 +85,8 @@ class _ErrorReportsScreenState extends State<ErrorReportsScreen> {
                 ),
                 const SizedBox(height: 12),
                 help(tr.errorReportsExplain),
+                const SizedBox(height: 8),
+                help(tr.errorReportsAutomatic),
                 const SizedBox(height: 8),
                 help(tr.errorReportsOff),
                 const SizedBox(height: 40),
@@ -103,6 +109,16 @@ class _ErrorReportsScreenState extends State<ErrorReportsScreen> {
                 if (test?.id != null || (test == null && available && reports.shortLastId != null)) ...[
                   const SizedBox(height: 8),
                   help(tr.quoteReportId),
+                ],
+                if (available && recent.isNotEmpty) ...[
+                  const SizedBox(height: 24),
+                  Text(tr.recentReports, style: g.body(26, color: g.text)),
+                  const SizedBox(height: 6),
+                  for (final r in recent)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 4),
+                      child: Text(recentReportLine(r), style: g.body(24, color: g.textDim)),
+                    ),
                 ],
                 // Video reports are Android's (video-report).
                 if (PlatformInfo.isAndroid) ...[
@@ -132,4 +148,17 @@ class _ErrorReportsScreenState extends State<ErrorReportsScreen> {
       ),
     );
   }
+}
+
+/// "Unexpected exit · today 9:05 PM · 3fa9c2d1": a recent report's kind,
+/// local time and short ID.
+String recentReportLine(RecentReport r) {
+  final kind = switch (r.kind) {
+    'test' => tr.reportKindTest,
+    'video' => tr.reportKindVideo,
+    'exit' => tr.reportKindExit,
+    'slowStart' => tr.reportKindSlowStart,
+    _ => tr.reportKindError,
+  };
+  return '$kind  ·  ${formatRecent(r.at.toLocal())}  ·  ${ReportSwitch.shortId(r.id)}';
 }

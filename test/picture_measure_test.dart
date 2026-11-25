@@ -44,65 +44,97 @@ void main() {
     }
   });
 
-  testWidgets('a smeared, colour-washed card fails, with detail far below expected', (tester) async {
+  testWidgets('a blurred card fails, with detail far below expected', (tester) async {
     final card = await _card(tester);
-    final smeared = smearPicture(card.rgba, card.width, card.height);
-    final m = measureRgba(smeared, card.width, card.height);
-    final check = checkCard(m, _expected('h264'));
+    // Each 8×8 block its own mean.
+    final blurred = Uint8List.fromList(card.rgba);
+    for (var y = 0; y < 1080; y++) {
+      for (var x = 0; x < 1920; x++) {
+        final i = (y * 1920 + x) * 4, from = ((y ~/ 8 * 8) * 1920 + x ~/ 8 * 8) * 4;
+        blurred.setRange(i, i + 3, card.rgba, from);
+      }
+    }
+    final check = checkCard(measureRgba(blurred, 1920, 1080), _expected('h264'));
     expect(check.pass, isFalse);
-    expect(check.detailRatio, lessThan(0.2), reason: 'the blur takes the fine detail');
-    expect(check.cellsOff, greaterThan(72), reason: 'the wash moves most cells');
-    // The wash follows the screen: blue top left, yellow bottom right.
-    final tl = m.grid.first, br = m.grid.last;
-    expect(int.parse(tl.substring(4, 6), radix: 16), greaterThan(int.parse(tl.substring(0, 2), radix: 16)));
-    expect(int.parse(br.substring(0, 2), radix: 16), greaterThan(int.parse(br.substring(4, 6), radix: 16)));
-    expect(m.renderEmpty, isFalse);
+    expect(check.detailRatio, lessThan(0.75));
   });
 
-  testWidgets('the colour matrix: the card as BT.601 shows it fits bt601, the smear neither', (tester) async {
-    final card = await _card(tester);
-    final want = _expected('h264');
-    expect(matrixFit(measureRgba(card.rgba, card.width, card.height), want), 'bt709');
-    // What the Android emulator's GPU drew (its video report, 2026-11-09).
-    final bt601 = asBt601(want);
-    expect(bt601.grid.first, anyOf('cb0a20', 'cb0921'), reason: 'the red corner');
-    expect(matrixFit(bt601, want), 'bt601');
-    expect(checkCard(bt601, want).pass, isFalse, reason: 'a wrong matrix is still a failed run');
-    expect(matrixFit(measureRgba(smearPicture(card.rgba, card.width, card.height), card.width, card.height), want),
-        'neither');
+  test('the MPEG-2 card has its own figures', () {
+    final m = _expected('mpeg2');
+    expect(m.grid, hasLength(144));
+    // The same card, smaller: the same colours but for the encoder.
+    final off = m.cellDifferences(_expected('h264')).where((d) => d > 20).length;
+    expect(off, lessThan(20));
   });
 
-  test('coarse detail: the same at any scale, far lower for a blur', () {
-    // Mid-scale texture, as real pictures have: 8-px checks, here at
-    // 1920×1080 and at 960×540 (a smaller texture shown on the same screen).
-    Uint8List checks(int w, int h, int size) {
+  group('edges', () {
+    Uint8List scene(int w, int h, List<int> Function(int x, int y) colour) {
       final out = Uint8List(w * h * 4);
       for (var y = 0; y < h; y++) {
         for (var x = 0; x < w; x++) {
-          final v = ((x ~/ size) + (y ~/ size)).isEven ? 200 : 60;
-          final i = (y * w + x) * 4;
-          out[i] = out[i + 1] = out[i + 2] = v;
+          final i = (y * w + x) * 4, c = colour(x, y);
+          out[i] = c[0];
+          out[i + 1] = c[1];
+          out[i + 2] = c[2];
           out[i + 3] = 255;
         }
       }
       return out;
     }
 
-    final full = coarseDetail(checks(1920, 1080, 8), 1920, 1080);
-    expect(coarseDetail(checks(960, 540, 4), 960, 540) / full, closeTo(1, 0.05));
-    final smeared = smearPicture(checks(1920, 1080, 8), 1920, 1080);
-    expect(coarseDetail(smeared, 1920, 1080) / full, lessThan(PictureMeasure.screenDetailShare));
+    List<int> busy(int x, int y) => [(x * 7 + y * 3) % 256, (x * 5) % 200, (y * 11) % 256];
+    const bt601 = [0, 135, 0], bt709 = [0, 77, 0];
+
+    test('a picture with none', () {
+      final e = edgeStrips(scene(720, 480, busy), 720, 480);
+      expect((e.right, e.bottom, e.any), (0, 0, false));
+    });
+
+    test('the Shield reports: the last 48 of 768 columns are #008700', () {
+      final e = edgeStrips(scene(768, 480, (x, y) => x >= 720 ? bt601 : busy(x, y)), 768, 480);
+      expect(e.right, 48);
+      expect(e.bottom, 0);
+      expect(e.any, isTrue);
+    });
+
+    test('empty memory read with BT.709', () {
+      final e = edgeStrips(scene(768, 480, (x, y) => x >= 720 ? bt709 : busy(x, y)), 768, 480);
+      expect((e.right, e.any), (48, true));
+    });
+
+    test('an 8-pixel strip at the bottom', () {
+      final e = edgeStrips(scene(320, 1088, (x, y) => y >= 1080 ? bt601 : busy(x, y)), 320, 1088);
+      expect((e.right, e.bottom, e.any), (0, 8, true));
+    });
+
+    test('a scaled edge of a pixel or two is not a strip', () {
+      expect(edgeStrips(scene(320, 180, (x, y) => x >= 318 ? bt601 : busy(x, y)), 320, 180).any, isFalse);
+    });
+
+    test('dark and green scenes are not padding', () {
+      expect(edgeStrips(scene(320, 180, (x, y) => [0, 0, 0]), 320, 180).any, isFalse, reason: 'black');
+      expect(edgeStrips(scene(320, 180, (x, y) => [20, 18, 16]), 320, 180).any, isFalse, reason: 'dark');
+      expect(edgeStrips(scene(320, 180, (x, y) => bt601), 320, 180).any, isFalse, reason: 'all of that green');
+      expect(edgeStrips(scene(320, 180, (x, y) => x >= 160 ? bt601 : busy(x, y)), 320, 180).any, isFalse,
+          reason: 'half of it');
+      expect(edgeStrips(scene(320, 180, (x, y) => x >= 300 ? [10, 120 + y % 40, 8] : busy(x, y)), 320, 180).any, isFalse,
+          reason: 'grass');
+    });
   });
 
-  test('an all-black image reads render_empty', () {
-    final black = Uint8List(64 * 36 * 4);
-    for (var i = 3; i < black.length; i += 4) {
-      black[i] = 255;
+  test('the clear area of a capture, with things over it', () {
+    final img = Uint8List(64 * 36 * 4);
+    for (var i = 3; i < img.length; i += 4) {
+      img[i] = 255;
     }
-    final m = measureRgba(black, 64, 36);
-    expect(m.renderEmpty, isTrue);
-    expect(m.detail, 0);
-    expect(m.grid.toSet(), {'000000'});
+    expect(clearArea(img, 64, 36), isNull, reason: 'all opaque');
+    for (var y = 4; y < 30; y++) {
+      for (var x = 10; x < 50; x++) {
+        // The logo, opaque, and scanlines, half.
+        img[(y * 64 + x) * 4 + 3] = x > 40 && y > 24 ? 255 : (y.isEven ? 80 : 0);
+      }
+    }
+    expect(clearArea(img, 64, 36), (left: 10, top: 4, right: 50, bottom: 30));
   });
 
   test('sub-rectangles: only the area asked for is measured', () {
@@ -120,14 +152,6 @@ void main() {
     expect(measureRgba(img, w, h, left: 32, w: 32).grid.toSet(), {'0000ff'});
     expect(measureRgba(img, w, h, w: 32).grid.toSet(), {'ff0000'});
     expect(() => measureRgba(img, w, h, left: 40, w: 32), throwsRangeError);
-  });
-
-  test('screen share: overlays on a few cells still match', () {
-    final texture = PictureMeasure(List.filled(144, '808080'), 10);
-    final withBug = PictureMeasure([...List.filled(140, '828282'), ...List.filled(4, 'ffffff')], 10);
-    expect(screenShare(withBug, texture), greaterThanOrEqualTo(PictureMeasure.screenShare));
-    final washed = PictureMeasure(List.filled(144, '3050e0'), 10);
-    expect(screenShare(washed, texture), lessThan(PictureMeasure.screenShare));
   });
 
   test('measuring in an isolate gives the same figures', () async {

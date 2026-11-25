@@ -28,7 +28,7 @@ class CommercialsScreen extends StatelessWidget {
   /// What the screen says when reels can't be split for lack of ffmpeg,
   /// with [waiting] of them waiting.
   static String ffmpegMissingText(int waiting) {
-    final count = waiting > 0 ? tr.waiting(waiting) : '.';
+    final count = waiting > 0 ? tr.waiting(waiting) : tr.fullStop;
     return PlatformInfo.isAndroid
         ? '$androidFfmpegNote$count'
         : tr.breakPointsAlso(ffmpegWarning, count);

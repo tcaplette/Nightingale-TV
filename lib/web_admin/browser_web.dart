@@ -3,6 +3,9 @@ import 'dart:js_interop';
 @JS('window.location.assign')
 external void _assign(String url);
 
+@JS('window.open')
+external JSAny? _open(String url, String target, String features);
+
 @JS('window.isSecureContext')
 external bool get _secure;
 
@@ -105,3 +108,6 @@ void writeStored(String key, String? value) {
 
 /// Declares the page's language (`<html lang>`).
 void setPageLanguage(String language) => _setRootAttribute('lang', language);
+
+/// Opens [url] in a new tab, with no way back to this page.
+void openLink(String url) => _open(url, '_blank', 'noopener,noreferrer');

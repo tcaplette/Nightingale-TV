@@ -3,7 +3,7 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 
 /// Hard-coded user-facing text in screens fails here (design D12).
-const _allowed = {'Nightingale TV', 'TV', 'OK', 'M3U'};
+const _allowed = {'Nightingale TV', 'TV', 'OK', 'M3U', 'JSON'};
 
 final _patterns = [
   RegExp(r'''\bText\(\s*r?(['"])([A-Z][^'"]*)\1'''),

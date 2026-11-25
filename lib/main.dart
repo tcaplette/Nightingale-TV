@@ -18,8 +18,10 @@ import 'channels/channel.dart';
 import 'channels/slot_layout.dart';
 import 'data/app_storage.dart';
 import 'export/broadcast_art.dart';
+import 'convert/convert_helper.dart';
 import 'export/export_service.dart';
 import 'l10n/tr.dart';
+import 'licenses.dart';
 import 'platform/android_back_bridge.dart';
 import 'platform/linux_wakelock.dart';
 import 'platform/platform_info.dart';
@@ -34,7 +36,9 @@ import 'reporting/error_reports.dart';
 import 'reporting/video_report.dart';
 import 'reporting/household_names.dart';
 import 'reporting/report_breadcrumbs.dart';
+import 'reporting/startup_trail.dart';
 import 'server/server_log.dart';
+import 'server/youtube/youtube_client_config.dart';
 import 'setup/accounts.dart';
 import 'setup/server_db.dart';
 import 'setup/setup_server.dart';
@@ -58,9 +62,11 @@ import 'ui/widgets/tv_canvas.dart';
 
 Future<void> main(List<String> args) async {
   if (serverModeRequested(args, Platform.environment)) return _serverMain();
+  final launchedAt = DateTime.now();
   PlaybackDiagnostics.mark('main');
   if (PlaybackDiagnostics.enabled) SlotLayout.log = (line) => PlaybackDiagnostics.note('BREAKFILL', line);
   WidgetsFlutterBinding.ensureInitialized();
+  registerBundledLicenses();
   // mpv plays everywhere but Android, which has ExoPlayer and no libmpv
   // (by the real OS, as TunerPlayer.create chooses).
   if (!Platform.isAndroid) MediaKit.ensureInitialized();
@@ -68,6 +74,9 @@ Future<void> main(List<String> args) async {
   SingleLinuxWakelock.install();
   await PlatformInfo.init();
   await languageDataReady;
+  // The app's shared Google client for YouTube sign-in (youtube-shared-client
+  // D1); server mode never loads it (D7).
+  await GoogleClient.loadShared();
   if (PlatformInfo.isDesktop) {
     await _setUpWindow();
   } else if (PlatformInfo.isAndroid) {
@@ -88,18 +97,25 @@ Future<void> main(List<String> args) async {
   // Which renderer Android started with (android-playback, NVIDIA Shields).
   if (PlatformInfo.isAndroid) PlaybackDiagnostics.note('DEVICE', 'renderer: ${PlatformInfo.renderer ?? 'unknown'}');
   PlaybackDiagnostics.mark('platform ready');
-  final household = Household(await AppStorage.open());
+  final storage = await AppStorage.open();
+  // Error reports first (crash-visibility D6), in builds that carry the
+  // address and while this device's switch is on (error-reporting): only
+  // the switch and the previous launch's record are read here; the SDK
+  // starts unawaited, so the first picture never waits for it. From here a
+  // death in front, or a start that never gets going, is reported.
+  await ErrorReports.openApp(storage, launchedAt: launchedAt);
+  ErrorReports.watchApp(launchedAt: launchedAt);
+  StartupTrail.step('storage open');
+  // Quitting (window closed, Back, Quit) is a clean exit.
+  exitHooks.add(ErrorReports.markCleanExit);
+  final household = Household(storage);
   household.backups = BackupScheduler(household, BackupStore(Directory('${household.root.root.path}/backups')));
-  // Error reports, in builds that carry the address and while this device's
-  // switch is on (error-reporting); not awaited, so the first picture never
-  // waits for it. The household's names are kept out of every report.
+  // The household's names are kept out of every report.
   HouseholdNames(household);
-  unawaited(ErrorReports.startApp(household.root).then((_) async {
+  unawaited(ErrorReports.startReporting().then((_) async {
     await ErrorReports.forceErrorForChecks();
-    // Video reports (Android): the debug fault, and this version's
-    // automatic report armed.
+    // Video reports (Android): this version's automatic report armed.
     if (PlatformInfo.isAndroid) {
-      await VideoFault.load(VideoReports.instance.platform);
       await VideoReports.instance.load(household.root);
     }
   }));
@@ -142,14 +158,27 @@ Future<void> main(List<String> args) async {
     exitHooks.add(sharing.presence.clearBeforeStop);
   }
 
+  // Converting share files for other TVs (smb-conversion D9), on a PC.
+  if (PlatformInfo.isDesktop) {
+    final helper = household.convertHelper = ConvertHelper(household.root,
+        deviceName: PlatformInfo.deviceName, exportBusy: () => household.export?.streams.activeCount ?? 0);
+    await helper.load();
+    exitHooks.add(helper.stop);
+  }
   runApp(NightingaleTvApp(household: household));
+  // The `slowstart` live check holds start-up here (crash-visibility D7).
+  await ErrorReports.holdForChecks();
   await household.start();
   PlaybackDiagnostics.mark('profile started');
   await remote?.load();
   await startExport(household);
   PlaybackDiagnostics.mark('remote and export loaded');
-  // The daily backup check waits for the launch's picture.
-  household.backups!.start();
+  // The automatic backup's first check waits for the launch's picture;
+  // going to the background checks too (backup-simplify D2).
+  final backups = household.backups!..start();
+  AppLifecycleListener(onStateChange: (state) {
+    if (state == AppLifecycleState.paused || state == AppLifecycleState.hidden) backups.wentToBackground();
+  });
 }
 
 /// Server mode (server-mode): the Linux build started with `--server` or
@@ -178,12 +207,21 @@ Future<void> _serverMain() async {
   final env = Platform.environment;
   // No sharing in server mode or its web admin (share-accounts).
   Sharing.serverMode = true;
+  // YouTube on the user's own Google client only (docker-youtube): the
+  // shared client is never loaded.
+  await GoogleClient.loadShared(serverMode: true);
   final household = Household(await AppStorage.open(), serverMode: true);
+  final helper = household.convertHelper = ConvertHelper(household.root,
+      deviceName: PlatformInfo.deviceName, exportBusy: () => household.export?.streams.activeCount ?? 0);
+  await helper.load();
+  exitHooks.add(helper.stop);
   household.backups = BackupScheduler(household, BackupStore(Directory('${household.root.root.path}/backups')));
   // Error reports (error-reporting): on unless NTV_ERROR_REPORTS=0, after
   // the server log in the error handlers.
   HouseholdNames(household);
-  await ErrorReports.startServer(env, log: ServerLog.info, dataFolder: household.root.root.path);
+  await ErrorReports.startServer(env, log: ServerLog.info, dataFolder: household.root.root.path, storage: household.root);
+  // A stop is a clean exit; dying any other way is reported next start.
+  exitHooks.add(ErrorReports.markCleanExit);
   unawaited(ErrorReports.forceErrorForChecks());
   final reset = env['NTV_RESET_PASSWORD'] == '1';
   final Accounts accounts;
@@ -373,7 +411,7 @@ class _ShellState extends State<_Shell> {
         navigatorKey: _navigator,
         navigatorObservers: [_reportRoutes],
         locale: widget.household.language.locale,
-        supportedLocales: [for (final l in supportedLanguages) Locale(l)],
+        supportedLocales: [for (final l in supportedLanguages) localeOf(l)],
         localizationsDelegates: const [
           GlobalMaterialLocalizations.delegate,
           GlobalWidgetsLocalizations.delegate,

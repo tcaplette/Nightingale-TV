@@ -176,6 +176,8 @@ void main() {
   });
 
   group('CRT', () {
+    final overlay = find.byWidgetPredicate((w) => w is CustomPaint && '${w.painter.runtimeType}' == '_OverlayPainter');
+
     test('scanlines stay whole device pixels, doubling when they would go under 2', () {
       expect(scanlinePeriod(1080, 480), 2);
       expect(scanlinePeriod(1080, 240), 5);
@@ -211,7 +213,7 @@ void main() {
 
     testWidgets('no effect means no overlay, shader or color layer', (tester) async {
       await tester.pumpWidget(_app(const CrtLayers(values: CrtValues(), child: SizedBox.expand())));
-      expect(find.byType(RawImage), findsNothing);
+      expect(overlay, findsNothing);
       expect(find.byType(BackdropFilter), findsNothing);
       expect(tester.layers.whereType<ColorFilterLayer>(), isEmpty);
     });
@@ -219,11 +221,11 @@ void main() {
     testWidgets('an effect draws the overlay over its child, and the device switch removes it', (tester) async {
       final arcade = CrtStyle.arcade.valuesWith(const CrtValues());
       await tester.pumpWidget(_app(CrtLayers(values: arcade, child: const SizedBox.expand())));
-      expect(find.byType(RawImage), findsOneWidget);
+      expect(overlay, findsOneWidget);
       expect(tester.layers.whereType<ColorFilterLayer>(), isNotEmpty);
       await DeviceEffects.instance.setOn(false);
       await tester.pump();
-      expect(find.byType(RawImage), findsNothing);
+      expect(overlay, findsNothing);
       expect(tester.layers.whereType<ColorFilterLayer>(), isEmpty);
     });
 

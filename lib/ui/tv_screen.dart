@@ -21,6 +21,7 @@ import '../remote/remote_control.dart' show RemoteControl;
 import '../playback/sleep_timer.dart';
 import '../playback/exo_tuner_player.dart';
 import '../playback/tuner.dart';
+import '../playback/youtube_player.dart';
 import '../reporting/video_report.dart';
 import 'widgets/friend_avatar_stack.dart';
 import 'widgets/friends_watching_card.dart';
@@ -31,6 +32,7 @@ import 'guide_view.dart';
 import 'menu_screen.dart';
 import 'portrait_watch_screen.dart';
 import 'captions_picker.dart';
+import 'quality_picker.dart';
 import '../sharing/party_reactions.dart';
 import '../sharing/party_transport.dart';
 import '../sharing/presence.dart';
@@ -57,7 +59,9 @@ import 'widgets/overlay_style.dart';
 import 'widgets/retro_frame.dart';
 import 'widgets/screen_layout.dart';
 import 'widgets/transport_bar.dart';
+import 'widgets/tv_canvas.dart';
 import 'widgets/tv_focus.dart';
+import 'youtube_screens.dart' show YouTubeLinks;
 import '../server/media_server.dart';
 import '../l10n/tr.dart';
 import 'unlock_screen.dart';
@@ -98,6 +102,10 @@ class _TvScreenState extends State<TvScreen> {
   /// is the highlighted button, shared by the D-pad and the pointer.
   bool _buttons = false;
   int? _rowFocus;
+
+  /// The highlighted player option while there's no transport bar
+  /// (player-options D3); with the bar, [_barFocus] has it.
+  PlayerOption? _optionFocus;
   String _digits = '';
   Timer? _digitTimer;
   String? _toast;
@@ -133,6 +141,10 @@ class _TvScreenState extends State<TvScreen> {
   /// the channel is tuned on the way back.
   SleepTimer? _sleep;
   bool _tuneOnReturn = false;
+
+  /// Shown with no channels yet (a share's first files still being read):
+  /// the first channels tune when they come, as at any start.
+  AppState? _waitingForChannels;
 
   /// The picture, kept the same widget in both layouts.
   final _pictureKey = GlobalKey(debugLabel: 'picture');
@@ -182,7 +194,8 @@ class _TvScreenState extends State<TvScreen> {
       paused: tuner.paused,
       dimmed: _dimmed,
       picture: media is ExoTunerPlayer &&
-          media.textureId.value != null &&
+          media.id != null &&
+          media.hasPicture.value &&
           media.videoSize.value != null &&
           media.playing,
     );
@@ -202,8 +215,8 @@ class _TvScreenState extends State<TvScreen> {
     final effectsOn = crtColorMatrix(effects) != null ||
         [effects.scanlines, effects.mask, effects.vignette, effects.curvature, effects.glow].any((l) => l != CrtLevel.off);
     unawaited(VideoReports.instance.take(LivePicture(
-      playerId: media.textureId.value!,
-      textureRect: media.textureView(),
+      playerId: media.id!,
+      hole: media.holes.current?.shownOnScreen,
       devicePixelRatio: MediaQuery.devicePixelRatioOf(context),
       effectsOn: effectsOn,
       retro: {
@@ -521,6 +534,7 @@ class _TvScreenState extends State<TvScreen> {
     _dimTimer?.cancel();
     _shiftTick?.cancel();
     _tuner?.removeListener(_tunerChanged);
+    _waitingForChannels?.removeListener(_channelsArrived);
     VideoReports.instance.removeListener(_videoReportChanged);
     _reportTick?.cancel();
     unawaited(_reportsSent?.cancel());
@@ -542,6 +556,7 @@ class _TvScreenState extends State<TvScreen> {
     final channels = app.channels;
     if (channels.isEmpty) {
       setState(() => _guideOpen = true);
+      _waitingForChannels = app..addListener(_channelsArrived);
       return;
     }
     if (tuner.channel == null) {
@@ -549,6 +564,22 @@ class _TvScreenState extends State<TvScreen> {
       tuner.tune(last ?? channels.first);
     }
     _showChannel();
+  }
+
+  void _channelsArrived() {
+    final app = _waitingForChannels;
+    if (app == null || !mounted || app.channels.isEmpty) return;
+    app.removeListener(_channelsArrived);
+    _waitingForChannels = null;
+    final tuner = AppScope.tunerOf(context);
+    // Tuned by hand meanwhile, or somewhere else in the app: left as it is.
+    if (tuner.channel != null || !(ModalRoute.of(context)?.isCurrent ?? true)) return;
+    tuner.tune(app.channels.first);
+    if (_guideOpen && !ScreenLayout.of(context).isPortrait) {
+      _closeGuide();
+    } else {
+      _showChannel();
+    }
   }
 
   void _showBanner() {
@@ -560,6 +591,7 @@ class _TvScreenState extends State<TvScreen> {
   void _showChannel() {
     _buttons = false;
     _rowFocus = null;
+    _optionFocus = null;
     _showBanner();
   }
 
@@ -591,6 +623,18 @@ class _TvScreenState extends State<TvScreen> {
     if (mounted && !_focus.hasFocus && (!_guideOpen || ScreenLayout.of(context).isPortrait)) _focus.requestFocus();
   }
 
+  /// The quality picker (the Quality player option). Nothing on a YouTube
+  /// channel, where YouTube chooses.
+  Future<void> _openQuality() async {
+    final tuner = AppScope.tunerOf(context);
+    if (!qualityAvailable(tuner)) return;
+    _cancelExit();
+    final toast = await showQualityPicker(context, tuner);
+    if (!mounted) return;
+    if (toast != null) _showToast(toast);
+    if (!_focus.hasFocus && (!_guideOpen || ScreenLayout.of(context).isPortrait)) _focus.requestFocus();
+  }
+
   /// The sleep timer picker (S, the Sleep button).
   Future<void> _openSleep() async {
     final sleep = _sleep;
@@ -614,6 +658,7 @@ class _TvScreenState extends State<TvScreen> {
           _bar = false;
           _buttons = false;
           _rowFocus = null;
+          _optionFocus = null;
         });
       }
     });
@@ -637,6 +682,7 @@ class _TvScreenState extends State<TvScreen> {
       _banner = false;
       _buttons = false;
       _rowFocus = null;
+      _optionFocus = null;
     });
   }
 
@@ -848,7 +894,7 @@ class _TvScreenState extends State<TvScreen> {
     }
     // A watch-party invite: the first Up from the player takes it, and
     // Back dismisses it (D8). Channel keys go on tuning.
-    if (_inviteUp && key == LogicalKeyboardKey.arrowUp && _rowFocus == null && !_bar && _digits.isEmpty) {
+    if (_inviteUp && key == LogicalKeyboardKey.arrowUp && _rowFocus == null && _optionFocus == null && !_bar && _digits.isEmpty) {
       if (event is KeyDownEvent) _focusInvite();
       return KeyEventResult.handled;
     }
@@ -857,7 +903,9 @@ class _TvScreenState extends State<TvScreen> {
       return KeyEventResult.handled;
     }
     // Before Android's Back, which leaves the row rather than the app.
-    if (!ScreenLayout.of(context).isPortrait && _rowKey(key, event)) return KeyEventResult.handled;
+    if (!ScreenLayout.of(context).isPortrait && (_optionKey(key, event) || _rowKey(key, event))) {
+      return KeyEventResult.handled;
+    }
     if (PlatformInfo.isAndroid) {
       // Back leaves the app, as Android expects (Escape from a keyboard
       // still opens the guide). Held down, it doesn't repeat into quitting.
@@ -940,9 +988,8 @@ class _TvScreenState extends State<TvScreen> {
         (label: tr.guide2, icon: Icons.grid_view, onPressed: _openGuide, emoji: null),
         (label: tr.menu, icon: Icons.settings, onPressed: _openMenu, emoji: null),
         if (_sleep != null) (label: tr.sleep, icon: Icons.bedtime, onPressed: _openSleep, emoji: null),
-        // After Sleep, so the D-pad paths to Menu and Sleep stay as they were.
-        (label: captionsButtonLabel(AppScope.tunerOf(context)), icon: Icons.closed_caption, onPressed: _openCaptions, emoji: null),
-        // After Captions and Sleep, before Watch privately (D8).
+        // After Sleep, before Watch privately (D8). Captions is a player
+        // option (player-options).
         if (_offerWatchTogether) (label: tr.watchTogether, icon: Icons.celebration, onPressed: _watchTogether, emoji: null),
         // Last of the regular buttons, so every path to the others stays.
         if (_offerPrivate)
@@ -968,9 +1015,18 @@ class _TvScreenState extends State<TvScreen> {
     // setting goes Off).
     final at = _rowFocus == null ? null : min(_rowFocus!, _rowButtons().length - 1);
     if (at == null) {
+      // Down with only the banner and row up: the player options, as Up
+      // reaches the row (player-options D3).
+      if (key == LogicalKeyboardKey.arrowDown && !_barShown) {
+        setState(() => _optionFocus = PlayerOption.captions);
+        return true;
+      }
       // Up from the seek bar, or with only the banner and row up.
       if (key != LogicalKeyboardKey.arrowUp || (_bar && _barFocus != TransportFocus.seekBar)) return false;
-      setState(() => _rowFocus = 0);
+      setState(() {
+        _rowFocus = 0;
+        _optionFocus = null;
+      });
       return true;
     }
     final left = key == LogicalKeyboardKey.arrowLeft, right = key == LogicalKeyboardKey.arrowRight;
@@ -990,6 +1046,49 @@ class _TvScreenState extends State<TvScreen> {
       // The top of the screen.
     } else {
       if (_leavesRow(key)) setState(() => _rowFocus = null);
+      return false;
+    }
+    return true;
+  }
+
+  /// The transport bar is drawn (a generated channel with Pause and rewind
+  /// on, or a party): the player options are in its row.
+  bool get _barShown => _bar && AppScope.tunerOf(context).canTimeshift;
+
+  /// The player option highlighted without the bar, Captions in place of a
+  /// Quality that can't be pressed (a YouTube channel).
+  PlayerOption? get _optionShown {
+    final o = _optionFocus;
+    if (o == PlayerOption.quality && !qualityAvailable(AppScope.tunerOf(context))) return PlayerOption.captions;
+    return o;
+  }
+
+  void _pressOption(PlayerOption o) => o == PlayerOption.captions ? _openCaptions() : _openQuality();
+
+  /// The D-pad on the player options without the bar (player-options D3):
+  /// Left/Right move between them (Quality skipped on a YouTube channel),
+  /// Select presses, Up, Back and Escape leave, Down does nothing. Tuning
+  /// and media keys leave and act as usual. True if [key] was handled here.
+  bool _optionKey(LogicalKeyboardKey key, KeyEvent event) {
+    final at = _optionShown;
+    if (at == null || !_buttons || _barShown) return false;
+    _armBanner();
+    if (key == LogicalKeyboardKey.arrowLeft) {
+      setState(() => _optionFocus = PlayerOption.captions);
+    } else if (key == LogicalKeyboardKey.arrowRight) {
+      setState(() => _optionFocus =
+          qualityAvailable(AppScope.tunerOf(context)) ? PlayerOption.quality : PlayerOption.captions);
+    } else if (isSelectKey(key)) {
+      if (event is KeyDownEvent) _pressOption(at);
+    } else if (key == LogicalKeyboardKey.arrowUp ||
+        key == LogicalKeyboardKey.escape ||
+        key == LogicalKeyboardKey.goBack ||
+        key == LogicalKeyboardKey.browserBack) {
+      setState(() => _optionFocus = null);
+    } else if (key == LogicalKeyboardKey.arrowDown) {
+      // The bottom of the screen.
+    } else {
+      if (_leavesRow(key)) setState(() => _optionFocus = null);
       return false;
     }
     return true;
@@ -1080,18 +1179,40 @@ class _TvScreenState extends State<TvScreen> {
           _rowFocus = 0;
         });
       }
-    } else if (left) {
-      setState(() => _barFocus = TransportFocus.restart);
-    } else if (right) {
-      setState(() => _barFocus = TransportFocus.live);
+    } else if (left || right) {
+      // Restart, Live, Captions, Quality (player-options D3).
+      setState(() => _barFocus = _barFocus.step(forward: right, skipQuality: !qualityAvailable(tuner)));
     } else if (up) {
       setState(() => _barFocus = TransportFocus.seekBar);
     } else if (select && down) {
-      final transport = Transport(tuner, _party);
-      unawaited(_barFocus == TransportFocus.restart ? transport.restart() : transport.goLive());
+      _pressBar(tuner, _barFocus);
     }
     _showBanner();
     return true;
+  }
+
+  /// Select on the bar's highlighted button (the pointer can highlight the
+  /// ones the D-pad passes over).
+  void _pressBar(Tuner tuner, TransportFocus f) {
+    final transport = Transport(tuner, _party);
+    switch (f) {
+      case TransportFocus.seekBar:
+        unawaited(transport.togglePause());
+      case TransportFocus.restart:
+        unawaited(transport.restart());
+      case TransportFocus.back10:
+        transport.skip(const Duration(seconds: -10));
+      case TransportFocus.pause:
+        unawaited(transport.togglePause());
+      case TransportFocus.forward30:
+        transport.skip(const Duration(seconds: 30));
+      case TransportFocus.live:
+        unawaited(transport.goLive());
+      case TransportFocus.captions:
+        unawaited(_openCaptions());
+      case TransportFocus.quality:
+        unawaited(_openQuality());
+    }
   }
 
   /// A tap on the picture. A touch shows the controls (or closes them), as
@@ -1200,6 +1321,7 @@ class _TvScreenState extends State<TvScreen> {
               onTune: (ch) => unawaited(_tuneFromList(ch)),
               onMenu: _openMenu,
               onCaptions: _openCaptions,
+              onQuality: _openQuality,
               onSleep: _sleep == null ? null : _openSleep,
               watchPrivately: _offerPrivate
                   ? (
@@ -1263,14 +1385,17 @@ class _TvScreenState extends State<TvScreen> {
                     key: _pictureKey,
                     bannerUp: _banner,
                     dimmed: _dimmed,
+                    youTubeMin: _youTubeMin(context),
                     // The channel number and the Paused chip use its spot.
                     clockHidden: tuner.changingChannel || _digits.isNotEmpty || tuner.paused),
                 if (tuner.changingChannel || _digits.isNotEmpty)
                   Positioned(
                     top: 60,
                     right: 90,
-                    child: ChannelNumberOsd(
-                        text: _digits.isNotEmpty ? '${_digits}_' : '${tuner.channel?.number ?? ''}'),
+                    child: YouTubeObstacle(
+                      child: ChannelNumberOsd(
+                          text: _digits.isNotEmpty ? '${_digits}_' : '${tuner.channel?.number ?? ''}'),
+                    ),
                   ),
                 AnimatedPositioned(
                   duration: const Duration(milliseconds: 220),
@@ -1281,7 +1406,7 @@ class _TvScreenState extends State<TvScreen> {
                   bottom: _banner && !_bar && tuner.channel != null ? 0 : -260,
                   child: tuner.channel == null
                       ? const SizedBox.shrink()
-                      : ChannelBanner(
+                      : YouTubeObstacle(child: ChannelBanner(
                           channel: tuner.channel!,
                           program: tuner.program,
                           inBreak: tuner.inBreak,
@@ -1293,24 +1418,62 @@ class _TvScreenState extends State<TvScreen> {
                           behind: tuner.shifted ? tuner.behind : null,
                           sleep: sleepLine(_sleep),
                           watchers: _watchers(tuner.channel),
-                        ),
+                        )),
                 ),
                 if (_bar && tuner.canTimeshift)
                   Positioned(
                     left: 0,
                     right: 0,
                     bottom: 0,
-                    child: TransportBar(
+                    child: YouTubeObstacle(
+                      child: TransportBar(
+                          tuner: tuner,
+                          party: _party,
+                          focused: _rowFocus == null ? _barFocus : null,
+                          onInteract: _showBanner,
+                          onHover: (f) => setState(() {
+                                _rowFocus = null;
+                                _barFocus = f;
+                              }),
+                          onCaptions: () => unawaited(_openCaptions()),
+                          onQuality: () => unawaited(_openQuality())),
+                    ),
+                  ),
+                // Without the bar, the player options sit above the banner
+                // while the controls are up; never on a surf (player-options
+                // D1).
+                if (_buttons && !_barShown && tuner.channel != null)
+                  Positioned(
+                    right: 90,
+                    bottom: 252,
+                    child: YouTubeObstacle(
+                      child: PlayerOptions(
                         tuner: tuner,
-                        party: _party,
-                        focused: _rowFocus == null ? _barFocus : null,
-                        onInteract: _showBanner),
+                        focused: _optionShown,
+                        onHover: (o) => setState(() {
+                          _rowFocus = null;
+                          _optionFocus = o;
+                        }),
+                        onCaptions: () {
+                          _showBanner();
+                          unawaited(_openCaptions());
+                        },
+                        onQuality: () {
+                          _showBanner();
+                          unawaited(_openQuality());
+                        },
+                      ),
+                    ),
                   ),
                 if (tuner.paused && !_bar && _digits.isEmpty && !tuner.changingChannel)
-                  const Positioned(top: 60, right: 90, child: PausedChip()),
+                  const Positioned(top: 60, right: 90, child: YouTubeObstacle(child: PausedChip())),
                 if (_toast != null)
                   // Below the button row while it's up.
-                  Positioned(top: _buttons ? 150 : 60, left: 0, right: 0, child: Center(child: TvToast(_toast!))),
+                  Positioned(
+                      top: _buttons ? 150 : 60,
+                      left: 0,
+                      right: 0,
+                      child: Center(child: YouTubeObstacle(child: TvToast(_toast!)))),
                 Positioned(
                   top: 48,
                   left: 60,
@@ -1321,7 +1484,37 @@ class _TvScreenState extends State<TvScreen> {
                       opacity: _buttons ? 1 : 0,
                       duration: const Duration(milliseconds: 220),
                       // A party row and long labels fit by scaling down.
-                      child: Align(
+                      child: _buttons ? YouTubeObstacle(child: _buttonRow()) : _buttonRow(),
+                    ),
+                  ),
+                ),
+                if (_party?.banner.value case final invite?)
+                  Positioned(
+                    // Below the button row while it's up.
+                    top: _buttons ? 150 : 40,
+                    left: 60,
+                    right: 60,
+                    child: Center(child: YouTubeObstacle(child: _inviteBanner(invite))),
+                  ),
+              ],
+            )),
+          ),
+        ),
+      ),
+      ),
+    );
+  }
+
+  /// The TV screen's smallest YouTube picture, 480×270 of the 1920×1080
+  /// canvas, in the window's pixels (youtube-playback D9).
+  Size _youTubeMin(BuildContext context) {
+    final view = View.of(context);
+    final scale = TvCanvas.canvasScale(view.physicalSize / view.devicePixelRatio);
+    return Size(480 * scale, 270 * scale);
+  }
+
+  /// The pointer's button row.
+  Widget _buttonRow() => Align(
                         alignment: Alignment.centerLeft,
                         child: FittedBox(
                           fit: BoxFit.scaleDown,
@@ -1339,33 +1532,17 @@ class _TvScreenState extends State<TvScreen> {
                                   icon: b.icon,
                                   image: b.emoji == null ? null : ReactionImage(b.emoji!, size: 40),
                                   highlighted: _rowFocus != null && min(_rowFocus!, _rowButtons().length - 1) == i,
-                                  onHover: () => setState(() => _rowFocus = i),
+                                  onHover: () => setState(() {
+                                    _rowFocus = i;
+                                    _optionFocus = null;
+                                  }),
                                   onPressed: b.onPressed,
                                 ),
                               ],
                             ],
                           ),
                         ),
-                      ),
-                    ),
-                  ),
-                ),
-                if (_party?.banner.value case final invite?)
-                  Positioned(
-                    // Below the button row while it's up.
-                    top: _buttons ? 150 : 40,
-                    left: 60,
-                    right: 60,
-                    child: Center(child: _inviteBanner(invite)),
-                  ),
-              ],
-            )),
-          ),
-        ),
-      ),
-      ),
-    );
-  }
+                      );
 }
 
 /// The picture: the video, the song card, the status cards, the logo bug,
@@ -1374,7 +1551,12 @@ class _TvScreenState extends State<TvScreen> {
 /// watch screen shows it in its player. One [GlobalKey] keeps it (and the video)
 /// the same widget when the layout changes.
 class TvPicture extends StatelessWidget {
-  const TvPicture({super.key, this.bannerUp = false, this.dimmed = false, this.clockHidden = false});
+  const TvPicture(
+      {super.key, this.bannerUp = false, this.dimmed = false, this.clockHidden = false, this.youTubeMin = Size.zero});
+
+  /// On a YouTube channel, the smallest the picture may get as overlays
+  /// make room (the TV screen's 480×270; youtube-playback D9).
+  final Size youTubeMin;
 
   /// The channel banner is up: the logo bug, Up next card, break notices
   /// and the clock make way.
@@ -1394,15 +1576,16 @@ class TvPicture extends StatelessWidget {
       listenable: Listenable.merge([tuner, AppScope.read(context), ?sleep]),
       builder: (context, _) {
         final app = AppScope.read(context), on = tuner.channel;
+        if (on != null && on.isYouTube) return _youTube(context, tuner, on);
         final retro = on == null ? const ResolvedRetro() : app.retroFor(on);
         return RetroFrame(
           retro: retro,
           icon: on?.icon,
           app: app,
+          media: tuner.media,
           child: Stack(
         fit: StackFit.expand,
         children: [
-          tuner.media.buildVideo(fit: RetroFrame.fitFor(retro.shape)),
           // A song has no picture of its own.
           if (tuner.channel case final ch? when tuner.status == TunerStatus.playing)
             if (tuner.segment?.item case final song? when song.kind == MediaKind.song)
@@ -1533,6 +1716,59 @@ class TvPicture extends StatelessWidget {
         );
       },
     );
+  }
+}
+
+/// A YouTube channel's picture (youtube-playback D9): YouTube's player in
+/// the room the overlays leave, with no retro look, logo bug, break notices
+/// or clock; the status cards when nothing plays.
+extension on TvPicture {
+  Widget _youTube(BuildContext context, Tuner tuner, Channel ch) {
+    final playing = tuner.status == TunerStatus.tuning || tuner.status == TunerStatus.playing;
+    final window = _upNextWindowOf(context, tuner);
+    final now = tuner.viewNow();
+    final upNext = tuner.status == TunerStatus.playing &&
+        !bannerUp &&
+        window != null &&
+        !now.isBefore(window.from) &&
+        now.isBefore(window.to);
+    return Stack(fit: StackFit.expand, children: [
+      // Black around the picture, and on Android a clear hole for it.
+      YouTubeFrame(
+        active: playing && tuner.youTube.want != null,
+        minSize: youTubeMin,
+        onVisible: tuner.youTube.setVisible,
+      ),
+      if (tuner.status == TunerStatus.offAir)
+        _CanvasCard(child: StatusCard(icon: Icons.tv_off, title: tr.offTheAir, message: tuner.error ?? tr.noVideosYet))
+      else if (tuner.status == TunerStatus.error)
+        _CanvasCard(
+          child: StatusCard(
+            icon: Icons.signal_cellular_connected_no_internet_0_bar,
+            title: tr.noSignal,
+            message: [
+              if (tuner.error != null) tuner.error!,
+              if (tuner.error == tr.youTubeNeedsWebView) tr.getItFromPlayStore(YouTubeLinks.webViewStoreShort),
+            ].join('\n'),
+          ),
+        ),
+      if (upNext && tuner.program != null && tuner.segment != null && tuner.schedule != null)
+        Positioned(
+          right: 90,
+          bottom: 70,
+          child: YouTubeObstacle(
+            child: UpNextCard(
+              program: tuner.program!,
+              segment: tuner.segment!,
+              next: tuner.schedule!.next(tuner.program!),
+              lastPart: true,
+              hidden: false,
+              clock: tuner.viewNow,
+            ),
+          ),
+        ),
+      if (dimmed) const IgnorePointer(child: ColoredBox(color: Color(0xB3000000))),
+    ]);
   }
 }
 

@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import '../api_client.dart';
 import '../app.dart';
 import '../widgets/common.dart';
+import 'youtube_setup.dart';
 import '../../l10n/tr.dart';
 
 /// The server and its profiles' sign-ins: what the docker-server-core setup
@@ -57,7 +58,7 @@ class _ServerPageState extends State<ServerPage> {
     if (!mounted) return;
     final summary = await attempt(context, () => api.upload('restore', bytes));
     if (summary is! Map || !mounted) return;
-    final profiles = (summary['profiles'] as List).join(', ');
+    final profiles = (summary['profiles'] as List).join(tr.listSeparator);
     final ok = await confirm(context,
         title: tr.restoreThisBackup,
         message: tr.backupSummary('${summary['when']}', '${summary['device']}', profiles, '${summary['channels']}', '${summary['blocks']}',
@@ -218,9 +219,20 @@ class _SignInFlowState extends State<_SignInFlow> {
   bool _sending = false;
   Timer? _poll;
   final _address = TextEditingController();
+
   final _user = TextEditingController();
   final _password = TextEditingController();
   final _pin = TextEditingController();
+  final _smbAddress = TextEditingController();
+  final _domain = TextEditingController();
+  final _historyName = TextEditingController();
+
+  /// The colour step's selection; the server's colour until one is picked.
+  String? _color;
+
+  /// YouTube chosen (or the profile's restored sign-in is YouTube's): its
+  /// own steps take over the dialog (docker-youtube).
+  bool _youTube = false;
 
   String get _path => widget.path ?? 'profiles/${widget.id}/sign-in';
 
@@ -240,9 +252,13 @@ class _SignInFlowState extends State<_SignInFlow> {
   /// Polls while a code waits to be approved or a step is busy.
   Future<void> _refresh() async {
     final stage = _step?['stage'];
-    if (_sending || (stage != 'quickConnect' && stage != 'plexCode' && _step?['busy'] != true)) return;
+    final searching = (_step?['smb'] as Map?)?['searching'] == true;
+    if (_sending || (stage != 'quickConnect' && stage != 'plexCode' && _step?['busy'] != true && !searching)) return;
     try {
-      final step = (await context.api.get(_path))! as Map<String, Object?>;
+      // A profile's sign-in has its step at a GET; adding a server or
+      // signing in to one again asks for it.
+      final api = context.api;
+      final step = (widget.path == null ? await api.get(_path) : await api.post(_path, {'action': 'step'}))! as Map<String, Object?>;
       if (mounted) setState(() => _step = step);
     } on ApiException {
       // The next poll tries again.
@@ -276,9 +292,27 @@ class _SignInFlowState extends State<_SignInFlow> {
     Navigator.of(context).pop();
   }
 
+  /// YouTube's own steps, in place of the server ones.
+  void _openYouTube() {
+    unawaited(context.api.post(_path, {'action': 'cancel'}).then((_) {}, onError: (Object _) {}));
+    _poll?.cancel();
+    setState(() => _youTube = true);
+  }
+
   @override
   Widget build(BuildContext context) {
     final step = _step;
+    // A restored profile whose sign-in was YouTube: the server asks for the
+    // user's own client.
+    if (!_youTube && const {'youtubeClient', 'youtubeCode', 'youtubePicker'}.contains(step?['stage'])) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && !_youTube) _openYouTube();
+      });
+    }
+    if (_youTube) {
+      return YouTubeSetup(
+          profileId: widget.id, title: widget.title ?? tr.signIn2(widget.name), onClose: () => Navigator.of(context).pop());
+    }
     final text = Theme.of(context).textTheme;
     final busy = _sending || step?['busy'] == true;
     final server = step?['server'] as Map?;
@@ -286,7 +320,9 @@ class _SignInFlowState extends State<_SignInFlow> {
     Widget code(String value) => Center(
           child: Padding(
             padding: const EdgeInsets.symmetric(vertical: 16),
-            child: SelectableText(value, style: text.displaySmall?.copyWith(letterSpacing: 6, fontWeight: FontWeight.w700)),
+            // Screen readers read the code too.
+            child: SelectableText(value,
+                semanticsLabel: value, style: text.displaySmall?.copyWith(letterSpacing: 6, fontWeight: FontWeight.w700)),
           ),
         );
     final children = <Widget>[];
@@ -294,7 +330,7 @@ class _SignInFlowState extends State<_SignInFlow> {
       children.add(const Center(child: CircularProgressIndicator()));
     } else if (step['finished'] == true) {
       children.addAll([
-        Text(widget.path == null ? tr.isSignedIn(widget.name) : 'Done.', style: text.titleMedium),
+        Text(widget.path == null ? tr.isSignedIn(widget.name) : tr.done, style: text.titleMedium),
         const SizedBox(height: 8),
         Text(widget.path == null
             ? tr.itsLibraryIs
@@ -305,6 +341,7 @@ class _SignInFlowState extends State<_SignInFlow> {
     } else {
       switch (step['stage']) {
         case 'server':
+          void connect() => _send({'action': 'connect', 'address': _address.text.trim()});
           children.addAll([
             Text(tr.connectToYour, style: text.titleLarge),
             const SizedBox(height: 12),
@@ -313,14 +350,122 @@ class _SignInFlowState extends State<_SignInFlow> {
               autofocus: true,
               keyboardType: TextInputType.url,
               decoration: InputDecoration(labelText: tr.serverAddress, hintText: 'https://media.example.org:8920'),
-              onSubmitted: (_) => _send({'action': 'connect', 'address': _address.text.trim()}),
+              onSubmitted: (_) => connect(),
             ),
             const SizedBox(height: 12),
-            FilledButton(
-                onPressed: busy ? null : () => _send({'action': 'connect', 'address': _address.text.trim()}),
-                child: Text(tr.connect)),
+            FilledButton(onPressed: busy ? null : connect, child: Text(tr.connect)),
             const SizedBox(height: 8),
             OutlinedButton(onPressed: busy ? null : () => _send({'action': 'plex'}), child: Text(tr.signInWith)),
+            const SizedBox(height: 8),
+            OutlinedButton(onPressed: busy ? null : () => _send({'action': 'smb'}), child: Text(tr.smbShareButton)),
+            const SizedBox(height: 8),
+            OutlinedButton(key: const ValueKey('add-youtube'), onPressed: busy ? null : _openYouTube, child: Text(tr.youTube)),
+          ]);
+        // SMB shares (smb-sources).
+        case 'smbFind':
+          final smb = step['smb'] as Map? ?? const {};
+          void go() => _send({'action': 'smbAddress', 'address': _smbAddress.text.trim()});
+          children.addAll([
+            Text(tr.smbFindTitle, style: text.titleLarge),
+            Text(tr.smbFindHelp, style: text.bodySmall),
+            const SizedBox(height: 12),
+            for (final h in (smb['hosts'] as List? ?? const []).cast<Map>())
+              ListTile(
+                leading: const Icon(Icons.computer),
+                title: Text('${h['name']}'),
+                subtitle: Text('${h['address']}'),
+                onTap: busy ? null : () => _send({'action': 'smbHost', 'address': h['address']}),
+              ),
+            Text(smb['searching'] == true ? tr.smbSearching : ((smb['hosts'] as List?)?.isEmpty ?? true ? tr.smbNoneFound : ''),
+                style: text.bodySmall),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _smbAddress,
+              autofocus: true,
+              keyboardType: TextInputType.url,
+              decoration: InputDecoration(labelText: tr.smbAddress, hintText: 'smb://192.168.1.5/media'),
+              onSubmitted: (_) => go(),
+            ),
+            const SizedBox(height: 12),
+            FilledButton(onPressed: busy ? null : go, child: Text(tr.connect)),
+            TextButton(
+                onPressed: busy || smb['searching'] == true ? null : () => _send({'action': 'smbSearch'}),
+                child: Text(tr.smbSearchAgain)),
+            TextButton(onPressed: busy ? null : () => _send({'action': 'back'}), child: Text(tr.back)),
+          ]);
+        case 'smbShares':
+          final smb = step['smb'] as Map? ?? const {};
+          children.addAll([
+            Text(tr.smbSharesOn('${smb['host'] ?? ''}'), style: text.titleLarge),
+            if (smb['smb1'] == true) Text(tr.smbOld, style: TextStyle(color: Theme.of(context).colorScheme.error)),
+            const SizedBox(height: 12),
+            for (final s in (smb['shares'] as List? ?? const []).cast<Map>())
+              ListTile(
+                leading: const Icon(Icons.folder_shared),
+                title: Text('${s['name']}'),
+                subtitle: '${s['comment']}'.isEmpty ? null : Text('${s['comment']}'),
+                onTap: busy ? null : () => _send({'action': 'smbShare', 'share': s['name']}),
+              ),
+            TextButton(onPressed: busy ? null : () => _send({'action': 'back'}), child: Text(tr.back)),
+          ]);
+        case 'smbSignIn':
+          final smb = step['smb'] as Map? ?? const {};
+          if (_user.text.isEmpty && '${smb['user'] ?? ''}'.isNotEmpty) _user.text = '${smb['user']}';
+          void signIn() => _send({'action': 'smbSignIn', 'user': _user.text.trim(), 'password': _password.text, 'domain': _domain.text.trim()});
+          children.addAll([
+            Text(tr.smbSignInTo('${smb['share'] ?? smb['host'] ?? ''}'), style: text.titleLarge),
+            if (smb['smb1'] == true) Text(tr.smbOld, style: TextStyle(color: Theme.of(context).colorScheme.error)),
+            const SizedBox(height: 12),
+            TextField(controller: _user, autofocus: true, decoration: InputDecoration(labelText: tr.username), textInputAction: TextInputAction.next),
+            const SizedBox(height: 12),
+            TextField(
+                controller: _password,
+                obscureText: true,
+                decoration: InputDecoration(labelText: tr.password),
+                textInputAction: TextInputAction.next,
+                onSubmitted: (_) => signIn()),
+            const SizedBox(height: 12),
+            TextField(controller: _domain, decoration: InputDecoration(labelText: tr.smbDomain), onSubmitted: (_) => signIn()),
+            const SizedBox(height: 12),
+            FilledButton(onPressed: busy ? null : signIn, child: Text(tr.signIn)),
+            OutlinedButton(onPressed: busy ? null : () => _send({'action': 'smbGuest'}), child: Text(tr.smbAsGuest)),
+            TextButton(onPressed: busy ? null : () => _send({'action': 'back'}), child: Text(tr.back)),
+          ]);
+        case 'smbFolders':
+          final smb = step['smb'] as Map? ?? const {};
+          final folder = '${smb['folder'] ?? ''}';
+          final mappings = (smb['mappings'] as Map? ?? const {}).cast<String, Object?>();
+          if (_historyName.text.isEmpty) _historyName.text = '${smb['historyName'] ?? ''}';
+          children.addAll([
+            Text(tr.smbWhatsIn(folder.isEmpty ? '${smb['share']}' : '${smb['share']} › ${folder.replaceAll('/', ' › ')}'),
+                style: text.titleLarge),
+            Text(tr.smbMapHelp, style: text.bodySmall),
+            const SizedBox(height: 12),
+            if (folder.isNotEmpty) TextButton.icon(icon: const Icon(Icons.arrow_upward), label: Text(tr.smbUp), onPressed: busy ? null : () => _send({'action': 'back'})),
+            for (final f in (smb['folders'] as List? ?? const []).cast<String>())
+              SmbFolderRow(
+                name: f,
+                type: mappings[folder.isEmpty ? f : '$folder/$f'] as String?,
+                onOpen: busy ? null : () => _send({'action': 'smbFolder', 'path': folder.isEmpty ? f : '$folder/$f'}),
+                onType: (t) => _send({'action': 'smbMap', 'path': folder.isEmpty ? f : '$folder/$f', 'type': t}),
+              ),
+            if (folder.isEmpty) ...[
+              const SizedBox(height: 12),
+              if (smb['writable'] != false) ...[
+                TextField(controller: _historyName, decoration: InputDecoration(labelText: tr.smbHistoryName, helperText: tr.smbHistoryHelp, helperMaxLines: 4)),
+                CheckboxListTile(
+                  value: smb['keepLocal'] == true,
+                  title: Text(tr.smbKeepLocal),
+                  onChanged: busy ? null : (v) => _send({'action': 'smbHistory', 'keepLocal': v == true}),
+                ),
+              ] else
+                Text(tr.smbReadOnly, style: text.bodySmall),
+            ],
+            const SizedBox(height: 12),
+            FilledButton(
+                onPressed: busy ? null : () => _send({'action': 'smbDone', 'historyName': _historyName.text.trim()}),
+                child: Text(tr.smbFoldersDone)),
+            if (folder.isEmpty) TextButton(onPressed: busy ? null : () => _send({'action': 'back'}), child: Text(tr.back)),
           ]);
         case 'method':
           children.addAll([
@@ -427,6 +572,39 @@ class _SignInFlowState extends State<_SignInFlow> {
               ),
             TextButton(onPressed: busy ? null : () => _send({'action': 'back'}), child: Text(tr.back)),
           ]);
+        // Adding a server, last: its guide colour (guide-server-colors).
+        case 'color':
+          final color = step['color'] as Map? ?? const {};
+          final palette = (color['palette'] as List? ?? const []).cast<Map>();
+          final selected = _color ?? color['selected'] as String?;
+          children.addAll([
+            Text(tr.guideColorTitle('${color['name'] ?? ''}'), style: text.titleLarge),
+            Text(tr.guideColorHelp, style: text.bodySmall),
+            const SizedBox(height: 12),
+            RadioGroup<String>(
+              key: const ValueKey('guide-colors'),
+              groupValue: selected,
+              onChanged: (v) {
+                if (!busy) setState(() => _color = v);
+              },
+              child: Column(children: [
+                for (final c in palette)
+                  RadioListTile<String>(
+                    key: ValueKey('color-${c['name']}'),
+                    contentPadding: EdgeInsets.zero,
+                    value: c['name'] as String,
+                    secondary: Container(
+                        width: 24, height: 24, decoration: BoxDecoration(color: hexColor(c['hex']), shape: BoxShape.circle)),
+                    title: Text(c['usedBy'] == null ? '${c['label']}' : tr.guideColorUsedBy('${c['label']}', '${c['usedBy']}')),
+                  ),
+              ]),
+            ),
+            const SizedBox(height: 12),
+            FilledButton(
+                key: const ValueKey('color-done'),
+                onPressed: busy || selected == null ? null : () => _send({'action': 'color', 'name': selected}),
+                child: Text(tr.done)),
+          ]);
       }
       if (busy) children.add(const Padding(padding: EdgeInsets.only(top: 8), child: LinearProgressIndicator()));
       children.add(ErrorText((step['error'] as String?) ?? _error));
@@ -434,6 +612,8 @@ class _SignInFlowState extends State<_SignInFlow> {
     return Padding(
       padding: const EdgeInsets.all(24),
       child: SingleChildScrollView(
+        // Each step opens at its top, not where the last one was scrolled to.
+        key: ValueKey('step-${step?['stage']}-${step?['finished']}'),
         child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
           Row(children: [
             Expanded(child: Text(widget.title ?? tr.signIn2(widget.name), style: text.labelLarge)),
@@ -444,4 +624,43 @@ class _SignInFlowState extends State<_SignInFlow> {
       ),
     );
   }
+}
+
+/// The content types a share's folder can hold, by their API names.
+const smbFolderTypes = ['tvShows', 'movies', 'music', 'musicVideos', 'homeVideos', 'commercials', 'bumpers'];
+
+String smbFolderTypeLabel(String? type) => switch (type) {
+      'tvShows' => tr.smbTypeTv,
+      'movies' => tr.smbTypeMovies,
+      'music' => tr.smbTypeMusic,
+      'musicVideos' => tr.smbTypeMusicVideos,
+      'homeVideos' => tr.smbTypeHome,
+      'commercials' => tr.smbTypeCommercials,
+      'bumpers' => tr.smbTypeBumpers,
+      _ => tr.smbTypeNone,
+    };
+
+/// A share's folder: its name opens it, the menu picks what it holds.
+class SmbFolderRow extends StatelessWidget {
+  const SmbFolderRow({super.key, required this.name, required this.type, required this.onType, this.onOpen});
+
+  final String name;
+  final String? type;
+  final VoidCallback? onOpen;
+  final ValueChanged<String?> onType;
+
+  @override
+  Widget build(BuildContext context) => ListTile(
+        leading: const Icon(Icons.folder),
+        title: Text(name),
+        onTap: onOpen,
+        trailing: DropdownButton<String?>(
+          value: type,
+          items: [
+            DropdownMenuItem<String?>(child: Text(smbFolderTypeLabel(null))),
+            for (final t in smbFolderTypes) DropdownMenuItem<String?>(value: t, child: Text(smbFolderTypeLabel(t))),
+          ],
+          onChanged: onType,
+        ),
+      );
 }

@@ -127,3 +127,17 @@ debug_files_none_inside() {
   fi
   echo "  $1: no debug file inside"
 }
+
+# Saves the Flutter engine revision the build used in [1]/engine.version
+# (crash-visibility D1): tool/symbolize_event.py downloads that engine's
+# published libflutter.so symbols to name native crash frames in the engine.
+debug_files_engine() {
+  local rev
+  rev="$(flutter --version --machine 2>/dev/null | python3 -c 'import json,sys; print(json.load(sys.stdin)["engineRevision"])')"
+  if [[ -z "$rev" ]]; then
+    echo "The Flutter engine revision couldn't be read." >&2
+    return 1
+  fi
+  echo "$rev" > "$1/engine.version"
+  echo "  engine revision $rev saved in $1/engine.version"
+}

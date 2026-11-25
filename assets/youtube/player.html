@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<!-- YouTube's embedded player for YouTube channels (youtube-playback D8).
+     Loaded with base URL https://com.coffeehauslabs.nightingale_tv/ so the
+     player is identified by the app's id. Only documented IFrame Player API
+     calls and parameters are used; nothing touches YouTube's frame. -->
+<html>
+<head>
+<meta charset="utf-8">
+<!-- At least 640 CSS pixels wide, so YouTube's player is never under its
+     minimum in a small box (Android: the guide's preview). -->
+<meta name="viewport" content="width=640">
+<meta name="referrer" content="strict-origin-when-cross-origin">
+<style>
+  html, body { margin: 0; padding: 0; width: 100%; height: 100%; background: #000; overflow: hidden; }
+  #player { position: absolute; inset: 0; width: 100%; height: 100%; }
+</style>
+</head>
+<body>
+<div id="player"></div>
+<script>
+  // Filled in by the app: {origin, ccLoad, ccLang, volume}.
+  var NTV = /*NTV_SETTINGS*/{};
+
+  function post(event) {
+    var text = JSON.stringify(event);
+    if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.ntv) {
+      window.webkit.messageHandlers.ntv.postMessage(text);
+    } else if (window.NtvAndroid) {
+      window.NtvAndroid.post(text);
+    }
+  }
+
+  var player = null, ready = false, pending = null, poll = null;
+
+  function onYouTubeIframeAPIReady() {
+    var vars = {
+      playsinline: 1, controls: 0, disablekb: 1, fs: 0, rel: 0, iv_load_policy: 3,
+      enablejsapi: 1, origin: NTV.origin, widget_referrer: NTV.origin
+    };
+    if (NTV.ccLoad) vars.cc_load_policy = 1;
+    if (NTV.ccLang) vars.cc_lang_pref = NTV.ccLang;
+    player = new YT.Player('player', {
+      width: '100%', height: '100%', playerVars: vars,
+      events: {
+        onReady: function () {
+          ready = true;
+          if (typeof NTV.volume === 'number') player.setVolume(NTV.volume);
+          post({e: 'ready'});
+          if (pending) { var p = pending; pending = null; p(); }
+        },
+        onStateChange: function (ev) {
+          post({e: 'state', s: ev.data, id: currentId()});
+        },
+        onError: function (ev) {
+          post({e: 'error', c: ev.data, id: currentId()});
+        }
+      }
+    });
+    poll = setInterval(function () {
+      if (!ready) return;
+      post({e: 'pos', t: player.getCurrentTime(), d: player.getDuration(), s: player.getPlayerState(), id: currentId()});
+    }, 1000);
+  }
+
+  function currentId() {
+    try { var d = player.getVideoData(); return d ? d.video_id : null; } catch (e) { return null; }
+  }
+
+  function whenReady(f) { if (ready) f(); else pending = f; }
+
+  // The calls the app makes.
+  function ntvLoad(id, start) { whenReady(function () { player.loadVideoById({videoId: id, startSeconds: start}); }); }
+  function ntvCue(id, start) { whenReady(function () { player.cueVideoById({videoId: id, startSeconds: start}); }); }
+  function ntvStop() { whenReady(function () { player.stopVideo(); }); }
+  function ntvSeek(t) { whenReady(function () { player.seekTo(t, true); }); }
+  function ntvVolume(v) { NTV.volume = v; whenReady(function () { player.setVolume(v); }); }
+
+  // Android: the page's 640 pixels fitted to a frame [width] wide (in CSS
+  // pixels at scale 1); the WebView itself fits them only when it loads.
+  function ntvFit(width) {
+    var s = width / 640;
+    document.querySelector('meta[name=viewport]').setAttribute('content',
+      'width=640, initial-scale=' + s + ', minimum-scale=' + s + ', maximum-scale=' + s);
+  }
+
+  var tag = document.createElement('script');
+  tag.src = 'https://www.youtube.com/iframe_api';
+  tag.onerror = function () { post({e: 'apiFailed'}); };
+  document.head.appendChild(tag);
+</script>
+</body>
+</html>

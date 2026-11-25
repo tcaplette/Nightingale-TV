@@ -81,11 +81,6 @@ class VideoSelfTestTest {
         assertEquals("no hardware decoder", VideoSelfTest.skipReason(decoderFound = false, maxInstances = 0))
         assertEquals("single instance", VideoSelfTest.skipReason(decoderFound = true, maxInstances = 1))
         assertNull(VideoSelfTest.skipReason(decoderFound = true, maxInstances = 16))
-        assertEquals("vulkan", VideoSelfTest.surfaceTextureSkip("Vulkan"))
-        assertEquals("vulkan", VideoSelfTest.surfaceTextureSkip("Vulkan with Validation Layers"))
-        assertEquals("vulkan", VideoSelfTest.surfaceTextureSkip(null))
-        assertNull(VideoSelfTest.surfaceTextureSkip("OpenGLES"))
-        assertNull(VideoSelfTest.surfaceTextureSkip("Skia OpenGLES"))
         assertEquals(5_000L, VideoSelfTest.TIMEOUT_MS)
     }
 
@@ -120,12 +115,14 @@ class VideoSelfTestTest {
     }
 
     @Test
-    fun producerKindFollowsFlutter() {
-        assertEquals("image_reader", VideoReport.producerKind(29, "Google"))
-        assertEquals("image_reader", VideoReport.producerKind(36, "NVIDIA"))
-        assertEquals("surface_texture", VideoReport.producerKind(28, "NVIDIA"))
-        assertEquals("surface_texture", VideoReport.producerKind(29, "HUAWEI"))
-        assertEquals("image_reader", VideoReport.producerKind(30, "HUAWEI"))
+    fun bt601ForTheMpeg2Card() {
+        // Empty video memory (0, 0, 0) is #008700 as BT.601, #004d00 as BT.709.
+        val (y, u, v) = frame8(0, 0, 0)
+        assertNear(Triple(0, 135, 0), rgb(YuvConvert.toRgba(2, 2, 0, 0, y, u, v, false, bt601 = true), 0))
+        assertNear(Triple(0, 77, 0), rgb(YuvConvert.toRgba(2, 2, 0, 0, y, u, v, false), 0))
+        val card = VideoSelfTest.cards.getValue("mpeg2")
+        assertEquals(720, card.width)
+        assertEquals(true, card.bt601)
     }
 
     @Test

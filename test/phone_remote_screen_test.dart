@@ -50,8 +50,13 @@ class _FakeRemote extends RemoteControl {
   }
 }
 
+/// A phone paired and last used [minutesAgo], kept within today (so it reads
+/// "today" just after midnight too), in the same order.
 RemotePairing _phone(String name, {required int minutesAgo}) {
-  final t = DateTime.now().subtract(Duration(minutes: minutesAgo));
+  final now = DateTime.now();
+  final midnight = DateTime(now.year, now.month, now.day);
+  var t = now.subtract(Duration(minutes: minutesAgo));
+  if (t.isBefore(midnight)) t = midnight.add(Duration(milliseconds: 100 - minutesAgo));
   return RemotePairing(id: name, name: name, keyHash: '0' * 64, paired: t, lastUsed: t);
 }
 

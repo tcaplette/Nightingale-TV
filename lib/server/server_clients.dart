@@ -13,6 +13,10 @@ MediaServer serverClient(ServerKind kind, String serverUrl,
       ServerKind.jellyfin => JellyfinClient(serverUrl: serverUrl, deviceId: deviceId, deviceName: deviceName),
       ServerKind.emby => EmbyClient(serverUrl: serverUrl, deviceId: deviceId, deviceName: deviceName),
       ServerKind.plex => PlexClient(serverUrl: serverUrl, deviceId: deviceId, deviceName: deviceName),
+      // A share's client belongs to its profile (AppState.clientForSession).
+      ServerKind.smb => throw UnsupportedError('An SMB share has no client before its sign-in.'),
+      // A Google sign-in's client belongs to its profile (AppState.clientForSession).
+      ServerKind.youtube => throw UnsupportedError('YouTube has no client before its sign-in.'),
     };
 
 /// A client for a saved sign-in.
@@ -20,6 +24,8 @@ MediaServer sessionClient(ServerSession session, {required String deviceName}) =
       ServerKind.jellyfin => JellyfinClient.fromSession(session, deviceName: deviceName),
       ServerKind.emby => EmbyClient.fromSession(session, deviceName: deviceName),
       ServerKind.plex => PlexClient.fromSession(session, deviceName: deviceName),
+      ServerKind.smb => throw UnsupportedError('A share\'s client is made by its profile.'),
+      ServerKind.youtube => throw UnsupportedError('A YouTube client is made by its profile.'),
     };
 
 /// The addresses to try for what the user typed: as typed when it names a

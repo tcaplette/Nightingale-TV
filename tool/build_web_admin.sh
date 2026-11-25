@@ -5,3 +5,7 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 flutter build web -t lib/web_admin/main.dart --release --no-web-resources-cdn --pwa-strategy=none "$@"
+# flutter build web bundles every listed asset, the app's Google client file
+# too. The web admin's YouTube sign-in uses the user's own client only, so it
+# never carries the file (youtube-shared-client D4, docker-youtube).
+rm -f build/web/assets/assets/youtube/client/nightingale-tv-youtube.json

@@ -18,6 +18,7 @@ class StreamContext {
   StreamContext({
     required this.channel,
     required this.schedule,
+    this.inLineup,
     required this.card,
     required this.openSource,
     required this.closeSource,
@@ -42,8 +43,13 @@ class StreamContext {
 
   final Channel channel;
 
-  /// The channel's schedule right now; null once it's hidden or deleted.
+  /// The channel's schedule right now; null once it's hidden or deleted,
+  /// and for a channel with nothing to play (a block channel with no blocks).
   final ProgramSchedule? Function() schedule;
+
+  /// Whether the channel is still in the lineup, which tells a channel with
+  /// nothing to play (off the air) from one that's gone (the stream ends).
+  final bool Function()? inLineup;
 
   /// [c]'s 1 s chunk, in this stream's format.
   final Future<Uint8List> Function(BroadcastCard c) card;
@@ -224,7 +230,10 @@ class ChannelStream {
       t = now;
     }
     final schedule = ctx.schedule();
-    if (schedule == null) return null;
+    if (schedule == null) {
+      // In the lineup with nothing to play: off the air, as the TV is.
+      return ctx.inLineup?.call() ?? false ? _CardPlan(const OffAirCard(), offAirPiece) : null;
+    }
     var segment = schedule.playbackAt(t);
     for (var i = 0; i < 8 && segment.end.difference(t) < minSegment; i++) {
       t = segment.end;

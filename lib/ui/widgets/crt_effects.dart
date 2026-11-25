@@ -9,17 +9,9 @@ import 'package:flutter/scheduler.dart';
 import '../../channels/retro.dart';
 import '../../playback/device_effects.dart';
 import '../../playback/playback_diagnostics.dart';
+import '../../playback/video_look.dart';
 
-/// The spacing of [lines] scanlines down a picture [height] device pixels
-/// tall: a whole number of pixels so they stay crisp, doubling below 2
-/// pixels per line to avoid moiré (design D6).
-int scanlinePeriod(double height, int lines) {
-  var period = height / lines;
-  while (period < 2) {
-    period *= 2;
-  }
-  return period.round();
-}
+export '../../playback/video_look.dart' show scanlinePeriod;
 
 /// The color matrix for [v], with a small gain to offset what its scanlines
 /// and mask take away; null when it changes nothing.
@@ -54,27 +46,64 @@ List<double>? crtColorMatrix(CrtValues v) {
   ];
 }
 
+/// How far the shader bulges the tube.
+double crtCurvature(CrtLevel level) => switch (level) {
+      CrtLevel.off => 0,
+      CrtLevel.low => 0.025,
+      CrtLevel.medium => 0.05,
+      CrtLevel.high => 0.09,
+    };
+
+/// How strong the shader's glow is.
+double crtGlow(CrtLevel level) => switch (level) {
+      CrtLevel.off => 0,
+      CrtLevel.low => 0.3,
+      CrtLevel.medium => 0.6,
+      CrtLevel.high => 1,
+    };
+
+double _by(CrtLevel level, double low, double medium, double high) => switch (level) {
+      CrtLevel.off => 0,
+      CrtLevel.low => low,
+      CrtLevel.medium => medium,
+      CrtLevel.high => high,
+    };
+
+/// How dark [v]'s scanlines, mask and vignette are.
+VideoOverlay crtOverlay(CrtValues v) =>
+    v.scanlines == CrtLevel.off && v.mask == CrtLevel.off && v.vignette == CrtLevel.off
+        ? VideoOverlay.none
+        : VideoOverlay(
+            scanlines: _by(v.scanlines, 0.18, 0.32, 0.5),
+            lines: v.lines,
+            mask: _by(v.mask, 0.06, 0.1, 0.16),
+            vignette: _by(v.vignette, 0.3, 0.5, 0.7),
+          );
+
+/// The part of [v] that changes the video itself.
+VideoLook crtVideoLook(CrtValues v) => VideoLook(
+      matrix: crtColorMatrix(v),
+      curvature: crtCurvature(v.curvature),
+      glow: crtGlow(v.glow),
+      overlay: v.glow == CrtLevel.off ? VideoOverlay.none : crtOverlay(v),
+    );
+
 /// Scanlines, mask, vignette and tube corners, recorded at [size] device
 /// pixels.
 ui.Picture paintCrtOverlay(Size size, CrtValues v) {
   final recorder = ui.PictureRecorder();
   final canvas = Canvas(recorder, Offset.zero & size);
-  double by(CrtLevel level, double low, double medium, double high) => switch (level) {
-        CrtLevel.off => 0,
-        CrtLevel.low => low,
-        CrtLevel.medium => medium,
-        CrtLevel.high => high,
-      };
-  final lines = by(v.scanlines, 0.18, 0.32, 0.5);
+  final overlay = crtOverlay(v);
+  final lines = overlay.scanlines;
   if (lines > 0) {
     final period = scanlinePeriod(size.height, v.lines);
-    final dark = (period / 2).ceil();
+    final dark = scanlineDark(period);
     final paint = Paint()..color = Colors.black.withValues(alpha: lines);
     for (var y = period - dark; y < size.height; y += period) {
       canvas.drawRect(Rect.fromLTWH(0, y.toDouble(), size.width, dark.toDouble()), paint);
     }
   }
-  final mask = by(v.mask, 0.06, 0.1, 0.16);
+  final mask = overlay.mask;
   if (mask > 0) {
     // An aperture grille: each column darkens, keeping a trace of one primary.
     final paints = [
@@ -85,23 +114,23 @@ ui.Picture paintCrtOverlay(Size size, CrtValues v) {
       canvas.drawRect(Rect.fromLTWH(x.toDouble(), 0, 1, size.height), paints[x % 3]);
     }
   }
-  final vignette = by(v.vignette, 0.3, 0.5, 0.7);
+  final vignette = overlay.vignette;
   if (vignette > 0) {
     canvas.drawRect(
       Offset.zero & size,
       Paint()
         ..shader = ui.Gradient.radial(
           size.center(Offset.zero),
-          size.longestSide * 0.62,
+          size.longestSide * vignetteRadius,
           [Colors.transparent, Colors.black.withValues(alpha: vignette)],
-          const [0.55, 1],
+          const [vignetteStart, 1],
         ),
     );
   }
   final corners = Path()
     ..fillType = PathFillType.evenOdd
     ..addRect(Offset.zero & size)
-    ..addRRect(RRect.fromRectAndRadius(Offset.zero & size, Radius.circular(size.shortestSide * 0.035)));
+    ..addRRect(RRect.fromRectAndRadius(Offset.zero & size, Radius.circular(size.shortestSide * tubeCorner)));
   canvas.drawPath(corners, Paint()..color = Colors.black);
   return recorder.endRecording();
 }
@@ -187,18 +216,8 @@ class CrtShader {
     final program = _program;
     if (program == null) return null;
     final shader = program.fragmentShader()
-      ..setFloat(2, switch (v.curvature) {
-        CrtLevel.off => 0,
-        CrtLevel.low => 0.025,
-        CrtLevel.medium => 0.05,
-        CrtLevel.high => 0.09,
-      })
-      ..setFloat(3, switch (v.glow) {
-        CrtLevel.off => 0,
-        CrtLevel.low => 0.3,
-        CrtLevel.medium => 0.6,
-        CrtLevel.high => 1,
-      })
+      ..setFloat(2, crtCurvature(v.curvature))
+      ..setFloat(3, crtGlow(v.glow))
       ..setFloat(4, _flip ? 1 : 0)
       ..setFloat(5, frame.center.dx)
       // Where the input is upside down, so are the shader's coordinates.
@@ -220,9 +239,27 @@ CrtValues effectiveCrt(CrtValues v, {required bool switchOn, required bool shade
 /// [child] under the CRT effect of [values]. A channel on no effect costs
 /// nothing here: no layer, image or shader.
 class CrtLayers extends StatefulWidget {
-  const CrtLayers({super.key, required this.values, required this.child});
+  const CrtLayers({super.key, required this.values, required this.child, this.drawn = true, this.below, this.onLook, this.lookApplied, this.droppedFrames});
 
   final CrtValues values;
+
+  /// Off: [child] shows without them.
+  final bool drawn;
+
+  /// The player's dropped frames so far in the open media, where it applies
+  /// effects to the video: they count against the frame budget.
+  final Future<int> Function()? droppedFrames;
+
+  /// Whether the player has applied it to the video playing.
+  final ValueListenable<bool>? lookApplied;
+
+  /// Hears the part of [values] that changes the video, for a player that
+  /// applies it itself.
+  final ValueChanged<VideoLook>? onLook;
+
+  /// Android's video layer's hole: below the colour matrix, which would be a
+  /// layer round it.
+  final Widget? below;
   final Widget child;
 
   @override
@@ -245,27 +282,37 @@ class _CrtLayersState extends State<CrtLayers> {
   }
 
   void _load() {
-    if (widget.values.usesShader) unawaited(CrtShader.instance.ensureLoaded());
+    if (widget.drawn && widget.values.usesShader) unawaited(CrtShader.instance.ensureLoaded());
   }
 
   @override
   Widget build(BuildContext context) {
     return ListenableBuilder(
-      listenable: _changes,
+      listenable: Listenable.merge([_changes, ?widget.lookApplied]),
       child: widget.child,
       builder: (context, child) {
         final device = DeviceEffects.instance;
-        final v = effectiveCrt(widget.values,
+        var v = effectiveCrt(widget.values,
             switchOn: device.on,
             shaderAvailable: CrtShader.instance.available.value == true && !device.shaderTurnedOff);
-        final matrix = crtColorMatrix(v);
-        final overlay = v.scanlines != CrtLevel.off || v.mask != CrtLevel.off || v.vignette != CrtLevel.off;
+        // The player can't change the video here, or not this stream: its
+        // colour and shape stay, and what is over it keeps its own.
+        final can = !(device.videoFailed && widget.below != null);
+        widget.onLook?.call(can ? crtVideoLook(v) : VideoLook.none);
+        final coloured = can && (widget.lookApplied?.value ?? true);
+        if (!coloured) v = v.copyWith(curvature: CrtLevel.off, glow: CrtLevel.off);
+        if (!widget.drawn) v = const CrtValues();
+        final matrix = coloured ? crtColorMatrix(v) : null;
+        final overlay = crtOverlay(v).on;
         return Stack(
           fit: StackFit.expand,
           children: [
+            ?widget.below,
             _ColorFilterBox(matrix: matrix, child: child!),
-            if (overlay) _CrtOverlay(values: v),
-            if (v.usesShader) _CrtShaderLayer(values: v),
+            // With glow, a player that changes the video has it on the video
+            // already (the glow is worked out over it).
+            if (overlay) _CrtOverlay(values: v, onlyOver: widget.below != null && v.glow != CrtLevel.off),
+            if (v.usesShader) _CrtShaderLayer(values: v, droppedFrames: widget.droppedFrames),
           ],
         );
       },
@@ -321,9 +368,13 @@ class _RenderColorFilterBox extends RenderProxyBox {
 /// The overlay tier: [paintCrtOverlay] as one image at the size this takes
 /// up on the screen, repainted only when that or [values] changes.
 class _CrtOverlay extends StatefulWidget {
-  const _CrtOverlay({required this.values});
+  const _CrtOverlay({required this.values, this.onlyOver = false});
 
   final CrtValues values;
+
+  /// Drawn only over what's there (the logo, cards and captions), not where
+  /// the video shows through.
+  final bool onlyOver;
 
   @override
   State<_CrtOverlay> createState() => _CrtOverlayState();
@@ -387,50 +438,88 @@ class _CrtOverlayState extends State<_CrtOverlay> {
     return IgnorePointer(
       child: ExcludeSemantics(
         child: RepaintBoundary(
-          child: RawImage(image: _image, fit: BoxFit.fill, filterQuality: FilterQuality.none),
+          child: CustomPaint(
+            size: Size.infinite,
+            painter: _OverlayPainter(_image, widget.onlyOver ? BlendMode.srcATop : BlendMode.srcOver),
+          ),
         ),
       ),
     );
   }
 }
 
+class _OverlayPainter extends CustomPainter {
+  const _OverlayPainter(this.image, this.blendMode);
+
+  final ui.Image? image;
+  final BlendMode blendMode;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final image = this.image;
+    if (image == null) return;
+    canvas.drawImageRect(
+      image,
+      Rect.fromLTWH(0, 0, image.width.toDouble(), image.height.toDouble()),
+      Offset.zero & size,
+      Paint()
+        ..blendMode = blendMode
+        ..filterQuality = FilterQuality.none,
+    );
+  }
+
+  @override
+  bool shouldRepaint(_OverlayPainter old) => image != old.image || blendMode != old.blendMode;
+}
+
 /// Watches frame times while the shader tier is on (D8, D11): a second is
-/// over budget when its median raster time is, and [seconds] of those in a
-/// row mean the device can't keep up. The median keeps isolated spikes from
-/// counting.
+/// over budget when its median raster time is, or when the player dropped
+/// [dropsOver] frames or more in it (it draws the effect on Android's video,
+/// system-video-layer D5), and [seconds] of those in a row mean the device
+/// can't keep up. The median keeps isolated spikes from counting.
 class FrameBudgetWatcher {
   FrameBudgetWatcher({required this.budget, this.seconds = 10});
 
   final Duration budget;
   final int seconds;
 
+  static const dropsOver = 3;
+
   final _times = <int>[];
   int _streak = 0;
+  int? _dropped;
+  int _drops = 0;
 
   void addFrame(Duration raster) => _times.add(raster.inMicroseconds);
 
+  /// The player's dropped frames so far (the count starts again with each
+  /// open).
+  void addDropped(int total) {
+    final last = _dropped;
+    _dropped = total;
+    if (last != null && total > last) _drops += total - last;
+  }
+
   /// Ends a second; true once the device has been over for [seconds] of them.
   bool endSecond() {
-    if (_times.isEmpty) {
-      _streak = 0;
-      return false;
-    }
     _times.sort();
-    final median = _times[_times.length ~/ 2];
+    final over = _times.isNotEmpty && _times[_times.length ~/ 2] > budget.inMicroseconds;
+    _streak = over || _drops >= dropsOver ? _streak + 1 : 0;
     _times.clear();
-    _streak = median > budget.inMicroseconds ? _streak + 1 : 0;
+    _drops = 0;
     return _streak >= seconds;
   }
 }
 
 /// The shader tier: curvature and glow on everything below it in the frame.
 class _CrtShaderLayer extends StatefulWidget {
-  const _CrtShaderLayer({required this.values});
+  const _CrtShaderLayer({required this.values, this.droppedFrames});
 
   /// A diagnostics build's forced slow frames (task 8.4).
   static const _forceSlow = bool.fromEnvironment('NIGHTINGALE_TV_FORCE_SLOW_FRAMES');
 
   final CrtValues values;
+  final Future<int> Function()? droppedFrames;
 
   @override
   State<_CrtShaderLayer> createState() => _CrtShaderLayerState();
@@ -470,7 +559,9 @@ class _CrtShaderLayerState extends State<_CrtShaderLayer> {
       SchedulerBinding.instance.scheduleFrame();
       _measure(Duration.zero);
     });
-    _second = Timer.periodic(const Duration(seconds: 1), (_) {
+    _second = Timer.periodic(const Duration(seconds: 1), (_) async {
+      if (widget.droppedFrames case final read?) _watcher?.addDropped(await read());
+      if (!mounted) return;
       if (_watcher?.endSecond() ?? false) {
         PlaybackDiagnostics.note('RETRO', 'shader tier turned off: over frame budget');
         DeviceEffects.instance.turnOffShader();
@@ -511,7 +602,9 @@ class _CrtShaderLayerState extends State<_CrtShaderLayer> {
       child: ExcludeSemantics(
         child: filter == null
             ? const SizedBox.expand()
-            : ClipRect(child: BackdropFilter(filter: filter, child: const SizedBox.expand())),
+            // In place of what it bends, not over it: transparent stays so.
+            : ClipRect(
+                child: BackdropFilter(filter: filter, blendMode: BlendMode.src, child: const SizedBox.expand())),
       ),
     );
   }

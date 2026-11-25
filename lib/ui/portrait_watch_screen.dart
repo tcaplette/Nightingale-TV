@@ -9,6 +9,8 @@ import '../channels/channel_groups.dart';
 import '../channels/schedule.dart';
 import '../theme/tv_theme.dart';
 import 'captions_picker.dart';
+import 'quality_picker.dart';
+import '../playback/tuner.dart';
 import '../sharing/share_client.dart';
 import '../sharing/watch_party.dart';
 import 'format.dart';
@@ -35,6 +37,7 @@ class PortraitWatchScreen extends StatefulWidget {
     required this.onFullScreen,
     this.onSleep,
     this.onCaptions,
+    this.onQuality,
     this.onTouch,
     this.numberEntry,
     this.toast,
@@ -56,6 +59,10 @@ class PortraitWatchScreen extends StatefulWidget {
 
   /// Opens the captions picker (a Captions button beside Menu).
   final VoidCallback? onCaptions;
+
+  /// Opens the quality picker (a Quality button after Captions,
+  /// player-options); "Auto" and inert on a YouTube channel.
+  final VoidCallback? onQuality;
 
   /// Any tap or press on the screen (cancels the exit prompt).
   final VoidCallback? onTouch;
@@ -235,6 +242,15 @@ class PortraitWatchScreenState extends State<PortraitWatchScreen> {
             fontSize: 26,
             onSelect: _selectTab,
           ),
+          // Which server each colour is (guide-server-colors).
+          if (app.guideColorsOn)
+            Container(
+              height: 44,
+              color: g.header,
+              padding: EdgeInsets.symmetric(horizontal: layout.gutter),
+              alignment: Alignment.centerLeft,
+              child: GuideColorKey(entries: guideKeyEntries(app), fontSize: 20),
+            ),
           Expanded(
             child: Stack(
               children: [
@@ -288,6 +304,7 @@ class PortraitWatchScreenState extends State<PortraitWatchScreen> {
   /// menu.
   Widget _player(GuideTheme g) {
     final tuner = AppScope.tunerOf(context);
+    if (tuner.channel?.isYouTube == true) return _youTubePlayer(g, tuner);
     return AspectRatio(
       aspectRatio: 16 / 9,
       child: GestureDetector(
@@ -366,6 +383,10 @@ class PortraitWatchScreenState extends State<PortraitWatchScreen> {
                                 onCaptions();
                               }),
                             ],
+                            if (widget.onQuality case final onQuality?) ...[
+                              const SizedBox(width: 12),
+                              _qualityButton(tuner, onQuality),
+                            ],
                             if (widget.watchTogether case final b?) ...[
                               const SizedBox(width: 12),
                               _PlayerButton(label: b.label, icon: b.icon, onPressed: () {
@@ -403,25 +424,98 @@ class PortraitWatchScreenState extends State<PortraitWatchScreen> {
   }
 }
 
+extension on PortraitWatchScreenState {
+  /// Quality and the cap in effect; "Auto", greyed and inert, on a YouTube
+  /// channel (player-options).
+  Widget _qualityButton(Tuner tuner, VoidCallback onQuality) => _PlayerButton(
+        key: const ValueKey('portrait-quality'),
+        label: tr.playerQualityValue(qualityButtonValue(tuner)),
+        icon: Icons.high_quality,
+        onPressed: qualityAvailable(tuner)
+            ? () {
+                widget.onTouch?.call();
+                onQuality();
+              }
+            : null,
+      );
+
+  /// A YouTube channel (youtube-playback D9): YouTube's player at the full
+  /// width with nothing over it (touch reaches YouTube's own controls), and
+  /// the channel number, Paused chip and buttons in a row under it.
+  Widget _youTubePlayer(GuideTheme g, Tuner tuner) {
+    void touch(VoidCallback f) {
+      widget.onTouch?.call();
+      f();
+    }
+
+    return Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      AspectRatio(
+        aspectRatio: 16 / 9,
+        child: ColoredBox(
+          color: Colors.black,
+          child: FittedBox(child: SizedBox.fromSize(size: ScreenLayout.tvCanvas, child: widget.picture)),
+        ),
+      ),
+      Padding(
+        padding: const EdgeInsets.fromLTRB(12, 10, 12, 4),
+        child: FittedBox(
+          fit: BoxFit.scaleDown,
+          alignment: Alignment.centerRight,
+          child: Row(mainAxisSize: MainAxisSize.min, children: [
+            if (widget.numberEntry case final text?) ...[
+              ChannelNumberOsd(text: text),
+              const SizedBox(width: 12),
+            ] else if (tuner.paused) ...[
+              const PausedChip(),
+              const SizedBox(width: 12),
+            ],
+            if (widget.onSleep case final onSleep?) ...[
+              _PlayerButton(label: tr.sleep, icon: Icons.bedtime, onPressed: () => touch(onSleep)),
+              const SizedBox(width: 12),
+            ],
+            _PlayerButton(label: tr.menu, icon: Icons.settings, onPressed: () => touch(widget.onMenu)),
+            if (widget.onCaptions case final onCaptions?) ...[
+              const SizedBox(width: 12),
+              _PlayerButton(label: captionsButtonLabel(tuner), icon: Icons.closed_caption, onPressed: () => touch(onCaptions)),
+            ],
+            if (widget.onQuality case final onQuality?) ...[
+              const SizedBox(width: 12),
+              _qualityButton(tuner, onQuality),
+            ],
+            const SizedBox(width: 12),
+            _PlayerButton(label: tr.fullScreen, icon: Icons.fullscreen, onPressed: widget.onFullScreen),
+          ]),
+        ),
+      ),
+    ]);
+  }
+}
+
 /// A finger-sized button over the player.
 class _PlayerButton extends StatelessWidget {
-  const _PlayerButton({required this.label, required this.icon, required this.onPressed});
+  const _PlayerButton({super.key, required this.label, required this.icon, required this.onPressed});
 
   final String label;
   final IconData icon;
-  final VoidCallback onPressed;
+
+  /// Null: greyed, and a tap does nothing.
+  final VoidCallback? onPressed;
 
   @override
   Widget build(BuildContext context) {
     final g = context.guide;
     return Semantics(
       button: true,
+      enabled: onPressed != null,
       label: label,
       excludeSemantics: true,
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
-        onTap: onPressed,
-        child: Container(
+        // Disabled, it still takes the tap: it isn't a tap on the player.
+        onTap: onPressed ?? () {},
+        child: Opacity(
+          opacity: onPressed == null ? 0.4 : 1,
+          child: Container(
           height: 80,
           padding: const EdgeInsets.symmetric(horizontal: 22),
           decoration: BoxDecoration(
@@ -437,6 +531,7 @@ class _PlayerButton extends StatelessWidget {
               Text(label, style: g.display(26, weight: FontWeight.w700)),
             ],
           ),
+        ),
         ),
       ),
     );
@@ -600,6 +695,8 @@ class _ChannelRow extends StatelessWidget {
     final g = context.guide;
     final on = _nowNext(schedule, now);
     final p = on?.now;
+    // The program on now in its server's colour (guide-server-colors).
+    final tint = p == null ? null : AppScope.of(context).colorOf(channel, p);
     return GestureDetector(
       onLongPress: onLongPress,
       onSecondaryTap: onLongPress,
@@ -613,7 +710,7 @@ class _ChannelRow extends StatelessWidget {
             margin: const EdgeInsets.only(bottom: 3),
             padding: EdgeInsets.fromLTRB(gutter - (tuned ? 8 : 0), 14, gutter, 14),
             decoration: BoxDecoration(
-              color: focused ? g.focus : (tuned ? g.cellBorder : g.channelColumn),
+              color: focused ? g.focus : (tuned ? g.cellBorder : tint?.cell ?? g.channelColumn),
               border: tuned ? Border(left: BorderSide(color: g.accent, width: 8)) : null,
             ),
             child: Row(
@@ -748,8 +845,11 @@ class ChannelScheduleSheet extends StatelessWidget {
                         shrinkWrap: true,
                         children: [
                           for (final p in programs)
-                            Padding(
-                              padding: const EdgeInsets.symmetric(vertical: 10),
+                            Container(
+                              margin: const EdgeInsets.symmetric(vertical: 4),
+                              // Each program in its server's colour (guide-server-colors).
+                              padding: EdgeInsets.symmetric(vertical: 6, horizontal: app.guideColorsOn ? 8 : 0),
+                              color: app.colorOf(channel, p)?.cell,
                               child: Row(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [

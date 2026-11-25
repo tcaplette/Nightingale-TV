@@ -52,4 +52,32 @@ void main() {
       expect(codes, [1]);
     });
   });
+
+  test('quitting: exit hooks, then beforeClosing, then the window', () async {
+    final order = <String>[];
+    final close = closeApp;
+    addTearDown(() => closeApp = close);
+    closeApp = () async => order.add('window');
+    exitHooks.add(() async => order.add('exit hook'));
+    await quitApp(beforeClosing: () async => order.add('before closing'));
+    expect(order, ['exit hook', 'before closing', 'window']);
+  });
+
+  test('quitting: saves still being written, in any storage, are on disk before the app closes', () async {
+    final dir = await Directory.systemTemp.createTemp('nightingale_tv_quit');
+    addTearDown(() => dir.delete(recursive: true));
+    final profile = await AppStorage.at(Directory('${dir.path}/profile'));
+    final close = closeApp;
+    addTearDown(() => closeApp = close);
+    final big = [for (var i = 0; i < 100000; i++) 'item $i'];
+    String? onDisk;
+    closeApp = () async => onDisk = await profile.readJson('marker.json').then((v) => v == null ? null : '${(v as Map)['done']}');
+    // Queued by an exit hook's own work, not awaited by it.
+    exitHooks.add(() async {
+      unawaited(profile.writeJson('marker.json', {'big': big, 'done': false}));
+      unawaited(profile.writeJson('marker.json', {'big': big, 'done': true}));
+    });
+    await quitApp();
+    expect(onDisk, 'true');
+  });
 }

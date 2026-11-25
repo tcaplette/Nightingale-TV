@@ -69,8 +69,31 @@ class LiveTvManager extends ChangeNotifier {
     for (final s in _sources) {
       s.forgetDeparted(now);
       _entries[s.id] = await cache.load(s.id);
+      await _checkFiles(s);
     }
     _schedules.clear();
+  }
+
+  /// Picked files a source names that aren't on the device (a backup left
+  /// them out, backup-simplify D7), by source id.
+  final _missing = <String, LiveFileMissing>{};
+
+  /// Which of [s]'s picked files has to be picked again, if one does: the
+  /// playlist first, since without it there are no channels.
+  LiveFileMissing? missingFile(LiveSource s) => _missing[s.id];
+
+  Future<void> _checkFiles(LiveSource s) async {
+    Future<bool> gone(String? name) async => name != null && !await store.fileFor(name).exists();
+    final missing = await gone(s.playlistFile)
+        ? LiveFileMissing.playlist
+        : await gone(s.guideFile)
+            ? LiveFileMissing.guide
+            : null;
+    if (missing == null) {
+      _missing.remove(s.id);
+    } else {
+      _missing[s.id] = missing;
+    }
   }
 
   /// Whether [s]'s channels join the lineup now: always for M3U; for server
@@ -346,6 +369,7 @@ class LiveTvManager extends ChangeNotifier {
     final entry = entryFor(source);
     final now = _now();
     var groupsChanged = false;
+    await _checkFiles(source);
     notifyListeners();
     try {
       if (channels) {
@@ -598,3 +622,6 @@ class LiveTvManager extends ChangeNotifier {
     super.dispose();
   }
 }
+
+/// A picked file a Live TV source names but the device doesn't have.
+enum LiveFileMissing { playlist, guide }

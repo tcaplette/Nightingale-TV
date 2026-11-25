@@ -57,7 +57,7 @@ void main() {
   });
 
   test('English when the request names no supported language', () async {
-    expect(((await asking('ja')).json as Map)['error'], 'Sign in first.');
+    expect(((await asking('ko')).json as Map)['error'], 'Sign in first.');
     expect(((await asking(null)).json as Map)['error'], 'Sign in first.');
   });
 
@@ -73,6 +73,14 @@ void main() {
       final r = await admin.edit('PUT', '/api/v1/profiles/$id', body: {'language': 'pt'}, revisionOf: '/api/v1/profiles');
       expect(r.status, 200);
       expect(household.profileById(id)!.language, 'pt');
+    });
+
+    test('a full tag is saved as it is', () async {
+      final id = await signedInProfile();
+      final r = await admin.edit('PUT', '/api/v1/profiles/$id', body: {'language': 'zh-Hant-HK'}, revisionOf: '/api/v1/profiles');
+      expect(r.status, 200);
+      expect(household.profileById(id)!.language, 'zh-Hant-HK');
+      expect((r.json as Map).toString(), contains('zh-Hant-HK'));
     });
 
     test('an unsupported value is refused', () async {

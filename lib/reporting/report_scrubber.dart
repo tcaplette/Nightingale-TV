@@ -44,6 +44,18 @@ class ReportScrubber {
       ..sort((a, b) => b.length.compareTo(a.length));
   }
 
+  // A share's address, wherever it's written (smb-sources): with its
+  // folders and file, up to the end of the line, a quote or ": ".
+  static final _shareUrl = RegExp(r'''(?<![A-Za-z0-9+.\-])(?:smb|cifs)://[^\n'"<>]*?(?=: |['"<>\n]|$)''', caseSensitive: false);
+  static final _unc = RegExp(r'''\\\\[^\n'"<>]*?(?=: |['"<>\n]|$)''');
+  // libsmb2's form: //host/share/…
+  static final _slashShare = RegExp(r'''(?<![A-Za-z0-9:/])//[A-Za-z0-9\[][^\s'"<>/]*(?:/[^\n'"<>]*?)?(?=: |['"<>\n]|$)''');
+  // A media or subtitle file's name or path on a share, its folders
+  // included; not a URL's path, nor one on this device (~, /).
+  static final _mediaFile = RegExp(
+      r'''(?<=^|[\s'"(\[])(?![~/<])[^\s'"<>:]*(?:[/\\][^\n'"<>:/\\]*)*\.(?:mkv|mp4|m4v|avi|mov|wmv|asf|mpg|mpeg|ts|m2ts|vob|flv|webm|ogv|divx|rmvb|3gp|mp3|m4a|flac|ogg|opus|wav|wma|srt|ass|ssa|vtt|nfo)\b''',
+      caseSensitive: false);
+
   // `file://` URLs are paths, not servers.
   static final _url = RegExp(r'''(?<![A-Za-z0-9+.\-])(?!file:)[A-Za-z][A-Za-z0-9+.\-]*://[^\s/?#'"<>\\]*''');
   static final _serverQuery = RegExp(r'''(<server>[^\s?#'"<>]*)\?[^\s#'"<>]*''');
@@ -54,6 +66,10 @@ class ReportScrubber {
   static final _secret = RegExp(
       r'''((?:X-Plex-Token|X-Emby-Token|X-MediaBrowser-Token|api[_-]?key|access[_-]?token|accesstoken|token|password|passwd|pw)["']?\s*[=:]\s*["']?)([^\s"'&,;<>]+)''',
       caseSensitive: false);
+  // Google's tokens and clients (youtube-subscriptions D4): access and
+  // refresh tokens, client ids and secrets.
+  static final _google = RegExp(
+      r'(?:ya29\.[A-Za-z0-9_\-.]+|1//[A-Za-z0-9_\-]+|[0-9]+-[A-Za-z0-9_]+\.apps\.googleusercontent\.com|GOCSPX-[A-Za-z0-9_\-]+)');
   static final _hex = RegExp(r'(?<![A-Za-z0-9])[0-9A-Fa-f]{20,}(?![A-Za-z0-9])');
   // Base64- or token-like: 20+ characters with letters and digits.
   static final _tokenLike =
@@ -70,10 +86,17 @@ class ReportScrubber {
       s = s.replaceAll(f, '~');
     }
     s = s.replaceAll(_homePath, '~').replaceAll(_androidData, '~');
+    // Google's tokens and client ids, before a refresh token's `//` can be
+    // read as a share.
+    s = s.replaceAll(_google, '<redacted>');
+    // Shares, their folders and their files.
+    s = s.replaceAll(_shareUrl, '<share>').replaceAll(_unc, '<share>').replaceAll(_slashShare, '<share>');
     // 1. Query strings go, server addresses become <server>.
     s = s.replaceAll(_url, '<server>').replaceAll(_ipv6, '<server>').replaceAll(_ipv4, '<server>');
     // Punctuation after a URL belongs to the sentence.
     s = s.replaceAllMapped(_serverQuery, (m) => m[1]! + (RegExp(r'[.,;:!)\]]+$').firstMatch(m[0]!)?[0] ?? ''));
+    // A share's files named outside a URL.
+    s = s.replaceAll(_mediaFile, '<file>');
     // 2. Known secrets (headers, JSON, relative URLs).
     s = s.replaceAllMapped(_authorization, (m) => '${m[1]}<redacted>');
     s = s.replaceAllMapped(_secret, (m) => '${m[1]}<redacted>');

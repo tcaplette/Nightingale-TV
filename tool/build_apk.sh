@@ -15,6 +15,8 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 tool/check_version.sh
+# Converting files of SMB shares on the device (smb-conversion).
+tool/build_ffmpeg_android.sh
 source tool/store_checks.sh
 source tool/debug_files.sh
 store_refuse_test_defines error_reporting.env
@@ -30,6 +32,9 @@ DEFINES=()
 # or your own: sharing.env.example, SELF_HOSTING.md); without it the app is
 # built with no sharing at all.
 [[ -f sharing.env ]] && DEFINES+=(--dart-define-from-file=sharing.env)
+# YouTube's shared Google client (youtube-subscriptions D4).
+source tool/youtube_client.sh
+youtube_client_check
 
 if [[ ! -f android/key.properties ]]; then
   cat >&2 <<'HELP'
@@ -108,6 +113,7 @@ echo "Checking debug files:"
 for apk in "${OUT[@]}"; do
   debug_files_check_android "$apk" "$SYMBOLS"
 done
+debug_files_engine "$SYMBOLS"
 
 echo "Built and verified:"
 for apk in "${OUT[@]}"; do

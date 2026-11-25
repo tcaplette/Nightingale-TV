@@ -10,7 +10,7 @@ import 'library_index.dart';
 ///   movies on title and year, songs on artist, album and title, music
 ///   videos on artist and title. Episodes without numbers and movies without
 ///   a year never match;
-/// - commercials never merge.
+/// - commercials and home videos never merge.
 ///
 /// A merged entry keeps the id it had in [previous] while that copy exists,
 /// else the first copy's; the others become its alternates. Its play count
@@ -46,6 +46,11 @@ LibraryIndex mergeLibraries(List<LibraryIndex> parts, {LibraryIndex? previous, D
     final byRule = <String, int>{};
     for (final part in parts) {
       for (final e in of(part)) {
+        // Nobody else has a home video.
+        if (e.isHome) {
+          groups.add([e]);
+          continue;
+        }
         int? group;
         for (final p in e.providerIds) {
           group ??= byProvider[p];
@@ -105,6 +110,8 @@ LibraryIndex mergeLibraries(List<LibraryIndex> parts, {LibraryIndex? previous, D
     commercials: [for (final p in parts) ...p.commercials],
     songs: songs,
     musicVideos: musicVideos,
+    // Each YouTube server's own videos; never merged with another copy.
+    youtubeVideos: [for (final p in parts) ...p.youtubeVideos],
     fetchedAt: fetchedAt ?? DateTime.now(),
     rootsByItem: rootsByItem,
     roots: {for (final p in parts) ...p.roots},
@@ -129,6 +136,7 @@ List<LibraryIndex> _sameShows(List<LibraryIndex> parts) {
   final mainKeys = {for (final s in ranked.first.series) s.key};
   for (final part in ranked) {
     for (final s in part.series) {
+      if (s.isHome) continue;
       final known = byName[name(s)];
       if (known == null || yearless(known.key) && !yearless(s.key) && !mainKeys.contains(known.key)) {
         byName[name(s)] = s;
@@ -136,6 +144,7 @@ List<LibraryIndex> _sameShows(List<LibraryIndex> parts) {
     }
   }
   String byNameRule(SeriesEntry s) {
+    if (s.isHome) return s.key;
     final known = byName[name(s)];
     if (known == null || known.key == s.key) return s.key;
     if (ShowIdentity.providersAgree(known.providerIds, s.providerIds) == false) return s.key;
@@ -173,6 +182,7 @@ LibraryIndex _rekeyed(LibraryIndex part, Map<String, String> keys) {
     commercials: part.commercials,
     songs: part.songs,
     musicVideos: part.musicVideos,
+    youtubeVideos: part.youtubeVideos,
     fetchedAt: part.fetchedAt,
     rootsByItem: part.rootsByItem,
     roots: part.roots,

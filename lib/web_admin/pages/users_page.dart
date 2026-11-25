@@ -45,7 +45,7 @@ class UsersPage extends StatelessWidget {
                       if (u['role'] != 'admin')
                         (u['profiles'] as List).isEmpty
                             ? tr.noProfiles
-                            : (u['profiles'] as List).map((id) => names[id] ?? id).join(', '),
+                            : (u['profiles'] as List).map((id) => names[id] ?? id).join(tr.listSeparator),
                       if (u['disabled'] == true) tr.turnedOff,
                       if (u['needsPassword'] == true) tr.needsAPassword2,
                     ].join(' · ')),

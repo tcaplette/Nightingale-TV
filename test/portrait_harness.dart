@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:nightingale_tv/app_scope.dart';
 import 'package:nightingale_tv/app_state.dart';
+import 'package:nightingale_tv/l10n/language_controller.dart';
 import 'package:nightingale_tv/library/library_index.dart';
 import 'package:nightingale_tv/platform/orientation.dart';
 import 'package:nightingale_tv/platform/platform_info.dart';
@@ -76,7 +77,11 @@ class PortraitHarness {
       dir = await Directory.systemTemp.createTemp('nightingale_tv_portrait');
       await writeHousehold(dir, [Profile(id: 'mom0000000000001', name: 'Mom')],
           library ?? portraitLibrary());
-      h = await openHousehold(dir);
+      // Automatic follows the test device's languages (a test sets them
+      // with localesTestValue), as it follows the device's in the app.
+      h = await openHousehold(dir,
+          language: LanguageController(
+              deviceLanguages: () => [for (final l in tester.platformDispatcher.locales) l.toLanguageTag()]));
       await h.select(h.profiles.first);
       h.app!.client = FakeClient([]);
     });

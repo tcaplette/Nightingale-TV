@@ -4,6 +4,10 @@ import '../channels/schedule.dart';
 import '../library/library_index.dart';
 import 'channel_recipe.dart';
 import 'recipe_matcher.dart';
+import '../l10n/tr.dart';
+
+/// The id a home video goes by in a party: it matches nothing.
+const homeVideoId = 'home:video';
 
 /// One program as a party timeline carries it (watch-together D1): a
 /// channel-sharing recipe item, an episode with its show. Nothing of the
@@ -24,6 +28,8 @@ class PartyItem {
   /// [e] from [library] as a party item; null for anything but an episode
   /// with a show or a movie.
   static PartyItem? of(MediaEntry e, LibraryIndex library) {
+    // A home video goes as "Home video", with nothing of its own.
+    if (e.isHome) return PartyItem(RecipeItem.movie(ids: const [homeVideoId], title: tr.smbHomeVideo, runtime: e.runtime));
     switch (e.kind) {
       case MediaKind.episode:
         final key = e.seriesKey;

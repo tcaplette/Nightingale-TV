@@ -65,6 +65,9 @@ class ProfileServer {
         if (userId != null) 'userId': userId,
         if (userName != null) 'userName': userName,
         if (qualityLimit != null) 'qualityLimit': qualityLimit,
+        // YouTube with its own Google client: the restore asks for it first,
+        // since its secret never goes in a backup.
+        if (session?.clientId != null || hint?['ownClient'] == true) 'ownClient': true,
       };
 }
 
@@ -162,11 +165,23 @@ class ServerSet {
   /// A new added server's key; never one used before in this profile.
   String takeKey() => 's${nextKey++}';
 
-  /// Moves [key] [delta] places in Play from.
+  /// The key [takeKey] gives next (a client made before its server is
+  /// added).
+  String peekKey() => 's$nextKey';
+
+  /// Moves [key] [delta] places in Play from, among the servers that have
+  /// a place in it (YouTube servers don't).
   void move(String key, int delta) {
+    bool inPlayFrom(String k) => byKey(k)?.kind != ServerKind.youtube;
     final i = order.indexOf(key);
-    final j = i + delta;
-    if (i < 0 || j < 0 || j >= order.length) return;
+    if (i < 0 || delta == 0) return;
+    var j = i, left = delta.abs();
+    final step = delta.sign;
+    while (left > 0) {
+      j += step;
+      if (j < 0 || j >= order.length) return;
+      if (inPlayFrom(order[j])) left--;
+    }
     order
       ..removeAt(i)
       ..insert(j, key);

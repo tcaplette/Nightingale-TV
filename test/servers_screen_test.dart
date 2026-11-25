@@ -98,6 +98,18 @@ void main() {
     expect(focused(), 'Add a server');
   });
 
+  testWidgets('the line naming what can be added sits directly above Add a server (server-kinds-wording)', (tester) async {
+    await start(tester);
+    const help = "You can add Jellyfin, Emby, Plex, YouTube and SMB shares (a NAS, or a computer's shared folder).";
+    expect(find.text(help), findsOneWidget);
+    final helpBox = tester.getRect(find.text(help));
+    final addBox = tester.getRect(find.widgetWithText(TvButton, 'Add a server'));
+    final lineupBox = tester.getRect(find.textContaining('Programs from every'));
+    expect(helpBox.top, greaterThan(lineupBox.bottom), reason: 'after the lineup line');
+    expect(addBox.top, greaterThan(helpBox.bottom), reason: 'above Add a server');
+    expect(addBox.top - helpBox.bottom, lessThan(40), reason: 'directly above it');
+  });
+
   testWidgets('Move up with the D-pad puts Plex first, kept after a restart', (tester) async {
     await start(tester);
     // Down to the Plex row's buttons: Move up is its first enabled one.

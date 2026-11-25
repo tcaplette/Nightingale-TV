@@ -1,13 +1,16 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:math';
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:nightingale_tv/app_state.dart';
 import 'package:nightingale_tv/backup/backup_archive.dart';
 import 'package:nightingale_tv/backup/backup_restorer.dart';
+import 'package:nightingale_tv/backup/backup_scheduler.dart';
 import 'package:nightingale_tv/backup/backup_store.dart';
 import 'package:nightingale_tv/data/app_storage.dart';
+import 'package:nightingale_tv/profiles/household.dart';
 import 'package:nightingale_tv/profiles/profile.dart';
 
 import 'backup_fixtures.dart';
@@ -303,131 +306,311 @@ void main() {
     });
   });
 
-  group('the store', () {
+  group('the store (backup-simplify D1)', () {
     late BackupStore store;
-    late List<int> bytes;
+    late Uint8List bytes;
 
     setUp(() async {
       store = BackupStore(Directory('${dir.path}/backups'));
       bytes = (await household(logos: 0)).bytes;
     });
 
-    Future<StoredBackup> save(String kind, int day) =>
-        store.save(Uint8List.fromList(bytes), kind: kind, at: DateTime.utc(2026, 1, 1).add(Duration(days: day)));
-
-    test('files are named by time and kind, listed newest first', () async {
-      await save(BackupReason.daily, 1);
-      await save(BackupReason.manual, 3);
-      await save(BackupReason.beforeReset, 2);
-      final list = await store.list();
-      expect([for (final b in list) b.kind], [BackupReason.manual, BackupReason.beforeReset, BackupReason.daily]);
-      expect(list.first.name, '20260104T000000000Z_manual.ntvbackup');
-      expect([for (final b in list) b.kindLabel], ['Made by you', 'Before reset', 'Automatic']);
-    });
-
-    test('pruning keeps 14 dailies and 10 safety backups, and every user-made one', () async {
-      for (var i = 0; i < 20; i++) {
-        await save(BackupReason.daily, i);
-        await save(i.isEven ? BackupReason.beforeReset : BackupReason.beforeDelete, i);
+    test('two fixed files: the automatic backup in cloud/, the undo point beside it', () async {
+      expect(await store.latest(), isNull);
+      expect(await store.undo(), isNull);
+      await store.writeLatest(bytes);
+      await store.writeUndo(bytes);
+      expect(store.latestFile.path, endsWith('backups/cloud/latest.ntvbackup'));
+      expect(store.undoFile.path, endsWith('backups/undo.ntvbackup'));
+      expect((await store.latest())!.fingerprint, (await store.undo())!.fingerprint);
+      // Writing again replaces, never adds.
+      for (var i = 0; i < 5; i++) {
+        await store.writeLatest(bytes);
+        await store.writeUndo(bytes);
       }
-      await save(BackupReason.manual, 0);
-      await save(BackupReason.file, 0);
-      final list = await store.list();
-      expect(list.where((b) => b.kind == BackupReason.daily), hasLength(14));
-      expect(list.where((b) => b.isSafety), hasLength(10));
-      expect(list.where((b) => b.kind == BackupReason.manual), hasLength(1));
-      expect(list.where((b) => b.kind == BackupReason.file), hasLength(1));
-      // The newest of each are the ones kept.
-      expect(list.where((b) => b.kind == BackupReason.daily).last.savedAt, DateTime.utc(2026, 1, 7));
+      expect(_names(store.dir), {'cloud/latest.ntvbackup', 'undo.ntvbackup'});
     });
 
-    test('a fifteenth daily removes only the oldest daily', () async {
-      for (var i = 0; i < 14; i++) {
-        await save(BackupReason.daily, i + 10);
-      }
-      await save(BackupReason.beforeRestore, 0);
-      await save(BackupReason.manual, 1);
-      final before = {for (final b in await store.list()) b.name};
-      await save(BackupReason.daily, 30);
-      final after = {for (final b in await store.list()) b.name};
-      expect(before.difference(after), {'20260111T000000000Z_daily.ntvbackup'});
-      expect(after.difference(before), {'20260131T000000000Z_daily.ntvbackup'});
-    });
-
-    test('the cloud copy is always the newest backup', () async {
-      Future<void> expectCloudIsNewest() async {
-        final newest = await store.newest();
-        expect(await store.cloudCopy.readAsBytes(), await newest!.file.readAsBytes());
+    test('the undo label names the action', () async {
+      Future<String> label(String reason, [String? subject]) async {
+        final b = await BackupArchive.build(dir, reason: reason, device: 'TV', subject: subject);
+        return (await store.writeUndo(b.bytes)).undoLabel;
       }
 
-      await save(BackupReason.daily, 1);
-      await expectCloudIsNewest();
-      final other = (await BackupArchive.build(dir, reason: BackupReason.manual, device: 'Other')).bytes;
-      final manual = await store.save(other, kind: BackupReason.manual, at: DateTime.utc(2026, 2, 1));
-      await expectCloudIsNewest();
-      expect(await store.cloudCopy.readAsBytes(), other);
-      await store.delete(manual);
-      await expectCloudIsNewest();
-      await store.delete((await store.newest())!);
-      expect(await store.cloudCopy.exists(), isFalse);
+      expect(await label(BackupReason.beforeRestore), 'Undo restore');
+      expect(await label(BackupReason.beforeReset), 'Undo lineup reset');
+      expect(await label(BackupReason.beforeDelete, 'Kids'), 'Undo deleting Kids');
+      expect(await label(BackupReason.beforeDelete), 'Undo deleting a profile');
+      expect(await label(BackupReason.beforeUpgrade), 'Undo update');
+      expect(await label(BackupReason.beforeLineupCleanup), 'Undo lineup cleanup');
     });
 
-    test('the list goes by when each backup was made; opened files aren\'t this setup\'s', () async {
-      // Made now (save() only sets when it's saved).
-      final daily = await save(BackupReason.daily, 5);
-      // A file made long ago, opened today.
-      final old = (await BackupArchive.build(dir,
-              reason: BackupReason.manual, device: 'Old TV', createdAt: DateTime.utc(2025, 6, 1)))
-          .bytes;
-      await store.save(old, kind: BackupReason.file, at: DateTime.utc(2026, 1, 9));
-      final newer = (await BackupArchive.build(dir,
-              reason: BackupReason.manual, device: 'Test TV', createdAt: DateTime.utc(2026, 1, 10)))
-          .bytes;
-      await store.save(newer, kind: BackupReason.file, at: DateTime.utc(2026, 1, 10));
-      final list = await store.list();
-      expect([for (final b in list) b.createdAt], [daily.createdAt, DateTime.utc(2026, 1, 10), DateTime.utc(2025, 6, 1)]);
-      expect([for (final b in list) b.kind], [BackupReason.daily, BackupReason.file, BackupReason.file]);
-      // A file from another device made after it: listed first, but the
-      // cloud copy and "Last backup" stay with this setup's daily.
-      final elsewhere = (await BackupArchive.build(dir,
-              reason: BackupReason.manual, device: 'Other TV', createdAt: DateTime.now().add(const Duration(hours: 1))))
-          .bytes;
-      await store.save(elsewhere, kind: BackupReason.file);
-      final again = await store.list();
-      expect(again.first.archive.device, 'Other TV');
-      expect(BackupStore.newestOwn(again)!.name, daily.name);
-      expect(await store.cloudCopy.readAsBytes(), await daily.file.readAsBytes());
-    });
-
-    test('a cloud copy alone (as Android restores it) is listed as a backup', () async {
-      await save(BackupReason.daily, 1);
-      final copy = await store.cloudCopy.readAsBytes();
-      await store.dir.delete(recursive: true);
+    test('a damaged file reads as none, and a crash mid-write leaves no partial backup', () async {
       await store.cloudDir.create(recursive: true);
-      await store.cloudCopy.writeAsBytes(copy);
-      final list = await store.list();
-      expect(list, hasLength(1));
-      expect(list.single.kind, BackupReason.manual);
-      expect(await list.single.file.readAsBytes(), copy);
-      // Listed once, not again on the next look.
-      expect(await store.list(), hasLength(1));
-    });
-
-    test('a crash mid-write leaves no partial .ntvbackup', () async {
-      await save(BackupReason.daily, 1);
-      // A write cut short leaves only its temp file, which isn't listed.
-      await File('${store.dir.path}/.20260105T000000000Z_daily.ntvbackup.123.partial')
-          .writeAsBytes(bytes.sublist(0, 10));
-      final names = [for (final f in store.dir.listSync()) f.uri.pathSegments.last];
-      expect(names.where((n) => n.endsWith('.ntvbackup')), hasLength(1));
-      expect(await store.list(), hasLength(1));
-      // A damaged file in the folder isn't listed either.
-      await File('${store.dir.path}/20260106T000000000Z_daily.ntvbackup').writeAsBytes(bytes.sublist(0, 10));
-      expect(await store.list(), hasLength(1));
-      // And a failing write leaves nothing behind.
-      await store.dir.delete(recursive: true);
-      await File(store.dir.path).writeAsString('in the way');
-      await expectLater(save(BackupReason.daily, 2), throwsA(isA<FileSystemException>()));
+      await store.latestFile.writeAsBytes(bytes.sublist(0, 10));
+      expect(await store.latest(), isNull);
+      await store.writeLatest(bytes);
+      expect(await store.latest(), isNotNull);
+      // A failing write leaves the folder as it was, with no temp file.
+      await Directory(store.undoFile.path).create();
+      await expectLater(store.writeUndo(bytes), throwsA(isA<FileSystemException>()));
+      expect(store.dir.listSync().where((f) => f.path.endsWith('.partial')), isEmpty);
     });
   });
+
+  group('clearing out older backups (backup-simplify D10)', () {
+    late BackupStore store;
+    final now = DateTime.utc(2026, 11, 24, 12);
+
+    setUp(() async {
+      store = BackupStore(Directory('${dir.path}/backups'));
+      await writeHousehold(dir, momAndKids(), fakeLibrary());
+    });
+
+    /// An old-style `<stamp>_<reason>.ntvbackup` made [ago] before [now].
+    Future<File> old(String reason, Duration ago, {String device = 'Test TV'}) async {
+      final at = now.subtract(ago);
+      final b = await BackupArchive.build(dir, reason: reason, device: device, createdAt: at);
+      String two(int n) => n.toString().padLeft(2, '0');
+      final stamp = '${at.year}${two(at.month)}${two(at.day)}T${two(at.hour)}${two(at.minute)}${two(at.second)}'
+          '${at.millisecond.toString().padLeft(3, '0')}Z';
+      await store.dir.create(recursive: true);
+      return File('${store.dir.path}/${stamp}_$reason.ntvbackup')..writeAsBytesSync(b.bytes);
+    }
+
+    test('14 daily, 9 safety and 3 made by you become latest and undo', () async {
+      for (var i = 0; i < 14; i++) {
+        await old(BackupReason.daily, Duration(days: i + 2));
+      }
+      for (var i = 0; i < 9; i++) {
+        await old(i == 0 ? BackupReason.beforeReset : BackupReason.beforeDelete, Duration(days: i + 1));
+      }
+      for (var i = 0; i < 3; i++) {
+        await old(BackupReason.manual, Duration(days: 3 + i, hours: 1), device: 'Mine $i');
+      }
+      // A newer file opened from elsewhere is never this setup's.
+      await old('file', const Duration(hours: 1), device: 'Elsewhere');
+      await old('from-official', const Duration(hours: 2), device: 'Elsewhere');
+      await File('${store.dir.path}/.20261120T000000000Z_daily.ntvbackup.99999.partial').writeAsBytes([1, 2, 3]);
+
+      await store.clearOldBackups(now: now);
+
+      expect(_names(store.dir), {'cloud/latest.ntvbackup', 'undo.ntvbackup'});
+      // The newest of this setup's own: yesterday's, not the newer opened files.
+      expect((await store.latest())!.createdAt, now.subtract(const Duration(days: 1)));
+      expect((await store.latest())!.archive.device, 'Test TV');
+      final undo = (await store.undo())!;
+      expect(undo.reason, BackupReason.beforeReset);
+      expect(undo.undoLabel, 'Undo lineup reset');
+      // Once only: nothing old is left to clear.
+      await store.clearOldBackups(now: now);
+      expect(_names(store.dir), {'cloud/latest.ntvbackup', 'undo.ntvbackup'});
+    });
+
+    test('a safety backup older than 7 days isn\'t kept; a newer latest stays', () async {
+      await old(BackupReason.beforeReset, const Duration(days: 21));
+      await old(BackupReason.daily, const Duration(days: 3));
+      final newer = await BackupArchive.build(dir, reason: BackupReason.daily, device: 'Now', createdAt: now);
+      await store.writeLatest(newer.bytes);
+      await store.clearOldBackups(now: now);
+      expect(_names(store.dir), {'cloud/latest.ntvbackup'});
+      expect((await store.latest())!.archive.device, 'Now');
+      expect(await store.undo(), isNull);
+    });
+
+    test('a folder with nothing old is left alone', () async {
+      final b = await BackupArchive.build(dir, reason: BackupReason.daily, device: 'TV');
+      await store.writeLatest(b.bytes);
+      final before = store.latestFile.statSync().modified;
+      await store.clearOldBackups(now: now);
+      expect(store.latestFile.statSync().modified, before);
+    });
+  });
+
+  group('the automatic backup and the undo point (backup-simplify D2, D4)', () {
+    late Household h;
+    late BackupScheduler backups;
+
+    setUp(() async {
+      await writeHousehold(dir, momAndKids(), fakeLibrary());
+      h = await openHousehold(dir);
+      backups = h.backups!;
+    });
+
+    tearDown(() {
+      h.leave();
+      backups.dispose();
+    });
+
+    Future<void> editSettings(void Function(Map<String, Object?> s) edit) async {
+      final storage = AppStorage.existing(Directory('${dir.path}/profiles/${momAndKids().first.id}'));
+      final settings = {...await storage.readRaw('settings.json') as Map<String, Object?>};
+      edit(settings);
+      await storage.writeJson('settings.json', settings);
+      await storage.flush();
+    }
+
+    test('watching doesn\'t rewrite it; a rename does; it stays the only file', () async {
+      expect(await backups.automaticCheck(), isNotNull);
+      final first = (await backups.store.latest())!;
+      for (var i = 0; i < 10; i++) {
+        await editSettings((s) => s
+          ..['lastChannelId'] = 'ch$i'
+          ..['guideTab'] = 'tab$i');
+        expect(await backups.automaticCheck(), isNull, reason: 'channel change $i');
+      }
+      expect((await backups.store.latest())!.createdAt, first.createdAt);
+
+      final storage = AppStorage.existing(Directory('${dir.path}/profiles/${momAndKids().first.id}'));
+      final channels = (await storage.readRaw('channels.json') as List).cast<Map<String, Object?>>();
+      channels.first['name'] = 'Renamed';
+      await storage.writeJson('channels.json', channels);
+      await storage.flush();
+      final again = await backups.automaticCheck();
+      expect(again, isNotNull);
+      expect(jsonEncode(again!.archive.profiles[momAndKids().first.id]!.channels), contains('Renamed'));
+      // It still holds where the profile was watching.
+      expect(again.archive.profiles[momAndKids().first.id]!.settings!['lastChannelId'], 'ch9');
+      expect(_names(backups.store.dir), {'cloud/latest.ntvbackup'});
+    });
+
+    test('a month of changes leaves two files at most', () async {
+      for (var day = 0; day < 30; day++) {
+        await editSettings((s) => s['marker'] = 'day $day');
+        await backups.automaticCheck();
+        if (day % 7 == 0) await backups.saveUndoPoint(BackupReason.beforeReset);
+      }
+      expect(_names(backups.store.dir), {'cloud/latest.ntvbackup', 'undo.ntvbackup'});
+    });
+
+    test('the undo point replaces the one before, and is skipped only for the same household and change', () async {
+      await backups.saveUndoPoint(BackupReason.beforeDelete, subject: 'Kids');
+      expect((await backups.store.undo())!.undoLabel, 'Undo deleting Kids');
+      // The same household and change: nothing new saved.
+      expect(await backups.saveUndoPoint(BackupReason.beforeDelete, subject: 'Kids'), isNull);
+      // The same household for another change: saved again, so the button
+      // names the change it undoes.
+      expect(await backups.saveUndoPoint(BackupReason.beforeReset), isNotNull);
+      expect((await backups.store.undo())!.undoLabel, 'Undo lineup reset');
+      await editSettings((s) => s['marker'] = 'changed');
+      await backups.saveUndoPoint(BackupReason.beforeDelete, subject: 'Mom');
+      expect((await backups.store.undo())!.undoLabel, 'Undo deleting Mom');
+      expect(_names(backups.store.dir), {'undo.ntvbackup'});
+    });
+
+    test('an undo point that can\'t be saved refuses a delete', () async {
+      await Directory(backups.store.undoFile.path).create(recursive: true);
+      final kids = h.profiles.firstWhere((p) => p.name == 'Kids');
+      await expectLater(h.deleteProfile(kids),
+          throwsA(isA<BackupException>().having((e) => e.message, 'message', startsWith('Couldn\'t save a backup first:'))));
+      expect(h.profiles.map((p) => p.name), contains('Kids'));
+    });
+
+    test('the first check clears out older backups', () async {
+      final b = await BackupArchive.build(dir, reason: BackupReason.daily, device: 'Old');
+      await backups.store.dir.create(recursive: true);
+      await File('${backups.store.dir.path}/20260101T000000000Z_daily.ntvbackup').writeAsBytes(b.bytes);
+      await backups.automaticCheck();
+      expect(_names(backups.store.dir), {'cloud/latest.ntvbackup'});
+    });
+  });
+
+  group('picked Live TV files (backup-simplify D6)', () {
+    final mom = momAndKids().first.id;
+
+    /// Mom's M3U source with a picked [playlistMb] playlist and a picked
+    /// [guideMb] guide, plus [extra] more playlists of the sizes given.
+    Future<void> pickedFiles({double playlistMb = 3, double guideMb = 120, List<double> extra = const []}) async {
+      await writeHousehold(dir, momAndKids(), fakeLibrary());
+      final storage = AppStorage.existing(Directory('${dir.path}/profiles/$mom'));
+      final files = Directory('${storage.root.path}/live_files')..createSync(recursive: true);
+      final sources = <Map<String, Object?>>[];
+      void source(String id, double mb, {bool guide = false}) {
+        File('${files.path}/$id-playlist.m3u').writeAsStringSync(_noise(mb, '#EXTINF:-1,$id\n'));
+        if (guide) File('${files.path}/$id-guide.xml').writeAsStringSync(_guide(guideMb));
+        sources.add({
+          'id': id,
+          'kind': 'm3u',
+          'name': id,
+          'playlistFile': '$id-playlist.m3u',
+          if (guide) 'guideFile': '$id-guide.xml',
+          'chosen': <String, Object?>{},
+        });
+      }
+
+      source('src1', playlistMb, guide: true);
+      for (var i = 0; i < extra.length; i++) {
+        source('srcx$i', extra[i]);
+      }
+      await storage.writeJson('live_sources.json', {'sources': sources});
+      await storage.flush();
+    }
+
+    test('the automatic build leaves out a 120 MB guide and stays under 20 MB with a 3 MB playlist', () async {
+      await pickedFiles();
+      final automatic = await BackupArchive.build(dir,
+          reason: BackupReason.daily, device: 'TV', pickedFiles: PickedFiles.automatic);
+      expect(automatic.bytes.length, lessThan(BackupArchive.automaticBudget));
+      final saved = BackupArchive.check(automatic.bytes).profiles[mom]!;
+      expect(saved.liveFiles.keys, ['src1-playlist.m3u']);
+      expect(saved.leftOut, ['src1-guide.xml']);
+
+      final all = await BackupArchive.build(dir, reason: BackupReason.manual, device: 'TV');
+      final whole = BackupArchive.decode(all.bytes).profiles[mom]!;
+      expect(whole.liveFiles.keys.toSet(), {'src1-playlist.m3u', 'src1-guide.xml'});
+      expect(whole.leftOut, isEmpty);
+      // The list of what was left out isn't part of the fingerprint.
+      final withoutList = edited(automatic.bytes, (j) => part(j, mom).remove('leftOut'));
+      expect(BackupArchive.decode(withoutList).fingerprint, automatic.fingerprint);
+      final again = await BackupArchive.build(dir,
+          reason: BackupReason.daily, device: 'TV', pickedFiles: PickedFiles.automatic);
+      expect(again.fingerprint, automatic.fingerprint);
+    }, timeout: const Timeout(Duration(minutes: 2)));
+
+    test('over the budget, the largest playlists go first', () async {
+      // Random text gzips poorly: 1 + 20 + 14 + 2 MB doesn't fit in 20 MB.
+      await pickedFiles(playlistMb: 1, guideMb: 0.01, extra: [20, 14, 2]);
+      final automatic = await BackupArchive.build(dir,
+          reason: BackupReason.daily, device: 'TV', pickedFiles: PickedFiles.automatic);
+      expect(automatic.bytes.length, lessThan(BackupArchive.automaticBudget));
+      final saved = BackupArchive.decode(automatic.bytes).profiles[mom]!;
+      expect(saved.leftOut, ['src1-guide.xml', 'srcx0-playlist.m3u']);
+      expect(saved.liveFiles.keys.toSet(), {'src1-playlist.m3u', 'srcx1-playlist.m3u', 'srcx2-playlist.m3u'});
+    }, timeout: const Timeout(Duration(minutes: 2)));
+
+    test('a backup without leftOut (older versions) still reads', () async {
+      await pickedFiles(guideMb: 0.01);
+      final all = await BackupArchive.build(dir, reason: BackupReason.manual, device: 'TV');
+      final json = unzip(all.bytes);
+      expect(part(json, mom).containsKey('leftOut'), isFalse);
+      expect(BackupArchive.check(all.bytes).profiles[mom]!.leftOut, isEmpty);
+    });
+  });
+}
+
+/// The files under [dir], as paths relative to it.
+Set<String> _names(Directory dir) => {
+      if (dir.existsSync())
+        for (final f in dir.listSync(recursive: true))
+          if (f is File) f.path.substring(dir.path.length + 1),
+    };
+
+/// About [mb] megabytes starting with [line], then random letters, which
+/// gzip can't shrink much.
+String _noise(double mb, String line) {
+  final rng = Random(mb.hashCode);
+  const letters = 'abcdefghijklmnopqrstuvwxyz0123456789';
+  final codes = Uint8List((mb * 1024 * 1024).round());
+  for (var i = 0; i < codes.length; i++) {
+    codes[i] = i % 64 == 63 ? 0x0a : letters.codeUnitAt(rng.nextInt(letters.length));
+  }
+  return line + String.fromCharCodes(codes);
+}
+
+/// About [mb] megabytes of XMLTV, which gzips as well as a real guide.
+String _guide(double mb) {
+  const programme = '<programme start="20261124120000 +0000" stop="20261124130000 +0000" channel="ch1">'
+      '<title>The Evening News</title><desc>Today\'s stories.</desc></programme>\n';
+  final count = (mb * 1024 * 1024 / programme.length).ceil();
+  return '<tv>\n${programme * count}</tv>\n';
 }

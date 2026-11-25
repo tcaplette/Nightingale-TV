@@ -682,6 +682,7 @@ class PlexClient implements MediaServer {
             id: '${s['id']}',
             codec: codec,
             language: normalizeLanguage((s['languageCode'] ?? s['languageTag']) as String?),
+            languageTag: (s['languageTag'] ?? s['languageCode']) as String?,
             title: switch ((s['title'] as String?)?.trim()) { final t? when t.isNotEmpty => t, _ => null },
             isDefault: s['default'] == true,
             isForced: s['forced'] == true,

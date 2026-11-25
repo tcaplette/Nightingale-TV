@@ -217,43 +217,11 @@ class PictureClock {
   void reset() => _since = null;
 }
 
-/// The debug fault (design D13), from `debug.nightingale_tv.video_fault`.
-enum VideoFault {
-  none,
-
-  /// Texture renders the report measures look like the Shield photo.
-  smearTexture,
-
-  /// The full-screen video looks like it on screen.
-  smearScreen;
-
-  /// [value] as set, honoured only in a [debuggable] build.
-  static VideoFault parse(String? value, {required bool debuggable}) {
-    if (!debuggable) return none;
-    return switch (value?.trim()) {
-      'smear-texture' => smearTexture,
-      'smear-screen' => smearScreen,
-      _ => none,
-    };
-  }
-
-  /// The fault in force for this run (Android reads the property; Kotlin
-  /// returns nothing in a release build).
-  static final current = ValueNotifier<VideoFault>(none);
-
-  static Future<void> load(VideoReportPlatform platform) async {
-    if (!PlatformInfo.isAndroid) return;
-    // Kotlin answers only in a debuggable build; a release build ignores
-    // it here too.
-    current.value = parse(await platform.fault(), debuggable: !kReleaseMode);
-  }
-}
-
 /// The picture on screen when a report is taken, as the TV screen sees it.
 class LivePicture {
   const LivePicture({
     required this.playerId,
-    required this.textureRect,
+    required this.hole,
     required this.devicePixelRatio,
     required this.effectsOn,
     required this.retro,
@@ -261,12 +229,12 @@ class LivePicture {
     this.serverKind,
   });
 
-  /// The ExoPlayer instance (its texture's ID).
+  /// The ExoPlayer instance.
   final int playerId;
 
-  /// The video's visible rectangle on screen, in logical pixels, and the
-  /// share of the texture it shows ([TextureView.texturePart]).
-  final TextureView? textureRect;
+  /// The hole Flutter leaves for the video, in device pixels; null when it
+  /// isn't on the screen.
+  final ui.Rect? hole;
   final double devicePixelRatio;
 
   /// CRT effects change the picture on purpose (design D4).
@@ -276,16 +244,6 @@ class LivePicture {
   final Map<String, Object?> retro;
   final String? playMethod;
   final String? serverKind;
-}
-
-/// Where the video is on screen: the part of the screen it covers, in
-/// logical pixels, and which part of the texture shows there (fractions,
-/// left/top/right/bottom).
-class TextureView {
-  const TextureView(this.screen, this.texturePart);
-
-  final ui.Rect screen;
-  final ui.Rect texturePart;
 }
 
 /// The device side of a report (`nightingale_tv/platform` and
@@ -312,15 +270,15 @@ class VideoReportPlatform {
     }
   }
 
+  /// Flutter's own surface, with its alpha.
   Future<Map<Object?, Object?>> capture() => _map(_platform, 'videoCapture');
 
-  Future<String?> fault() async {
-    try {
-      return await _platform.invokeMethod<String>('videoFault');
-    } on Object {
-      return null;
-    }
-  }
+  /// The video layer's picture.
+  Future<Map<Object?, Object?>> captureVideo(int playerId) => _map(_player, 'videoCapture', {'id': playerId});
+
+  /// The buffer the decoder makes for the stream playing, and the part of it
+  /// that is the picture.
+  Future<Map<Object?, Object?>> streamBuffer(int playerId) => _map(_player, 'videoBuffer', {'id': playerId});
 
   Future<Map<Object?, Object?>> stream(int playerId) => _map(_player, 'videoReport', {'id': playerId});
 
@@ -332,49 +290,19 @@ class VideoReportPlatform {
   Future<Map<Object?, Object?>> probe(String card, String decoder) =>
       _map(_platform, 'selfTestProbe', {'card': card, 'decoder': decoder});
 
-  Future<Map<Object?, Object?>> texture(String card, String decoder, {required bool gl}) =>
-      _map(_platform, 'selfTestTexture', {'card': card, 'decoder': decoder, 'gl': gl});
-
-  Future<void> release(int textureId) async {
-    try {
-      await _platform.invokeMethod<void>('selfTestRelease', {'id': textureId});
-    } on Object {
-      // Kotlin releases it itself after a while.
-    }
-  }
-
-  /// [textureId] drawn on its own, through the engine's own texture import
-  /// and sampling (design D3), as RGBA; null when it can't be.
-  Future<Uint8List?> renderTexture(int textureId, int width, int height) async {
-    final builder = ui.SceneBuilder()
-      ..addTexture(textureId, width: width.toDouble(), height: height.toDouble(), filterQuality: ui.FilterQuality.low);
-    final scene = builder.build();
-    try {
-      final image = await scene.toImage(width, height);
-      try {
-        final data = await image.toByteData(format: ui.ImageByteFormat.rawRgba);
-        return data?.buffer.asUint8List();
-      } finally {
-        image.dispose();
-      }
-    } finally {
-      scene.dispose();
-    }
-  }
-
   /// The test cards' expected figures.
   Future<Map<String, Object?>> expected() async =>
       jsonDecode(await rootBundle.loadString('assets/video_test/card_expected.json')) as Map<String, Object?>;
 }
 
 /// The test cards, in the order the self-test runs them.
-const videoTestCards = ['h264', 'hevc', 'hevc10'];
+const videoTestCards = ['h264', 'hevc', 'hevc10', 'mpeg2'];
 
 /// The run kinds of the self-test, as tagged.
-const videoTestRuns = ['cpu_decode', 'image_reader', 'surface_texture'];
+const videoTestRuns = ['cpu_decode'];
 
 /// Gathers a report (design D7–D10): the picture first, while it's on
-/// screen, then the device, stream and decoder, the self-test, and the log
+/// screen, then the stream, layer and device, the self-test, and the log
 /// last, so it holds the self-test's own lines.
 class VideoReportBuilder {
   VideoReportBuilder(this.platform);
@@ -382,135 +310,118 @@ class VideoReportBuilder {
   final VideoReportPlatform platform;
 
   Future<VideoReport> build(VideoTrigger trigger, LivePicture live) async {
-    final fault = VideoFault.current.value;
-    final picture = await _picture(live, fault);
+    final picture = await _picture(live);
     final stream = {
       ...await platform.stream(live.playerId),
       'play_method': live.playMethod ?? 'unknown',
       'server_kind': live.serverKind ?? 'unknown',
     };
+    final layer = await _layer(live, stream);
     final device = {
       ...await platform.facts(),
       'device_pixel_ratio': live.devicePixelRatio,
-      if (fault != VideoFault.none) 'fault': fault.name,
     };
-    final selfTest = await runSelfTest(fault);
+    final selfTest = await runSelfTest();
     final logcat = await platform.logcat();
     return VideoReport(
       trigger: trigger,
       device: device,
       stream: stream,
+      layer: layer,
       picture: picture,
       selfTest: selfTest,
       logcat: logcat,
     );
   }
 
-  /// The texture rendered on its own and the screen's video area, measured
-  /// and compared (design D3, D4).
-  Future<Map<String, Object?>> _picture(LivePicture live, VideoFault fault) async {
-    final stream = await platform.stream(live.playerId);
-    final size = _size(stream['texture_size']) ?? (1920, 1080);
-    // Capped at 1920×1080, its shape kept.
-    final scale = min(1.0, min(1920 / size.$1, 1080 / size.$2));
-    final tw = max(1, (size.$1 * scale).round()), th = max(1, (size.$2 * scale).round());
-    var out = <String, Object?>{};
-    // The screen and the texture are taken together, as the video moves;
-    // a pair that differs is taken again (a cut or a fade between the two),
-    // up to [_pictureTries] times, and the last pair is kept.
-    for (var attempt = 1; attempt <= _pictureTries; attempt++) {
-      if (attempt > 1) await Future<void>.delayed(const Duration(milliseconds: 400));
-      out = await _picturePair(live, fault, tw, th);
-      out['tries'] = attempt;
-      if (out['screen_match'] != 'no') break;
+  /// The video layer's own picture, measured, and its edges
+  /// (system-video-layer D8).
+  Future<Map<String, Object?>> _picture(LivePicture live) async {
+    final out = <String, Object?>{'retro': live.retro, 'effects_on': live.effectsOn};
+    final shot = await platform.captureVideo(live.playerId);
+    final rgba = shot['rgba'];
+    if (rgba is! Uint8List) {
+      return {...out, 'video': {'error': shot['error'] ?? 'no capture'}, 'edge': 'unknown'};
     }
+    final w = (shot['width'] as num).toInt(), h = (shot['height'] as num).toInt();
+    final strips = await edgeStripsInIsolate(rgba, w, h);
     return {
-      'retro': live.retro,
-      'effects_on': live.effectsOn,
-      'texture_size': '${size.$1}x${size.$2}',
-      'render_size': '${tw}x$th',
       ...out,
+      'video': (await measureInIsolate(rgba, w, h)).toJson(),
+      'size': '${w}x$h',
+      'edge': strips.any ? 'padding' : 'clean',
+      'edge_right': strips.right,
+      'edge_bottom': strips.bottom,
     };
   }
 
-  static const _pictureTries = 3;
-
-  /// One capture of the screen and render of the texture, taken at once.
-  Future<Map<String, Object?>> _picturePair(LivePicture live, VideoFault fault, int tw, int th) async {
-    final out = <String, Object?>{};
-    final rendering = () async {
-      try {
-        return await platform.renderTexture(live.playerId, tw, th);
-      } on Object catch (e) {
-        out['texture'] = {'error': '$e'};
-        return null;
-      }
-    }();
+  /// Where the layer is, against the hole Flutter leaves for it, and what the
+  /// decoder gives it (system-video-layer D8).
+  Future<Map<String, Object?>> _layer(LivePicture live, Map<Object?, Object?> stream) async {
+    final layer = stream['layer'];
+    final buffer = await platform.streamBuffer(live.playerId);
+    final out = <String, Object?>{
+      'layer': layer ?? 'unknown',
+      'hole_asked': _rect(live.hole),
+      'buffer': buffer,
+      'padded': padded(buffer, stream['decoder_output']),
+      'hdr': stream['hdr'] ?? 'unknown',
+      'effects': stream['effects'] ?? 'unknown',
+    };
     final shot = await platform.capture();
-    var textureRgba = await rendering;
-
-    PictureMeasure? texture;
-    if (textureRgba != null && fault == VideoFault.smearTexture) textureRgba = smearPicture(textureRgba, tw, th);
-    if (textureRgba != null) {
-      texture = await measureInIsolate(textureRgba, tw, th);
-      out['texture'] = texture.toJson();
-      out['render_empty'] = texture.renderEmpty;
-    } else {
-      out['texture'] ??= {'error': 'no image'};
-    }
-
-    final view = live.textureRect;
     final rgba = shot['rgba'];
-    String match = 'unknown';
-    if (rgba is! Uint8List || view == null) {
-      out['screen'] = {'error': shot['error'] ?? (view == null ? 'video not on screen' : 'no capture')};
-    } else {
-      final w = (shot['width'] as num).toInt(), h = (shot['height'] as num).toInt();
-      final sw = (shot['surface_width'] as num?)?.toDouble() ?? w.toDouble();
-      final sh = (shot['surface_height'] as num?)?.toDouble() ?? h.toDouble();
-      final k = live.devicePixelRatio;
-      // Logical pixels → the surface's pixels → the capture's.
-      final r = view.screen;
-      final left = (r.left * k * w / sw).ceil().clamp(0, w), top = (r.top * k * h / sh).ceil().clamp(0, h);
-      final right = (r.right * k * w / sw).floor().clamp(0, w), bottom = (r.bottom * k * h / sh).floor().clamp(0, h);
-      if (right - left < PictureMeasure.columns || bottom - top < PictureMeasure.rows) {
-        out['screen'] = {'error': 'video area too small'};
-      } else {
-        final screen = await measureInIsolate(rgba, w, h, left: left, top: top, w: right - left, h: bottom - top);
-        out['screen'] = {...screen.toJson(), 'area': '$left,$top,$right,$bottom'};
-        final textureImage = textureRgba;
-        if (live.effectsOn) {
-          match = 'effects';
-        } else if (texture != null && textureImage != null && !texture.renderEmpty) {
-          // The same part of the texture as the screen shows.
-          final p = view.texturePart;
-          final pl = (p.left * tw).round().clamp(0, tw - 1), pt = (p.top * th).round().clamp(0, th - 1);
-          final pr = (p.right * tw).round().clamp(pl + 1, tw), pb = (p.bottom * th).round().clamp(pt + 1, th);
-          final same = await measureInIsolate(textureImage, tw, th, left: pl, top: pt, w: pr - pl, h: pb - pt);
-          final share = screenShare(screen, same);
-          out['screen_share'] = (share * 1000).round() / 1000;
-          // A blur keeps the colours: the detail is compared too, at one
-          // common scale.
-          final screenFine = await coarseDetailInIsolate(rgba, w, h, left: left, top: top, w: right - left, h: bottom - top);
-          final textureFine = await coarseDetailInIsolate(textureImage, tw, th, left: pl, top: pt, w: pr - pl, h: pb - pt);
-          final detail = textureFine > 0 ? screenFine / textureFine : (screenFine > 0 ? 1.0 : 0.0);
-          out['screen_detail_ratio'] = (detail * 1000).round() / 1000;
-          match = share >= PictureMeasure.screenShare && detail >= PictureMeasure.screenDetailShare ? 'yes' : 'no';
-        }
+    if (rgba is! Uint8List) return {...out, 'hole': {'error': shot['error'] ?? 'no capture'}, 'layer_match': 'unknown'};
+    final w = (shot['width'] as num).toInt(), h = (shot['height'] as num).toInt();
+    final sw = (shot['surface_width'] as num?)?.toDouble() ?? w.toDouble();
+    final sh = (shot['surface_height'] as num?)?.toDouble() ?? h.toDouble();
+    final clear = await clearAreaInIsolate(rgba, w, h);
+    // The capture's pixels → the surface's.
+    final hole = clear == null
+        ? null
+        : ui.Rect.fromLTRB(clear.left * sw / w, clear.top * sh / h, clear.right * sw / w, clear.bottom * sh / h);
+    return {...out, 'hole': _rect(hole) ?? 'none', 'layer_match': layerMatch(layer, hole, ui.Size(sw, sh))};
+  }
+
+  static List<int>? _rect(ui.Rect? r) =>
+      r == null ? null : [r.left.round(), r.top.round(), r.right.round(), r.bottom.round()];
+
+  /// Whether [layer] (left, top, right, bottom), clipped to the [screen],
+  /// covers the [hole], within 2 pixels. No hole at all is a `no`: something
+  /// over the video hides it.
+  static String layerMatch(Object? layer, ui.Rect? hole, ui.Size screen) {
+    if (layer is! List || layer.length != 4 || layer.any((v) => v is! num)) return 'unknown';
+    if (hole == null) return 'no';
+    final [l, t, r, b] = [for (final v in layer) (v as num).toDouble()];
+    final shown = ui.Rect.fromLTRB(l, t, r, b).intersect(ui.Offset.zero & screen);
+    return shown.inflate(2).expandToInclude(hole) == shown.inflate(2) ? 'yes' : 'no';
+  }
+
+  /// Whether the decoder's buffer is larger than its picture: as its own
+  /// buffer says, or the output format it reported.
+  static String padded(Map<Object?, Object?> buffer, Object? output) {
+    final bw = buffer['buffer_width'], bh = buffer['buffer_height'];
+    final crop = '${buffer['crop']}'.split(',').map(int.tryParse).toList();
+    String? said;
+    if (bw is num && bh is num && crop.length == 4 && !crop.contains(null)) {
+      if (bw > crop[2]! - crop[0]! || bh > crop[3]! - crop[1]!) return 'yes';
+      said = 'no';
+    }
+    if (output is Map) {
+      int? at(String k) => int.tryParse('${output[k]}');
+      final w = at('width'), h = at('height');
+      final l = at('crop-left'), t = at('crop-top'), r = at('crop-right'), b = at('crop-bottom');
+      if (w != null && h != null && l != null && t != null && r != null && b != null) {
+        if (w > r - l + 1 || h > b - t + 1) return 'yes';
+        // A decoder can report the picture's size and allocate more, so only
+        // its buffer says no.
       }
     }
-    out['screen_match'] = match;
-    return out;
+    return said ?? 'unknown';
   }
 
-  static (int, int)? _size(Object? s) {
-    final m = RegExp(r'^(\d+)x(\d+)$').firstMatch('$s');
-    return m == null ? null : (int.parse(m[1]!), int.parse(m[2]!));
-  }
-
-  /// The test cards through the real video path (design D5): per card, the
-  /// CPU decode, the buffer probe, and the texture renders, one at a time.
-  Future<Map<String, Object?>> runSelfTest(VideoFault fault) async {
+  /// The test cards (design D5): per card, the CPU decode and the buffer
+  /// probe, one at a time.
+  Future<Map<String, Object?>> runSelfTest() async {
     final expected = (await platform.expected())['cards'] as Map;
     final cards = <String, Object?>{};
     for (final card in videoTestCards) {
@@ -529,14 +440,11 @@ class VideoReportBuilder {
       final decoder = d['decoder'] as String;
       runs['cpu_decode'] = await _cpu(card, decoder, want);
       runs['probe'] = _plain(await platform.probe(card, decoder));
-      runs['image_reader'] = await _texture(card, decoder, want, gl: false, smear: fault == VideoFault.smearTexture);
-      runs['surface_texture'] = await _texture(card, decoder, want, gl: true, smear: false);
       cards[card] = runs;
     }
     return {
       'cards': cards,
       for (final kind in videoTestRuns) kind: summarize(cards, kind),
-      'gpu_matrix': gpuMatrix(cards),
     };
   }
 
@@ -550,18 +458,6 @@ class VideoReportBuilder {
     if (results.contains('fail')) return 'fail';
     if (results.contains('pass')) return 'pass';
     return 'skipped';
-  }
-
-  /// The colour matrix the GPU's texture runs fit: one name when every run
-  /// that went agrees, `mixed` when they don't, `skipped` when none went.
-  static String gpuMatrix(Map<String, Object?> cards) {
-    final fits = {
-      for (final c in cards.values)
-        if (c is Map)
-          for (final kind in ['image_reader', 'surface_texture'])
-            if (c[kind] case final Map run when run['matrix'] is String) run['matrix'] as String,
-    };
-    return fits.isEmpty ? 'skipped' : (fits.length == 1 ? fits.single : 'mixed');
   }
 
   Future<Map<String, Object?>> _cpu(String card, String decoder, PictureMeasure want) async {
@@ -581,33 +477,6 @@ class VideoReportBuilder {
     };
   }
 
-  Future<Map<String, Object?>> _texture(String card, String decoder, PictureMeasure want,
-      {required bool gl, required bool smear}) async {
-    final t = await platform.texture(card, decoder, gl: gl);
-    final id = t['texture_id'];
-    if (id is! int) return {'result': 'skipped', 'reason': '${t['skipped'] ?? t['error'] ?? 'no texture'}'};
-    try {
-      final w = (t['width'] as num).toInt(), h = (t['height'] as num).toInt();
-      var rgba = await platform.renderTexture(id, w, h);
-      if (rgba == null) return {'result': 'skipped', 'reason': 'no image'};
-      if (smear) rgba = smearPicture(rgba, w, h);
-      final m = await measureInIsolate(rgba, w, h);
-      if (m.renderEmpty) return {'result': 'skipped', 'reason': 'render_empty', ...m.toJson()};
-      final check = checkCard(m, want);
-      return {
-        'result': check.pass ? 'pass' : 'fail',
-        'matrix': matrixFit(m, want),
-        ...check.toJson(),
-        ...m.toJson(),
-        'kind': t['kind'],
-      };
-    } on Object catch (e) {
-      return {'result': 'skipped', 'reason': 'error: $e'};
-    } finally {
-      await platform.release(id);
-    }
-  }
-
   /// A platform answer as plain JSON-able values.
   static Map<String, Object?> _plain(Map<Object?, Object?> m) => {for (final e in m.entries) '${e.key}': e.value};
 }
@@ -619,13 +488,14 @@ class VideoReport {
     required this.trigger,
     required this.device,
     required this.stream,
+    required this.layer,
     required this.picture,
     required this.selfTest,
     required this.logcat,
   });
 
   final VideoTrigger trigger;
-  final Map<Object?, Object?> device, stream, picture, selfTest;
+  final Map<Object?, Object?> device, stream, layer, picture, selfTest;
 
   /// The app's own log lines, or null when they couldn't be read.
   final String? logcat;
@@ -655,17 +525,18 @@ class VideoReport {
       'build_device': s(build is Map ? build['device'] : null),
       'gpu': s(gl is Map ? gl['renderer'] : null),
       'decoder': s(stream['decoder']),
-      'producer': s(device['producer']),
       'backend': s(device['backend']),
       for (final kind in videoTestRuns) kind: s(selfTest[kind]),
-      'gpu_matrix': s(selfTest['gpu_matrix']),
-      'screen_match': s(picture['screen_match']),
+      'padded': s(layer['padded']),
+      'edge': s(picture['edge']),
+      'layer_match': s(layer['layer_match']),
     };
   }
 
   Map<String, Map<String, Object?>> get contexts => {
         'video_device': _json(device),
         'video_stream': _json(stream),
+        'video_layer': _json(layer),
         'video_picture': _json(picture),
         'video_self_test': _json(selfTest),
       };

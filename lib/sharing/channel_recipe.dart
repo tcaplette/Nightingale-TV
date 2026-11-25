@@ -243,7 +243,8 @@ class ChannelRecipe {
         });
     RecipeItem? item(String id) {
       final e = library[id];
-      if (e == null) return null;
+      // Home videos are nobody else's: never in a recipe (smb-sources).
+      if (e == null || e.isHome) return null;
       return switch (e.kind) {
         MediaKind.episode when e.seriesKey != null => RecipeItem.episode(
             show: showOf(e.seriesKey!), season: e.season, episode: e.episode, title: e.title, runtime: e.runtime),
@@ -268,7 +269,8 @@ class ChannelRecipe {
             enabled: b.enabled,
             lineup: [
               for (final l in b.lineup)
-                if (library.seriesByKey[l.seriesKey] != null) (show: showOf(l.seriesKey), count: l.count),
+                if (library.seriesByKey[l.seriesKey] != null && !LibraryIndex.isHomeKey(l.seriesKey))
+                  (show: showOf(l.seriesKey), count: l.count),
             ],
             items: [for (final id in b.playlist) ?item(id)],
           ),

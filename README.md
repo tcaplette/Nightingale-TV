@@ -1,10 +1,52 @@
 # Nightingale TV
 
-Nightingale TV turns your Jellyfin, Emby or Plex library into always-on cable TV channels, plus music video and radio channels, with a program guide. It's an Android app first, made for Android TV (Google TV and other Android TV boxes) and also at home on Android phones and tablets. There's a desktop version for Linux too, and a macOS version is planned. Like real TV, every channel is always mid-broadcast. You tune in to whatever is on, flip channels, and check the guide to see what's coming up.
+Nightingale TV turns your Jellyfin, Emby or Plex library, or the video folders on a NAS or shared drive, into always-on cable TV channels, plus music video and radio channels and channels from your YouTube subscriptions, with a program guide. It's an Android app first, made for Android TV (Google TV and other Android TV boxes) and also at home on Android phones and tablets. There's a desktop version for Linux too, and a macOS version is planned. Like real TV, every channel is always mid-broadcast. You tune in to whatever is on, flip channels, and check the guide to see what's coming up.
 
 It's built for the couch, so everything works with a TV remote, an air mouse, a touchscreen, your phone, or a keyboard and mouse.
 
 ![The program guide, with a live preview and Movie Night blocks labeled across their time slots](docs/screenshots/guide.png)
+
+## Contents
+
+- [Features](#features)
+  - [Channels](#channels)
+  - [The guide](#the-guide)
+  - [Watching](#watching)
+  - [Commercial breaks (experimental, off by default)](#commercial-breaks-experimental-off-by-default)
+  - [Your household](#your-household)
+  - [Watch on your other screens](#watch-on-your-other-screens)
+- [Install](#install)
+  - [On Android](#on-android)
+  - [On a computer](#on-a-computer)
+  - [What you need](#what-you-need)
+- [First start](#first-start)
+- [SMB shares](#smb-shares)
+- [YouTube channels](#youtube-channels)
+  - [Your own Google client](#your-own-google-client)
+  - [Building it yourself](#building-it-yourself)
+- [Controls](#controls)
+  - [Captions](#captions)
+- [Phone remote](#phone-remote)
+- [Backup and restore](#backup-and-restore)
+  - [Moving to a new device](#moving-to-a-new-device)
+- [Sharing](#sharing)
+  - [Sharing channels](#sharing-channels)
+  - [Friends watching](#friends-watching)
+  - [Watching together](#watching-together)
+  - [Running your own sharing backend](#running-your-own-sharing-backend)
+- [Live TV export](#live-tv-export)
+- [Running it as a server](#running-it-as-a-server)
+- [Building from source](#building-from-source)
+  - [Building for Android](#building-for-android)
+  - [Building for Linux](#building-for-linux)
+- [Privacy](#privacy)
+  - [YouTube](#youtube)
+  - [Sharing accounts](#sharing-accounts)
+  - [What friends can see](#what-friends-can-see)
+  - [Error reports](#error-reports)
+- [Reporting a problem](#reporting-a-problem)
+- [License](#license)
+  - [Third-party software](#third-party-software)
 
 ## Features
 
@@ -19,6 +61,7 @@ It's built for the couch, so everything works with a TV remote, an air mouse, a 
 - **New episode premieres.** Episodes newly added to your server premiere in prime time (8:00 PM by default) on a channel that plays the show, one new episode per show each night, marked **NEW** in the guide, the banner and the Up next card. Change the time and days or turn it off in Programming blocks → **New episode premieres**.
 - **Music channels.** Music libraries and music videos get their own channels: **Music Videos** and **Music Radio**, plus genre and decade channels when your library is big enough ("80s Radio", "Rock Music Videos"). Songs play over a full-screen **Now Playing** card with the album art, song, artist and album. The same artist never plays twice in a row, music channels have no commercial breaks unless you turn them on, and music never shows up in your server's play history.
 - **Live TV channels.** Add real broadcasts and IPTV to the lineup in Menu → **Live TV sources**: your Jellyfin, Emby or Plex server's Live TV (an HDHomeRun or other tuner on the server), or any **M3U playlist** with an **XMLTV guide**, from a web address or a file. Pick the channels you want, and they join the guide with their own logos and listings, numbered from the next hundred (100, 101…). Live channels play from the live point, reconnect after a drop, and have no commercial breaks. Kid profiles don't get them.
+- **YouTube channels.** Sign in with your Google account (Add a server → **YouTube**) and pick up to 5 of your subscriptions, or as many as you like with your own Google client. Each becomes a channel in the guide that plays its uploads back to back, newest first, in YouTube's own player. See [YouTube channels](#youtube-channels).
 
 ### The guide
 
@@ -37,9 +80,9 @@ It's built for the couch, so everything works with a TV remote, an air mouse, a 
 - **Channel logo in the corner.** A translucent station logo sits in the bottom-right corner of the picture, like a network's. Show it **Always**, **Now and then** (for 20 seconds when a show starts or comes back from a break, and at each quarter hour) or **Off**, for every channel or for one.
 - **Retro look.** Make a channel look like an old TV in Menu → **Retro look**: a **4:3 picture** (filled or fitted) with a black, charcoal, channel-colored or picture surround, a **CRT effect** (Soft tube, Living room, Arcade, Studio monitor, or your own mix of scanlines, glow, curvature and color), and an **overlay theme** for the banner and channel number (Standard, VCR, Cable box, Station ident). Set it for every channel and override it for any one. **Effects on this device** turns the CRT effects off on a slower TV without changing anything else. Exported streams are never changed.
 
-  **On NVIDIA Shield, curvature and glow aren't available** (Retro look shows them as "Not available on this device"). The Shield's graphics driver shows video with the wrong colours under Flutter's newer renderer (Impeller), so on NVIDIA devices the app draws with the older renderer (Skia) instead. Curvature and glow are a GPU shader filter that only Impeller can run. Scanlines, mask, vignette and color all work on the Shield.
+  **On NVIDIA Shield, curvature and glow aren't available** (Retro look shows them as "Not available on this device"). On NVIDIA devices the app draws its interface with Flutter's older renderer (Skia), the one Shields have been running, rather than the newer one (Impeller). Curvature and glow over the picture are a GPU shader filter that only Impeller can run. The video itself is shown by Android, not by Flutter. Scanlines, mask, vignette and color all work on the Shield.
 - **Quick channel changes.** The app keeps its connections to your server ready, remembers how each file plays, and loads the next part of a channel before it's due, so channels come up fast and breaks play in and out with no gap.
-- **Always direct play.** Nightingale TV plays your original files and never asks your server to transcode, unless you turn on **Transcode only if needed**. Then pick a **maximum bitrate** (40 Mbps · 4K down to 4 Mbps · 720p) for Wi-Fi or a remote connection, and your server converts only what's above it. *Original*, the default, never converts because of bitrate.
+- **Always direct play.** Nightingale TV plays your original files and never asks your server to transcode, unless you turn on **Transcode only if needed**. Then pick a **maximum bitrate** (40 Mbps · 4K down to 4 Mbps · 720p) for Wi-Fi or a remote connection, and your server converts only what's above it. *Original*, the default, never converts because of bitrate. While watching, **Quality** in the player's controls changes it at once: the program plays on from the same point under the new limit, and picking a limit there turns **Transcode only if needed** on.
 
 ### Commercial breaks (experimental, off by default)
 
@@ -55,13 +98,14 @@ Make TV feel like TV again, with ads between and during shows. Being experimenta
 
 ### Your household
 
-- **Six languages.** English, Deutsch, Français, Español, Português (Brasil) and Italiano, set per profile under Menu → Language. Automatic follows the device. The web admin follows the browser and has its own Language menu.
+- **Ten languages.** English, Deutsch, Français, Español, Português (Brasil), Italiano, 日本語, 简体中文, 繁體中文 (Taiwan) and 繁體中文（香港）, set per profile under Menu → Language. Automatic follows the device. The web admin follows the browser and has its own Language menu.
 - **Jellyfin, Emby and Plex.** Sign in to any of them. Every feature works on all three. The one exception: a Plex server that doesn't list its artists' music videos gets no music video channels.
-- **Several servers in one lineup.** Add more servers to a profile in Menu → **Servers**, in any mix (Jellyfin at home and a friend's Plex, say). Their libraries become one, and something on two servers appears once and plays from the first in your **Play from** order that answers. Give a slow remote server its own **Quality limit**. If one server is down, the others keep playing.
+- **SMB shares, no media server needed.** Add a NAS, a Windows shared folder or a Samba share as a server (Add a server → **SMB share**): pick it from the computers the app finds on the network, or type `smb://computer/share` or `\\computer\share`. Sign in with a user name and password, or as a guest, then say what each folder holds: TV shows, movies, music, music videos, home videos, commercials or bumpers. Titles, seasons and episodes come from the file and folder names (and `.nfo` files and artwork next to them, when there are any). SMB 2 and 3 are used, and old SMB1-only devices still work. See [SMB shares](#smb-shares).
+- **Several servers in one lineup.** Add more servers to a profile in Menu → **Servers**, in any mix (Jellyfin at home and a friend's Plex, say). Their libraries become one, and something on two servers appears once and plays from the first in your **Play from** order that answers. Give a slow remote server its own **Quality limit**. If one server is down, the others keep playing. With **Server colours in the guide** on (Menu → Servers), every programme in the guide is tinted with the colour of the server it plays from, with a key under the guide; each server's **Guide colour** can be changed.
 - **Profiles.** Everyone gets their own channels, blocks and settings. Kid profiles only see content rated for their age. Grown-up profiles and settings can be locked with a PIN.
 - **Phone remote.** Turn it on in the menu, scan the QR code, and your phone's browser becomes the remote. There's nothing to install. See [Phone remote](#phone-remote).
 - **Sharing with friends.** Add friends who also use Nightingale TV, with a 6-character code, a link or a QR code, and share channels you built: they arrive as a recipe your friend's app rebuilds from their own servers. In the official builds, or in your own builds with your own backend. See [Sharing](#sharing).
-- **Backup and restore.** Your whole setup is backed up every day something changes, and before anything that replaces a lot at once. Restore a backup, save it to a file, or move it to another device through your phone or computer. See [Backup and restore](#backup-and-restore).
+- **Backup and restore.** Your whole setup is backed up by itself whenever it changes, and the last big change (a restore, a lineup reset, a deleted profile) can be undone. Save a backup to a file, or move your setup to another device through your phone or computer. See [Backup and restore](#backup-and-restore).
 
 ### Watch on your other screens
 
@@ -97,7 +141,7 @@ One app covers Android TVs, phones and tablets (Android 7.0 or newer). Each rele
 | `nightingale-tv_<version>_universal.apk` | Any of them, if you're not sure. It's several times larger. |
 | `nightingale-tv_<version>_x86_64.apk` | Android Studio emulators on a PC |
 
-`<version>` is the release's version and build number, such as `1.2.6+5008`.
+`<version>` is the release's version and build number, such as `1.2.7+5009`.
 
 On a phone or tablet, open the APK on the device and allow *Install unknown apps* when asked. On a TV, turn on *Developer options* and *USB debugging* (or *Network debugging*), then run `adb install nightingale-tv_<version>_arm64-v8a.apk` from your computer, or copy the APK over with a file manager app and open it there. To update, install the next release's APK over the old one; your profiles stay.
 
@@ -119,7 +163,7 @@ The desktop version runs on 64-bit (x86-64) Linux. Each release has two download
 | `nightingale-tv_<version>.<build time>_amd64.deb` | Ubuntu 24.04 or newer, Debian 13 or newer, and distributions based on them (Linux Mint 22, Pop!_OS 24.04…) |
 | `nightingale-tv-linux-x64-<x.y.z>.tar.gz` | Other distributions (Arch, Fedora, openSUSE…) from 2024 or newer |
 
-For 1.2.6 these are `nightingale-tv_1.2.6+5008.20261117214230_amd64.deb` and `nightingale-tv-linux-x64-1.2.6.tar.gz`.
+For 1.2.7 these are `nightingale-tv_1.2.7+5009.20261125021121_amd64.deb` and `nightingale-tv-linux-x64-1.2.7.tar.gz`.
 
 **The .deb:** in the folder it's in, run `sudo apt install ./nightingale-tv_*_amd64.deb` (the `./` matters: without it apt looks online). apt also installs the libraries Nightingale TV needs, ffmpeg included. Then open **Nightingale TV** from your app menu, or run `nightingale-tv`. To update, install the next release's `.deb` the same way; your profiles and settings stay. It needs Ubuntu 24.04 or newer because it uses libmpv version 2, and Ubuntu 22.04 only has version 1. On 22.04, build it yourself.
 
@@ -132,13 +176,14 @@ For 1.2.6 these are `nightingale-tv_1.2.6+5008.20261117214230_amd64.deb` and `ni
 ### What you need
 
 - An Android TV or Google TV device, or an Android phone or tablet, running Android 7.0 or newer. Or, for the desktop version, a 64-bit Linux PC: Ubuntu 24.04 or newer for the release `.deb` (Ubuntu 22.04 if you build it yourself), or another distribution from 2024 or newer for the `.tar.gz`.
-- A [Jellyfin](https://jellyfin.org) server (10.11 or newer), an [Emby](https://emby.media) server (4.8 or newer) or a [Plex Media Server](https://www.plex.tv) with your shows and movies, and music or music videos if you want music channels. You can add more than one.
+- A [Jellyfin](https://jellyfin.org) server (10.11 or newer), an [Emby](https://emby.media) server (4.8 or newer), a [Plex Media Server](https://www.plex.tv) or an SMB share (a NAS, or a shared folder on a Windows, Mac or Linux computer) with your shows and movies, and music or music videos if you want music channels. You can add more than one.
+- For YouTube channels on Linux: WebKitGTK and GStreamer's video plugins (the `.deb` installs them; with the `.tar.gz`, install `libwebkit2gtk-4.1-0`, `gstreamer1.0-plugins-good` and `gstreamer1.0-libav`). Android uses its System WebView.
 - For the phone remote, a phone on the same Wi-Fi as the TV. See [Phone remote](#phone-remote) if the computer's firewall is on.
-- On Linux, ffmpeg (the `.deb` installs it; with the `.tar.gz`, install it yourself). It splits long commercial compilations into individual ads and converts Live TV export's streams.
+- On Linux, ffmpeg (the `.deb` installs it; with the `.tar.gz`, install it yourself). It splits long commercial compilations into individual ads, converts Live TV export's streams, and reads the files on SMB shares for their lengths. The Android app brings its own.
 
 ## First start
 
-1. Enter your server's address. The app works out whether it's Jellyfin, Emby or Plex. For Plex you can also choose **Sign in with Plex** instead.
+1. Enter your server's address. The app works out whether it's Jellyfin, Emby or Plex. For Plex you can also choose **Sign in with Plex** instead. For a NAS or shared folder, choose **SMB share** (see [SMB shares](#smb-shares)).
 2. Sign in:
    - **Jellyfin or Emby:** with your username and password, or with **Quick Connect** when the server has it on, approving the TV from your phone.
    - **Plex:** go to plex.tv/link on your phone or computer and enter the code the TV shows. If the account can use more than one server, pick one, and in a Plex Home pick who's watching.
@@ -147,6 +192,40 @@ For 1.2.6 these are `nightingale-tv_1.2.6+5008.20261117214230_amd64.deb` and `ni
 To add another server to the same lineup later, use Menu → **Servers** → **Add a server**. It signs in the same way.
 
 Moving from another device? Choose **Restore from a backup** on the sign-in screen. If the app finds a backup of its own when it starts with no profiles (after a reinstall, or from Android's backup), it shows **Welcome back** and offers to **Restore it**. See [Moving to a new device](#moving-to-a-new-device).
+
+## SMB shares
+
+An SMB share works like a media server in every part of the app: channels, blocks, breaks, captions, music, pause and rewind, Live TV export, sharing and backups.
+
+- **Adding one.** Add a server → **SMB share**. The app lists the computers and NAS boxes it finds (over Bonjour, Windows network discovery and NetBIOS), then the shares on the one you pick; or type the address. A port can go in the address (`smb://nas:1445/media`). Sign in with a user name, password and, if the network uses one, a domain, or **Connect as guest**. A device that only speaks SMB1 is marked "SMB1: old and unencrypted".
+- **Folders.** Choose what each folder holds, or **Nothing** to leave it out; a folder inside a chosen one can have its own choice. The app suggests a choice from folder names. Folders chosen as Commercials or Bumpers become commercial and bumper pools. **Folders** on the share's row in Menu → Servers changes them later, and **Rename** gives the share its own name.
+- **Reading the files.** The first files are ready in seconds; the rest are read in the background (the row shows how many are left), and channels fill in as they're read. What's already on air never changes.
+- **Files the device can't play.** Nightingale TV checks every file against what the device can play. On a computer, or the server, it converts what's needed with FFmpeg. On Android it plays what the device can, converts the rest with the FFmpeg it brings, and uses another Nightingale TV when that's faster (below). Files nothing can play (damaged, sound only, or too much for this device with no other Nightingale TV to convert) are listed under **Can't play** on the share's row, with the reason, and never scheduled; **Check again** after fixing one.
+- **Converting on another Nightingale TV.** A Nightingale TV on a computer, or the [server](#running-it-as-a-server), can convert for TVs that can't play a file, or can't convert it fast enough themselves. Turn on Menu → **Convert for other TVs** there, then on the TV choose Menu → Servers → **Convert on other Nightingale TVs** and enter the 6-digit code it shows. It needs the same share in one of its profiles and only converts files in that share's mapped folders. It listens on port 8487.
+- **Watch history.** Play counts and resume points are kept in a hidden `.nightingale` folder on the share, under a **History name**, so TVs that use the same name share them; nothing else on the share is changed. On a read-only share, or with **Keep history on this device**, history stays on the device.
+- **Home videos** are never shared with friends: a shared channel leaves them out, and friends see "Home video" instead of a title.
+- **Passwords** are kept encrypted on the device (with the Android Keystore on Android), and never in backups, logs, error reports or the web admin. A backup restored on another device asks for the share's password again.
+
+## YouTube channels
+
+Your own YouTube subscriptions can be channels in the guide, beside your library's. Each picked YouTube channel plays its videos back to back, newest first, in YouTube's own player, on Android (TV, phones and tablets) and Linux.
+
+- **Adding it.** Add a server → **YouTube** (or **YouTube** on the first sign-in). The app shows a code: on your phone or computer, go to **google.com/device**, sign in with your own Google account and enter it. Signing in means agreeing to [YouTube's Terms of Service](https://www.youtube.com/t/terms) and the [Nightingale TV privacy policy](https://coffeehauslabs.com/ntv/privacy). The app asks only to see your YouTube account, read-only.
+- **"Google hasn't verified this app".** Google may show this warning on its page: *"You've been given access to an app that's currently being tested. You should only continue if you know the developer that invited you."* It appears because Nightingale TV's Google project is still in Google's Testing stage and hasn't been through Google's verification. Choose **Continue**, then tick the box that lets Nightingale TV see your YouTube account, and choose **Continue** again. If that box is left unticked, the app can't read your subscriptions: it says so and shows a new code. While the project is in Testing, only Google accounts added as testers can sign in with it, and Google ends each sign-in after 7 days: sign in again when the app asks (or with **Sign in again** on YouTube's row in Menu → Servers). [Your own Google client](#your-own-google-client), set to In production, works for any Google account you sign in with and doesn't end after 7 days; its own unverified-app warning shows once.
+- **Picking channels.** Next comes a list of your subscriptions, with a search field. Check the ones you want and choose **Done**. On Nightingale TV's Google client, a profile can have up to **5 YouTube channels**, across all of its YouTube accounts that use it. With [your own Google client](#your-own-google-client) there's no limit. At 5, the other subscriptions are greyed and say where to set up your own client. Change them later with **Channels** on YouTube's row in Menu → Servers. Then choose the YouTube server's guide colour (it starts as wine).
+- **What plays.** Each channel's long uploads, newest first; Shorts, live and upcoming streams, private and age-restricted videos, and videos that can't be played outside YouTube are left out. New uploads come in at most every 6 hours and play right after what's on the air. YouTube's ads, captions and logo are its own, and an air mouse or a finger can use YouTube's Skip ad.
+- **Nothing over the picture.** YouTube's rules don't allow anything drawn over its player, so when the channel banner, the channel number or another message shows, the picture moves out of its way. The player stops whenever it isn't on screen (Menu, another screen, the app in the background) and starts again at the scheduled point.
+- **Not on YouTube channels:** commercial breaks, bumpers, premieres, programming blocks, the retro look, volume levelling, rewind, the on-screen clock, picking a quality (YouTube chooses it, so **Quality** shows *Auto*), sharing and watching together. YouTube's terms allow its videos only in YouTube's own player, so YouTube channels are also left out of the [Live TV export](#live-tv-export): Plex, Jellyfin, Emby and IPTV players never get them.
+- **On the server.** The [server](#running-it-as-a-server) has YouTube too, with your own Google client only: set it up in the web admin and watch the channels on its **Watch** page.
+- **YouTube's daily limit.** Everyone using Nightingale TV's Google client shares one daily allowance of YouTube requests. If it runs out, channels keep playing the videos they have, and Menu → Servers says when new videos come (midnight Pacific time).
+
+### Your own Google client
+
+With a Google client of your own, the daily limit is yours alone, sign-ins don't end after 7 days, and you can pick as many YouTube channels as you like (Nightingale TV's client allows 5). In Menu → Servers → YouTube → **Google client**, enter its Client ID and Client secret (the phone remote can type them), or on a phone or computer open the file Google downloads. The steps are on that screen, and in full at [coffeehauslabs.com/ntv/youtube-client](https://coffeehauslabs.com/ntv/youtube-client). The client must be of the type **TVs and Limited Input devices**. Your channels, their numbers and colour stay as they are. **Use Nightingale TV's client** on the same screen goes back to the app's client; with more than 5 YouTube channels, remove some in **Channels** first.
+
+### Building it yourself
+
+Release builds include Nightingale TV's Google client. Its file is never in the source, so if you fork or clone the project, create your own: in a Google Cloud project with the **YouTube Data API v3** turned on, make an OAuth client of the type **TVs and Limited Input devices**, download its JSON file and save it as `assets/youtube/client/nightingale-tv-youtube.json` (git-ignored; the folder's README says the same). Every build then signs in through Google with it: `flutter run`, VS Code or the `tool/` scripts. Without the file, the app still builds, and choosing **YouTube** says the build has no YouTube client.
 
 ## Controls
 
@@ -169,13 +248,13 @@ Moving from another device? Choose **Restore from a backup** on the sign-in scre
 
 **Back** works as Esc does on every screen, except on the TV picture itself on Android: there it shows "Press Back again to exit", and a second Back within 3 seconds closes the app. On a computer, Esc on the TV picture opens the guide.
 
-**With an air mouse:** move the pointer while watching, and **Guide** and **Menu** buttons appear in the top-left corner. In the guide, click a channel to watch it, click a tab to filter the channels, or click **Menu** at the top.
+**With an air mouse:** move the pointer while watching, and **Guide** and **Menu** buttons appear in the top-left corner, with **Captions** and **Quality** at the bottom right. In the guide, click a channel to watch it, click a tab to filter the channels, or click **Menu** at the top.
 
 **On a phone or tablet:** tap where you'd click and long-press where you'd right-click (the TV picture or the guide opens the menu). Tapping the picture shows the pause and rewind controls, with the guide among them. Drag to scroll the guide and lists. The back gesture works as the Back button does.
 
 ### Captions
 
-Press ◀ or ▶ to bring up the buttons, ▲ to reach them, then pick **Captions** (after **Sleep**). On a phone the **Captions** button sits beside **Menu** over the player. The list shows **Off** and every subtitle track of the program, in the file or beside it (`Movie.en.srt`), plus the caption size. Your pick is saved for the profile, so later programs on any channel show a track in the same language. On a live TV channel the choice is just **Off** or **On**.
+**Captions** and **Quality** sit at the bottom right of the picture while the controls are up. With the transport bar, press ◀, then ▼, then ▶ twice to reach **Captions**. Without it (live channels, YouTube channels, or with Pause and rewind off), press ▶ and then ▼. On a phone the **Captions** button sits beside **Menu** over the player, followed by **Quality**. The list shows **Off** and every subtitle track of the program, in the file or beside it (`Movie.en.srt`), plus the caption size. Your pick is saved for the profile, so later programs on any channel show a track in the same language. On a live TV channel the choice is just **Off** or **On**.
 
 ## Phone remote
 
@@ -194,19 +273,24 @@ Menu → **Phone remote** turns it on, on Android TV and the desktop version. Sc
 
 ## Backup and restore
 
-Menu → **Backup & restore** (grown-ups only, when there are kid profiles) lists every backup, newest first. Pick one to **Restore** it, **Save to file**, or **Delete** it, or make one with **Back up now**. The app also backs up every day something changes, and before anything that replaces a lot at once. It keeps the 14 newest daily backups and the 10 newest "Before…" ones; backups you make or bring in are kept until you delete them.
+Menu → **Backup & restore** (grown-ups only, when there are kid profiles) shows when your setup was last backed up, with **Save to a file**, **Open a backup file**, **Use your phone or computer** and, after a big change, **Undo**.
+
+- **The automatic backup.** The app keeps one backup of your setup on the device and rewrites it when something changes. It checks after start-up, every 6 hours, and when the app goes to the background. Changing channel doesn't count as a change.
+- **Undo.** Right before a restore, a lineup reset, a profile delete or a settings update, the app saves an undo point, and Backup & restore offers **Undo restore**, **Undo lineup reset**, **Undo deleting Kids** and so on. Only the most recent change can be undone, and an undo can itself be undone.
+- **A copy you keep.** The app doesn't keep a list of backups. For a copy that stays as it is, use **Save to a file**.
+- **Picked Live TV files.** The automatic backup leaves out guide files you picked from the device, and very large picked playlists, so it stays small. After restoring it, the source's channels keep their numbers, and its card says **Pick the guide file again** (or the playlist). Pick the file through **Edit**. **Save to a file**, the phone or computer **Download backup** and **Move my setup** carry every picked file.
 
 **A backup holds** every profile with its PIN and all its channels, groups, blocks, commercial settings and custom images, plus the Live TV export and phone remote settings.
 
 **It never holds** server sign-ins, sharing sign-ins or paired phones, so a backup file can't get anyone into your server or your sharing account. A restored profile asks you to sign in once unless it's still signed in on this TV. The library index and media analysis are rebuilt by themselves.
 
-**Restoring** replaces everything on this device, after backing up the current setup first ("Before restore"). Channels come back on the same schedule, so the same show is on the air as on the old device.
+**Restoring** replaces everything on this device, after saving the current setup as the undo point (**Undo restore**). Opened and uploaded backups go straight to the restore confirmation and aren't kept. Channels come back on the same schedule, so the same show is on the air as on the old device.
 
 ### Moving to a new device
 
-- **A computer:** on the old one, **Save to file**. On the new one, choose **Restore from a backup** → **Open a backup file** on the first sign-in screen (later, Menu → Backup & restore → **Open a backup file**). Android phones and tablets can do the same with the system's file picker.
+- **A computer:** on the old one, **Save to a file**. On the new one, choose **Restore from a backup** → **Open a backup file** on the first sign-in screen (later, Menu → Backup & restore → **Open a backup file**). Android phones and tablets can do the same with the system's file picker.
 - **Any device, Android TVs included:** on the old device, Backup & restore → **Use your phone or computer**, scan the code and tap **Download backup**. On the new one, choose **Restore from a backup** → **Use your phone or computer**, scan its code and tap **Restore from a file**. The phone and both devices need to be on the same Wi-Fi.
-- **Android's own backup:** with Google backup on, Android keeps your newest Nightingale TV backup in your Google account, and a reinstall offers to **Restore it**.
+- **Android's own backup:** with Google backup on, Android keeps the automatic backup in your Google account (never the undo point), and a reinstall offers to **Restore it**. Picked guide files aren't in it.
 - **Live TV export moves with the backup.** The restored computer answers as the same tuners, so Plex and Jellyfin keep their setup. Turn export off on the old one.
 
 ## Sharing
@@ -255,7 +339,7 @@ If the backend can't be reached, Sharing says "Sharing is unavailable right now"
 
 ### Watching together
 
-**Watch together**, in the player's buttons on a Nightingale channel (after Captions and Sleep), starts a watch party for what's on: pick up to 7 friends, or choose **Get a link** for a code, link and QR code (and **Send invite** on phones and tablets). A party holds up to 8 people. Live channels don't offer it, since they play from your own tuner, and kid profiles never have it.
+**Watch together**, in the player's buttons on a Nightingale channel (after Sleep), starts a watch party for what's on: pick up to 7 friends, or choose **Get a link** for a code, link and QR code (and **Send invite** on phones and tablets). A party holds up to 8 people. Live channels don't offer it, since they play from your own tuner, and kid profiles never have it.
 
 - **How it stays in sync without video.** No picture or sound goes between members. The host's app sends only the timing: which program is on (described as a shared channel describes it, by show ids, season and episode, or a movie's ids, title and year), where it is, and whether it's paused. Each member's app plays its own copy from its own servers at that position, timed by the sharing backend's clock. A member more than 2 seconds off jumps to the right place; smaller drift is corrected by playing 5% faster or slower for a moment, which you won't hear. When the host's program ends, everyone moves to the host's next program. Joining late starts at the current position. Each member's app sends a few small messages a minute, well under 1 MB in 10 minutes.
 - **A program you don't have.** If your servers have no copy of what's on, you see "Not on your servers: *The Office*. You'll rejoin at the next program." The party row and reactions keep working, and your picture comes back when a program you have starts.
@@ -335,7 +419,9 @@ Live TV export on a desktop needs that computer to stay on with the app open. Th
 
 Everything is set up in its **web admin**, in a browser on a computer or phone at `http://<server>:8484`: profiles, channels and icons, programming blocks, channel groups, commercials, Live TV sources, servers, export and backups. It works with no internet connection. Each person signs in with their own account: **admins** can do everything, and **users** see only the profiles an admin gives them.
 
-To start, restore a backup from the Nightingale TV app, or start fresh and sign in to your Jellyfin, Emby or Plex server. Setup, settings and updating are in [docker/README.md](docker/README.md). The Linux `.tar.gz` on [Releases](https://github.com/tcaplette/Nightingale-TV/releases) (`nightingale-tv-linux-x64-<x.y.z>.tar.gz`, which includes the web admin) also runs as a server without Docker: start it with `./nightingale_tv --server`, or `xvfb-run -a ./nightingale_tv --server` on a machine with no screen.
+**YouTube** works on the server with [your own Google client](#your-own-google-client) only, never Nightingale TV's, so a profile there has no limit on YouTube channels. Set it up in the web admin: the profile's Servers → Add a server → **YouTube**, enter your client's Client ID and Client secret (or upload the JSON file Google downloads), then the code at google.com/device, your channels and a colour. YouTube's terms allow its videos only in YouTube's own player, so they aren't in Plex, Jellyfin, Emby or IPTV players: watch them on the web admin's **Watch** page, which plays each channel in YouTube's player at the scheduled point, one video after another. A restored backup keeps its YouTube channels; YouTube then shows **Needs sign-in**, and **Sign in again** asks for your own client.
+
+To start, restore a backup from the Nightingale TV app, or start fresh and sign in to your Jellyfin, Emby or Plex server, or add an SMB share. The server can also convert SMB files for your TVs (see [SMB shares](#smb-shares)). Setup, settings and updating are in [docker/README.md](docker/README.md). The Linux `.tar.gz` on [Releases](https://github.com/tcaplette/Nightingale-TV/releases) (`nightingale-tv-linux-x64-<x.y.z>.tar.gz`, which includes the web admin) also runs as a server without Docker: start it with `./nightingale_tv --server`, or `xvfb-run -a ./nightingale_tv --server` on a machine with no screen.
 
 ## Building from source
 
@@ -347,7 +433,9 @@ Your builds have no [Sharing](#sharing) either, unless you run your own sharing 
 
 ### Building for Android
 
-You need the Android SDK (Android Studio installs it) as well as Flutter. To try it on a connected device or a running emulator, `flutter run` is enough. For APKs you can install anywhere, build them signed with a release key.
+You need the Android SDK (Android Studio installs it) as well as Flutter. To try it on a connected device or a running emulator, `flutter run` is enough.
+
+The app's FFmpeg (for SMB files a device can't play) is built from pinned sources by `tool/build_ffmpeg_android.sh`, into the git-ignored `android/app/src/main/jniLibs`. `tool/build_apk.sh` and `tool/build_bundle.sh` run it when it hasn't been built; before a plain `flutter run`, run it once yourself. It needs the Android NDK 28.2 (Android Studio's SDK Manager installs it), make, ninja, python3 and curl, downloads its sources the first time, and takes a while; later builds reuse it with no network. For APKs you can install anywhere, build them signed with a release key.
 
 Create the key once, and keep it and its passwords somewhere safe outside this repository. Every update must be signed with the same key, or Android won't install it over the old version:
 
@@ -392,7 +480,7 @@ tool/build_bundle.sh        # official key only: the Google Play bundle (play fl
 On Ubuntu:
 
 ```bash
-sudo apt install clang cmake ninja-build pkg-config libgtk-3-dev libmpv-dev ffmpeg
+sudo apt install clang cmake ninja-build pkg-config libgtk-3-dev libmpv-dev libwebkit2gtk-4.1-dev ffmpeg
 
 flutter run -d linux        # NIGHTINGALE_TV_WINDOWED=1 runs it in a window
 tool/install.sh             # build the package and install or update it with apt
@@ -403,7 +491,11 @@ tool/build_deb.sh           # only build the package in dist/
 
 ## Privacy
 
-Nightingale TV talks to your own media servers and, if you set them up, your Live TV sources and [Sharing](#sharing). It has no ads or tracking, and its only accounts are the optional sharing accounts.
+Nightingale TV talks to your own media servers and SMB shares and, if you set them up, your Live TV sources, [YouTube](#youtube-channels) and [Sharing](#sharing). It has no ads or tracking of its own, and its only accounts are the optional sharing accounts.
+
+### YouTube
+
+What the app reads from YouTube stays on the device: your subscriptions, and the picked channels' names, pictures and videos' details. It's refreshed or deleted within 30 days, and deleted at once when you remove YouTube or sign out. Your sign-in is kept encrypted on the device, and never goes in backups, logs or error reports. You can also take access away at [myaccount.google.com/permissions](https://myaccount.google.com/permissions). The full policy is at [coffeehauslabs.com/ntv/privacy](https://coffeehauslabs.com/ntv/privacy).
 
 ### Sharing accounts
 
@@ -431,17 +523,19 @@ Nothing else: no episode titles, server names or addresses, item ids, live strea
 
 ### Error reports
 
-Official builds (Google Play, the APKs and `.deb` on Releases, and the server image) send a short **error report** to the developer when something goes wrong: an error nothing in the app caught, a channel that fails to open, a sign-in, library or backup that fails for an unexpected reason, or on Android 8 and later a crash or a freeze. Reports go to the project's own error tracker (a self-hosted GlitchTip), not to a third party.
+Official builds (Google Play, the APKs and `.deb` on Releases, and the server image) send a short **error report** to the developer when something goes wrong: an error nothing in the app caught, a channel that fails to open, a sign-in, library or backup that fails for an unexpected reason, or on Android 8 and later a crash (including a native crash in the video engine, a codec or a driver) or a freeze. Reports go to the project's own error tracker (a self-hosted GlitchTip), not to a third party.
 
 **A report holds** the error and where in the app's code it happened, the app version, whether it's an Android TV, a phone or a computer, the device model and Android or Linux version, the video renderer, and the last few screens opened, channel numbers tuned and server results (such as "sign-in: refused").
 
-**Taken out before it's sent:** server addresses (replaced with `<server>`), tokens, API keys, passwords and sign-in headers (`<redacted>`), server names, user names, profile names and the device's name (`<name>`), and file paths in your home or app folder (shortened to `~/…`). Programme titles, what you watch, your IP address and any user ID are never sent. Expected problems, such as a wrong password or a server that's switched off, aren't sent at all, and the same error is sent at most once every 10 minutes and 30 times per run.
+**Reports sent by themselves:** the app keeps a small record on the device of the current run: whether it's on screen, how far start-up got, the trail above, foreground and background changes, and memory figures (the device's free memory, Android's memory warnings and the app's own use, sampled every 30 seconds while it's on screen). If the app closed unexpectedly while on screen (Android ending it for lack of memory, a crash, a power cut), the next launch sends an **Unexpected exit** report with that trail; on Android 11 and later it adds Android's own reason. Closing the app yourself, a force-stop or a swipe from recents sends nothing. A launch that hasn't reached a usable screen after 60 seconds, or that waits on a library download for more than 3 minutes, sends a **Slow start** report with its start-up steps and whether it could use the saved library; if it never got that far, the next launch sends it. The record is a file in the app's data folder, outside profiles and backups, and it's scrubbed like a report.
 
-**Turning it off:** open the menu → **Error reports** and turn off **Send error reports from this device**. Nothing is sent from that device after that, and reports waiting to go are deleted. The setting belongs to the device: it isn't in profiles or backups. The same screen has **Send a test report**, and shows the ID of the last report sent; quote it in a bug report so the developer can find yours. On the server, set `NTV_ERROR_REPORTS=0` (see [docker/README.md](docker/README.md)).
+**Taken out before it's sent:** server addresses (replaced with `<server>`), SMB share addresses (`<share>`), tokens, API keys, passwords and sign-in headers (`<redacted>`), server names, share and folder names, user names, profile names and the device's name (`<name>`), the names of media files on shares (`<file>`), and file paths in your home or app folder (shortened to `~/…`). Programme titles, what you watch, your IP address and any user ID are never sent. Expected problems, such as a wrong password or a server that's switched off, aren't sent at all, and the same error is sent at most once every 10 minutes and 30 times per run.
+
+**Turning it off:** open the menu → **Error reports** and turn off **Send error reports from this device**. Nothing is sent from that device after that, and reports waiting to go are deleted. The setting belongs to the device: it isn't in profiles or backups. The same screen has **Send a test report**, shows the ID of the last report sent, and lists the last five reports this device sent (tests, video reports, errors, unexpected exits and slow starts) with their time and short ID; quote one in a bug report so the developer can find yours. On the server, set `NTV_ERROR_REPORTS=0` (see [docker/README.md](docker/README.md)).
 
 Builds you make yourself send nothing: reporting needs an address that's only in official builds (see [Building from source](#building-from-source)).
 
-**Reading an ANR or native crash** (for the developer): Dart errors arrive with their function and file names, but a freeze (ANR) or native crash reports the app's compiled Dart code as raw addresses in `libapp.so`. Each official release keeps that code's debug files in `dist/<version>/symbols/` (saved by the build scripts, never inside an APK, bundle, `.deb` or tarball). `tool/symbolize_event.py <event-id>` fetches the event from GlitchTip (with the login in the git-ignored `glitchtip-credentials.txt`), works out which library each APK offset is, and prints the frames innermost first, each `libapp.so` frame as a Dart function with its file and line. `--dist` names the release folder when it isn't `dist/<version>`, and `--apk` the APK a device ran (for a Google Play install, its `split_config.<abi>.apk`). Releases before these files were kept (1.2.4 and earlier) can't be symbolized this way; the tool says so and prints the frames by library and address.
+**Reading an ANR or native crash** (for the developer): Dart errors arrive with their function and file names, but a freeze (ANR) or native crash reports the app's compiled Dart code as raw addresses in `libapp.so`. Each official release keeps that code's debug files in `dist/<version>/symbols/` (saved by the build scripts, never inside an APK, bundle, `.deb` or tarball). `tool/symbolize_event.py <event-id>` fetches the event from GlitchTip (with the login in the git-ignored `glitchtip-credentials.txt`), works out which library each frame is in, and prints the frames innermost first, each `libapp.so` frame as a Dart function with its file and line, and each `libflutter.so` frame as an engine function with its file and line (from the engine's published symbols for the release's engine revision, downloaded once into `~/.cache/nightingale-symbols/`, and only when they match the engine in the release's APK). Frames in other libraries (Android's, the codecs', the GPU driver's) are printed with their library named. A native crash and the next launch's Unexpected exit report share the `session` / `previous_session` tag. `--dist` names the release folder when it isn't `dist/<version>`, and `--apk` the APK a device ran (for a Google Play install, its `split_config.<abi>.apk`). Releases before these files were kept (1.2.4 and earlier) can't be symbolized this way; the tool says so and prints the frames by library and address.
 
 ## Reporting a problem
 
@@ -467,6 +561,9 @@ Nightingale TV is built with software that keeps its own licenses:
 - The [Barlow](https://github.com/jpt/barlow) fonts are under the SIL Open Font License 1.1 ([`assets/fonts/OFL.txt`](assets/fonts/OFL.txt)).
 - [sentry_flutter](https://pub.dev/packages/sentry_flutter) (MIT), in [`third_party/sentry_flutter`](third_party/sentry_flutter) without its Linux and Windows parts (see its `NIGHTINGALE.md`).
 - [Flutter](https://flutter.dev), [media_kit](https://github.com/media-kit/media-kit), [qr_flutter](https://pub.dev/packages/qr_flutter) and the other packages listed in [`pubspec.yaml`](pubspec.yaml) are under their own open-source licenses.
+- SMB shares are read with [dart_smb2](https://pub.dev/packages/dart_smb2) (BSD 3-Clause), which bundles [libsmb2](https://github.com/sahlberg/libsmb2) (LGPL 2.1 or later, loaded as a shared library; source at [libsmb2-scripts](https://github.com/ales-drnz/libsmb2-scripts)) with [OpenSSL](https://www.openssl.org)'s libcrypto (Apache License 2.0). The binaries are in [`third_party/libsmb2`](third_party/libsmb2).
+- On Android, files a device can't play are converted with [FFmpeg](https://ffmpeg.org) (GPL 2 or later, as built with [x264](https://www.videolan.org/developers/x264.html), GPL 2), [zimg](https://github.com/sekrit-twc/zimg) (WTFPL) and [dav1d](https://code.videolan.org/videolan/dav1d) (BSD 2-Clause), built from pinned sources by [`tool/build_ffmpeg_android.sh`](tool/build_ffmpeg_android.sh). On Linux and in Docker the system's FFmpeg is used.
+- The texts of these licences are in [`assets/licenses`](assets/licenses) and on the app's licence page.
 - On Android, video playback uses [AndroidX Media3](https://developer.android.com/media/media3) (ExoPlayer) with [OkHttp](https://square.github.io/okhttp/), both under the Apache License 2.0. On a computer it uses [mpv](https://mpv.io) (libmpv), installed from your Linux distribution's packages.
 
 Nightingale TV is an independent project. It isn't affiliated with or endorsed by Jellyfin, Emby, Plex or NostalgiaTV. It doesn't include any TV network logos or other trademarks.

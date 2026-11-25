@@ -447,7 +447,9 @@ class WatchParty extends ChangeNotifier {
 
   /// Whether Watch together is offered on [ch] (D8): a Nightingale channel
   /// with something on, outside a party, linked and connected.
-  bool canStartOn(Channel? ch) => attached && !active && ch != null && !ch.isLive && _me != null;
+  /// Not on live or YouTube channels (watch-together; youtube-subscriptions
+  /// D13).
+  bool canStartOn(Channel? ch) => attached && !active && ch != null && !ch.isLive && !ch.isYouTube && _me != null;
 
   /// Starts a party for what [tuner] plays, inviting [friends]; with [link]
   /// a `watch` invite comes back. Throws [ShareUnavailable] when the backend
@@ -455,7 +457,7 @@ class WatchParty extends ChangeNotifier {
   Future<FriendInvite?> start({List<String> friends = const [], bool link = false}) async {
     final client = _client, tuner = _tuner, app = _app;
     final ch = tuner?.channel;
-    if (client == null || tuner == null || app == null || ch == null || ch.isLive) {
+    if (client == null || tuner == null || app == null || ch == null || ch.isLive || ch.isYouTube) {
       throw const ShareUnavailable('nothing to watch together');
     }
     if (_s != null) await leave();

@@ -20,6 +20,12 @@ abstract final class BackupFiles {
   @visibleForTesting
   static bool? debugAvailable;
 
+  /// Stand in for the save dialog and the file picker, in tests.
+  @visibleForTesting
+  static Future<bool> Function(String name, Uint8List bytes)? debugSave;
+  @visibleForTesting
+  static Future<Uint8List?> Function()? debugOpen;
+
   /// Whether Save to file and Open a backup file can be offered.
   static Future<bool> available() async {
     if (debugAvailable case final on?) return on;
@@ -34,6 +40,7 @@ abstract final class BackupFiles {
 
   /// Saves [bytes] as [name] where the user picks. False if they cancelled.
   static Future<bool> save(String name, Uint8List bytes) async {
+    if (debugSave case final save?) return save(name, bytes);
     if (PlatformInfo.isAndroid) {
       return await _channel.invokeMethod<bool>('saveDocument', {'name': name, 'bytes': bytes}) ?? false;
     }
@@ -49,6 +56,7 @@ abstract final class BackupFiles {
   /// as [limit] + 1 bytes, so the caller can say it's too big); null if
   /// they cancelled.
   static Future<Uint8List?> open({required int limit}) async {
+    if (debugOpen case final open?) return open();
     // Android's picker knows files by type, and .ntvbackup has none: any
     // file, checked once read.
     final file = await openFile(acceptedTypeGroups: PlatformInfo.isAndroid ? const [] : _types);

@@ -4,9 +4,12 @@
          there the app starts only its Dart error reports and never the
          plugin's Android SDK (lib/reporting/error_reports.dart). -->
     <uses-sdk tools:overrideLibrary="io.sentry.flutter" />
-    <!-- Talking to the Jellyfin server; nothing else. -->
+    <!-- Talking to the profile's servers and shares. -->
     <uses-permission android:name="android.permission.INTERNET"/>
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>
+    <!-- Hearing SMB hosts' answers while the Add share step is open. -->
+    <uses-permission android:name="android.permission.CHANGE_WIFI_MULTICAST_STATE"/>
+    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE"/>
     <!-- Asked for only when a TV, which has no document picker, opens its own
          list of pictures for a custom channel icon (DeviceImages.kt). -->
     <uses-permission android:name="android.permission.READ_MEDIA_IMAGES"/>

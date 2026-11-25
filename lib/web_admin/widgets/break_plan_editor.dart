@@ -43,7 +43,7 @@ class _BreakPlanEditorState extends State<_BreakPlanEditor> {
     final s = resolve(BreakPlan(mode: BreakMode.custom, roles: _roles), Duration(minutes: minutes));
     if (!s.hasBreaks) return tr.noBreaks(name);
     final mids = s.midCount == 0 ? '' : tr.breaksInside(s.midCount);
-    return '$name: ${formatMinutes(s.slotLength)}$mids';
+    return tr.labelValue(name, '${formatMinutes(s.slotLength)}$mids');
   }
 
   Widget _choices<T>(String label, List<T> values, T selected, String Function(T) name, CustomRoles Function(T) set) =>

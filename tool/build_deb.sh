@@ -22,6 +22,9 @@ DEFINES=()
 # or your own: sharing.env.example, SELF_HOSTING.md); without it the app is
 # built with no sharing at all.
 [[ -f sharing.env ]] && DEFINES+=(--dart-define-from-file=sharing.env)
+# YouTube's shared Google client (youtube-subscriptions D4).
+source tool/youtube_client.sh
+youtube_client_check
 
 # pubspec "1.0.0+1" is already a valid Debian version. The UTC build time
 # after it makes every build newer than the last, so apt always upgrades
@@ -55,6 +58,17 @@ MPV_LIB="$(ldd "$BUNDLE/lib/libmedia_kit_video_plugin.so" \
 MPV_PKG="$(dpkg -S "$(readlink -f "$MPV_LIB")" 2>/dev/null | cut -d: -f1 || true)"
 if [[ -z "$MPV_PKG" ]]; then
   echo "Can't find the package that provides libmpv; install libmpv-dev first." >&2
+  exit 1
+fi
+
+# YouTube's player is WebKitGTK (youtube-playback D8), which plays YouTube's
+# VP9, AV1, H.264 and Opus through GStreamer: ask dpkg which package gives
+# the library this build linked (libwebkit2gtk-4.1-0 on every current
+# Ubuntu and Debian).
+WEBKIT_LIB="$(ldd "$BUNDLE/nightingale_tv" | awk '/libwebkit2gtk-4\.1\.so/ {print $3; exit}')"
+WEBKIT_PKG="$(dpkg -S "$(readlink -f "$WEBKIT_LIB")" 2>/dev/null | cut -d: -f1 || true)"
+if [[ -z "$WEBKIT_PKG" ]]; then
+  echo "Can't find the package that provides WebKitGTK 4.1; install libwebkit2gtk-4.1-dev first." >&2
   exit 1
 fi
 
@@ -120,12 +134,15 @@ DESKTOP_ENTRY
 # Flutter draws with EGL and OpenGL ES; without libgles2 the app aborts at
 # start (desktops usually have it, minimal installs don't).
 # The app was called Retro TV before; installing it removes that package.
+# Programme titles in Japanese or Chinese come from the server and can use
+# any character, so they draw with the system's Noto CJK (cjk-languages D3).
 cat > "$STAGE/DEBIAN/control" <<CONTROL
 Package: nightingale-tv
 Version: $VERSION
 Architecture: $ARCH
 Maintainer: Nightingale TV <noreply@localhost>
-Depends: libgtk-3-0t64 | libgtk-3-0, $MPV_PKG, libegl1, libgles2, ffmpeg, libc6, libstdc++6
+Depends: libgtk-3-0t64 | libgtk-3-0, $MPV_PKG, $WEBKIT_PKG, gstreamer1.0-plugins-good, gstreamer1.0-libav, libegl1, libgles2, ffmpeg, libc6, libstdc++6
+Recommends: fonts-noto-cjk, gstreamer1.0-plugins-bad
 Replaces: retro-tv
 Conflicts: retro-tv
 Provides: retro-tv

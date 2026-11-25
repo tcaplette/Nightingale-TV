@@ -584,6 +584,108 @@ void main() {
     });
   });
 
+  group('a quality picked in the player (player-options)', () {
+    BitratePreset preset(int? kbps) => PlaybackSettings.presets.firstWhere((p) => p.kbps == kbps);
+
+    /// Saves [kbps] as the player's picker does, and applies it.
+    Future<void> pick(int? kbps) async {
+      final before = app.capInEffect;
+      await app.setQuality(preset(kbps));
+      await tuner.applyQuality(before);
+      await settle();
+    }
+
+    test('stepping down mid-program re-opens the part at the viewing position as a capped conversion', () async {
+      final part = await tuneInto(first(), offset: const Duration(minutes: 3));
+      expect(player.opens.last.url.path, isNot(endsWith('/stream.ts')), reason: 'Original direct-plays');
+      final opens = player.opens.length;
+      final seen = <bool>[];
+      tuner.addListener(() => seen.add(tuner.changingChannel));
+      await pick(4000);
+      expect(player.opens.length, opens + 1);
+      final open = player.opens.last;
+      expect(open.url.path, endsWith('/stream.ts'));
+      expect(open.url.queryParameters['StartTimeTicks'], '${part.positionAt(now).inMicroseconds * 10}');
+      expect(open.exact, isTrue, reason: 'on the position, not a keyframe before it');
+      expect(client.decisions.last.maxBitrate, 4000000);
+      expect(tuner.status, TunerStatus.playing);
+      expect(tuner.shifted, isFalse);
+      expect(seen, isNot(contains(true)), reason: 'no channel number');
+    });
+
+    test('a viewer behind stays the same time behind, exactly where they were', () async {
+      final part = await tuneInto(first(), offset: const Duration(minutes: 4));
+      await tuner.oneMinuteBehind();
+      await debounced();
+      await settle();
+      final view = tuner.viewNow();
+      final behind = tuner.behind;
+      expect(behind, const Duration(minutes: 1));
+      await pick(8000);
+      final open = player.opens.last;
+      expect(open.exact, isTrue);
+      expect(open.url.queryParameters['StartTimeTicks'], '${part.positionAt(view).inMicroseconds * 10}');
+      expect(tuner.behind, behind);
+      expect(tuner.viewNow(), view);
+    });
+
+    test('a paused viewer stays paused at the same point', () async {
+      final part = await tuneInto(first());
+      await tuner.pause();
+      final at = tuner.viewNow();
+      now = now.add(const Duration(seconds: 20));
+      await pick(4000);
+      expect(tuner.paused, isTrue);
+      expect(player.paused, isTrue);
+      expect(tuner.viewNow(), at);
+      expect(player.opens.last.url.queryParameters['StartTimeTicks'], '${part.positionAt(at).inMicroseconds * 10}');
+    });
+
+    test('a direct play stays direct under a cap it is within, and re-opens exactly where it was', () async {
+      final part = await tuneInto(first(), offset: const Duration(minutes: 3));
+      client.bitrates[part.item!.sourceId] = 2000000;
+      await pick(4000);
+      final open = player.opens.last;
+      expect(open.url.path, isNot(endsWith('/stream.ts')), reason: 'within the cap: still direct');
+      expect(open.exact, isTrue);
+      expect(open.start, part.positionAt(now));
+    });
+
+    test('the cap already in effect does not re-tune', () async {
+      await app.setPlayback(const PlaybackSettings(transcodeIfNeeded: true, maxKbps: 8000));
+      await tuneInto(first());
+      final opens = player.opens.length;
+      await pick(8000);
+      expect(player.opens.length, opens);
+      // Original with converting off is no cap either way.
+      await app.setPlayback(PlaybackSettings.off);
+      await pick(null);
+      expect(player.opens.length, opens);
+    });
+
+    test('decisions asked under other caps are kept for those caps', () async {
+      await app.setPlayback(const PlaybackSettings(transcodeIfNeeded: true, maxKbps: 8000));
+      final part = await tuneInto(first());
+      final source = part.item!.sourceId;
+      expect(app.savedDecision(source, 8000), isNotNull);
+      await pick(4000);
+      expect(app.savedDecision(source, 8000), isNotNull, reason: 'kept');
+      expect(app.savedDecision(source, 4000), isNotNull, reason: 'asked under the new cap');
+      final asked = client.decisions.length;
+      await pick(8000);
+      expect(client.decisions.length, asked, reason: 'the saved 8 Mbps decision is used');
+    });
+
+    test('a change in Settings → Playback applies from the next tune, not at once', () async {
+      await tuneInto(first());
+      final opens = player.opens.length;
+      await app.setPlayback(const PlaybackSettings(transcodeIfNeeded: true, maxKbps: 4000));
+      await settle();
+      expect(player.opens.length, opens);
+      expect(tuner.status, TunerStatus.playing);
+    });
+  });
+
   group('the viewing clock', () {
     test('handover, preload and a keyframe join work on the viewing timeline', () async {
       await app.setGlobalPlan(BreakPlan.automatic);

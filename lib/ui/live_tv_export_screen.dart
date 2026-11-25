@@ -212,7 +212,7 @@ class _ProfileExportState extends State<_ProfileExport> {
                       Text(
                         running.isEmpty
                             ? tr.notStreamingOf(service.streams.running.length, service.streamLimit)
-                            : tr.streamingChannels(running.length, running.map((r) => r.channel.number).join(', '),
+                            : tr.streamingChannels(running.length, running.map((r) => r.channel.number).join(tr.listSeparator),
                                 running.fold<int>(0, (n, r) => n + r.viewers), service.streams.running.length, service.streamLimit),
                         style: g.body(24, color: g.textDim),
                       ),

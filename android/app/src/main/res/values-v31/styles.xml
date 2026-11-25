@@ -9,7 +9,8 @@
     </style>
     <!-- Behind the Flutter UI while it runs: the launch screen again, so
          the bird stays put until Flutter's first frame (which draws it too).
-         Video is drawn inside Flutter, so this never shows through it. -->
+         The Flutter view is see-through over the video layer, so from that
+         frame on the window is plain black instead (MainActivity). -->
     <style name="NormalTheme" parent="@android:style/Theme.Black.NoTitleBar">
         <item name="android:windowBackground">@drawable/launch_background</item>
     </style>

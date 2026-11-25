@@ -6,6 +6,8 @@ import 'dart:math';
 import 'package:flutter/foundation.dart';
 
 import '../app_state.dart';
+import '../convert/convert_helper.dart';
+import '../convert/convert_helpers.dart';
 import '../backup/backup_archive.dart';
 import '../backup/backup_restorer.dart';
 import '../backup/backup_scheduler.dart';
@@ -19,7 +21,9 @@ import 'analysis_queue.dart';
 import 'profile.dart';
 import '../server/media_server.dart';
 import '../server/server_clients.dart';
+import '../server/youtube/youtube_server.dart' show revokeYouTubeSignIns;
 import '../l10n/tr.dart';
+import '../reporting/startup_trail.dart';
 import '../store/unlock.dart';
 
 /// Everyone who watches this TV: the profiles, which one is watching now,
@@ -66,8 +70,25 @@ class Household extends ChangeNotifier {
   /// Live TV export, when the app runs it (not in most tests).
   ExportService? export;
 
-  /// Automatic and safety backups, when the app makes them (not in most
-  /// tests).
+  /// The Nightingale TVs this device has paired with to convert share
+  /// files (smb-conversion D9).
+  late final convertHelpers = ConvertHelpers(root, deviceName: PlatformInfo.deviceName)..addListener(_helpersChanged);
+
+  /// "Convert for other TVs", on the Linux app and the Docker server.
+  ConvertHelper? convertHelper;
+
+  /// A helper paired or removed: what shares' files can play changes.
+  void _helpersChanged() {
+    for (final p in _profiles) {
+      final app = appFor(p.id);
+      if (app != null && app.servers.all.any((s) => s.kind == ServerKind.smb)) {
+        unawaited(app.refreshLibrary(background: true));
+      }
+    }
+  }
+
+  /// The automatic backup and the undo point, when the app makes them (not
+  /// in most tests).
   BackupScheduler? backups;
 
   /// The Play version's free trial and unlock purchase (play-unlock); null,
@@ -78,7 +99,7 @@ class Household extends ChangeNotifier {
   /// from…"), cleared once shown.
   final notice = ValueNotifier<String?>(null);
 
-  /// The newest backup, offered on a first run that finds one (D14); null
+  /// The automatic backup, offered on a first run that finds one; null
   /// otherwise, and once Restore it or Start fresh is chosen.
   StoredBackup? welcomeBack;
 
@@ -143,9 +164,11 @@ class Household extends ChangeNotifier {
   String? lastServerUrl;
 
   Future<void> start() async {
+    StartupTrail.step('household started');
     // A restore cut short by a crash or power cut is finished, or a staged
     // one that never began swapping is thrown away.
     await BackupRestorer.recover(root.root);
+    await convertHelpers.load();
     final saved = await root.readJson(_languageFile);
     language
       ..onLastChanged = _saveLastLanguage
@@ -155,12 +178,13 @@ class Household extends ChangeNotifier {
       _profiles = [for (final p in json.cast<Map<String, Object?>>()) Profile.fromJson(p)];
     }
     if (_profiles.isEmpty && json == null && backups != null && !serverMode && !await _hasLegacySetup()) {
-      // A first run with backups here (Android brought one back, or a copied
-      // data folder): offer the newest before making a profile.
-      final newest = await backups!.store.newest();
-      if (newest != null) {
-        welcomeBack = newest;
+      // A first run with the automatic backup here (Android brought it
+      // back, or a copied data folder): offer it before making a profile.
+      final latest = await backups!.store.latest();
+      if (latest != null) {
+        welcomeBack = latest;
         _started = true;
+        StartupTrail.step('profiles shown');
         notifyListeners();
         return;
       }
@@ -197,8 +221,8 @@ class Household extends ChangeNotifier {
     return false;
   }
 
-  /// Start fresh on the Welcome back screen: today's first run, with the
-  /// backups kept for Backup & restore.
+  /// Start fresh on the Welcome back screen: today's first run. The
+  /// automatic backup stays until the new setup's first check replaces it.
   Future<void> startFresh() async {
     welcomeBack = null;
     await _finishStart();
@@ -225,6 +249,7 @@ class Household extends ChangeNotifier {
     if (only != null && !only.hasPin && !serverMode) {
       await select(only);
     } else {
+      StartupTrail.step('profiles shown');
       notifyListeners();
     }
   }
@@ -309,9 +334,13 @@ class Household extends ChangeNotifier {
       background: background,
       exportBusy: exportStreaming,
       analysisAllowed: analysisQueue?.allowedFor(p.id),
-      safetyBackup: backups == null ? null : (reason) => backups!.safetyBackup(reason),
+      saveUndoPoint: backups == null ? null : (reason) => backups!.saveUndoPoint(reason),
       // Linked profiles ask for provider ids (channel-sharing D2).
-      sharingLinked: () => sharing?.isLinked(p) ?? false);
+      sharingLinked: () => sharing?.isLinked(p) ?? false,
+      // Its shares' history name, unless one is chosen (smb-history).
+      profileName: () => p.name)
+    ..smb.helpers = convertHelpers.helperFor
+    ..smb.helperKnown = convertHelpers.knownFor;
 
   /// Waits for every state file write asked for so far, the household's and
   /// each open profile's.
@@ -392,6 +421,7 @@ class Household extends ChangeNotifier {
       app = null;
     }
     final reused = app != null;
+    StartupTrail.step('profile open');
     app ??= await _newApp(p);
     _current = p;
     _app = app;
@@ -444,8 +474,7 @@ class Household extends ChangeNotifier {
     if (profiles.any((p) => p.isKid)) {
       final open = grownUps.where((p) => !p.hasPin).map((p) => p.name).toList();
       if (open.isNotEmpty) {
-        return 'While there are kid profiles, every grown-up profile needs a PIN so kids '
-            'can\'t switch into it. Set a PIN on ${open.join(', ')}.';
+        return tr.kidProfilesNeedPins(joinNames(open));
       }
     }
     return null;
@@ -481,19 +510,24 @@ class Household extends ChangeNotifier {
 
   /// Deletes [p] and everything it saved, signing its device out of Jellyfin.
   ///
-  /// A safety backup is saved first; if it can't be, nothing is deleted and
+  /// The undo point is saved first; if it can't be, nothing is deleted and
   /// the [BackupException] is thrown.
   Future<void> deleteProfile(Profile p) async {
     final problem = problemDeleting(p);
     if (problem != null) throw StateError(problem);
-    await backups?.safetyBackup(BackupReason.beforeDelete, subject: p.name);
+    await backups?.saveUndoPoint(BackupReason.beforeDelete, subject: p.name);
     _exported = {..._exported}..remove(p.id);
     await _offScreen.remove(p.id)?.close();
     await _setup.remove(p.id)?.close();
     _syncAnalysisQueue();
     final storage = await storageFor(p);
     final session = await storage.readJson('session.json');
-    if (session is Map<String, Object?>) {
+    // YouTube's sign-ins are revoked on Google's side (youtube-subscriptions
+    // D12); their tokens go with the folder below.
+    await revokeYouTubeSignIns(storage);
+    // A share's password goes with the profile's folder below.
+    final kind = session is Map<String, Object?> ? ServerKind.fromJson(session['kind']) : null;
+    if (session is Map<String, Object?> && kind != ServerKind.smb && kind != ServerKind.youtube) {
       final client = sessionClient(ServerSession.fromJson(session),
           deviceName: PlatformInfo.deviceName);
       try {

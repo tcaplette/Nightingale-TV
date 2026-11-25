@@ -1,22 +1,22 @@
 import 'dart:async';
 import 'dart:math';
-import 'dart:ui' as ui;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 
-import '../reporting/video_report.dart';
 import 'playback_diagnostics.dart';
 import 'caption_size.dart';
 import 'caption_style.dart';
+import 'device_effects.dart';
 import 'subtitles.dart';
 import 'tuner_player.dart';
+import 'video_hole.dart';
+import 'video_look.dart';
 
 /// ExoPlayer on Android (android/app/src/main/kotlin/…/ExoTunerHost.kt):
-/// MediaCodec decodes straight into the Surface of a Flutter texture, in
-/// hardware only. Like [MediaKitTunerPlayer], its configuration is the same
+/// MediaCodec decodes straight to a system layer below Flutter's, in hardware
+/// only, and [buildVideo] is the hole it shows through. Like [MediaKitTunerPlayer], its configuration is the same
 /// whatever the playback mode; only seek precision is chosen per open.
 class ExoTunerPlayer implements TunerPlayer {
   /// [leveling]: volume leveling's state, which the player is built with.
@@ -27,11 +27,16 @@ class ExoTunerPlayer implements TunerPlayer {
   static const _channel = MethodChannel('nightingale_tv/player');
 
   late final Future<int?> _ready;
+
+  /// The player's id on the Kotlin side, once there is one.
+  int? get id => _id;
+  int? _id;
   StreamSubscription<Object?>? _events;
   bool _disposed = false;
 
-  /// The Flutter texture showing the video, once there is one.
-  final textureId = ValueNotifier<int?>(null);
+  /// Whether the layer has a picture: from the first frame until its surface
+  /// goes (the app in the background).
+  final hasPicture = ValueNotifier(false);
 
   /// The video's display size (pixel aspect applied), once known.
   final videoSize = ValueNotifier<Size?>(null);
@@ -39,30 +44,20 @@ class ExoTunerPlayer implements TunerPlayer {
   /// The subtitles on screen now (captions on).
   final cues = ValueNotifier<ExoCues>(ExoCues.none);
 
-  /// The video's places on screen, newest last (video-report D4).
-  final _areas = <BuildContext>[];
-
-  /// Where the video shows on screen, for a video report: the part of the
-  /// screen it covers and the part of the texture shown there; null when
-  /// it isn't on screen.
-  TextureView? textureView() {
-    for (final context in _areas.reversed) {
-      final fitted = context.findRenderObject();
-      if (fitted is! RenderFittedBox || !fitted.attached || !fitted.hasSize) continue;
-      final texture = fitted.child;
-      if (texture is! RenderBox || !texture.hasSize || texture.size.isEmpty) continue;
-      final clip = MatrixUtils.transformRect(fitted.getTransformTo(null), Offset.zero & fitted.size);
-      final full = MatrixUtils.transformRect(texture.getTransformTo(null), Offset.zero & texture.size);
-      final visible = full.intersect(clip).intersect(Offset.zero & MediaQuery.sizeOf(context));
-      if (visible.width <= 0 || visible.height <= 0) continue;
-      return TextureView(
-        visible,
-        Rect.fromLTRB((visible.left - full.left) / full.width, (visible.top - full.top) / full.height,
-            (visible.right - full.left) / full.width, (visible.bottom - full.top) / full.height),
-      );
-    }
-    return null;
-  }
+  /// Where [buildVideo] is on screen: the layer follows it.
+  late final holes = VideoHoles((hole, picture) {
+    final id = _id;
+    if (id == null) return false;
+    unawaited(_channel.invokeMethod<void>('place', {
+      'id': id,
+      'left': picture.left,
+      'top': picture.top,
+      'right': picture.right,
+      'bottom': picture.bottom,
+    }));
+    _sendLook(hole);
+    return true;
+  });
 
   final _playing = StreamController<bool>.broadcast();
   final _buffering = StreamController<bool>.broadcast();
@@ -95,7 +90,10 @@ class ExoTunerPlayer implements TunerPlayer {
       return null;
     }
     _events = EventChannel('nightingale_tv/player/$id').receiveBroadcastStream().listen(_onEvent);
-    textureId.value = id;
+    _id = id;
+    // Before the first open, so a channel with effects starts with them.
+    _sendLook(holes.current);
+    holes.placeAgain();
     return id;
   }
 
@@ -127,6 +125,15 @@ class ExoTunerPlayer implements TunerPlayer {
         final w = (raw['width'] as num).toDouble(), h = (raw['height'] as num).toDouble();
         final ratio = (raw['ratio'] as num?)?.toDouble() ?? 1;
         videoSize.value = Size(w * (ratio > 0 ? ratio : 1), h);
+      case 'firstFrame':
+        hasPicture.value = true;
+      case 'effectsFailed':
+        PlaybackDiagnostics.note('RETRO', 'video effects failed: ${raw['message']}');
+        DeviceEffects.instance.videoEffectsFailed();
+      case 'effectsApplied':
+        videoLookApplied.value = raw['v'] == true;
+      case 'noPicture':
+        hasPicture.value = false;
       case 'cues':
         cues.value = ExoCues.fromEvent(raw);
       case 'log':
@@ -272,7 +279,7 @@ class ExoTunerPlayer implements TunerPlayer {
   }
 
   /// A change rebuilds ExoPlayer with the new audio output (design D4),
-  /// on the same texture; what was playing stops, and the tuner re-tunes.
+  /// on the same layer; what was playing stops, and the tuner re-tunes.
   @override
   Future<void> setVolumeLeveling(bool on) async {
     PlaybackDiagnostics.note('LEVEL', '${on ? 'on' : 'off'} exo ${on ? 'pcm-only' : 'passthrough'}');
@@ -303,12 +310,88 @@ class ExoTunerPlayer implements TunerPlayer {
     final id = await _ready;
     _disposed = true;
     await _events?.cancel();
-    textureId.value = null;
+    _id = null;
+    hasPicture.value = false;
     if (id != null) await _channel.invokeMethod<void>('dispose', {'id': id});
   }
 
   @override
-  Widget buildVideo({BoxFit fit = BoxFit.contain}) => _ExoVideo(this, fit);
+  bool get onVideoLayer => true;
+
+  @override
+  Widget buildVideo({BoxFit fit = BoxFit.contain}) => ListenableBuilder(
+        listenable: Listenable.merge([videoSize, hasPicture]),
+        builder: (context, _) =>
+            VideoHole(video: videoSize.value, fit: fit, open: hasPicture.value, holes: holes),
+      );
+
+  @override
+  final ValueNotifier<bool> videoLookApplied = ValueNotifier(true);
+
+  VideoLook _look = VideoLook.none;
+  bool _lookDrawn = true;
+
+  @override
+  void setVideoLook(VideoLook look, {bool drawn = true}) {
+    if (look == _look && drawn == _lookDrawn) return;
+    _look = look;
+    _lookDrawn = drawn;
+    _sendLook(holes.current);
+  }
+
+  /// The effects as drawn now, with the frame ([hole]'s box) and 4 device
+  /// pixels, the glow's reach, in parts of the picture; the overlay in the
+  /// frame's device pixels.
+  void _sendLook(RenderVideoHole? hole) {
+    final id = _id;
+    if (id == null) return;
+    final box = hole?.boxOnScreen, picture = hole?.pictureOnScreen;
+    final look = _lookDrawn ? _look : VideoLook.none;
+    final args = <String, Object?>{
+      'id': id,
+      // Which passes the channel needs, drawn here or not.
+      'kind': (_look.matrix != null ? 1 : 0) + (_look.curvature > 0 || _look.glow > 0 ? 2 : 0),
+      'matrix': look.matrix,
+      'curvature': look.curvature,
+      'glow': look.glow,
+      'overlay': [
+        if (look.overlay.on && box != null && picture != null) ...[
+          box.width,
+          box.height,
+          look.overlay.scanlines,
+          scanlinePeriod(box.height, look.overlay.lines).toDouble(),
+          scanlineDark(scanlinePeriod(box.height, look.overlay.lines)).toDouble(),
+          look.overlay.mask,
+          look.overlay.vignette,
+          box.longestSide * vignetteRadius,
+          vignetteStart,
+          box.shortestSide * tubeCorner,
+        ],
+      ],
+      'picture': [
+        if (box != null && picture != null) ...[
+          (box.center.dx - picture.left) / picture.width,
+          (box.center.dy - picture.top) / picture.height,
+          box.width / 2 / picture.width,
+          box.height / 2 / picture.height,
+          4 / picture.width,
+          4 / picture.height,
+        ] else
+          for (var i = 0; i < 6; i++) 0.0,
+      ],
+    };
+    // Nothing in effect and nothing before: nothing to say.
+    final said = '$args';
+    if (said == _saidLook || (_saidLook == null && !_look.any)) return;
+    if (!_look.any && _saidLook == 'off') return;
+    _saidLook = _look.any ? said : 'off';
+    unawaited(_channel.invokeMethod<void>('setEffects', args));
+  }
+
+  String? _saidLook;
+
+  @override
+  Widget buildCaptions() => _ExoCaptions(this);
 
   /// The size captions are drawn at.
   final captionSize = ValueNotifier(CaptionSize.medium);
@@ -476,139 +559,29 @@ class ExoImageCue {
   final double aspect;
 }
 
-/// The texture fitted in the space by [fit] with black around it, image
-/// subtitles on the picture, and text captions over it all (as
-/// media_kit_video's `Video` shows them on Linux). The subtitles fit the whole
-/// space, so cropping the picture never crops them.
-class _ExoVideo extends StatelessWidget {
-  const _ExoVideo(this.player, this.fit);
+/// The captions over the video: image subtitles on the picture, and text
+/// captions over it all (as media_kit_video's `Video` shows them on Linux).
+/// They fit the whole space, so cropping the picture never crops them.
+class _ExoCaptions extends StatelessWidget {
+  const _ExoCaptions(this.player);
 
   final ExoTunerPlayer player;
-  final BoxFit fit;
 
   @override
   Widget build(BuildContext context) {
-    return ColoredBox(
-      color: Colors.black,
-      child: Stack(
-        fit: StackFit.expand,
-        children: [
-          ValueListenableBuilder<int?>(
-            valueListenable: player.textureId,
-            builder: (context, id, _) => id == null
-                ? const SizedBox.shrink()
-                : ValueListenableBuilder<Size?>(
-                    valueListenable: player.videoSize,
-                    builder: (context, size, _) => size == null
-                        ? const SizedBox.shrink()
-                        : Stack(
-                            fit: StackFit.expand,
-                            children: [
-                              _VideoArea(
-                                player,
-                                child: FittedBox(
-                                  fit: fit,
-                                  clipBehavior: Clip.hardEdge,
-                                  child: SizedBox.fromSize(size: size, child: _FaultyTexture(id)),
-                                ),
-                              ),
-                              FittedBox(child: SizedBox.fromSize(size: size, child: ExoImageCues(player.cues, player.captionSize, size))),
-                            ],
-                          ),
-                  ),
-          ),
-          _TextCues(player.cues, player.captionSize),
-        ],
-      ),
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        ValueListenableBuilder<Size?>(
+          valueListenable: player.videoSize,
+          builder: (context, size, _) => size == null
+              ? const SizedBox.shrink()
+              : FittedBox(child: SizedBox.fromSize(size: size, child: ExoImageCues(player.cues, player.captionSize, size))),
+        ),
+        _TextCues(player.cues, player.captionSize),
+      ],
     );
   }
-}
-
-/// Notes where the video is on screen, for a video report.
-class _VideoArea extends StatefulWidget {
-  const _VideoArea(this.player, {required this.child});
-
-  final ExoTunerPlayer player;
-  final Widget child;
-
-  @override
-  State<_VideoArea> createState() => _VideoAreaState();
-}
-
-class _VideoAreaState extends State<_VideoArea> {
-  @override
-  void initState() {
-    super.initState();
-    widget.player._areas.add(context);
-  }
-
-  @override
-  void dispose() {
-    widget.player._areas.remove(context);
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) => widget.child;
-}
-
-/// The texture; with the debug fault `smear-screen` (video-report D13), as
-/// the Shield photo shows it: blurred, under a four-corner colour wash.
-class _FaultyTexture extends StatelessWidget {
-  const _FaultyTexture(this.id);
-
-  final int id;
-
-  @override
-  Widget build(BuildContext context) {
-    return ValueListenableBuilder<VideoFault>(
-      valueListenable: VideoFault.current,
-      builder: (context, fault, _) {
-        final texture = Texture(textureId: id);
-        if (fault != VideoFault.smearScreen) return texture;
-        return Stack(
-          fit: StackFit.expand,
-          children: [
-            ImageFiltered(
-              imageFilter: ui.ImageFilter.blur(sigmaX: 24, sigmaY: 24, tileMode: TileMode.clamp),
-              child: ColorFiltered(
-                // Grey: the wash takes the colour's place.
-                colorFilter: const ColorFilter.matrix([
-                  0.3, 0.59, 0.11, 0, 0, //
-                  0.3, 0.59, 0.11, 0, 0, //
-                  0.3, 0.59, 0.11, 0, 0, //
-                  0, 0, 0, 1, 0,
-                ]),
-                child: texture,
-              ),
-            ),
-            const IgnorePointer(child: CustomPaint(painter: _WashPainter())),
-          ],
-        );
-      },
-    );
-  }
-}
-
-class _WashPainter extends CustomPainter {
-  const _WashPainter();
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final w = size.width, h = size.height;
-    const tl = Color(0xFF2850E6), tr = Color(0xFFE63232), bl = Color(0xFF32D246), br = Color(0xFFEBDC28);
-    canvas.drawVertices(
-      ui.Vertices(VertexMode.triangles, [Offset.zero, Offset(w, 0), Offset(0, h), Offset(w, 0), Offset(w, h), Offset(0, h)],
-          colors: [tl, tr, bl, tr, br, bl]),
-      BlendMode.modulate,
-      Paint()
-        ..color = const Color(0x99FFFFFF)
-        ..blendMode = BlendMode.overlay,
-    );
-  }
-
-  @override
-  bool shouldRepaint(_WashPainter oldDelegate) => false;
 }
 
 /// Where image cues go at [factor] of their authored size, in the picture

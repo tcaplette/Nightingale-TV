@@ -188,7 +188,7 @@ void main() {
     await finish(tester);
   });
 
-  testWidgets('the banner: the chip; the row is Guide, Menu, Sleep, Captions, Watch together, Watch privately; OK hides presence',
+  testWidgets('the banner: the chip; the row is Guide, Menu, Sleep, Watch together, Watch privately; OK hides presence',
       (tester) async {
     await start(tester);
     await watch(tester);
@@ -202,7 +202,7 @@ void main() {
     expect(find.descendant(of: find.byType(ChannelBanner), matching: find.byType(FriendAvatarStack)), findsOneWidget);
     await key(tester, LogicalKeyboardKey.arrowUp);
     expect(lit(tester), ['Guide']);
-    for (final label in ['Menu', 'Sleep', 'Captions', 'Watch together', 'Watch privately', 'Watch privately']) {
+    for (final label in ['Menu', 'Sleep', 'Watch together', 'Watch privately', 'Watch privately']) {
       await key(tester, LogicalKeyboardKey.arrowRight);
       expect(lit(tester), [label]);
     }

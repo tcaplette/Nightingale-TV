@@ -22,9 +22,9 @@ class TransferServer {
 
   final BackupScheduler backups;
 
-  /// An uploaded backup, checked and kept in the store as "From a file":
-  /// the TV opens its restore confirmation.
-  final void Function(StoredBackup backup) onUpload;
+  /// An uploaded backup's bytes, checked and not kept anywhere: the TV
+  /// opens its restore confirmation.
+  final void Function(Uint8List bytes) onUpload;
 
   /// The page stopped for lack of requests.
   final void Function()? onIdle;
@@ -108,7 +108,8 @@ class TransferServer {
         response.headers.contentType = ContentType.html;
         response.write(transferPageHtml());
       } else if (request.method == 'GET' && action == 'backup') {
-        final built = await backups.build(BackupReason.manual);
+        // Every picked Live TV file goes with it.
+        final built = await backups.build(BackupReason.manual, pickedFiles: PickedFiles.all);
         response.headers
           ..contentType = ContentType('application', 'octet-stream')
           ..set('Content-Disposition', 'attachment; filename="${fileName(built.createdAt)}"')
@@ -158,10 +159,8 @@ class TransferServer {
       _json(response, {'error': e.message});
       return;
     }
-    final stored = await backups.store.save(bytes, kind: BackupReason.file);
-    backups.changed();
     _json(response, {'ok': true});
-    onUpload(stored);
+    onUpload(bytes);
   }
 
   static void _json(HttpResponse response, Object? data) {

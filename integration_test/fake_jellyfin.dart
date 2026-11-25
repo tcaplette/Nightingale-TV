@@ -1,6 +1,7 @@
 // A tiny Jellyfin for the UI tests: libraries, a folder tree, the items of
 // a fake library, and empty answers for everything else. Videos don't
-// stream (404), so playback shows "No signal", as with no server at all.
+// stream (404), so playback shows "No signal", as with no server at all,
+// unless [FakeJellyfin.videos] says what plays.
 import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
@@ -33,6 +34,9 @@ class FakeJellyfin {
   /// Collections: id → the ids of the items in it. One in [tvLibrary]'s
   /// folder listing when given at start; changing it changes what it holds.
   final collections = <String, List<String>>{};
+
+  /// The file an item plays, directly; none by default.
+  File? Function(String itemId)? videos;
 
   /// When true, every request fails (as if the server were down).
   bool down = false;
@@ -117,6 +121,15 @@ class FakeJellyfin {
       } else {
         response.statusCode = HttpStatus.unauthorized;
       }
+    } else if (videos != null && path.endsWith('/PlaybackInfo')) {
+      final id = path.split('/')[2];
+      json({
+        'MediaSources': [
+          {'Id': id, 'SupportsDirectPlay': true},
+        ],
+      });
+    } else if (RegExp(r'^/Videos/[^/]+/stream$').hasMatch(path) && videos?.call(path.split('/')[2]) != null) {
+      return serveFile(request, videos!(path.split('/')[2])!);
     } else if (path.startsWith('/Sessions')) {
       response.statusCode = HttpStatus.noContent;
     } else {
@@ -153,4 +166,31 @@ class FakeJellyfin {
   }
 
   Future<void> close() => _server.close(force: true);
+}
+
+/// [file] as the answer to [request], whole or the range it asks for.
+Future<void> serveFile(HttpRequest request, File file) async {
+  final response = request.response;
+  if (!file.existsSync()) {
+    response.statusCode = HttpStatus.notFound;
+    return response.close();
+  }
+  final length = file.lengthSync();
+  final range = RegExp(r'bytes=(\d+)-(\d*)').firstMatch(request.headers.value('range') ?? '');
+  final from = range == null ? 0 : int.parse(range.group(1)!);
+  final to = range == null || range.group(2)!.isEmpty ? length : min(length, int.parse(range.group(2)!) + 1);
+  response.headers
+    ..contentType = ContentType('video', file.path.endsWith('.ts') ? 'mp2t' : 'mp4')
+    ..set('accept-ranges', 'bytes');
+  if (range != null) {
+    response.statusCode = HttpStatus.partialContent;
+    response.headers.set('content-range', 'bytes $from-${to - 1}/$length');
+  }
+  response.contentLength = to - from;
+  try {
+    await response.addStream(file.openRead(from, to));
+    await response.close();
+  } on Object {
+    // The player closed the connection.
+  }
 }

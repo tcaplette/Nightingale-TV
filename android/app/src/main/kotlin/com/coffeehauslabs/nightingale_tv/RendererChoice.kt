@@ -1,12 +1,12 @@
 package com.coffeehauslabs.nightingale_tv
 
 /** Which renderer Flutter starts with (android-playback, "NVIDIA Shield draws
- *  video through OpenGL ES"). Impeller's Vulkan backend imports the video's
- *  hardware buffers wrongly on Tegra drivers (red and green carry each
- *  pixel's texture position, only blue the picture), so every channel's
- *  colours are off on a Shield while the menus look right. On NVIDIA devices
- *  Impeller is turned off, so Flutter draws with Skia on OpenGL ES, where the
- *  driver converts the frames itself as an external texture.
+ *  the interface through OpenGL ES"). Impeller was turned off on NVIDIA
+ *  devices when Flutter still drew the video: its Vulkan backend imported the
+ *  video's buffers wrongly on Tegra drivers. The video is on a system layer
+ *  now (VideoLayer), so the picture no longer depends on this; the interface
+ *  keeps Skia on OpenGL ES there, the renderer Shields have been running, as
+ *  Impeller on a Shield can't be checked here (system-video-layer D6).
  *
  *  `--impeller-backend=opengles` can't do this: release engines ignore it
  *  (flutter_main.cc reads the requested backend only outside

@@ -8,6 +8,9 @@ import '../session.dart';
 import '../../l10n/tr.dart';
 import '../../ui/format.dart';
 
+/// A `#rrggbb` colour from the API (guide-server-colors), or null.
+Color? hexColor(Object? hex) => hex is String && hex.length == 7 ? Color(0xFF000000 | int.parse(hex.substring(1), radix: 16)) : null;
+
 /// What a stale save shows (web-admin "Showing errors, conflicts and
 /// progress").
 String get conflictText => tr.changedInAnother;
@@ -494,7 +497,7 @@ class MinuteField extends StatelessWidget {
     final t = TimeOfDay(hour: minute ~/ 60, minute: minute % 60);
     return OutlinedButton.icon(
       icon: const Icon(Icons.schedule),
-      label: Text('$label: ${t.format(context)}'),
+      label: Text(tr.labelValue(label, t.format(context))),
       onPressed: () async {
         final picked = await showTimePicker(context: context, initialTime: t);
         if (picked != null) onChanged(picked.hour * 60 + picked.minute);
@@ -502,3 +505,7 @@ class MinuteField extends StatelessWidget {
     );
   }
 }
+
+/// A channel as the TV shows it: a generated name in the page's language
+/// (`view.name`), else its saved name.
+String channelLabel(Map<String, Object?> c) => ((c['view'] as Map?)?['name'] ?? c['name']) as String;

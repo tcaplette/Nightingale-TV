@@ -398,7 +398,7 @@ void main() {
     }
 
     Future<AppState> launch(AppStorage storage, List<String> backups, {bool backupFails = false}) async {
-      final app = AppState(storage, runAnalysis: false, safetyBackup: (reason) async {
+      final app = AppState(storage, runAnalysis: false, saveUndoPoint: (reason) async {
         if (backupFails) throw const FileSystemException('disk full');
         backups.add(reason);
       });

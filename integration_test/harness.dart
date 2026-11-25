@@ -53,7 +53,8 @@ class UiHarness {
   ///
   /// With [server] (the items of [library], see [fakeItems]), a fake
   /// Jellyfin serves them, plus libraries and folders, so screens that ask
-  /// the server work. [reelCuts] seeds analysis results: reel id → clips.
+  /// the server work; with [videos], it plays the file that says for an
+  /// item. [reelCuts] seeds analysis results: reel id → clips.
   /// [settings] and [editChannels] change what's saved first (see
   /// [signedInApp]). Background analysis is off.
   ///
@@ -63,6 +64,7 @@ class UiHarness {
       {bool remote = false,
       bool export = false,
       FakeItems? server,
+      File? Function(String itemId)? videos,
       Map<String, Map<String, List<String>>> collections = const {},
       Map<String, List<Span>> reelCuts = const {},
       Map<String, Object?>? settings,
@@ -72,7 +74,7 @@ class UiHarness {
     final dir = await Directory.systemTemp.createTemp('nightingale_tv_ui');
     late final FakeJellyfin? fake;
     final household = (await tester.runAsync(() async {
-      fake = server == null ? null : await FakeJellyfin.start(server, collections: collections);
+      fake = server == null ? null : (await FakeJellyfin.start(server, collections: collections)..videos = videos);
       final seeded = await signedInApp(dir, library,
           serverId: fake == null ? null : FakeJellyfin.serverId,
           serverUrl: fake?.url ?? 'http://127.0.0.1:9',

@@ -3,7 +3,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
 import '../../channels/channel.dart';
+import '../../channels/channel_initials.dart';
 import '../../icons/icon_catalog.dart';
+import '../../theme/fonts.dart';
 import '../../ui/widgets/nightingale_mark.dart';
 import '../api_client.dart';
 import '../app.dart';
@@ -56,12 +58,7 @@ class ChannelIconView extends StatelessWidget {
     );
   }
 
-  static String _initials(String name) {
-    final words = name.split(RegExp(r'\s+')).where((w) => w.isNotEmpty).toList();
-    if (words.isEmpty) return tr.tv;
-    if (words.length == 1) return words.first.substring(0, words.first.length.clamp(0, 4));
-    return words.take(3).map((w) => w[0]).join().toUpperCase();
-  }
+  static String _initials(String name) => channelInitials(name, none: tr.tv);
 }
 
 /// A generic station badge with call letters, as the TV draws it.
@@ -94,7 +91,7 @@ class StationBadge extends StatelessWidget {
         child: Text(text.toUpperCase(),
             maxLines: 1,
             style: TextStyle(
-                fontFamily: 'BarlowCondensed', fontSize: size * 0.42, fontWeight: FontWeight.w800, color: onColor)),
+                fontFamily: 'BarlowCondensed', fontFamilyFallback: cjkFontFallback, fontSize: size * 0.42, fontWeight: FontWeight.w800, color: onColor)),
       ),
     );
   }

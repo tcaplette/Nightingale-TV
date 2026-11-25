@@ -11,8 +11,8 @@ import 'xmltv_writer.dart';
 /// How an emulated tuner introduces itself.
 typedef HdHomeRunIdentity = ({String manufacturer, String modelNumber, String firmwareName, String firmwareVersion});
 
-/// Values that name Nightingale TV. Used unless Plex or Jellyfin turn out
-/// to need [genericIdentity] (design D10, tasks 1.4).
+/// Values that name Nightingale TV. Used unless Plex, Jellyfin or Emby turn
+/// out to need [genericIdentity] (design D10, tasks 1.4).
 const HdHomeRunIdentity honestIdentity = (
   manufacturer: 'Nightingale TV',
   modelNumber: 'NTV-1',

@@ -20,3 +20,6 @@ void writeStored(String key, String? value) {}
 
 /// Declares the page's language. Nothing off the web.
 void setPageLanguage(String language) {}
+
+/// Opens [url] in a new tab. Nothing off the web.
+void openLink(String url) {}

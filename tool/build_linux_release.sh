@@ -22,6 +22,9 @@ DEFINES=()
 # or your own: sharing.env.example, SELF_HOSTING.md); without it the app is
 # built with no sharing at all.
 [[ -f sharing.env ]] && DEFINES+=(--dart-define-from-file=sharing.env)
+# YouTube's shared Google client (youtube-subscriptions D4).
+source tool/youtube_client.sh
+youtube_client_check
 
 VERSION="${1:-$(sed -n 's/^version: *\([^+]*\).*/\1/p' pubspec.yaml)}"
 FILE="nightingale-tv-linux-x64-${VERSION}.tar.gz"

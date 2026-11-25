@@ -5,10 +5,14 @@ import '../l10n/tr.dart';
 
 bool get _english => currentLanguage == 'en';
 
+/// Japanese and Chinese: `intl`'s own forms, with no case or dot changes
+/// (cjk-languages D5).
+bool get _cjk => isCjk(currentLanguage);
+
 /// [pattern] of `intl`'s date formats, in the current language.
 String _dated(String pattern, DateTime t) {
   languageDataReady; // Loads the data, on first use, if no entry point has.
-  return DateFormat(pattern, currentLanguage).format(t);
+  return DateFormat(pattern, intlLocaleOf(currentLanguage)).format(t);
 }
 
 String _noDot(String s) => s.replaceAll('.', '');
@@ -18,17 +22,24 @@ String _capitalized(String s) => s.isEmpty ? s : s[0].toUpperCase() + s.substrin
 const _englishDays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 const _englishMonths = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
-/// "Mon"… for [DateTime.weekday] 1–7, in the current language.
-String weekdayName(int weekday) =>
-    _english ? _englishDays[weekday - 1] : _capitalized(_noDot(_dated('E', DateTime(2024, 1, weekday))));
+/// "Mon"… for [DateTime.weekday] 1–7, in the current language; 月, 周一, 週一.
+String weekdayName(int weekday) {
+  if (_english) return _englishDays[weekday - 1];
+  final name = _dated('E', DateTime(2024, 1, weekday));
+  return _cjk ? name : _capitalized(_noDot(name));
+}
 
-/// "Jan"… for months 1–12, in the current language.
-String monthName(int month) =>
-    _english ? _englishMonths[month - 1] : _capitalized(_noDot(_dated('MMM', DateTime(2024, month, 15))));
+/// "Jan"… for months 1–12, in the current language; 11月.
+String monthName(int month) {
+  if (_english) return _englishMonths[month - 1];
+  final name = _dated('MMM', DateTime(2024, month, 15));
+  return _cjk ? name : _capitalized(_noDot(name));
+}
 
-/// "Dec 1" (English), "1. Dez" (German), "1 déc" (French)…
+/// "Dec 1" (English), "1. Dez" (German), "1 déc" (French), "12月1日"…
 String formatMonthDay(int month, int day) {
   if (_english) return '${monthName(month)} $day';
+  if (_cjk) return _dated('MMMd', DateTime(2024, month, day));
   // In a sentence, as the language writes it: only German capitalizes months.
   final name = _noDot(_dated('MMM', DateTime(2024, month, 15)));
   return currentLanguage == 'de' ? '$day. $name' : '$day $name';
@@ -49,9 +60,11 @@ String formatRange(DateTime start, DateTime end) {
   return '${formatTime(start, withPeriod: !samePeriod)} – ${formatTime(end)}';
 }
 
-/// "MON OCT 18"; "MO 18. OKT" in German, "LUN 18 OCT" in French.
+/// "MON OCT 18"; "MO 18. OKT" in German, "LUN 18 OCT" in French,
+/// "10月18日(日)" in Japanese, "10月18日周日" in Chinese.
 String formatDate(DateTime t) {
   if (_english) return '${_englishDays[t.weekday - 1].toUpperCase()} ${_englishMonths[t.month - 1].toUpperCase()} ${t.day}';
+  if (_cjk) return _dated('MMMEd', t);
   final day = weekdayName(t.weekday).toUpperCase();
   final month = monthName(t.month).toUpperCase();
   return currentLanguage == 'de' ? '$day ${t.day}. $month' : '$day ${t.day} $month';

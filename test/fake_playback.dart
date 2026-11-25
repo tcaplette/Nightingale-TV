@@ -6,6 +6,8 @@ import 'package:nightingale_tv/playback/playback_diagnostics.dart';
 import 'package:nightingale_tv/playback/subtitles.dart';
 import 'package:nightingale_tv/playback/caption_size.dart';
 import 'package:nightingale_tv/playback/tuner_player.dart';
+import 'package:nightingale_tv/playback/video_hole.dart';
+import 'package:nightingale_tv/playback/video_look.dart';
 import 'package:nightingale_tv/server/media_server.dart';
 
 /// A Jellyfin that decides on bitrate the way the real one does, and logs
@@ -363,8 +365,40 @@ class FakePlayer implements TunerPlayer {
   @override
   Widget buildVideo({BoxFit fit = BoxFit.contain}) {
     lastFit = fit;
-    return const SizedBox.expand();
+    if (!onVideoLayer) return const SizedBox.expand();
+    return ListenableBuilder(
+      listenable: Listenable.merge([videoSize, hasPicture]),
+      builder: (context, _) =>
+          VideoHole(video: videoSize.value, fit: fit, open: hasPicture.value, holes: holes),
+    );
   }
+
+  /// On the video layer: the picture, and each place the layer was given.
+  final videoSize = ValueNotifier<Size?>(const Size(1920, 1080));
+  final hasPicture = ValueNotifier(true);
+  final places = <Rect>[];
+  late final holes = VideoHoles((_, picture) {
+    places.add(picture);
+    return true;
+  });
+
+  /// Whether it plays as Android's player does, on a system layer.
+  @override
+  bool onVideoLayer = false;
+
+  @override
+  final ValueNotifier<bool> videoLookApplied = ValueNotifier(true);
+
+  /// Every [setVideoLook], in order.
+  final looks = <(VideoLook, bool)>[];
+
+  @override
+  void setVideoLook(VideoLook look, {bool drawn = true}) {
+    if (looks.isEmpty || looks.last != (look, drawn)) looks.add((look, drawn));
+  }
+
+  @override
+  Widget buildCaptions() => const SizedBox.expand(key: ValueKey('captions'));
 
   /// How the picture last asked for the video to fit.
   BoxFit? lastFit;

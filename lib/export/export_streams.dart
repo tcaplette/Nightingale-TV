@@ -85,7 +85,7 @@ class ExportStreams implements ChannelStreamer {
         _toWarm.remove(app);
         final quality = policy.quality();
         final encoder = await policy.encoder();
-        for (final card in <BroadcastCard>[const BlackCard(), for (final c in [...app.channels]) if (!c.isLive) TuningCardSpec(c)]) {
+        for (final card in <BroadcastCard>[const BlackCard(), for (final c in [...app.channels]) if (!c.isLive && !c.isYouTube) TuningCardSpec(c)]) {
           if (epoch != _warmEpoch) return;
           // Tried once: a card that can't be made is made when it plays.
           if (!_warmed.add('${card.key}|${quality.label}|${encoder.codec}')) continue;
@@ -205,6 +205,10 @@ class ExportStreams implements ChannelStreamer {
     }
   }
 
+  /// Channels streaming now; conversions for other TVs count against the
+  /// same limit (smb-conversion).
+  int get activeCount => _sessions.length;
+
   /// Ends the stream of a channel that's no longer in the lineup.
   Future<void> stopChannel(String profileId, String channelId) async => _sessions[(profileId, channelId)]?.stop();
 
@@ -305,6 +309,7 @@ class _Session {
     final ctx = StreamContext(
       channel: channel,
       schedule: () => app.channels.any((c) => c.id == channel.id) ? app.scheduleFor(channel) : null,
+      inLineup: () => app.channels.any((c) => c.id == channel.id),
       card: (c) => owner.chunks.chunkFor(c, app, quality, streamEncoder()),
       openSource: proxy.open,
       closeSource: proxy.close,

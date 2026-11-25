@@ -129,7 +129,9 @@ extension _StationApi on SetupServer {
         'playlist': const <String>[],
         'view': {
           'playlistLength': b.playlist.length,
-          'channel': app.channelById(b.channelId)?.name,
+          // As the TV shows them: generated names in the request's language.
+          'title': displayBlockTitle(b.title),
+          'channel': app.channelById(b.channelId)?.displayName,
           'describe': describeBlock(b),
         },
       };
@@ -267,7 +269,7 @@ extension _StationApi on SetupServer {
       'clips': app.catalog.clipsFor(null).length,
       'channels': [
         for (final c in app.allChannels)
-          if (!c.isLive) {'id': c.id, 'number': c.number, 'name': c.displayName, 'plan': c.commercialPlan?.toJson()},
+          if (!c.isLive && !c.isYouTube) {'id': c.id, 'number': c.number, 'name': c.displayName, 'plan': c.commercialPlan?.toJson()},
       ],
     };
   }
@@ -294,6 +296,7 @@ extension _StationApi on SetupServer {
     final app = await _app(r['id']);
     final ch = app.channelById(r['cid']) ?? (throw ApiError(HttpStatus.notFound, tr.noSuchChannel));
     if (ch.isLive) throw ApiError(HttpStatus.badRequest, tr.liveChannelsHave);
+    if (ch.isYouTube) throw ApiError(HttpStatus.badRequest, tr.youTubeNoBreaks);
     await app.setChannelPlan(ch, _decodePlan((await r.body())['plan']));
     return _commercials(r);
   }

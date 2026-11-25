@@ -273,12 +273,12 @@ void main() {
       return t.textScaler!.scale(t.style!.fontSize!);
     }
 
-    /// Right shows the on-screen row, Up reaches Guide; Menu, Sleep, Captions.
+    /// Left opens the transport bar, Down reaches Restart; Live, then
+    /// Captions among the player options (player-options).
     Future<void> openPickerByKeys() async {
       for (final k in [
-        LogicalKeyboardKey.arrowRight,
-        LogicalKeyboardKey.arrowUp,
-        LogicalKeyboardKey.arrowRight,
+        LogicalKeyboardKey.arrowLeft,
+        LogicalKeyboardKey.arrowDown,
         LogicalKeyboardKey.arrowRight,
         LogicalKeyboardKey.arrowRight,
         ok,

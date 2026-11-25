@@ -6,6 +6,8 @@ import '../api_client.dart';
 import '../app.dart';
 import '../widgets/common.dart';
 import 'server_page.dart' show signInDialog;
+import 'share_settings.dart';
+import 'youtube_setup.dart';
 import '../../l10n/tr.dart';
 
 /// A profile's servers (multi-server): the TV's Servers screen in the
@@ -69,6 +71,8 @@ class _ServersPageState extends State<ServersPage> {
     return PageBody(title: tr.servers2(name), children: [
       Section(children: [
         Text(tr.programsFromEvery),
+        const SizedBox(height: 8),
+        Text(tr.serverKindsHelp, key: const ValueKey('server-kinds-help')),
         const SizedBox(height: 12),
         Align(
           alignment: Alignment.centerLeft,
@@ -82,14 +86,30 @@ class _ServersPageState extends State<ServersPage> {
           ),
         ),
       ]),
+      ColorsSection(key: ValueKey('colors-${servers.length}'), profileId: widget.profileId),
       for (final (i, s) in servers.indexed)
         _ServerCard(
           server: s,
+          profileId: widget.profileId,
           first: i == 0,
           last: i == servers.length - 1,
           onSignIn: () async {
-            await signInDialog(context, widget.profileId, name,
-                path: '$_base/${s['key']}/sign-in', title: tr.signInToAgain('${s['name']}'));
+            // YouTube always asks for the user's own client here
+            // (docker-youtube D4).
+            if (s['kind'] == 'youtube') {
+              await youTubeDialog(context, widget.profileId, againKey: '${s['key']}', title: tr.signInToYouTubeAgain);
+            } else {
+              await signInDialog(context, widget.profileId, name,
+                  path: '$_base/${s['key']}/sign-in', title: tr.signInToAgain('${s['name']}'));
+            }
+            await _load();
+          },
+          onYouTubeChannels: () async {
+            await youTubeDialog(context, widget.profileId, channelsOf: '${s['key']}', title: tr.youTubeChannelsTitle);
+            await _load();
+          },
+          onGoogleClient: () async {
+            await youTubeDialog(context, widget.profileId, againKey: '${s['key']}', title: tr.googleClient);
             await _load();
           },
           onMove: (delta) {
@@ -102,12 +122,13 @@ class _ServersPageState extends State<ServersPage> {
           onRemove: () async {
             final ok = await confirm(context,
                 title: tr.remove3('${s['name']}'),
-                message: tr.itsProgramsLeaveThe,
+                message: s['kind'] == 'youtube' ? tr.youTubeRemoveBody : tr.itsProgramsLeaveThe,
                 action: tr.remove);
             if (!ok || !context.mounted) return;
             await _change(() => context.api.delete('$_base/${s['key']}'));
           },
         ),
+      const HelperSection(),
     ]);
   }
 }
@@ -115,16 +136,22 @@ class _ServersPageState extends State<ServersPage> {
 class _ServerCard extends StatelessWidget {
   const _ServerCard(
       {required this.server,
+      required this.profileId,
       required this.first,
       required this.last,
       required this.onSignIn,
+      required this.onYouTubeChannels,
+      required this.onGoogleClient,
       required this.onMove,
       required this.onLimit,
       required this.onRemove});
 
   final Map<String, Object?> server;
+  final String profileId;
   final bool first, last;
   final VoidCallback onSignIn;
+  final VoidCallback onYouTubeChannels;
+  final VoidCallback onGoogleClient;
   final Future<void> Function(int delta) onMove;
   final Future<void> Function(int? kbps) onLimit;
   final VoidCallback onRemove;
@@ -147,27 +174,38 @@ class _ServerCard extends StatelessWidget {
         if (server['url'] != null) server['url'],
         if (server['user'] != null) tr.signedInAs('${server['user']}'),
       ].join(' · ')),
-      Text([
-            tr.countEpisodes((server['episodes'] as num).toInt()),
-            tr.countMovies((server['movies'] as num).toInt()),
-            if (server['songs'] != 0) tr.countSongs((server['songs'] as num).toInt()),
-          ].join(' · ')),
+      if (kind == 'youtube')
+        Text(tr.youTubeChannelCount((server['youtubeChannels'] as num? ?? 0).toInt()))
+      else
+        Text([
+              tr.countEpisodes((server['episodes'] as num).toInt()),
+              tr.countMovies((server['movies'] as num).toInt()),
+              if (server['songs'] != 0) tr.countSongs((server['songs'] as num).toInt()),
+            ].join(' · ')),
       if (main) Text(tr.signingOutOf),
+      // A share's own settings (smb-sources).
+      if (kind == 'smb' && state != 'needsSignIn') ShareSettings(profileId: profileId, serverKey: '${server['key']}'),
       const SizedBox(height: 12),
       Wrap(spacing: 8, runSpacing: 8, crossAxisAlignment: WrapCrossAlignment.center, children: [
         if (state == 'needsSignIn') FilledButton(onPressed: onSignIn, child: Text(tr.signInAgain)),
+        // YouTube (docker-youtube): its picker and the user's own client.
+        if (kind == 'youtube' && state != 'needsSignIn')
+          FilledButton.tonal(key: const ValueKey('youtube-channels'), onPressed: onYouTubeChannels, child: Text(tr.channels5)),
+        if (kind == 'youtube')
+          OutlinedButton(key: const ValueKey('youtube-client'), onPressed: onGoogleClient, child: Text(tr.googleClient)),
         if (!(first && last)) ...[
           OutlinedButton.icon(
               icon: const Icon(Icons.arrow_upward), label: Text(tr.moveUp), onPressed: first ? null : () => onMove(-1)),
           OutlinedButton.icon(
               icon: const Icon(Icons.arrow_downward), label: Text(tr.moveDown), onPressed: last ? null : () => onMove(1)),
         ],
-        DropdownMenu<int?>(
-          label: Text(tr.qualityLimit2),
-          initialSelection: limit,
-          onSelected: (v) => onLimit(v),
-          dropdownMenuEntries: [for (final l in limits) DropdownMenuEntry(value: l, label: _label(l))],
-        ),
+        if (kind != 'youtube')
+          DropdownMenu<int?>(
+            label: Text(tr.qualityLimit2),
+            initialSelection: limit,
+            onSelected: (v) => onLimit(v),
+            dropdownMenuEntries: [for (final l in limits) DropdownMenuEntry(value: l, label: _label(l))],
+          ),
         if (!main)
           TextButton.icon(
               icon: Icon(Icons.delete_outline, color: scheme.error),

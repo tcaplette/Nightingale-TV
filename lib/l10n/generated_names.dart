@@ -86,7 +86,14 @@ final _suffix = RegExp(r'^(.*) \((Show|Shows|Movies|Music Videos|Radio)( \d+)?\)
 
 /// A genre name, translated when it's one the app knows; a server's own
 /// genre (a decade, "Bollywood") stays as it came.
-String displayGenre(String genre) => _genres[genre]?.call() ?? genre;
+String displayGenre(String genre) => _genres[genre]?.call() ?? displayDecade(genre);
+
+/// A decade as the language writes it: "90s" stays "90s" in English and
+/// becomes "90年代" in Japanese and Chinese. Anything else stays as it came.
+String displayDecade(String decade) =>
+    decade.endsWith('s') && int.tryParse(decade.substring(0, decade.length - 1)) != null
+        ? tr.decadeYears(decade.substring(0, decade.length - 1))
+        : decade;
 
 /// A leading decade ("90s", "1910s", "2000s") and the rest of a name.
 final _decade = RegExp(r'^((?:19|20)?\d0s) (.+)$');
@@ -96,10 +103,10 @@ String? _generatedBase(String name) {
   // "90s TV", "90s Comedy TV", "80s Action Movies" (genre-decade-channels D6).
   if (_decade.firstMatch(name) case final m?) {
     final (decade, rest) = (m[1]!, m[2]!);
-    if (rest == 'TV') return tr.decadeTv(decade);
-    if (rest.endsWith(' TV')) return tr.decadeGenreTv(decade, displayGenre(rest.substring(0, rest.length - 3)));
+    if (rest == 'TV') return tr.decadeTv(displayDecade(decade));
+    if (rest.endsWith(' TV')) return tr.decadeGenreTv(displayDecade(decade), displayGenre(rest.substring(0, rest.length - 3)));
     if (rest.endsWith(' Movies') && rest != 'Movies') {
-      return tr.decadeGenreMovies(decade, displayGenre(rest.substring(0, rest.length - 7)));
+      return tr.decadeGenreMovies(displayDecade(decade), displayGenre(rest.substring(0, rest.length - 7)));
     }
   }
   for (final (ending, build) in <(String, String Function(String))>[

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Checks the colours of a paused picture against the source file
-(android-playback, "NVIDIA Shield draws video through OpenGL ES").
+(android-playback, "NVIDIA Shield draws the interface through OpenGL ES").
 
 A channel is paused with timeshift in a diagnostics build, which logs
     PLAYDBG ... SHIFT held item=<id> at=<seconds>s

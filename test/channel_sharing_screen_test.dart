@@ -124,6 +124,17 @@ void main() {
     return found;
   }
 
+  /// [settle]s until [done]: the fake backend answers over real HTTP, later
+  /// on a busy machine.
+  Future<void> settleUntil(WidgetTester tester, bool Function() done) async {
+    var i = 0;
+    do {
+      await settle(tester, 1);
+    } while (!done() && ++i < 300);
+  }
+
+  bool shows(String text) => find.text(text).evaluate().isNotEmpty;
+
   Future<void> press(WidgetTester tester, LogicalKeyboardKey key, [int rounds = 3]) async {
     await tester.sendKeyEvent(key);
     await settle(tester, rounds);
@@ -133,15 +144,17 @@ void main() {
     await setUpLinked(tester);
     backend.shareIn('sc-1', senderRecipe(const {'Alpha': 10, 'Beta': 4}));
     await show(tester, const SharingScreen());
-    await settle(tester, 6);
+    await settleUntil(tester, () => shows('Matched 14 of 14 programs') && focused() == 'Add');
     expect(find.text('90s Sitcoms'), findsOneWidget);
     expect(find.text('Matched 14 of 14 programs'), findsOneWidget);
     expect(find.text('Tyler  @tyler · Tyler TV'), findsOneWidget);
     expect(focused(), 'Add', reason: 'shares waiting: the remote starts on the first one');
     await press(tester, LogicalKeyboardKey.enter, 20);
+    await settleUntil(tester, () => h.app!.channels.any((c) => c.isSharedCopy) && find.textContaining('Added as channel').evaluate().isNotEmpty);
     final copy = h.app!.channels.singleWhere((c) => c.isSharedCopy);
     expect(find.text('Added as channel ${copy.number}'), findsOneWidget);
     await press(tester, LogicalKeyboardKey.enter, 6);
+    await settleUntil(tester, () => shows('Nothing is waiting. Channels your friends share with you appear here.'));
     expect(find.text('Matched 14 of 14 programs'), findsNothing);
     expect(find.text('Nothing is waiting. Channels your friends share with you appear here.'), findsOneWidget);
     expect(focused(), 'Share channels', reason: 'the page stays at the channel sections');
@@ -195,6 +208,7 @@ void main() {
     await press(tester, LogicalKeyboardKey.arrowUp);
     expect(focused(), 'Share');
     await press(tester, LogicalKeyboardKey.enter, 8);
+    await settleUntil(tester, () => shows('Shared with Tyler'));
     expect(find.text('Shared with Tyler'), findsOneWidget);
     expect(backend.lastShare!['to'], ['user-tyler']);
     expect(h.app!.channelById(first.id)!.share?.role, ShareRole.out);
@@ -240,6 +254,11 @@ void main() {
       await tester.tap(find.widgetWithText(TvButton, 'Add'));
       await settle(tester, 20);
       expect(h.app!.channels.where((c) => c.isSharedCopy), hasLength(1));
+      // The added notice follows the save: wait for it, as a busy machine
+      // (the full suite) takes longer.
+      for (var i = 0; i < 250 && find.text('OK').evaluate().isEmpty; i++) {
+        await settle(tester, 1);
+      }
       await tester.tap(find.text('OK'));
       await settle(tester, 4);
       await show(tester, const ShareChannelsScreen());

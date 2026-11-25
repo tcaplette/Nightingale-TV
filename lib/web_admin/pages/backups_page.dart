@@ -4,10 +4,12 @@ import 'package:flutter/material.dart';
 import '../app.dart';
 import '../browser.dart';
 import '../widgets/common.dart';
+import '../../backup/undo_label.dart';
 import '../../l10n/tr.dart';
 
-/// Backups (admin): download one now, upload one and restore it, and the
-/// server's saved backups (restore, download, delete).
+/// Backups (admin, backup-simplify D9): when the server last backed up,
+/// download one now, upload one and restore it, and the undo point
+/// (restore or download). No list of saved backups.
 class BackupsPage extends StatefulWidget {
   const BackupsPage({super.key});
 
@@ -30,7 +32,7 @@ class _BackupsPageState extends State<BackupsPage> {
     if (summary is! Map || !mounted) return;
     final ok = await confirm(context,
         title: tr.restoreThisBackup,
-        message: tr.fromItReplaces('${summary['when']}', '${summary['device']}', (summary['profiles'] as List).join(', ')),
+        message: tr.fromItReplaces('${summary['when']}', '${summary['device']}', (summary['profiles'] as List).join(tr.listSeparator)),
         action: tr.restore);
     if (!ok || !mounted) return;
     await _restoring_(() => api.post('restore/${summary['id']}/confirm'), reload);
@@ -52,9 +54,12 @@ class _BackupsPageState extends State<BackupsPage> {
   Widget build(BuildContext context) => DataView<Map<String, Object?>>(
         load: () async => (await context.api.get('backups'))! as Map<String, Object?>,
         builder: (context, data, reload) {
-          final backups = (data['backups'] as List).cast<Map<String, Object?>>();
+          final latest = data['latest'] as Map<String, Object?>?;
+          final undo = data['undo'] as Map<String, Object?>?;
           return PageBody(title: tr.backups2, children: [
             Section(children: [
+              Text(latest == null ? tr.notBackedUpYet : tr.lastBackedUp('${latest['when']}')),
+              const SizedBox(height: 8),
               Text(tr.aBackupHoldsThe),
               const SizedBox(height: 12),
               Wrap(spacing: 8, runSpacing: 8, crossAxisAlignment: WrapCrossAlignment.center, children: [
@@ -71,42 +76,31 @@ class _BackupsPageState extends State<BackupsPage> {
                 if (_restoring) Busy(text: tr.restoring),
               ]),
             ]),
-            Section(title: tr.savedOnThe, children: [
-              if (backups.isEmpty) Text(tr.noneYetOne),
-              for (final b in backups)
-                ListTile(
-                  contentPadding: EdgeInsets.zero,
-                  title: Text('${b['when']} · ${b['kind']}'),
-                  subtitle: Text(tr.channels6((b['profiles'] as List).join(', '), '${b['channels']}', '${b['device']}')),
-                  trailing: PopupMenuButton<String>(
-                    tooltip: tr.backupActions,
-                    onSelected: (action) async {
-                      final name = Uri.encodeComponent(b['name'] as String);
-                      switch (action) {
-                        case 'restore':
-                          final ok = await confirm(context,
-                              title: tr.restoreThisBackup,
-                              message: tr.itReplacesThe,
-                              action: tr.restore);
-                          if (ok && context.mounted) await _restoring_(() => context.api.post('backups/$name/restore'), reload);
-                        case 'download':
-                          openDownload(context.api.href('backups/$name'));
-                        case 'delete':
-                          final ok = await confirm(context, title: tr.deleteThisBackup, message: '${b['when']}', action: tr.delete);
-                          if (ok && context.mounted) {
-                            final r = await attempt(context, () => context.api.delete('backups/$name'));
-                            if (r != null) await reload();
-                          }
-                      }
-                    },
-                    itemBuilder: (_) => [
-                      PopupMenuItem(value: 'restore', child: Text(tr.restore)),
-                      PopupMenuItem(value: 'download', child: Text(tr.download)),
-                      PopupMenuItem(value: 'delete', child: Text(tr.delete)),
-                    ],
+            if (undo != null)
+              Section(title: undoLabel('${undo['reason']}', undo['subject'] as String?), children: [
+                Text(tr.undoPointSaved('${undo['when']}', (undo['profiles'] as List).join(tr.listSeparator))),
+                const SizedBox(height: 12),
+                Wrap(spacing: 8, runSpacing: 8, children: [
+                  FilledButton.icon(
+                    icon: const Icon(Icons.undo),
+                    label: Text(tr.restore),
+                    onPressed: _restoring
+                        ? null
+                        : () async {
+                            final ok = await confirm(context,
+                                title: tr.undoTitle(undoLabel('${undo['reason']}', undo['subject'] as String?), '${undo['when']}'),
+                                message: tr.itReplacesThe,
+                                action: tr.restore);
+                            if (ok && context.mounted) await _restoring_(() => context.api.post('backups/undo/restore'), reload);
+                          },
                   ),
-                ),
-            ]),
+                  OutlinedButton.icon(
+                    icon: const Icon(Icons.download),
+                    label: Text(tr.download),
+                    onPressed: () => openDownload(context.api.href('backups/undo')),
+                  ),
+                ]),
+              ]),
           ]);
         },
       );

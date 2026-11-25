@@ -33,6 +33,9 @@ class FakeLiveTv implements LiveTv {
   final reports = <String>[];
   var opened = 0;
 
+  /// The cap each open asked for, in bits per second.
+  final maxBitrates = <int?>[];
+
   @override
   Future<LiveTvAvailability> availability() async => LiveTvAvailability.available;
 
@@ -67,6 +70,7 @@ class FakeLiveTv implements LiveTv {
   @override
   Future<LiveStream> open(String channelId, {int? maxBitrate, bool forceTranscode = false, Map<String, Object?>? profile}) async {
     log.add('live-open:$channelId');
+    maxBitrates.add(maxBitrate);
     await hold?.future;
     if (goneFor.contains(channelId)) {
       log.add('live-fail:$channelId:channelGone');
@@ -196,6 +200,24 @@ void main() {
     await settle(const Duration(milliseconds: 120));
     expect(client.tv.reports.where((r) => r.startsWith('progress')), isNotEmpty);
     expect(client.reports, isEmpty);
+  });
+
+  test('a quality picked in the player re-opens the live stream under the new cap (player-options)', () async {
+    await tuner.tune(liveCh(0));
+    await settle();
+    expect(client.tv.maxBitrates, [null]);
+    final before = app.capInEffect;
+    await app.setQuality(PlaybackSettings.presets.last);
+    await tuner.applyQuality(before);
+    await settle();
+    expect(client.tv.maxBitrates, [null, 4000000]);
+    expect(log, contains('live-close:ls1'));
+    expect(client.tv.openNow, {'ls2'});
+    expect(tuner.status, TunerStatus.playing);
+    // The same pick again changes nothing.
+    await tuner.applyQuality(app.capInEffect);
+    await settle();
+    expect(client.tv.maxBitrates, hasLength(2));
   });
 
   test('changing to a generated channel closes the live stream and reports it stopped', () async {

@@ -16,10 +16,12 @@ import '../l10n/tr.dart';
 /// movie.": each pick of [source], in one line.
 String describeSource(ChannelSource source, LibraryIndex library) {
   String either(List<String> words) =>
-      words.length <= 1 ? words.join() : tr.or(words.sublist(0, words.length - 1).join(', '), words.last);
+      words.length <= 1 ? words.join() : tr.or(words.sublist(0, words.length - 1).join(tr.listSeparator), words.last);
   final genres = [for (final g in source.genres) displayGenre(g).toLowerCase()];
-  final decades = [for (final d in [...source.decades]..sort()) decadeName(d)];
-  final kind = [if (decades.isNotEmpty) either(decades), if (genres.isNotEmpty) either(genres)].join(' ');
+  final decades = [for (final d in [...source.decades]..sort()) displayDecade(decadeName(d))];
+  final kind = decades.isNotEmpty && genres.isNotEmpty
+      ? tr.decadesGenres(either(decades), either(genres))
+      : decades.isNotEmpty ? either(decades) : either(genres);
   final picks = [
     for (final r in source.roots) r.label.split(' › ').last,
     for (final key in source.seriesKeys) library.seriesByKey[key]?.name ?? key.split('|').first,
@@ -30,8 +32,7 @@ String describeSource(ChannelSource source, LibraryIndex library) {
     if (source.includeMovies) kind.isEmpty ? tr.everyMovie2 : tr.everyMovie(kind),
   ];
   if (picks.isEmpty) return tr.pickSomethingTo;
-  final last = picks.removeLast();
-  return tr.playsList(picks.isEmpty ? last : tr.and(picks.join(', '), last));
+  return tr.playsList(joinNames(picks));
 }
 
 /// Whether a saved [source] plays every show of its genres and decades:
@@ -324,7 +325,7 @@ class _SourcePickerScreenState extends State<SourcePickerScreen> {
           children: [
             for (final d in decades)
               TvToggle(
-                label: decadeName(d),
+                label: displayDecade(decadeName(d)),
                 on: _decades.contains(d),
                 onPressed: () => setState(() {
                   final on = !_decades.remove(d);

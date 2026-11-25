@@ -185,7 +185,7 @@ void main() {
     });
   });
 
-  test("the daily backup's first check runs after start-up, with no picture", () async {
+  test("the automatic backup's first check runs after start-up, with no picture", () async {
     final household = await serverHousehold();
     final store = BackupStore(Directory('${household.root.root.path}/backups'));
     final backups = household.backups = BackupScheduler(household, store);
@@ -207,8 +207,8 @@ void main() {
     backups.start();
     expect(household.app, isNull, reason: 'nothing on screen to wait for');
     await saved.future.timeout(const Duration(seconds: 5));
-    final newest = await store.newest();
-    expect(newest, isNotNull);
-    expect(newest!.kind, 'daily');
+    final latest = await store.latest();
+    expect(latest, isNotNull);
+    expect(latest!.reason, 'daily');
   });
 }

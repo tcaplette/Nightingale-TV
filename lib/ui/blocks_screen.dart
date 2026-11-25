@@ -17,6 +17,7 @@ import 'widgets/adaptive.dart';
 import 'widgets/screen_layout.dart';
 import 'widgets/tv_focus.dart';
 import '../l10n/tr.dart';
+import '../l10n/generated_names.dart';
 
 String _clock(int minute) => formatClockMinute(minute);
 
@@ -199,7 +200,7 @@ class _BlockRow extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(block.title,
+                  Text(displayBlockTitle(block.title),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: g.display(38,
@@ -278,7 +279,7 @@ class _BlockEditorScreenState extends State<BlockEditorScreen> {
       _copyChannel(app.channelById(_draft.channelId));
     }
     // The summary panel shows the title as it's typed.
-    _title = TextEditingController(text: _draft.title)..addListener(() => setState(() {}));
+    _title = TextEditingController(text: displayBlockTitle(_draft.title))..addListener(() => setState(() {}));
   }
 
   @override
@@ -605,7 +606,7 @@ class _BlockEditorScreenState extends State<BlockEditorScreen> {
               Text(_lineupFit(preview), style: g.body(22, color: g.textDim))
             else if (!_lineupMode)
               Text(
-                shows.take(6).join(', ') + (shows.length > 6 ? '…' : ''),
+                shows.take(6).join(tr.listSeparator) + (shows.length > 6 ? '…' : ''),
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
                 style: g.body(22, color: g.textDim),
@@ -1214,7 +1215,8 @@ class _ChannelPickerScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final app = AppScope.of(context);
     final g = context.guide;
-    final channels = app.allChannels;
+    // YouTube channels never carry blocks (youtube-subscriptions D7).
+    final channels = [for (final c in app.allChannels) if (!c.isYouTube) c];
     final selectedIndex = channels.indexWhere((c) => c.id == selectedId);
     return TvPage(
       title: tr.chooseAChannel2,

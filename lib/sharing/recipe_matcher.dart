@@ -33,7 +33,8 @@ class RecipeMatch {
 /// - episodes by their matched show's season and episode number, or by
 ///   cleaned title within the show when they have no numbers;
 /// - movies by a shared provider id, else by equal cleaned title and equal
-///   year. A movie without a year never matches by title.
+///   year; when either has no year (a file's name), by equal cleaned title
+///   and lengths within 60 s or 2%, when exactly one movie does.
 ///
 /// Pure: the same recipe and library always give the same match.
 class RecipeMatcher {
@@ -90,6 +91,21 @@ class RecipeMatcher {
       for (final p in m.providerIds) p: m,
   };
 
+  /// Every movie by its cleaned title, for movies without a year.
+  late final Map<String, List<MediaEntry>> _moviesByTitle = () {
+    final map = <String, List<MediaEntry>>{};
+    for (final m in library.movies) {
+      map.putIfAbsent(cleanTitle(m.title), () => []).add(m);
+    }
+    return map;
+  }();
+
+  /// Lengths that are the same movie's: within 60 s or 2%.
+  static bool sameLength(Duration a, Duration b) {
+    final slack = a.inMilliseconds * 0.02 > 60000 ? a.inMilliseconds * 0.02 : 60000;
+    return (a - b).inMilliseconds.abs() <= slack;
+  }
+
   late final Map<String, String> _movieByTitle = () {
     final map = <String, String>{};
     for (final m in library.movies) {
@@ -127,10 +143,12 @@ class RecipeMatcher {
       for (final p in item.ids) {
         if (_movieByProvider[p] case final m?) return m.id;
       }
-      if (item.year == null) return null;
-      final id = _movieByTitle['${cleanTitle(item.title)}|${item.year}'];
+      // Nothing of a home video is anyone else's.
+      if (item.ids.any((i) => i.startsWith('home:'))) return null;
+      final id = item.year == null ? null : _movieByTitle['${cleanTitle(item.title)}|${item.year}'];
+      if (id == null) return _yearless(item);
       // Known to the same provider under another id: a different movie.
-      if (id != null && item.ids.isNotEmpty) {
+      if (item.ids.isNotEmpty) {
         final m = library[id]!;
         if (ShowIdentity.providersAgree(item.ids, m.providerIds) == false) return null;
       }
@@ -142,6 +160,20 @@ class RecipeMatcher {
     final season = item.season, episode = item.episode;
     if (season != null && episode != null) return _episodesByNumber[key]?[(season, episode)];
     return _episodesByTitle[key]?[cleanTitle(item.title)];
+  }
+
+  /// A movie matched by title and length, when it or the recipe's has no
+  /// year: only when exactly one movie fits.
+  String? _yearless(RecipeItem item) {
+    final candidates = [
+      for (final m in _moviesByTitle[cleanTitle(item.title)] ?? const <MediaEntry>[])
+        if ((item.year == null || m.year == null) &&
+            item.runtime > Duration.zero &&
+            sameLength(item.runtime, m.runtime) &&
+            ShowIdentity.providersAgree(item.ids, m.providerIds) != false)
+          m
+    ];
+    return candidates.length == 1 ? candidates.single.id : null;
   }
 
   RecipeMatch match(ChannelRecipe recipe) {

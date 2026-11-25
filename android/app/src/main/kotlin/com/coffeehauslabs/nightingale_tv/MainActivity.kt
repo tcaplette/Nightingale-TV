@@ -5,6 +5,8 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.ApplicationInfo
 import android.content.res.Configuration
+import android.graphics.Color
+import android.graphics.drawable.ColorDrawable
 import android.os.Build
 import android.os.Bundle
 import android.os.Process
@@ -17,6 +19,7 @@ import android.view.WindowManager
 import androidx.annotation.OptIn
 import androidx.media3.common.util.UnstableApi
 import io.flutter.embedding.android.FlutterActivity
+import io.flutter.embedding.android.TransparencyMode
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
 
@@ -50,7 +53,12 @@ class MainActivity : FlutterActivity() {
 
     override fun onDestroy() {
         val leaving = !isChangingConfigurations
+        // Quitting (Back, or the system finishing the activity) is a clean
+        // exit: the next launch reports nothing (crash-visibility D2).
+        if (leaving && isFinishing) CrashVisibility.markCleanExit(this, sessionId)
         players?.disposeAll()
+        youTube?.dispose()
+        smb.close()
         store.end()
         super.onDestroy()
         // The engine goes with the activity, so the process ends too
@@ -61,11 +69,24 @@ class MainActivity : FlutterActivity() {
 
     private var players: ExoTunerHost? = null
 
-    /** The video report's self-test (video-report D5), with the engine's
-     *  texture registry. */
+    private var youTube: YouTubeWebView? = null
+
+    /** This launch's error-reporting session (crash-visibility D2). */
+    private var sessionId: String? = null
+
+    /** Memory-trim levels go to the trail (crash-visibility D5). */
+    override fun onTrimMemory(level: Int) {
+        super.onTrimMemory(level)
+        platformChannel?.invokeMethod("trimMemory", CrashVisibility.trimLevelName(level))
+    }
+
+    /** The video report's self-test (video-report D5). */
     private var selfTest: VideoSelfTest? = null
 
     private val deviceImages = DeviceImages(this)
+
+    /** SMB shares: their programs, passwords and discovery. */
+    private val smb = SmbPlatform(this)
 
     private val backupFiles = BackupFiles(this)
 
@@ -84,6 +105,7 @@ class MainActivity : FlutterActivity() {
     }
 
     override fun onPause() {
+        youTube?.onPause()
         fullScreen.onPause()
         super.onPause()
     }
@@ -101,12 +123,12 @@ class MainActivity : FlutterActivity() {
         }
     }
 
-    /** Why this engine runs Impeller on OpenGL ES, or null for the default
+    /** Why this engine runs Skia on OpenGL ES, or null for the default
      *  renderer (RendererChoice). */
     private var rendererReason: String? = null
 
     /** On an NVIDIA device (or a debug build told to act as one), an engine
-     *  with Impeller on OpenGL ES; otherwise null, so FlutterActivity builds
+     *  with Skia on OpenGL ES; otherwise null, so FlutterActivity builds
      *  its usual engine. The engine registers the plugins itself, and
      *  configureFlutterEngine runs as on the default path. */
     override fun provideFlutterEngine(context: Context): FlutterEngine? {
@@ -126,6 +148,19 @@ class MainActivity : FlutterActivity() {
     /** An engine made in provideFlutterEngine goes with the activity, as the
      *  default one does (FlutterActivity keeps a supplied engine otherwise). */
     override fun shouldDestroyEngineWithHost(): Boolean = rendererReason != null || super.shouldDestroyEngineWithHost()
+
+    /** The Flutter view is see-through, over the video layer (VideoLayer);
+     *  the window behind it isn't (getBackgroundMode stays opaque), so the
+     *  launch screen shows as ever. */
+    override fun getTransparencyMode(): TransparencyMode = TransparencyMode.transparent
+
+    /** Flutter has drawn: what shows in the hole it leaves for the video is
+     *  the video layer, and black for the frame the layer takes to follow
+     *  it, not the launch screen's bird. */
+    override fun onFlutterUiDisplayed() {
+        super.onFlutterUiDisplayed()
+        window.setBackgroundDrawable(ColorDrawable(Color.BLACK))
+    }
 
     private var platformChannel: MethodChannel? = null
 
@@ -200,6 +235,17 @@ class MainActivity : FlutterActivity() {
                             (call.arguments as? List<*>)?.filterIsInstance<String>() ?: emptyList()
                         result.success(null)
                     }
+                    // Crash visibility (crash-visibility D2, D5): memory
+                    // samples, the previous process's exit reason, and the
+                    // session the clean-exit mark names.
+                    "memoryInfo" -> result.success(CrashVisibility.memoryInfo(this))
+                    "exitReason" -> result.success(
+                        CrashVisibility.exitReason(this, (call.arguments as Number).toLong())
+                    )
+                    "sessionId" -> {
+                        sessionId = call.arguments as? String
+                        result.success(null)
+                    }
                     // The error reporting check's forced error: a debug.*
                     // property, which only adb (or root) can set.
                     "forcedError" -> result.success(
@@ -217,6 +263,8 @@ class MainActivity : FlutterActivity() {
         // Pictures on the device, for icons where there's no document picker.
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "nightingale_tv/images")
             .setMethodCallHandler(deviceImages)
+        // SMB shares (lib/platform/smb_platform.dart).
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "nightingale_tv/smb").setMethodCallHandler(smb)
         // Saving backup files with the document picker, where there is one.
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "nightingale_tv/files")
             .setMethodCallHandler(backupFiles)
@@ -231,16 +279,18 @@ class MainActivity : FlutterActivity() {
         fullScreen.channel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "nightingale_tv/orientation")
             .also { it.setMethodCallHandler(fullScreen) }
         // The video report (lib/reporting/video_report.dart).
-        selfTest = VideoSelfTest(applicationContext, flutterEngine.renderer)
+        selfTest = VideoSelfTest(applicationContext)
         VideoReport.watchForBackend()
         // The players (lib/playback/exo_tuner_player.dart).
-        val host = ExoTunerHost(applicationContext, flutterEngine.renderer, flutterEngine.dartExecutor.binaryMessenger)
+        val host = ExoTunerHost(this, flutterEngine.dartExecutor.binaryMessenger)
         players = host
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "nightingale_tv/player").setMethodCallHandler(host)
+        // YouTube's embedded player (lib/playback/youtube_player.dart).
+        youTube = YouTubeWebView(this, flutterEngine.dartExecutor.binaryMessenger)
     }
 
     /** The video report's methods on `nightingale_tv/platform` (video-report
-     *  D4, D5, D7, D9, D13); false when [call] isn't one. Anything that
+     *  D4, D5, D7, D9); false when [call] isn't one. Anything that
      *  blocks runs off the main thread. */
     private fun videoReportCall(call: io.flutter.plugin.common.MethodCall, result: MethodChannel.Result): Boolean {
         val test = selfTest ?: return false
@@ -251,26 +301,9 @@ class MainActivity : FlutterActivity() {
             "videoFacts" -> test.background({ VideoReport.facts(this, RendererChoice.describe(rendererReason)) }) { result.success(it) }
             "videoLogcat" -> test.background({ VideoReport.logcat() }) { result.success(it) }
             "videoCapture" -> VideoReport.captureScreen(this) { result.success(it) }
-            "videoFault" -> result.success(VideoReport.fault(this))
             "selfTestDecoder" -> test.background({ test.decoder(card()) }) { result.success(it) }
             "selfTestCpu" -> test.background({ test.cpu(card(), decoder()) }) { result.success(it) }
             "selfTestProbe" -> test.background({ test.probe(card(), decoder()) }) { result.success(it) }
-            "selfTestTexture" -> {
-                val gl = call.argument<Boolean>("gl") == true
-                if (gl) {
-                    // Only where the engine runs Impeller on OpenGL ES.
-                    test.background({ VideoSelfTest.surfaceTextureSkip(VideoReport.backendInUse()) }) { skip ->
-                        if (skip != null) result.success(mapOf("skipped" to skip))
-                        else test.texture(card(), decoder(), true) { result.success(it) }
-                    }
-                } else {
-                    test.texture(card(), decoder(), false) { result.success(it) }
-                }
-            }
-            "selfTestRelease" -> {
-                test.release(call.argument<Number>("id")!!.toLong())
-                result.success(null)
-            }
             else -> return false
         }
         return true

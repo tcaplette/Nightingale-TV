@@ -146,7 +146,7 @@ class GroupsPage extends StatelessWidget {
                 final id = c['id'] as String;
                 return CheckboxListTile(
                   value: chosen.contains(id),
-                  title: Text('${c['number']}  ${c['name']}'),
+                  title: Text('${c['number']}  ${channelLabel(c)}'),
                   onChanged: (on) => setState(() => on == true ? chosen.add(id) : chosen.remove(id)),
                 );
               },

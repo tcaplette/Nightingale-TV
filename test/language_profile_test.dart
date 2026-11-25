@@ -24,6 +24,12 @@ void main() {
     expect(Profile.fromJson(p.toJson()).language, 'fr');
   });
 
+  test('a full language tag is saved', () {
+    final p = Profile(id: 'a', name: 'Mom', language: 'zh-Hant-HK');
+    expect(jsonDecode(jsonEncode(p.toJson()))['language'], 'zh-Hant-HK');
+    expect(Profile.fromJson(p.toJson()).language, 'zh-Hant-HK');
+  });
+
   test('an unsupported value loads as Automatic', () {
     expect(Profile.fromJson({'id': 'a', 'name': 'Mom', 'language': 'tlh'}).language, isNull);
   });
@@ -33,13 +39,12 @@ void main() {
     addTearDown(() => BackupArchive.useIsolate = true);
     final dir = await Directory.systemTemp.createTemp('nightingale_tv_language_backup');
     addTearDown(() => dir.delete(recursive: true));
-    await writeHousehold(dir, [Profile(id: 'mom0000000000001', name: 'Mom', language: 'fr')], fakeLibrary());
+    await writeHousehold(dir, [Profile(id: 'mom0000000000001', name: 'Mom', language: 'zh-Hant-HK')], fakeLibrary());
     final h = await openHousehold(dir);
-    final backup = (await h.backups!.backUp(BackupReason.manual))!;
-    final bytes = await h.backups!.store.read(backup);
+    final bytes = (await h.backups!.build(BackupReason.manual)).bytes;
     await h.setLanguage(h.profiles.first, 'de');
     await BackupRestorer(h).restore(bytes);
-    expect(h.profiles.first.language, 'fr');
+    expect(h.profiles.first.language, 'zh-Hant-HK');
     await h.closeAll();
   });
 }

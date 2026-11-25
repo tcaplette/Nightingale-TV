@@ -1,6 +1,7 @@
 package com.coffeehauslabs.nightingale_tv
 
 import android.app.Activity
+import android.content.Context
 import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
@@ -16,6 +17,7 @@ import android.view.PixelCopy
 import android.view.SurfaceView
 import android.view.View
 import android.view.ViewGroup
+import io.flutter.embedding.android.FlutterSurfaceView
 import java.nio.ByteBuffer
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
@@ -41,7 +43,7 @@ object VideoReport {
     /** The OpenGL ES strings: the same for the whole run. */
     @Volatile private var gl: Map<String, Any?>? = null
 
-    /** The four extensions the video import needs (design D7). */
+    /** The four extensions video effects need (design D7). */
     private val glExtensions = listOf("GL_OES_EGL_image_external", "GL_OES_EGL_image_external_essl3")
     private val eglExtensions = listOf("EGL_ANDROID_image_native_buffer", "EGL_ANDROID_get_native_client_buffer")
 
@@ -81,12 +83,6 @@ object VideoReport {
     /** The backend tag when Flutter runs Skia. */
     const val SKIA_BACKEND = "Skia OpenGLES"
 
-    /** Flutter's own rule for the video buffer kind (FlutterRenderer
-     *  .createSurfaceProducer): an ImageReader from API 29, except Huawei
-     *  devices up to API 29; a SurfaceTexture otherwise. */
-    fun producerKind(sdk: Int = Build.VERSION.SDK_INT, manufacturer: String = Build.MANUFACTURER): String =
-        if (sdk >= 29 && !(sdk <= 29 && manufacturer.equals("HUAWEI", ignoreCase = true))) "image_reader" else "surface_texture"
-
     /** The device, display, GPU and renderer (design D7). */
     fun facts(activity: Activity, rendererAsked: String): Map<String, Any?> = mapOf(
         "build" to mapOf(
@@ -103,7 +99,6 @@ object VideoReport {
         "vulkan" to vulkan(activity.packageManager),
         "renderer_asked" to rendererAsked,
         "backend" to (backendInUse() ?: "unknown"),
-        "producer" to producerKind(),
     )
 
     @Suppress("DEPRECATION")
@@ -224,8 +219,9 @@ object VideoReport {
     private fun runLogcat(args: List<String>, cap: Int): String? = try {
         val process = ProcessBuilder(listOf("logcat") + args).redirectErrorStream(true).start()
         val bytes = process.inputStream.use { it.readBytes() }
-        process.waitFor(3, TimeUnit.SECONDS)
-        if (process.exitValue() != 0 && bytes.isEmpty()) null else capTail(String(bytes, Charsets.UTF_8), cap)
+        // Its output has ended, so it has too (the wait with a limit needs
+        // Android 8).
+        if (process.waitFor() != 0 && bytes.isEmpty()) null else capTail(String(bytes, Charsets.UTF_8), cap)
     } catch (e: Exception) {
         null
     }
@@ -239,21 +235,25 @@ object VideoReport {
         return if (nl >= 0) tail.substring(nl + 1) else tail
     }
 
-    /** The screen as shown: a [PixelCopy] of Flutter's SurfaceView into a
-     *  1920×1080 bitmap, as RGBA bytes (design D4). Calls [done] on the main
-     *  thread with the bytes and the surface's own size, or the reason it
-     *  couldn't. */
+    /** Flutter's own surface, with its alpha: a [PixelCopy] into a 1920×1080
+     *  bitmap, as RGBA bytes (design D4). Calls [done] on the main thread with
+     *  the bytes and the surface's own size, or the reason it couldn't. */
     fun captureScreen(activity: Activity, done: (Map<String, Any?>) -> Unit) {
-        val view = findSurfaceView(activity.window.decorView)
+        val view = flutterSurface(activity.window.decorView)
         if (view == null) {
             done(mapOf("error" to "no SurfaceView"))
             return
         }
-        if (view.width <= 0 || view.height <= 0) {
+        capture(view, CAPTURE_WIDTH, CAPTURE_HEIGHT, done)
+    }
+
+    /** What [view] shows, as RGBA bytes at [width]×[height]. */
+    fun capture(view: SurfaceView, width: Int, height: Int, done: (Map<String, Any?>) -> Unit) {
+        if (view.width <= 0 || view.height <= 0 || !view.holder.surface.isValid) {
             done(mapOf("error" to "surface not laid out"))
             return
         }
-        val bitmap = Bitmap.createBitmap(CAPTURE_WIDTH, CAPTURE_HEIGHT, Bitmap.Config.ARGB_8888)
+        val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
         val main = Handler(Looper.getMainLooper())
         try {
             PixelCopy.request(view, bitmap, { status ->
@@ -269,8 +269,8 @@ object VideoReport {
                 done(
                     mapOf(
                         "rgba" to buffer.array(),
-                        "width" to CAPTURE_WIDTH,
-                        "height" to CAPTURE_HEIGHT,
+                        "width" to width,
+                        "height" to height,
                         "surface_width" to view.width,
                         "surface_height" to view.height,
                     )
@@ -282,17 +282,20 @@ object VideoReport {
         }
     }
 
-    private fun findSurfaceView(view: View): SurfaceView? {
-        if (view is SurfaceView) return view
+    /** Flutter's SurfaceView, not a video layer's. */
+    private fun flutterSurface(view: View): SurfaceView? {
+        if (view is FlutterSurfaceView) return view
         if (view is ViewGroup) {
-            for (i in 0 until view.childCount) findSurfaceView(view.getChildAt(i))?.let { return it }
+            for (i in 0 until view.childCount) flutterSurface(view.getChildAt(i))?.let { return it }
         }
         return null
     }
 
-    /** The debug fault (design D13): `debug.nightingale_tv.video_fault`, in a
-     *  debuggable build only; empty otherwise. */
-    fun fault(activity: Activity): String = if (!debuggable(activity)) "" else systemProperty("debug.nightingale_tv.video_fault")
+    /** Whether the debug property `debug.nightingale_tv.<name>` is "1", in a
+     *  debuggable build only (system-video-layer D7, D9). */
+    fun debugFlag(context: Context, name: String): Boolean =
+        (context.applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE) != 0 &&
+            systemProperty("debug.nightingale_tv.$name") == "1"
 
     fun systemProperty(name: String): String = try {
         Class.forName("android.os.SystemProperties").getMethod("get", String::class.java).invoke(null, name) as String

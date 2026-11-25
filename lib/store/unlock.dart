@@ -173,6 +173,11 @@ class Unlock extends ValueNotifier<UnlockState> {
     return result;
   }
 
+  /// Takes the user to where a Play promo code is redeemed; false when that
+  /// couldn't be opened. Changes nothing itself: the redeemed code arrives
+  /// as a purchase (play-promo-codes D3, D4).
+  Future<bool> redeem() async => await _store?.redeem() ?? false;
+
   Future<void> _ask() async {
     final store = _store;
     if (store == null) return;

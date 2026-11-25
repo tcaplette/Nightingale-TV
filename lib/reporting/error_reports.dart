@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/widgets.dart' show AppLifecycleListener, AppLifecycleState;
 import 'package:path_provider/path_provider.dart';
 import 'package:sentry_flutter/sentry_flutter.dart';
 
@@ -10,10 +11,41 @@ import '../data/app_storage.dart';
 import '../platform/install_info.dart';
 import '../platform/platform_info.dart';
 import '../server/live_tv.dart';
+import 'memory_watch.dart';
+import 'native_fault.dart';
 import 'report_policy.dart';
 import 'report_scrubber.dart';
 import 'report_switch.dart';
+import 'session_record.dart';
+import 'startup_trail.dart';
 import 'video_report.dart';
+
+/// The live checks' hooks (error-reporting, crash-visibility D7), set with
+/// `NTV_FORCE_ERROR` or the `debug.nightingale_tv.force_error` property.
+enum ForcedCheck {
+  /// One uncaught Dart error, 5 s after start-up.
+  dart,
+
+  /// The same caught failure every 20 s, for the repeat limit.
+  repeat,
+
+  /// The main isolate busy for 10 s, from 5 s after start-up.
+  anr,
+
+  /// `raise(SIGSEGV)` 5 s after start-up: a real native crash.
+  native,
+
+  /// `kill(getpid(), SIGKILL)` 5 s after start-up, in the foreground, as
+  /// Android's low-memory killer does.
+  exit,
+
+  /// `household.start()` held for 90 s, so the slow-start watchdog fires.
+  slowstart;
+
+  /// The hook named [value], or null for none (or an unknown name).
+  static ForcedCheck? parse(String? value) =>
+      value == null ? null : values.where((c) => c.name == value.trim()).firstOrNull;
+}
 
 /// Error reports to the Nightingale TV GlitchTip project (error-reporting).
 ///
@@ -50,6 +82,10 @@ abstract final class ErrorReports {
 
   static bool _serverMode = false;
   static bool _running = false;
+
+  /// Crumbs go to the SDK itself once it's up and has the trail kept
+  /// before it; until then only the session record keeps them.
+  static bool _crumbsToSdk = false;
   static bool _handlersInstalled = false;
 
   /// The SDK is started and sending.
@@ -75,23 +111,47 @@ abstract final class ErrorReports {
   /// Linux) report Dart errors through the Dart SDK alone.
   static bool get usesAndroidSdk => PlatformInfo.isAndroid && (PlatformInfo.androidSdk ?? 0) >= 26;
 
-  /// Starts reporting in the app, if this build has a DSN and the device's
-  /// switch is on. Not awaited before the first frame.
+  /// Opens reporting and starts it, in one (tests).
   static Future<void> startApp(AppStorage storage) async {
+    await openApp(storage);
+    await startReporting();
+  }
+
+  /// The app's first step after storage opens (crash-visibility D6): reads
+  /// this device's switch, the live-check hook and the previous launch's
+  /// session record, and starts this launch's. A few milliseconds; the SDK
+  /// starts in [startReporting], which nothing waits for.
+  static Future<void> openApp(AppStorage storage, {DateTime? launchedAt}) async {
     _serverMode = false;
     _hookBreadcrumbs();
     await ReportSwitch.instance.load(storage);
     scrubber.setFolders([Platform.environment['HOME'], storage.root.path]);
-    if (!available || !ReportSwitch.instance.on) return;
-    await _start();
+    _forced = await _readForced();
+    await _openSession(storage, recording: available && ReportSwitch.instance.on, launchedAt: launchedAt);
+  }
+
+  /// Starts the SDK, if this build has a DSN and the device's switch is on,
+  /// then sends what the previous launch left to report. Not awaited before
+  /// the first frame.
+  static Future<void> startReporting() async {
+    if (available && ReportSwitch.instance.on) {
+      await _start();
+      StartupTrail.step('reporting started');
+      await _reportPrevious();
+    }
+    _previous = null;
   }
 
   /// Server mode: on unless `NTV_ERROR_REPORTS=0`; [log] says once when it's
-  /// off.
-  static Future<void> startServer(Map<String, String> env, {required void Function(String) log, String? dataFolder}) async {
+  /// off. With [storage], it keeps a session record, so a server that dies
+  /// without being stopped is reported when it starts again.
+  static Future<void> startServer(Map<String, String> env,
+      {required void Function(String) log, String? dataFolder, AppStorage? storage}) async {
     _serverMode = true;
     _hookBreadcrumbs();
     scrubber.setFolders([env['HOME'], dataFolder]);
+    final on = available && env['NTV_ERROR_REPORTS'] != '0';
+    if (storage != null) await _openSession(storage, recording: on);
     if (!available) {
       log('Error reporting is off: this build has no reporting address.');
       return;
@@ -101,7 +161,181 @@ abstract final class ErrorReports {
       return;
     }
     await _start();
+    await _reportPrevious();
     log('Error reports are sent to the Nightingale TV developer; set NTV_ERROR_REPORTS=0 to turn them off.');
+  }
+
+  // ---- The session record (crash-visibility D2–D5) --------------------------
+
+  static SessionRecord? _session;
+  static SessionRecord? _previous;
+  static String? _forced;
+  static StartupTrail? _trail;
+  static MemoryWatch? _memory;
+  static AppLifecycleListener? _lifecycle;
+
+  /// This launch's record: its id tags every event, and it holds the
+  /// recent reports.
+  static SessionRecord? get session => _session;
+
+  @visibleForTesting
+  static set debugSession(SessionRecord? record) => _session = record;
+
+  /// Reads the previous launch's record (and Android's clean-exit mark for
+  /// it), then starts this launch's, keeping the recent reports.
+  static Future<void> _openSession(AppStorage storage, {required bool recording, DateTime? launchedAt}) async {
+    final previous = await SessionRecord.read(storage);
+    final mark = File(storage.pathOf(SessionRecord.cleanExitFile));
+    try {
+      if (await mark.exists()) {
+        if (previous != null && (await mark.readAsString()).trim() == previous.id) previous.cleanExit = true;
+        await mark.delete();
+      }
+    } on FileSystemException catch (e) {
+      debugPrint('Clean-exit mark unreadable: $e');
+    }
+    _previous = previous;
+    _session?.dispose();
+    final record = _session = SessionRecord.start(
+        version: appVersion, platform: environment, recording: recording, started: launchedAt, previous: previous);
+    // Server mode is always "in front": only a stop is a clean exit.
+    unawaited(record.attach(storage));
+    unawaited(PlatformInfo.setSessionId(record.id));
+  }
+
+  /// The app's watchers (crash-visibility D3–D5), from main(): start-up
+  /// steps and the slow-start watchdog, foreground changes, memory.
+  static void watchApp({required DateTime launchedAt}) {
+    final record = _session;
+    if (record == null) return;
+    _trail?.dispose();
+    final trail = _trail = StartupTrail.current = StartupTrail(record,
+        launchedAt: launchedAt,
+        onSlowStart: (reason) => unawaited(sendSlowStart(record, reason)),
+        onCrumb: (message, data) => breadcrumb('startup', message, data: data));
+    trail.start();
+    final memory = _memory = MemoryWatch(
+        onSample: record.setMemory, onCrumb: (message, data) => breadcrumb('memory', message, data: data));
+    PlatformInfo.onTrimMemory =
+        (level) => breadcrumb('memory', MemoryWatch.trimCrumb(level), data: {'level': level});
+    _lifecycle = AppLifecycleListener(onStateChange: lifecycleChanged);
+    if (record.foreground) memory.start();
+  }
+
+  /// In front: resumed; on a PC also inactive (another window has focus).
+  /// Android moves an app to the background before a force-stop or a swipe
+  /// from recents, so those are never "in front".
+  @visibleForTesting
+  static void lifecycleChanged(AppLifecycleState state) {
+    final front = state == AppLifecycleState.resumed || (!PlatformInfo.isAndroid && state == AppLifecycleState.inactive);
+    breadcrumb('lifecycle', state.name);
+    _session?.setForeground(front);
+    if (front) {
+      _memory?.start();
+    } else {
+      _memory?.stop();
+    }
+  }
+
+  /// The app is closing on purpose: the next launch reports nothing.
+  static Future<void> markCleanExit() => _session?.markClean() ?? Future.value();
+
+  /// Android says the user ended the app (force-stop, swipe away).
+  static bool userEnded(String? exitReason) => exitReason == 'user_requested' || exitReason == 'user_stopped';
+
+  /// The previous launch died in front without a clean exit.
+  static bool wasUnexpectedExit(SessionRecord previous, {String? exitReason}) =>
+      previous.recording && previous.foreground && !previous.cleanExit && !userEnded(exitReason);
+
+  /// The previous launch never reached a usable screen and never said so.
+  static bool wasSlowStart(SessionRecord previous) =>
+      previous.recording &&
+      previous.platform != 'server' &&
+      !previous.slowStartSent &&
+      !StartupTrail.reachedUsable(previous);
+
+  static Future<void> _reportPrevious() async {
+    final previous = _previous;
+    _previous = null;
+    if (previous == null || !_running) return;
+    if (previous.recording && previous.foreground && !previous.cleanExit) {
+      final exit = await PlatformInfo.exitReason(previous.started);
+      final reason = exit?['reason'] as String?;
+      if (wasUnexpectedExit(previous, exitReason: reason)) await _sendUnexpectedExit(previous, exit);
+    }
+    if (wasSlowStart(previous)) await sendSlowStart(previous, SlowStartReason.previousLaunch);
+  }
+
+  static Future<void> _sendUnexpectedExit(SessionRecord previous, Map<Object?, Object?>? exit) async {
+    final reason = exit?['reason'] as String?;
+    final contexts = Contexts();
+    contexts['previous_session'] = {
+      'id': previous.id,
+      'version': previous.version,
+      'platform': previous.platform,
+      'started': previous.started.toUtc().toIso8601String(),
+      'stage': previous.stage,
+      'library': previous.library,
+      'steps': StartupTrail.describeSteps(previous),
+    };
+    if (previous.memory case final m?) contexts['memory'] = m.toContext();
+    if (exit != null) {
+      contexts['exit_info'] = {
+        'reason': reason,
+        'description': exit['description'],
+        'status': exit['status'],
+        'pss_mb': ((exit['pss'] as num?) ?? 0) ~/ (1024 * 1024),
+        'rss_mb': ((exit['rss'] as num?) ?? 0) ~/ (1024 * 1024),
+      };
+    }
+    final event = SentryEvent(
+      message: SentryMessage('Unexpected exit'),
+      level: SentryLevel.fatal,
+      tags: {
+        'area': 'exit',
+        'previous_session': previous.id,
+        'previous_version': previous.version,
+        'stage': previous.stage ?? 'none',
+        'exit_reason': ?reason,
+      },
+      contexts: contexts,
+    );
+    keepTrail(event.eventId, [for (final t in previous.trail) t.toBreadcrumb()]);
+    await Sentry.captureEvent(event, withScope: (scope) => scope.clearBreadcrumbs());
+  }
+
+  /// "Slow start" (crash-visibility D4): about this launch from the
+  /// watchdog, or about [record] (the previous launch) from the next.
+  static Future<void> sendSlowStart(SessionRecord record, SlowStartReason reason) async {
+    if (!_running || record.slowStartSent) return;
+    final previous = !identical(record, _session);
+    if (!previous) {
+      record.slowStartSent = true;
+      unawaited(record.saveNow());
+    }
+    final contexts = Contexts();
+    contexts['startup'] = {
+      'reason': reason.text,
+      'stage': record.stage,
+      'library': record.library,
+      'steps': StartupTrail.describeSteps(record),
+      if (previous) 'session': record.id,
+    };
+    final event = SentryEvent(
+      message: SentryMessage('Slow start'),
+      level: SentryLevel.warning,
+      tags: {
+        'area': 'startup',
+        'slow_start': reason.name,
+        'stage': record.stage ?? 'none',
+        'library_path': record.library ?? 'not read',
+        if (previous) 'previous_session': record.id,
+        if (previous) 'previous_version': record.version,
+      },
+      contexts: contexts,
+    );
+    if (previous) keepTrail(event.eventId, [for (final t in record.trail) t.toBreadcrumb()]);
+    await Sentry.captureEvent(event, withScope: previous ? (scope) => scope.clearBreadcrumbs() : null);
   }
 
   /// The device's switch (the Error reports screen): off closes the SDK at
@@ -110,6 +344,11 @@ abstract final class ErrorReports {
     // Reporting stops (or starts) at once; the switch is saved meanwhile.
     // Off also disarms an armed video report (video-report).
     if (!on) VideoReports.instance.disarm();
+    if (on) {
+      _session?.startRecording();
+    } else {
+      _session?.stopRecording();
+    }
     final saving = ReportSwitch.instance.setOn(on);
     if (available) {
       if (on) {
@@ -133,16 +372,29 @@ abstract final class ErrorReports {
       _installHandlers();
       await Sentry.init(_configure);
     }
+    final session = _session;
     await Sentry.configureScope((scope) async {
       await scope.setTag('form_factor', formFactor);
       await scope.setTag('renderer', PlatformInfo.renderer ?? 'default');
       await scope.setTag('official_build', await _officialBuild());
+      // A native crash (sent by the next launch) carries it too, through
+      // the SDK's scope sync, so it matches its "Unexpected exit".
+      if (session != null) await scope.setTag('session', session.id);
     });
+    // The trail kept before the SDK was up (start-up steps), then each
+    // crumb as it comes: a copy, since crumbs keep arriving meanwhile, and
+    // each goes to the SDK once.
+    final early = [...?session?.trail];
+    _crumbsToSdk = true;
+    for (final t in early) {
+      await Sentry.addBreadcrumb(t.toBreadcrumb());
+    }
   }
 
   static Future<void> _stop() async {
     if (!_running) return;
     _running = false;
+    _crumbsToSdk = false;
     await Sentry.close();
     // The Android SDK keeps unsent reports in the cache folder.
     if (usesAndroidSdk) {
@@ -167,8 +419,9 @@ abstract final class ErrorReports {
 
   static void _configureFlutter(SentryFlutterOptions o) {
     _configure(o);
-    // Java/Kotlin crashes and freezes stay on; native (NDK) crash handling
-    // isn't in the APK at all (android/app/build.gradle.kts).
+    // Java/Kotlin crashes and freezes stay on, and so does native crash
+    // handling (sentry-android-ndk, crash-visibility D1); the scope (tags,
+    // breadcrumbs) is synced to it, so a native crash carries the session.
     o
       ..enableAutoNativeBreadcrumbs = false
       ..enableUserInteractionBreadcrumbs = false
@@ -203,7 +456,7 @@ abstract final class ErrorReports {
 
   /// Breadcrumb categories the app records itself; everything else (the
   /// SDK's HTTP, console and lifecycle trail) is dropped.
-  static const categories = {'navigation', 'tune', 'server', 'error'};
+  static const categories = {'navigation', 'tune', 'server', 'error', 'startup', 'memory', 'lifecycle'};
 
   @visibleForTesting
   static Breadcrumb? filterBreadcrumb(Breadcrumb? crumb, Hint hint) {
@@ -222,6 +475,7 @@ abstract final class ErrorReports {
       _leftOut('${thrown.runtimeType} (expected)', event.tags?['area']);
       return null;
     }
+    if (_ownTrails.remove(event.eventId) case final trail?) event.breadcrumbs = trail;
     final tags = event.tags ??= {};
     tags.putIfAbsent('area', () => 'uncaught');
     // Video reports have limits of their own (video-report D10) and never
@@ -234,9 +488,31 @@ abstract final class ErrorReports {
       return null;
     }
     scrubber.scrubEvent(event);
-    if (!_serverMode) unawaited(ReportSwitch.instance.sent(event.eventId.toString()));
+    if (!_serverMode) {
+      final id = event.eventId.toString();
+      unawaited(ReportSwitch.instance.sent(id));
+      _session?.addReport(RecentReport(kind: kindOf(tags['area']), at: DateTime.now(), id: id));
+    }
     return event;
   }
+
+  /// Reports about a previous launch carry that launch's trail, not this
+  /// one's. On Android the SDK puts the native scope's breadcrumbs on every
+  /// event (LoadContextsIntegration), so the trail is set again in [filter],
+  /// which runs after it.
+  static final _ownTrails = <SentryId, List<Breadcrumb>>{};
+
+  @visibleForTesting
+  static void keepTrail(SentryId event, List<Breadcrumb> trail) => _ownTrails[event] = trail;
+
+  /// The recent reports' kind (crash-visibility D6) for an event's area.
+  static String kindOf(String? area) => switch (area) {
+        'test' => 'test',
+        'video_report' => 'video',
+        'exit' => 'exit',
+        'startup' => 'slowStart',
+        _ => 'error',
+      };
 
   static void _leftOut(String what, String? area) =>
       breadcrumb('error', 'Not reported: $what', data: {'area': area ?? 'uncaught'});
@@ -271,28 +547,36 @@ abstract final class ErrorReports {
     liveTvBreadcrumb = (category, message, data) => breadcrumb(category, message, data: data);
   }
 
-  /// A trail entry in one of the app's [categories].
+  /// A trail entry in one of the app's [categories], scrubbed. It's kept in
+  /// the session record as well (crash-visibility D3), so a report sent
+  /// after the process died carries it; the record keeps it even before
+  /// the SDK is up.
   static void breadcrumb(String category, String message, {Map<String, Object?>? data}) {
-    if (!_running) return;
-    unawaited(Sentry.addBreadcrumb(Breadcrumb(category: category, message: message, data: data)));
+    final record = _session;
+    final keep = record != null && record.recording;
+    if (!_crumbsToSdk && !keep) return;
+    final crumb = scrubber.scrubBreadcrumb(Breadcrumb(category: category, message: message, data: data));
+    if (keep) record.addCrumb(TrailEntry.of(crumb));
+    if (_crumbsToSdk) unawaited(Sentry.addBreadcrumb(crumb));
   }
+
+  static Future<String?> _readForced() async =>
+      PlatformInfo.isAndroid ? await PlatformInfo.forcedError() : Platform.environment['NTV_FORCE_ERROR'];
 
   /// For the live checks of error reporting only: `NTV_FORCE_ERROR` (Linux,
   /// server mode) or the `debug.nightingale_tv.force_error` property
-  /// (Android, which only adb can set). `dart` throws one uncaught error
-  /// 5 s after start-up; `repeat` fails the same way as a stream open,
-  /// every 20 s, for the repeat limit; `anr` keeps the main isolate busy in
-  /// Dart code for 10 s from 5 s after start-up, as GlitchTip issue 13 did,
-  /// so a key pressed meanwhile makes Android report an ANR
-  /// (library-scan-anr 6.3).
-  static Future<void> forceErrorForChecks() async {
-    final what = PlatformInfo.isAndroid ? await PlatformInfo.forcedError() : Platform.environment['NTV_FORCE_ERROR'];
-    switch (what) {
-      case 'dart':
+  /// (Android, which only adb can set). See [ForcedCheck]. `anr` keeps the
+  /// main isolate busy in Dart code, as GlitchTip issue 13 did, so a key
+  /// pressed meanwhile makes Android report an ANR (library-scan-anr 6.3).
+  /// `slowstart` is [holdForChecks]. Returns the hook armed, or null.
+  static Future<ForcedCheck?> forceErrorForChecks({String? Function()? read}) async {
+    final check = ForcedCheck.parse(read != null ? read() : (_forced ??= await _readForced()));
+    switch (check) {
+      case ForcedCheck.dart:
         Timer(const Duration(seconds: 5), () => throw StateError('Forced uncaught error (error reporting check)'));
-      case 'anr':
+      case ForcedCheck.anr:
         Timer(const Duration(seconds: 5), () => debugPrint('Forced busy main thread ended: ${_busyForAnrCheck(const Duration(seconds: 10))}'));
-      case 'repeat':
+      case ForcedCheck.repeat:
         Timer.periodic(const Duration(seconds: 20), (_) {
           try {
             throw StateError('Forced stream failure (error reporting check)');
@@ -300,7 +584,29 @@ abstract final class ErrorReports {
             capture(e, stack, area: 'playback');
           }
         });
+      case ForcedCheck.native:
+        Timer(const Duration(seconds: 5), NativeFault.segfault);
+      case ForcedCheck.exit:
+        // Killed only while in front, as the low-memory killer does to the
+        // app being watched.
+        Timer(const Duration(seconds: 5), () {
+          if (_session?.foreground ?? true) return NativeFault.killSelf();
+          Timer.periodic(const Duration(seconds: 1), (_) {
+            if (_session?.foreground ?? true) NativeFault.killSelf();
+          });
+        });
+      case ForcedCheck.slowstart || null:
+        break;
     }
+    return check;
+  }
+
+  /// The `slowstart` hook: holds start-up for [hold] (main() awaits it
+  /// before `household.start()`).
+  static Future<void> holdForChecks({Duration hold = const Duration(seconds: 90)}) async {
+    if (ForcedCheck.parse(_forced) != ForcedCheck.slowstart) return;
+    debugPrint('Start-up held for ${hold.inSeconds} s (slowstart check)');
+    await Future<void>.delayed(hold);
   }
 
   /// Spins on the calling isolate for [length] (the `anr` check): Dart work
@@ -352,6 +658,19 @@ abstract final class ErrorReports {
   static Future<void> debugReset() async {
     if (_running) await Sentry.close();
     _running = false;
+    _crumbsToSdk = false;
+    _trail?.dispose();
+    _trail = null;
+    _memory?.stop();
+    _memory = null;
+    _lifecycle?.dispose();
+    _lifecycle = null;
+    PlatformInfo.onTrimMemory = null;
+    _session?.dispose();
+    _session = null;
+    _previous = null;
+    _forced = null;
+    _ownTrails.clear();
     _serverMode = false;
     debugDsn = null;
     debugTransport = null;

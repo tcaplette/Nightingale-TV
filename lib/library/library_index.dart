@@ -1,4 +1,5 @@
 import 'package:flutter/foundation.dart' show visibleForTesting;
+import 'package:intl/intl.dart' show DateFormat;
 
 import '../commercials/commercial_pool.dart';
 import '../server/media_server.dart';
@@ -17,6 +18,10 @@ enum MediaKind {
 
   /// A music video from a video library.
   musicVideo,
+
+  /// A video of a picked YouTube channel (youtube-subscriptions D2): only
+  /// that channel's YouTube channel ever plays it.
+  youtubeVideo,
 }
 
 /// Another server's copy of a [MediaEntry] (multi-server): what playing it
@@ -158,6 +163,10 @@ class MediaEntry {
   /// Every copy: this entry's own first, then [alternates].
   List<MediaCopy> get copies => [copy, ...alternates];
 
+  /// A home video (smb-sources): never merged with another server's item,
+  /// never shared, and never named to friends.
+  bool get isHome => LibraryIndex.isHomeKey(seriesKey);
+
   /// A song or a music video.
   bool get isMusic => kind == MediaKind.song || kind == MediaKind.musicVideo;
 
@@ -265,6 +274,15 @@ class MediaEntry {
   /// Year" for music.
   String get subtitle {
     if (kind == MediaKind.commercial) return tr.commercial;
+    // The YouTube channel, when it was published and its length
+    // (youtube-subscriptions D7).
+    if (kind == MediaKind.youtubeVideo) {
+      return [
+        ?seriesName,
+        if (added case final at?) tr.publishedOn(_date(at.toLocal())),
+        _length(runtime),
+      ].join(' · ');
+    }
     if (kind == MediaKind.movie) return year != null ? tr.movie2(year!) : tr.movie;
     if (isMusic) {
       final parts = [album ?? (kind == MediaKind.musicVideo ? tr.musicVideo : null), ?year?.toString()];
@@ -275,6 +293,25 @@ class MediaEntry {
       if (episode != null) 'E$episode',
     ].join(' · ');
     return code.isEmpty ? title : '$code · $title';
+  }
+
+  /// A date as the app's language writes it; ISO where its date names
+  /// aren't loaded (a background isolate, tests).
+  static String _date(DateTime d) {
+    try {
+      return DateFormat.yMMMd(tr.localeName).format(d);
+    } on Object {
+      return '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+    }
+  }
+
+  /// "1 hr 5 min", "22 min".
+  static String _length(Duration d) {
+    final minutes = (d.inSeconds / 60).round();
+    if (minutes < 1) return tr.underAMinute;
+    if (minutes < 60) return tr.min(minutes);
+    final h = minutes ~/ 60, m = minutes % 60;
+    return m == 0 ? tr.hr(h) : tr.hrMin(h, m);
   }
 
   Map<String, Object?> toJson() => {
@@ -389,6 +426,9 @@ class SeriesEntry {
 
   /// The show of episodes with no show name.
   bool get isUnknown => key == unknownKey;
+
+  /// A folder of home videos (smb-sources), which is nobody else's show.
+  bool get isHome => LibraryIndex.isHomeKey(key);
 
   /// A copy under another [key] (multi-server: the same show, its year known
   /// on another server).
@@ -814,11 +854,14 @@ class LibraryIndex {
     this.commercials = const [],
     this.songs = const [],
     this.musicVideos = const [],
+    this.youtubeVideos = const [],
     this.rootsByItem = const {},
     this.roots = const {},
     this.missingRoots = const {},
     this.scanNotes = const [],
-  }) : _byId = {for (final e in [...episodes, ...movies, ...commercials, ...songs, ...musicVideos]) e.id: e};
+  }) : _byId = {
+          for (final e in [...episodes, ...movies, ...commercials, ...songs, ...musicVideos, ...youtubeVideos]) e.id: e
+        };
 
   final List<SeriesEntry> series;
   final List<MediaEntry> episodes;
@@ -832,6 +875,12 @@ class LibraryIndex {
   /// Songs from music libraries, and music videos from video libraries.
   final List<MediaEntry> songs;
   final List<MediaEntry> musicVideos;
+
+  /// The picked YouTube channels' videos (youtube-subscriptions D2), from
+  /// each YouTube server's catalog; [MediaEntry.seriesKey] is
+  /// `yt:<channelId>`. No generated or custom channel, block, pool, genre,
+  /// decade or premiere ever picks one.
+  final List<MediaEntry> youtubeVideos;
 
   /// The channel and block source roots (see [ChannelSource.roots]) each
   /// episode or movie is under, by item id (custom-channels D3).
@@ -886,10 +935,18 @@ class LibraryIndex {
     );
   }
 
+  /// The item field that marks home videos while an index is built, holding
+  /// their show's key, and what those keys start with.
+  static const homeKey = 'NightingaleHome';
+  static const homePrefix = 'home:';
+
+  static bool isHomeKey(String? key) => key != null && key.startsWith(homePrefix);
+
   static final empty =
       LibraryIndex(series: const [], episodes: const [], movies: const [], fetchedAt: DateTime(0));
 
-  bool get isEmpty => episodes.isEmpty && movies.isEmpty && songs.isEmpty && musicVideos.isEmpty;
+  bool get isEmpty =>
+      episodes.isEmpty && movies.isEmpty && songs.isEmpty && musicVideos.isEmpty && youtubeVideos.isEmpty;
 
   /// Only what's rated at most [maxRank] (see [ratingRank]). Episodes go by
   /// their show's rating; anything unrated is left out, music included.
@@ -912,6 +969,9 @@ class LibraryIndex {
       commercials: commercials,
       songs: songs.where((m) => allowed(m.officialRating)).toList(),
       musicVideos: musicVideos.where((m) => allowed(m.officialRating)).toList(),
+      // A parent chooses a kid profile's YouTube channels (its Servers needs
+      // the PIN), so its videos stay.
+      youtubeVideos: youtubeVideos,
       fetchedAt: fetchedAt,
       // Whatever a root holds, nothing over the limit plays (D15).
       rootsByItem: {
@@ -932,6 +992,7 @@ class LibraryIndex {
         commercials: commercials,
         songs: songs,
         musicVideos: musicVideos,
+        youtubeVideos: youtubeVideos,
         fetchedAt: fetchedAt,
         rootsByItem: rootsByItem ?? this.rootsByItem,
         roots: roots ?? this.roots,
@@ -963,6 +1024,7 @@ class LibraryIndex {
       commercials: commercials,
       songs: songs,
       musicVideos: musicVideos,
+      youtubeVideos: youtubeVideos,
       fetchedAt: fetchedAt,
       rootsByItem: rootsByItem,
       roots: roots,
@@ -999,12 +1061,28 @@ class LibraryIndex {
         commercials: [for (final e in commercials) e.withIds(prefix)],
         songs: [for (final e in songs) e.withIds(prefix)],
         musicVideos: [for (final e in musicVideos) e.withIds(prefix)],
+        youtubeVideos: [for (final e in youtubeVideos) e.withIds(prefix)],
         fetchedAt: fetchedAt,
         rootsByItem: {
           for (final e in rootsByItem.entries) prefix(e.key): [for (final r in e.value) prefix(r)],
         },
         roots: {for (final r in roots) prefix(r)},
         missingRoots: {for (final r in missingRoots) prefix(r)},
+      );
+
+  /// This index with [videos] as its YouTube videos, the rest kept.
+  LibraryIndex withYouTubeVideos(List<MediaEntry> videos) => LibraryIndex(
+        series: series,
+        episodes: episodes,
+        movies: movies,
+        commercials: commercials,
+        songs: songs,
+        musicVideos: musicVideos,
+        youtubeVideos: videos,
+        fetchedAt: fetchedAt,
+        rootsByItem: rootsByItem,
+        roots: roots,
+        missingRoots: missingRoots,
       );
 
   /// This index with its shows merged by [ShowIdentity] (lineup-dedup D7):
@@ -1023,7 +1101,7 @@ class LibraryIndex {
       List<SeriesEntry> series, List<MediaEntry> episodes) {
     final shows = ShowIndexer([
       for (final s in series)
-        ShowItem(
+        if (!s.isHome) ShowItem(
             id: s.key,
             name: s.name,
             year: s.year,
@@ -1034,13 +1112,15 @@ class LibraryIndex {
             artworkId: s.id),
     ], [
       for (final e in episodes)
-        (showId: e.seriesKey, showName: e.seriesName, season: e.season, number: e.episode, title: e.title),
+        if (!e.isHome) (showId: e.seriesKey, showName: e.seriesName, season: e.season, number: e.episode, title: e.title),
     ]);
     return (
-      series: shows.series,
+      series: [...shows.series, for (final s in series) if (s.isHome) s],
       episodes: [
-        for (final (i, e) in episodes.indexed)
+        for (final (i, e) in [for (final e in episodes) if (!e.isHome) e].indexed)
           if (shows.episodes[i] case final show?) e.withShow(show.key, show.name, show.season),
+        // Home videos' shows are their folders, as they were.
+        for (final e in episodes) if (e.isHome) e,
       ],
       notes: shows.notes,
     );
@@ -1055,6 +1135,7 @@ class LibraryIndex {
         commercials: commercials,
         songs: songs,
         musicVideos: musicVideos,
+        youtubeVideos: youtubeVideos,
         fetchedAt: fetchedAt,
         rootsByItem: rootsByItem,
         roots: roots,
@@ -1092,6 +1173,8 @@ class LibraryIndex {
         'commercials': [for (final c in commercials) c.toJson()],
         'songs': [for (final m in songs) m.toJson()],
         'musicVideos': [for (final m in musicVideos) m.toJson()],
+        // Only profiles with YouTube write it, so others save as before.
+        if (youtubeVideos.isNotEmpty) 'youtubeVideos': [for (final m in youtubeVideos) m.toJson()],
         if (roots.isNotEmpty) 'roots': roots.toList(),
         if (missingRoots.isNotEmpty) 'missingRoots': missingRoots.toList(),
         if (rootsByItem.isNotEmpty) 'rootsByItem': rootsByItem,
@@ -1117,6 +1200,10 @@ class LibraryIndex {
         ],
         musicVideos: [
           for (final m in ((j['musicVideos'] as List?) ?? const []).cast<Map<String, Object?>>())
+            MediaEntry.fromJson(m)
+        ],
+        youtubeVideos: [
+          for (final m in ((j['youtubeVideos'] as List?) ?? const []).cast<Map<String, Object?>>())
             MediaEntry.fromJson(m)
         ],
         rootsByItem: {
@@ -1148,7 +1235,7 @@ class LibraryIndex {
     // folders) become one show; its episodes are indexed once.
     final shows = ShowIndexer([
       for (final s in seriesItems)
-        ShowItem(
+        if (s[homeKey] == null) ShowItem(
           id: s['Id'] as String,
           name: s['Name'] as String? ?? SeriesEntry.unknownName,
           year: s['ProductionYear'] as int?,
@@ -1159,7 +1246,7 @@ class LibraryIndex {
         ),
     ], [
       for (final e in playable)
-        (
+        if (e[homeKey] == null) (
           showId: e['SeriesId'] as String?,
           showName: e['SeriesName'] as String?,
           season: e['ParentIndexNumber'] as int?,
@@ -1169,8 +1256,13 @@ class LibraryIndex {
     ]);
 
     final episodes = <MediaEntry>[];
-    for (final (i, e) in playable.indexed) {
-      final show = shows.episodes[i];
+    var indexed = 0;
+    for (final e in playable) {
+      // A home video's show is its folder, whatever else has that name.
+      final home = e[homeKey] as String?;
+      final show = home == null
+          ? shows.episodes[indexed++]
+          : (key: home, name: e['SeriesName'] as String? ?? SeriesEntry.unknownName, season: e['ParentIndexNumber'] as int?);
       if (show == null) continue;
       final number = e['IndexNumber'] as int?;
       episodes.add(MediaEntry(
@@ -1276,8 +1368,14 @@ class LibraryIndex {
       return result;
     }
 
+    final homes = {for (final e in episodes) if (isHomeKey(e.seriesKey)) e.seriesKey};
     return LibraryIndex(
-      series: shows.series,
+      series: [
+        ...shows.series,
+        for (final s in seriesItems)
+          if (s[homeKey] case final String key when homes.contains(key))
+            SeriesEntry(key: key, id: s['Id'] as String, name: s['Name'] as String? ?? SeriesEntry.unknownName),
+      ],
       episodes: episodes,
       movies: movies,
       commercials: commercials,

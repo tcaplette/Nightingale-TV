@@ -1,6 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
-import 'dart:ui' show Rect;
+import 'dart:ui' show Rect, Size;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -51,21 +51,37 @@ Uint8List _picture(int w, int h) {
   return out;
 }
 
+/// Flutter's surface with a hole from [left], opaque elsewhere, a logo in it.
+Uint8List _surface(int w, int h, {int left = 0}) {
+  final out = Uint8List(w * h * 4);
+  for (var y = 0; y < h; y++) {
+    for (var x = 0; x < w; x++) {
+      out[(y * w + x) * 4 + 3] = x < left || (x > w - 12 && x < w - 4 && y > h - 10 && y < h - 4) ? 255 : 0;
+    }
+  }
+  return out;
+}
+
 /// The device side, faked: every card decodes to [_picture].
 class _FakePlatform extends VideoReportPlatform {
   _FakePlatform({this.log = 'I/flutter: Using the Impeller rendering backend (OpenGLES).'});
 
   static const w = 64, h = 36;
   final String? log;
-  final released = <int>[];
   Uint8List image = _picture(w, h);
+
+  /// Flutter's surface: opaque but for the hole.
+  Uint8List surface = _surface(w, h);
+
+  Object? layer = const [0, 0, w, h];
+  Map<Object?, Object?> output = const {'width': '$w', 'height': '$h'};
+  Map<Object?, Object?> buffer = const {'buffer_width': w, 'buffer_height': h, 'crop': '0,0,$w,$h'};
 
   @override
   Future<Map<Object?, Object?>> facts() async => {
         'build': {'device': 'goldfish_x86_64', 'manufacturer': 'Google'},
         'gl': {'renderer': 'Android Emulator OpenGL ES Translator'},
         'backend': 'OpenGLES',
-        'producer': 'image_reader',
       };
 
   @override
@@ -73,14 +89,23 @@ class _FakePlatform extends VideoReportPlatform {
 
   @override
   Future<Map<Object?, Object?>> capture() async =>
-      {'rgba': _picture(w, h), 'width': w, 'height': h, 'surface_width': w, 'surface_height': h};
+      {'rgba': surface, 'width': w, 'height': h, 'surface_width': w, 'surface_height': h};
 
   @override
-  Future<String?> fault() async => '';
+  Future<Map<Object?, Object?>> captureVideo(int playerId) async => {'rgba': image, 'width': w, 'height': h};
+
+  @override
+  Future<Map<Object?, Object?>> streamBuffer(int playerId) async => buffer;
 
   @override
   Future<Map<Object?, Object?>> stream(int playerId) async =>
-      {'decoder': 'c2.goldfish.hevc.decoder', 'texture_size': '${w}x$h'};
+      {
+        'decoder': 'c2.goldfish.hevc.decoder',
+        'decoder_output': output,
+        'layer': layer,
+        'hdr': 'sdr stream',
+        'effects': 'off',
+      };
 
   @override
   Future<Map<Object?, Object?>> decoder(String card) async =>
@@ -94,16 +119,6 @@ class _FakePlatform extends VideoReportPlatform {
   Future<Map<Object?, Object?>> probe(String card, String decoder) async => {'buffer_format': '0x22'};
 
   @override
-  Future<Map<Object?, Object?>> texture(String card, String decoder, {required bool gl}) async =>
-      {'texture_id': gl ? 91 : 90, 'width': w, 'height': h, 'kind': gl ? 'surface_texture' : 'default'};
-
-  @override
-  Future<void> release(int textureId) async => released.add(textureId);
-
-  @override
-  Future<Uint8List?> renderTexture(int textureId, int width, int height) async => image;
-
-  @override
   Future<Map<String, Object?>> expected() async {
     final card = measureRgba(_picture(w, h), w, h).toJson();
     return {
@@ -112,34 +127,21 @@ class _FakePlatform extends VideoReportPlatform {
   }
 }
 
-/// The screen shows [screen] (a blurred copy of the picture).
-class _BlurredScreen extends _FakePlatform {
-  _BlurredScreen(this.screen);
-
-  final Uint8List screen;
+/// Nothing of the picture can be read.
+class _NoCaptures extends _FakePlatform {
+  @override
+  Future<Map<Object?, Object?>> capture() async => {'error': 'PixelCopy status 3'};
 
   @override
-  Future<Map<Object?, Object?>> capture() async =>
-      {'rgba': screen, 'width': 64, 'height': 36, 'surface_width': 64, 'surface_height': 36};
-}
-
-/// The first capture lands on a different shot (a cut), the next ones on
-/// the picture.
-class _CutOnce extends _FakePlatform {
-  var captures = 0;
+  Future<Map<Object?, Object?>> captureVideo(int playerId) async => {'error': 'PixelCopy status 3'};
 
   @override
-  Future<Map<Object?, Object?>> capture() async {
-    captures++;
-    if (captures > 1) return super.capture();
-    final other = Uint8List(64 * 36 * 4)..fillRange(0, 64 * 36 * 4, 230);
-    return {'rgba': other, 'width': 64, 'height': 36, 'surface_width': 64, 'surface_height': 36};
-  }
+  Future<Map<Object?, Object?>> streamBuffer(int playerId) async => {'skipped': 'no keyframe'};
 }
 
 const _live = LivePicture(
   playerId: 5,
-  textureRect: TextureView(Rect.fromLTRB(0, 0, 64, 36), Rect.fromLTRB(0, 0, 1, 1)),
+  hole: Rect.fromLTRB(0, 0, 64, 36),
   devicePixelRatio: 1,
   effectsOn: false,
   retro: {'shape': 'original', 'crt': 'off'},
@@ -184,7 +186,6 @@ void main() {
     ReportSwitch.instance.reset();
     PlatformInfo.debugOverride = null;
     PlatformInfo.debugAndroidSdk = null;
-    VideoFault.current.value = VideoFault.none;
     if (started != null) {
       await storage.flush();
       await started!.delete(recursive: true);
@@ -338,27 +339,31 @@ void main() {
       'build_device': 'goldfish_x86_64',
       'gpu': 'Android Emulator OpenGL ES Translator',
       'decoder': 'c2.goldfish.hevc.decoder',
-      'producer': 'image_reader',
       'backend': 'OpenGLES',
       'cpu_decode': 'pass',
-      'image_reader': 'pass',
-      'surface_texture': 'pass',
-      'gpu_matrix': 'bt709',
-      'screen_match': 'yes',
+      'padded': 'no',
+      'edge': 'clean',
+      'layer_match': 'yes',
       'form_factor': anything,
       'renderer': anything,
       'official_build': anything,
+      // Every event carries its launch's session (crash-visibility D2).
+      'session': anything,
     });
     final contexts = event['contexts'] as Map<String, Object?>;
-    for (final c in ['video_device', 'video_stream', 'video_picture', 'video_self_test']) {
+    for (final c in ['video_device', 'video_stream', 'video_layer', 'video_picture', 'video_self_test']) {
       expect(contexts, contains(c));
     }
     final selfTest = contexts['video_self_test'] as Map;
     expect(((selfTest['cards'] as Map)['hevc10'] as Map)['cpu_decode'], {'result': 'skipped', 'reason': 'no hardware decoder'});
-    expect(platform.released, [90, 91, 90, 91], reason: 'every texture run is released');
     final picture = contexts['video_picture'] as Map;
-    expect((picture['texture'] as Map)['grid'], hasLength(144));
-    expect((picture['screen'] as Map)['grid'], hasLength(144));
+    expect((picture['video'] as Map)['grid'], hasLength(144));
+    final layer = contexts['video_layer'] as Map;
+    expect(layer['layer'], [0, 0, 64, 36]);
+    expect(layer['hole'], [0, 0, 64, 36]);
+    expect(layer['hole_asked'], [0, 0, 64, 36]);
+    expect(layer['hdr'], 'sdr stream');
+    expect(layer['effects'], 'off');
     expect(jsonEncode(contexts), isNot(contains('rgba')), reason: 'no pixels, only measurements');
     final logcat = (event['extra'] as Map)['logcat'] as String;
     expect(logcat, contains('Using the Impeller rendering backend (OpenGLES)'));
@@ -391,87 +396,63 @@ void main() {
     expect(event['contexts'], contains('video_self_test'));
   });
 
-  test('a broken import, a working decoder: image_reader fails, cpu_decode passes', () async {
+  Future<(Map<Object?, Object?> tags, Map<Object?, Object?> contexts)> taken(_FakePlatform platform, [LivePicture live = _live]) async {
     await start();
-    VideoFault.current.value = VideoFault.smearTexture;
-    reports.platform = _FakePlatform()..image = _picture(64, 36);
-    watch(11);
-    await reports.take(_live);
-    final tags = (await sent.events()).single.json['tags'] as Map;
-    expect(tags['image_reader'], 'fail');
-    expect(tags['cpu_decode'], 'pass');
-    expect(tags['surface_texture'], 'pass', reason: 'the fault is on the default kind only');
-    expect(tags['screen_match'], 'no', reason: 'the smeared texture no longer matches the screen');
-  });
-
-  test('a black texture render reads render_empty and the rest still goes', () async {
-    await start();
-    reports.platform = _FakePlatform()..image = Uint8List(64 * 36 * 4);
-    watch(11);
-    await reports.take(_live);
-    final event = (await sent.events()).single.json;
-    final picture = (event['contexts'] as Map)['video_picture'] as Map;
-    expect(picture['render_empty'], isTrue);
-    expect(picture['screen_match'], 'unknown');
-    expect((event['tags'] as Map)['image_reader'], 'skipped');
-    expect((event['tags'] as Map)['cpu_decode'], 'pass');
-  });
-
-  test('a blurred screen with its colours kept: screen_match is no', () async {
-    await start();
-    final sharp = _picture(64, 36);
-    // The same picture blurred on screen: each 8×6 block its own mean.
-    final blurred = Uint8List.fromList(sharp);
-    for (var by = 0; by < 36; by += 6) {
-      for (var bx = 0; bx < 64; bx += 8) {
-        for (var c = 0; c < 3; c++) {
-          var sum = 0;
-          for (var y = by; y < by + 6; y++) {
-            for (var x = bx; x < bx + 8; x++) {
-              sum += sharp[(y * 64 + x) * 4 + c];
-            }
-          }
-          for (var y = by; y < by + 6; y++) {
-            for (var x = bx; x < bx + 8; x++) {
-              blurred[(y * 64 + x) * 4 + c] = (sum / 48).round();
-            }
-          }
-        }
-      }
-    }
-    reports.platform = _BlurredScreen(blurred);
-    watch(11);
-    await reports.take(_live);
-    final event = (await sent.events()).single.json;
-    final picture = (event['contexts'] as Map)['video_picture'] as Map;
-    expect(picture['screen_share'], greaterThanOrEqualTo(PictureMeasure.screenShare), reason: 'the colours still match');
-    expect(picture['screen_detail_ratio'], lessThan(PictureMeasure.screenDetailShare));
-    expect((event['tags'] as Map)['screen_match'], 'no');
-    expect(picture['tries'], 3, reason: 'a differing pair is taken again before it counts');
-  });
-
-  test('a pair taken during a cut is taken again', () async {
-    await start();
-    final platform = _CutOnce();
     reports.platform = platform;
     watch(11);
-    await reports.take(_live);
-    final picture = ((await sent.events()).single.json['contexts'] as Map)['video_picture'] as Map;
-    expect(picture['tries'], 2);
-    expect(picture['screen_match'], 'yes');
-  });
+    await reports.take(live);
+    final event = (await sent.events()).single.json;
+    return (event['tags'] as Map, event['contexts'] as Map);
+  }
 
-  test('CRT effects on: screen_match is effects', () async {
-    await start();
-    watch(11);
-    await reports.take(const LivePicture(
-      playerId: 5,
-      textureRect: TextureView(Rect.fromLTRB(0, 0, 64, 36), Rect.fromLTRB(0, 0, 1, 1)),
-      devicePixelRatio: 1,
-      effectsOn: true,
-      retro: {'crt': 'consumer'},
-    ));
-    expect(((await sent.events()).single.json['tags'] as Map)['screen_match'], 'effects');
+  group('the video layer', () {
+    test('a decoder that pads, shown right: padded and clean', () async {
+      final (tags, contexts) = await taken(_FakePlatform()
+        ..buffer = const {'buffer_width': 768, 'buffer_height': 480, 'crop': '0,0,720,480'}
+        ..output = const {'width': '720', 'height': '480'});
+      expect(tags['padded'], 'yes');
+      expect(tags['edge'], 'clean');
+      expect(((contexts['video_layer'] as Map)['buffer'] as Map)['buffer_width'], 768);
+    });
+
+    test('as the Shield reported it: the output format says it too', () async {
+      const output = {'width': '768', 'height': '480', 'crop-left': '0', 'crop-top': '0', 'crop-right': '719', 'crop-bottom': '479'};
+      expect(VideoReportBuilder.padded(const {'skipped': 'single instance'}, output), 'yes');
+      expect(VideoReportBuilder.padded(const {'skipped': 'single instance'}, const {'width': '720', 'height': '480'}), 'unknown');
+      expect(VideoReportBuilder.padded(const {'error': 'x'}, null), 'unknown');
+    });
+
+    test('padding on screen', () async {
+      final image = _picture(64, 36);
+      for (var y = 0; y < 36; y++) {
+        for (var x = 60; x < 64; x++) {
+          image.setRange((y * 64 + x) * 4, (y * 64 + x) * 4 + 3, const [0, 135, 0]);
+        }
+      }
+      final (tags, contexts) = await taken(_FakePlatform()..image = image);
+      expect(tags['edge'], 'padding');
+      expect((contexts['video_picture'] as Map)['edge_right'], 4);
+    });
+
+    test('the layer and the hole apart, and no hole at all', () async {
+      expect((await taken(_FakePlatform()..layer = const [0, 0, 40, 36])).$1['layer_match'], 'no');
+      await storage.flush();
+      expect((await taken(_FakePlatform()..surface = _surface(64, 36, left: 64))).$1['layer_match'], 'no');
+      const screen = Size(1920, 1080);
+      // 4:3 fill: the layer is larger than the hole, and than the screen.
+      expect(VideoReportBuilder.layerMatch(const [0, -135, 1920, 1215], const Rect.fromLTRB(240, 0, 1680, 1080), screen), 'yes');
+      // A fractional edge.
+      expect(VideoReportBuilder.layerMatch(const [174, 0, 1746, 1080], const Rect.fromLTRB(175, 0, 1745, 1080), screen), 'yes');
+      expect(VideoReportBuilder.layerMatch(const [240, 0, 1680, 1080], const Rect.fromLTRB(0, 0, 1920, 1080), screen), 'no');
+      expect(VideoReportBuilder.layerMatch(null, const Rect.fromLTRB(0, 0, 1920, 1080), screen), 'unknown');
+    });
+
+    test('parts that cannot be read are unknown, and the rest goes', () async {
+      final (tags, contexts) = await taken(_NoCaptures());
+      expect((tags['edge'], tags['layer_match'], tags['padded']), ('unknown', 'unknown', 'unknown'));
+      expect(tags['cpu_decode'], 'pass');
+      expect(contexts, contains('video_self_test'));
+    });
   });
 
   test('after a video report, the run can still send its 30 error events', () async {
@@ -485,13 +466,5 @@ void main() {
     }
     final events = await sent.events();
     expect(events.where((e) => (e.json['tags'] as Map)['area'] != 'video_report'), hasLength(30));
-  });
-
-  test('a release build ignores the fault property', () {
-    expect(VideoFault.parse('smear-texture', debuggable: false), VideoFault.none);
-    expect(VideoFault.parse('smear-screen', debuggable: false), VideoFault.none);
-    expect(VideoFault.parse('smear-texture', debuggable: true), VideoFault.smearTexture);
-    expect(VideoFault.parse('smear-screen', debuggable: true), VideoFault.smearScreen);
-    expect(VideoFault.parse('', debuggable: true), VideoFault.none);
   });
 }

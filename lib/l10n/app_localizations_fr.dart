@@ -184,45 +184,6 @@ class AppLocalizationsFr extends AppLocalizations {
   }
 
   @override
-  String get madeByYou => 'Créée par vous';
-
-  @override
-  String get fromNightingaleTv => 'Depuis Nightingale TV (version personnelle)';
-
-  @override
-  String get fromNightingaleTv2 => 'Depuis Nightingale TV';
-
-  @override
-  String get movingToNightingale =>
-      'Transfert vers Nightingale TV (version personnelle)';
-
-  @override
-  String get movingToNightingaleTv => 'Transfert vers Nightingale TV';
-
-  @override
-  String get fromAFile => 'Depuis un fichier';
-
-  @override
-  String get beforeLineupCleanup => 'Avant le nettoyage de la grille';
-
-  @override
-  String get beforeUpdate => 'Avant la mise à jour';
-
-  @override
-  String beforeDeleting(Object subject) {
-    return 'Avant la suppression de $subject';
-  }
-
-  @override
-  String get beforeDeletingA => 'Avant la suppression d\'un profil';
-
-  @override
-  String get beforeReset => 'Avant la réinitialisation';
-
-  @override
-  String get beforeRestore => 'Avant la restauration';
-
-  @override
   String get automatic => 'Automatique';
 
   @override
@@ -472,7 +433,7 @@ class AppLocalizationsFr extends AppLocalizations {
 
   @override
   String portIsIn(Object port) {
-    return 'Le port $port est utilisé par un autre programme. Choisissez un autre port, puis mettez-le à jour dans Plex ou Jellyfin.';
+    return 'Le port $port est utilisé par un autre programme. Choisissez un autre port, puis mettez-le à jour dans Plex, Jellyfin ou Emby.';
   }
 
   @override
@@ -758,6 +719,11 @@ class AppLocalizationsFr extends AppLocalizations {
   String get thereHasTo => 'Il doit y avoir au moins un profil adulte.';
 
   @override
+  String kidProfilesNeedPins(Object names) {
+    return 'Tant qu\'il y a des profils enfant, chaque profil adulte doit avoir un code PIN pour que les enfants ne puissent pas y passer. Définissez un code PIN pour $names.';
+  }
+
+  @override
   String get switchToAnother =>
       'Passez à un autre profil avant de supprimer celui-ci.';
 
@@ -989,8 +955,8 @@ class AppLocalizationsFr extends AppLocalizations {
       'Ce n\'est pas une image du dossier des logos personnalisés.';
 
   @override
-  String couldntSaveASafety(Object e) {
-    return 'Impossible d\'enregistrer d\'abord une sauvegarde de sécurité, rien n\'a donc été réinitialisé : $e';
+  String couldntSaveBackupNothingReset(Object e) {
+    return 'Impossible d\'enregistrer d\'abord une sauvegarde, rien n\'a donc été réinitialisé : $e';
   }
 
   @override
@@ -1240,6 +1206,14 @@ class AppLocalizationsFr extends AppLocalizations {
   }
 
   @override
+  String get listSeparator => ', ';
+
+  @override
+  String labelValue(Object label, Object value) {
+    return '$label : $value';
+  }
+
+  @override
   String get restore => 'Restaurer';
 
   @override
@@ -1270,11 +1244,6 @@ class AppLocalizationsFr extends AppLocalizations {
   String get saveToFile => 'Enregistrer dans un fichier';
 
   @override
-  String madeOn(Object device) {
-    return 'Créée sur $device';
-  }
-
-  @override
   String get moveOkSelectEsc =>
       '▲▼◀▶ Déplacer    OK Sélectionner    ESC Retour';
 
@@ -1282,30 +1251,8 @@ class AppLocalizationsFr extends AppLocalizations {
   String get backupRestore => 'Sauvegarde et restauration';
 
   @override
-  String get backups => 'SAUVEGARDES';
-
-  @override
-  String get backUpNow => 'Sauvegarder maintenant';
-
-  @override
   String get aBackupHolds =>
-      'Une sauvegarde contient chaque profil avec ses chaînes, blocs, publicités et réglages, et est créée chaque jour où quelque chose change. Les mots de passe de connexion n\'y figurent jamais.';
-
-  @override
-  String lastBackup(Object toLocal, Object kindLabel) {
-    return 'Dernière sauvegarde : $toLocal ($kindLabel).';
-  }
-
-  @override
-  String get noBackupsYet => 'Aucune sauvegarde pour l\'instant.';
-
-  @override
-  String itCantBe(Object toLocal, Object kindLabel) {
-    return '$toLocal · $kindLabel. Elle ne pourra pas être récupérée.';
-  }
-
-  @override
-  String get deleteThisBackup => 'Supprimer cette sauvegarde ?';
+      'Une sauvegarde contient chaque profil avec ses chaînes, blocs, publicités et réglages. Elle est tenue à jour à chaque changement. Les mots de passe de connexion n\'y figurent jamais.';
 
   @override
   String couldntSaveThe(Object e) {
@@ -2119,6 +2066,9 @@ class AppLocalizationsFr extends AppLocalizations {
   }
 
   @override
+  String get fullStop => '.';
+
+  @override
   String get longCommercialVideos =>
       'Les longues vidéos publicitaires sans chapitres ne peuvent pas être découpées sur cet appareil';
 
@@ -2656,7 +2606,7 @@ class AppLocalizationsFr extends AppLocalizations {
 
   @override
   String get automaticDiscoveryIsnt =>
-      'La découverte automatique n\'est pas disponible sur ce PC. Ajoutez le tuner dans Plex ou Jellyfin par son adresse.';
+      'La découverte automatique n\'est pas disponible sur ce PC. Ajoutez le tuner dans Plex, Jellyfin ou Emby par son adresse.';
 
   @override
   String get anyoneOnYour =>
@@ -2664,7 +2614,7 @@ class AppLocalizationsFr extends AppLocalizations {
 
   @override
   String get watchYourChannels =>
-      'Regardez vos chaînes dans Plex, Jellyfin ou toute appli IPTV sur votre réseau domestique. Nightingale TV doit rester ouvert pour cela.';
+      'Regardez vos chaînes dans Plex, Jellyfin, Emby ou toute appli IPTV sur votre réseau domestique. Nightingale TV doit rester ouvert pour cela.';
 
   @override
   String get offline => 'Hors ligne';
@@ -2739,7 +2689,7 @@ class AppLocalizationsFr extends AppLocalizations {
 
   @override
   String get nightingaleTvTurns =>
-      'Nightingale TV transforme votre bibliothèque Jellyfin, Emby ou Plex en chaînes permanentes avec un guide des programmes. Zappez et regardez ce qui passe.';
+      'Nightingale TV transforme vos vidéos en chaînes permanentes avec un guide des programmes. Connectez Jellyfin, Emby, Plex, YouTube ou un partage SMB, comme un NAS. Zappez et regardez ce qui passe.';
 
   @override
   String get yourLibraryOn => 'Votre bibliothèque.\nÀ l\'antenne, 24 h/24.';
@@ -3426,6 +3376,11 @@ class AppLocalizationsFr extends AppLocalizations {
   }
 
   @override
+  String decadesGenres(Object decades, Object genres) {
+    return '$decades $genres';
+  }
+
+  @override
   String get settingUpYour => 'Configuration de vos chaînes';
 
   @override
@@ -3434,6 +3389,11 @@ class AppLocalizationsFr extends AppLocalizations {
   @override
   String upNext(Object title) {
     return 'À suivre : $title';
+  }
+
+  @override
+  String firstUp(Object title) {
+    return 'Pour commencer : $title';
   }
 
   @override
@@ -3600,21 +3560,6 @@ class AppLocalizationsFr extends AppLocalizations {
 
   @override
   String get restoreThisBackup => 'Restaurer cette sauvegarde ?';
-
-  @override
-  String get backupActions => 'Actions de sauvegarde';
-
-  @override
-  String channels6(Object profiles, Object channels, Object device) {
-    return '$profiles · Chaînes : $channels · $device';
-  }
-
-  @override
-  String get noneYetOne =>
-      'Aucune pour l\'instant. Une est enregistrée chaque jour où le foyer change.';
-
-  @override
-  String get savedOnThe => 'Enregistrées sur le serveur';
 
   @override
   String get restoring => 'Restauration…';
@@ -4815,51 +4760,6 @@ class AppLocalizationsFr extends AppLocalizations {
       'Choisissez la durée de chaque pause, leur fréquence et le groupe où chacune puise.';
 
   @override
-  String get kindSentenceAutomatic => 'automatique';
-
-  @override
-  String get kindSentenceBeforeRestore => 'avant la restauration';
-
-  @override
-  String get kindSentenceBeforeReset => 'avant la réinitialisation';
-
-  @override
-  String get kindSentenceBeforeDeletingAProfile =>
-      'avant la suppression d\'un profil';
-
-  @override
-  String kindSentenceBeforeDeleting(Object subject) {
-    return 'avant la suppression de $subject';
-  }
-
-  @override
-  String get kindSentenceBeforeUpdate => 'avant la mise à jour';
-
-  @override
-  String get kindSentenceBeforeLineupCleanup =>
-      'avant le nettoyage de la grille';
-
-  @override
-  String get kindSentenceFromAFile => 'depuis un fichier';
-
-  @override
-  String get kindSentenceMovingToOfficial => 'transfert vers Nightingale TV';
-
-  @override
-  String get kindSentenceMovingToOwnBuild =>
-      'transfert vers Nightingale TV (version personnelle)';
-
-  @override
-  String get kindSentenceFromOfficial => 'depuis Nightingale TV';
-
-  @override
-  String get kindSentenceFromOwnBuild =>
-      'depuis Nightingale TV (version personnelle)';
-
-  @override
-  String get kindSentenceMadeByYou => 'créée par vous';
-
-  @override
   String get copyAction => 'Copier';
 
   @override
@@ -5262,6 +5162,11 @@ class AppLocalizationsFr extends AppLocalizations {
   String get decadesHeading => 'DÉCENNIES';
 
   @override
+  String decadeYears(Object decade) {
+    return '${decade}s';
+  }
+
+  @override
   String get channelActionTv => 'Action TV';
 
   @override
@@ -5317,6 +5222,28 @@ class AppLocalizationsFr extends AppLocalizations {
   @override
   String get errorReportsOff =>
       'Désactivez ceci et rien n\'est envoyé depuis cet appareil ; les rapports en attente sont supprimés.';
+
+  @override
+  String get recentReports => 'Rapports récents';
+
+  @override
+  String get reportKindTest => 'Rapport de test';
+
+  @override
+  String get reportKindVideo => 'Rapport vidéo';
+
+  @override
+  String get reportKindError => 'Erreur';
+
+  @override
+  String get reportKindExit => 'Fermeture inattendue';
+
+  @override
+  String get reportKindSlowStart => 'Démarrage lent';
+
+  @override
+  String get errorReportsAutomatic =>
+      'Un rapport est aussi envoyé de lui-même quand l\'appli s\'est fermée de façon inattendue ou a démarré lentement, avec les écrans, chaînes, étapes de démarrage et chiffres de mémoire juste avant.';
 
   @override
   String get sendATestReport => 'Envoyer un rapport de test';
@@ -5435,6 +5362,16 @@ class AppLocalizationsFr extends AppLocalizations {
 
   @override
   String get checkMyPurchaseAgain => 'Vérifier à nouveau mon achat';
+
+  @override
+  String get redeemPlayCode => 'Utiliser un code Play';
+
+  @override
+  String get redeemCodeTitle => 'Utiliser un code';
+
+  @override
+  String get redeemCodeText =>
+      'Utilisez votre code sur play.google.com/redeem depuis un téléphone ou un ordinateur, connecté au compte Google de cet appareil. Choisissez ensuite Vérifier à nouveau mon achat.';
 
   @override
   String get noPurchaseFound => 'Aucun achat trouvé';
@@ -6102,4 +6039,649 @@ class AppLocalizationsFr extends AppLocalizations {
   String partyInvited(Object names) {
     return 'Invités : $names';
   }
+
+  @override
+  String get smbGuestsRefused =>
+      'Cet ordinateur n\'accepte pas les invités. Saisissez un nom d\'utilisateur et un mot de passe.';
+
+  @override
+  String get smbNoAccess => 'Pas d\'accès';
+
+  @override
+  String smbShareGone(String name) {
+    return '$name n\'existe plus.';
+  }
+
+  @override
+  String smbReadingFiles(String name) {
+    return 'Lecture des fichiers de $name…';
+  }
+
+  @override
+  String smbScanningFolders(String name, int count) {
+    return 'Analyse de $name : $count dossiers…';
+  }
+
+  @override
+  String smbShareOnHost(String share, String host) {
+    return '$share sur $host';
+  }
+
+  @override
+  String get smbNotAnAddress =>
+      'Ce n\'est pas l\'adresse d\'un partage. Saisissez-la sous la forme smb://ordinateur/partage ou \\\\ordinateur\\partage.';
+
+  @override
+  String smbCantReach(String host) {
+    return 'Impossible de joindre $host.';
+  }
+
+  @override
+  String smbAnotherShare(String name) {
+    return 'Ce partage n\'est pas $name.';
+  }
+
+  @override
+  String get smbMapOne => 'Indiquez ce que contient au moins un dossier.';
+
+  @override
+  String get smbShareButton => 'Partage SMB';
+
+  @override
+  String get smbFindTitle => 'Ajouter un partage';
+
+  @override
+  String get smbFindHelp =>
+      'Choisissez un ordinateur ou un NAS, ou saisissez l\'adresse de son partage.';
+
+  @override
+  String get smbAddress => 'Adresse du partage';
+
+  @override
+  String get smbSearching => 'Recherche d\'ordinateurs…';
+
+  @override
+  String get smbSearchAgain => 'Chercher à nouveau';
+
+  @override
+  String get smbNoneFound =>
+      'Aucun ordinateur trouvé. Saisissez l\'adresse du partage.';
+
+  @override
+  String smbSharesOn(String host) {
+    return 'Partages de $host';
+  }
+
+  @override
+  String smbNoShares(String host) {
+    return '$host n\'a aucun partage que vous pouvez ouvrir.';
+  }
+
+  @override
+  String get smbOld => 'SMB1 : ancien et non chiffré';
+
+  @override
+  String smbSignInTo(String host) {
+    return 'Se connecter à $host';
+  }
+
+  @override
+  String get smbDomain => 'Domaine (facultatif)';
+
+  @override
+  String get smbAsGuest => 'Se connecter en invité';
+
+  @override
+  String smbWhatsIn(String share) {
+    return 'Que contient $share ?';
+  }
+
+  @override
+  String get smbMapHelp =>
+      'Indiquez ce que contient chaque dossier. Les dossiers laissés à « Rien » sont ignorés ; un dossier dans un dossier choisi peut avoir son propre choix. OK sur le nom d\'un dossier l\'ouvre.';
+
+  @override
+  String get smbTypeNone => 'Rien';
+
+  @override
+  String get smbTypeTv => 'Séries';
+
+  @override
+  String get smbTypeMovies => 'Films';
+
+  @override
+  String get smbTypeMusic => 'Musique';
+
+  @override
+  String get smbTypeMusicVideos => 'Clips musicaux';
+
+  @override
+  String get smbTypeHome => 'Vidéos personnelles';
+
+  @override
+  String get smbTypeCommercials => 'Publicités';
+
+  @override
+  String get smbTypeBumpers => 'Jingles';
+
+  @override
+  String smbAsAbove(String type) {
+    return '$type (comme au-dessus)';
+  }
+
+  @override
+  String get smbUp => 'Dossier parent';
+
+  @override
+  String get smbHistoryName => 'Nom de l\'historique';
+
+  @override
+  String get smbHistoryHelp =>
+      'Les téléviseurs qui utilisent le même nom d\'historique partagent les compteurs de lecture et les points de reprise. Ils sont gardés dans un dossier caché .nightingale du partage ; rien d\'autre n\'y est modifié.';
+
+  @override
+  String get smbKeepLocal => 'Garder l\'historique sur cet appareil';
+
+  @override
+  String get smbReadOnly =>
+      'Ce partage est en lecture seule : l\'historique reste sur cet appareil.';
+
+  @override
+  String get smbFoldersDone => 'Terminé';
+
+  @override
+  String smbFilesLeft(int count) {
+    return 'Lecture de $count fichiers';
+  }
+
+  @override
+  String smbHistoryOnShare(String name) {
+    return 'Historique : sur le partage, sous « $name »';
+  }
+
+  @override
+  String get smbHistoryOnDevice => 'Historique : sur cet appareil';
+
+  @override
+  String get smbHistoryReadOnly =>
+      'Historique : sur cet appareil (le partage est en lecture seule)';
+
+  @override
+  String get smbFolders => 'Dossiers';
+
+  @override
+  String smbCantPlay(int count) {
+    return 'Illisibles ($count)';
+  }
+
+  @override
+  String smbCantPlayTitle(String name) {
+    return 'Illisibles · $name';
+  }
+
+  @override
+  String get smbCantPlayHelp =>
+      'Ces fichiers ne sont pas programmés. Vérifiez à nouveau après avoir réparé un fichier ou associé un Nightingale TV qui convertit.';
+
+  @override
+  String get smbCheckAgain => 'Vérifier à nouveau';
+
+  @override
+  String get smbCantPlayNone => 'Tous les fichiers sont lisibles.';
+
+  @override
+  String get smbReasonDamaged => 'Endommagé';
+
+  @override
+  String get smbReasonNoVideo => 'Aucune vidéo';
+
+  @override
+  String get smbReasonTooMuch =>
+      'Trop lourd pour cet appareil, et aucun autre Nightingale TV pour le convertir';
+
+  @override
+  String smbRenameTitle(String name) {
+    return 'Renommer $name';
+  }
+
+  @override
+  String smbFoldersTitle(String name) {
+    return 'Dossiers · $name';
+  }
+
+  @override
+  String get smbSave => 'Enregistrer';
+
+  @override
+  String get smbQualityNote =>
+      'Les fichiers d\'un partage sont convertis pour tenir par un autre Nightingale TV associé ; sans lui, ils sont lus tels quels, car les convertir sur cet appareil n\'allégerait pas le réseau.';
+
+  @override
+  String get smbHomeCantShare =>
+      'Les vidéos personnelles ne peuvent pas être partagées';
+
+  @override
+  String get smbHomeVideo => 'Vidéo personnelle';
+
+  @override
+  String get licencesTitle => 'Licences';
+
+  @override
+  String get licencesHelp =>
+      'Nightingale TV est un logiciel libre sous GNU GPL 3. Il utilise ces logiciels, chacun sous sa propre licence.';
+
+  @override
+  String get colorPurple => 'Violet';
+
+  @override
+  String get colorGreen => 'Vert';
+
+  @override
+  String get colorAmber => 'Ambre';
+
+  @override
+  String get colorTeal => 'Bleu canard';
+
+  @override
+  String get colorMagenta => 'Magenta';
+
+  @override
+  String get colorOlive => 'Olive';
+
+  @override
+  String get colorSlate => 'Ardoise';
+
+  @override
+  String get colorCocoa => 'Cacao';
+
+  @override
+  String get colorWine => 'Bordeaux';
+
+  @override
+  String get guideColor => 'Couleur dans le guide';
+
+  @override
+  String guideColorTitle(String name) {
+    return 'Couleur dans le guide · $name';
+  }
+
+  @override
+  String get guideColorHelp =>
+      'Les programmes de ce serveur ont cette couleur dans le guide.';
+
+  @override
+  String guideColorUsedBy(String color, String name) {
+    return '$color · $name';
+  }
+
+  @override
+  String get serverColorsSetting => 'Couleurs des serveurs dans le guide';
+
+  @override
+  String get serverColorsHelp =>
+      'Chaque programme a la couleur du serveur d\'où il est lu, avec une légende sous le guide.';
+
+  @override
+  String playsFrom(String name) {
+    return 'Depuis $name';
+  }
+
+  @override
+  String get convertForOthers => 'Convertir pour d\'autres téléviseurs';
+
+  @override
+  String get convertForOthersHelp =>
+      'Les téléviseurs qui ne peuvent pas lire un fichier d\'un partage demandent à cet ordinateur de le convertir. Il lui faut le même partage dans un de ses profils, et il ne convertit que les fichiers des dossiers associés de ce partage.';
+
+  @override
+  String convertCode(String code) {
+    return 'Code d\'association : $code';
+  }
+
+  @override
+  String get convertPairedTvs => 'Téléviseurs associés';
+
+  @override
+  String get convertNoTvs => 'Aucun téléviseur associé pour l\'instant.';
+
+  @override
+  String get convertHelpers => 'Convertir sur d\'autres Nightingale TV';
+
+  @override
+  String get convertHelpersHelp =>
+      'Un Nightingale TV sur un ordinateur ou le serveur Docker peut convertir les fichiers des partages que cet appareil ne lit pas, ou pas assez vite. Activez-y « Convertir pour d\'autres téléviseurs », puis associez-le avec le code affiché.';
+
+  @override
+  String get convertFind => 'Chercher sur le réseau';
+
+  @override
+  String get convertTypeAddress => 'Saisir son adresse';
+
+  @override
+  String get convertAddress => 'Adresse du Nightingale TV';
+
+  @override
+  String convertEnterCode(String name) {
+    return 'Code affiché sur $name';
+  }
+
+  @override
+  String convertWrongCode(String name) {
+    return 'Ce code n\'est pas bon, ou $name n\'a pas répondu.';
+  }
+
+  @override
+  String get convertNoneFound =>
+      'Aucun Nightingale TV qui convertit n\'a été trouvé. Vérifiez que « Convertir pour d\'autres téléviseurs » y est activé, ou saisissez son adresse.';
+
+  @override
+  String convertAddShareOn(String share, String name) {
+    return 'Ajoutez $share sur $name';
+  }
+
+  @override
+  String convertNotAnswering(String name) {
+    return '$name ne répond pas';
+  }
+
+  @override
+  String get convertPair => 'Associer';
+
+  @override
+  String get serverKindsHelp =>
+      'Vous pouvez ajouter Jellyfin, Emby, Plex, YouTube et des partages SMB (un NAS, ou le dossier partagé d\'un ordinateur).';
+
+  @override
+  String get youTube => 'YouTube';
+
+  @override
+  String get youTubeTerms =>
+      'En vous connectant, vous acceptez les conditions d\'utilisation de YouTube et la politique de confidentialité de Nightingale TV.';
+
+  @override
+  String get youTubeTermsOfService => 'Conditions d\'utilisation de YouTube';
+
+  @override
+  String get privacyPolicy => 'Politique de confidentialité';
+
+  @override
+  String youTubeEnterCode(String address) {
+    return 'Sur votre téléphone ou ordinateur, allez sur $address et saisissez ce code.';
+  }
+
+  @override
+  String get openGoogleDevice => 'Ouvrir google.com/device';
+
+  @override
+  String get signInWasCancelled => 'La connexion a été annulée';
+
+  @override
+  String get youTubeChannelsTitle => 'Chaînes YouTube';
+
+  @override
+  String youTubePickedOf(int count, int limit) {
+    return '$count sur $limit';
+  }
+
+  @override
+  String get notSubscribed => 'Pas abonné';
+
+  @override
+  String get searchSubscriptions => 'Rechercher dans vos abonnements';
+
+  @override
+  String get noSubscriptions => 'Ce compte n\'a aucun abonnement';
+
+  @override
+  String get noSubscriptionsMatch => 'Aucun abonnement ne correspond';
+
+  @override
+  String removeYouTubeChannels(String names) {
+    return 'Retirer $names du guide ?';
+  }
+
+  @override
+  String youTubeChannelCount(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count chaînes',
+      one: '1 chaîne',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get googleClient => 'Client Google';
+
+  @override
+  String get googleClientShared => 'Celui de Nightingale TV';
+
+  @override
+  String get googleClientOwn => 'Le vôtre';
+
+  @override
+  String youTubeDailyLimit(String time) {
+    return 'La limite quotidienne de YouTube est atteinte. Les nouvelles vidéos arriveront après $time.';
+  }
+
+  @override
+  String get useMyOwnClient => 'Utiliser mon propre client';
+
+  @override
+  String get signInToYouTubeAgain => 'Reconnectez-vous à YouTube';
+
+  @override
+  String get ownClientTitle => 'Votre propre client Google';
+
+  @override
+  String get clientId => 'ID client';
+
+  @override
+  String get clientSecret => 'Code secret du client';
+
+  @override
+  String get openClientFile => 'Ouvrir un fichier';
+
+  @override
+  String get clientFileNotRead =>
+      'Ce fichier n\'est pas un fichier de client Google';
+
+  @override
+  String get useThisClient => 'Utiliser ce client';
+
+  @override
+  String get useSharedClient => 'Utiliser le client de Nightingale TV';
+
+  @override
+  String get ownClientStep1 =>
+      'Ouvrez console.cloud.google.com et créez un projet.';
+
+  @override
+  String get ownClientStep2 => 'Activez YouTube Data API v3.';
+
+  @override
+  String get ownClientStep3 =>
+      'Configurez l\'écran de consentement OAuth avec le champ d\'application youtube.readonly.';
+
+  @override
+  String get ownClientStep4 =>
+      'Passez son état de publication à « En production ».';
+
+  @override
+  String get ownClientStep5 =>
+      'Créez un client OAuth de type « TV et appareils à saisie limitée ».';
+
+  @override
+  String get ownClientStep6 =>
+      'Saisissez ici son ID client et son code secret, ou ouvrez le fichier téléchargé.';
+
+  @override
+  String ownClientGuide(String address) {
+    return 'Le guide complet : $address';
+  }
+
+  @override
+  String get clientRefused =>
+      'Google n\'a pas accepté ce client. Il doit être de type « TV et appareils à saisie limitée ».';
+
+  @override
+  String get noVideosYet => 'Pas encore de vidéos';
+
+  @override
+  String get youTubeRefusedPlayer => 'YouTube n\'a pas accepté ce lecteur';
+
+  @override
+  String get youTubeNeedsWebView =>
+      'YouTube a besoin d\'Android System WebView';
+
+  @override
+  String getItFromPlayStore(String address) {
+    return 'Disponible sur le Play Store : $address';
+  }
+
+  @override
+  String youTubeChannelSource(String title) {
+    return 'Chaîne YouTube : $title';
+  }
+
+  @override
+  String publishedOn(String date) {
+    return 'Publiée le $date';
+  }
+
+  @override
+  String get youTubeCantBeShared =>
+      'Les chaînes YouTube ne peuvent pas être partagées';
+
+  @override
+  String get youTubeAlreadyRemovedQuota =>
+      'Réessayez quand la limite quotidienne de YouTube sera réinitialisée.';
+
+  @override
+  String get youTubeAccount => 'Compte YouTube';
+
+  @override
+  String get couldNotReachGoogle => 'Impossible de joindre Google. Réessayez.';
+
+  @override
+  String get youTubeDailyLimitShort =>
+      'La limite quotidienne de YouTube est atteinte.';
+
+  @override
+  String get youTubeNoBreaks =>
+      'Les chaînes YouTube n\'ont pas de pauses publicitaires.';
+
+  @override
+  String get youTubeNoBlocks =>
+      'Les chaînes YouTube ne peuvent pas avoir de blocs de programmes.';
+
+  @override
+  String get youTubeAccessNeeded =>
+      'Nightingale TV doit voir vos abonnements YouTube. Saisissez le nouveau code et autorisez-le.';
+
+  @override
+  String get youTubeRemoveBody =>
+      'Ses chaînes quittent la grille, et l\'accès de Nightingale TV à votre compte YouTube prend fin.';
+
+  @override
+  String get playerQuality => 'Qualité';
+
+  @override
+  String playerQualityValue(String value) {
+    return 'Qualité : $value';
+  }
+
+  @override
+  String get playerQualityAuto => 'Auto';
+
+  @override
+  String get playerQualityOriginal => 'Originale';
+
+  @override
+  String playerQualityMbps(int mbps) {
+    return '$mbps Mbit/s';
+  }
+
+  @override
+  String get youTubeNoClient =>
+      'Cette version n\'a pas de client YouTube. Son fichier README explique comment en ajouter un.';
+
+  @override
+  String youTubeSharedLimit(int limit) {
+    return 'Le client de Nightingale TV permet $limit chaînes YouTube. Pour plus, utilisez votre propre client Google dans Serveurs → YouTube → Client Google.';
+  }
+
+  @override
+  String youTubeSharedTooMany(int limit) {
+    return 'Le client de Nightingale TV permet $limit chaînes YouTube. Retirez-en d\'abord quelques-unes dans Chaînes.';
+  }
+
+  @override
+  String lastBackedUp(Object when) {
+    return 'Dernière sauvegarde : $when';
+  }
+
+  @override
+  String get notBackedUpYet => 'Pas encore sauvegardé.';
+
+  @override
+  String get undoRestore => 'Annuler la restauration';
+
+  @override
+  String get undoLineupReset => 'Annuler la réinitialisation de la grille';
+
+  @override
+  String undoDeleting(Object name) {
+    return 'Annuler la suppression de $name';
+  }
+
+  @override
+  String get undoDeletingAProfile => 'Annuler la suppression du profil';
+
+  @override
+  String get undoUpdate => 'Annuler la mise à jour';
+
+  @override
+  String get undoLineupCleanup => 'Annuler le nettoyage de la grille';
+
+  @override
+  String undoTitle(Object action, Object time) {
+    return '$action · $time';
+  }
+
+  @override
+  String undoPointSaved(Object when, Object profiles) {
+    return 'Enregistrée le $when : $profiles';
+  }
+
+  @override
+  String get pickThePlaylistFileAgain =>
+      'Choisissez à nouveau le fichier de liste de lecture';
+
+  @override
+  String get pickTheGuideFileAgain =>
+      'Choisissez à nouveau le fichier du guide';
+
+  @override
+  String get playlistFileNotOnDevice =>
+      'Le fichier de liste de lecture n\'est pas sur cet appareil';
+
+  @override
+  String get guideFileNotOnDevice =>
+      'Le fichier du guide n\'est pas sur cet appareil';
+
+  @override
+  String get youTubeServerOwnClient =>
+      'En mode serveur, c\'est votre propre client Google qui est utilisé.';
+
+  @override
+  String get uploadJsonFile => 'Importer un fichier JSON';
+
+  @override
+  String get continueStep => 'Continuer';
+
+  @override
+  String get watchNoChannels =>
+      'Ce profil n\'a aucune chaîne YouTube. Ajoutez YouTube dans Serveurs.';
 }

@@ -3,6 +3,7 @@ import 'package:flutter_svg/flutter_svg.dart';
 
 import '../../app_state.dart';
 import '../../channels/channel.dart';
+import '../../playback/tuner_player.dart';
 import 'crt_effects.dart';
 
 /// The picture's frame (retro-presentation D5): a centred 4:3 tube with its
@@ -10,7 +11,8 @@ import 'crt_effects.dart';
 /// The tree is the same for every look, so changing look never rebuilds what
 /// plays in [child].
 class RetroFrame extends StatelessWidget {
-  const RetroFrame({super.key, required this.retro, required this.child, this.icon, this.app, this.effects = true});
+  const RetroFrame(
+      {super.key, required this.retro, required this.child, this.media, this.icon, this.app, this.effects = true});
 
   final ResolvedRetro retro;
 
@@ -22,6 +24,11 @@ class RetroFrame extends StatelessWidget {
 
   /// Draws the CRT effect on the tube (the guide preview doesn't: design D7).
   final bool effects;
+
+  /// The player whose video is the frame's picture, below [child].
+  final TunerPlayer? media;
+
+  /// What shows over the video, with the same effects on it.
   final Widget child;
 
   /// How the video fits in the frame.
@@ -50,7 +57,7 @@ class RetroFrame extends StatelessWidget {
                   clipBehavior: retro.shape.isTube ? Clip.hardEdge : Clip.none,
                   child: MediaQuery(
                     data: MediaQuery.of(context).copyWith(size: frame),
-                    child: CrtLayers(values: effects ? retro.values : const CrtValues(), child: child),
+                    child: _picture(),
                   ),
                 ),
               ),
@@ -58,6 +65,26 @@ class RetroFrame extends StatelessWidget {
           ],
         );
       },
+    );
+  }
+
+  /// The video with [child] over it. A video layer's hole goes below every
+  /// layer of the effects (system-video-layer D3); other video is in them.
+  Widget _picture() {
+    final media = this.media;
+    if (media == null) return CrtLayers(values: retro.values, drawn: effects, child: child);
+    final video = media.buildVideo(fit: fitFor(retro.shape));
+    return CrtLayers(
+      values: retro.values,
+      drawn: effects,
+      below: media.onVideoLayer ? video : null,
+      onLook: media.onVideoLayer ? (look) => media.setVideoLook(look, drawn: effects) : null,
+      lookApplied: media.videoLookApplied,
+      droppedFrames: media.onVideoLayer ? () async => (await media.debugFrames()).dropped : null,
+      child: Stack(
+        fit: StackFit.expand,
+        children: [media.onVideoLayer ? media.buildCaptions() : video, child],
+      ),
     );
   }
 

@@ -77,7 +77,8 @@ void main() {
       final out = _env['BACKUP_OUT'];
       if (out != null) {
         await household.flushAll();
-        final built = await BackupArchive.build(dir, reason: 'manual', device: 'Linux test PC');
+        final built = await BackupArchive.build(dir,
+            reason: BackupReason.manual, device: 'Linux test PC', pickedFiles: PickedFiles.all);
         await File(out).writeAsBytes(built.bytes);
         // ignore: avoid_print
         print('Backup: ${built.bytes.length} bytes, ${household.profiles.map((p) => p.name).join(', ')} → $out');

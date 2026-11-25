@@ -15,7 +15,9 @@ import '../live/url_privacy.dart';
 import '../platform/platform_info.dart';
 import '../server/languages.dart';
 import '../server/live_tv.dart';
+import '../server/keyed_server.dart';
 import '../server/server_set.dart';
+import '../server/smb/smb_server.dart';
 import 'android_device_profile.dart';
 import 'party_schedule.dart';
 import 'index_cache.dart';
@@ -24,8 +26,10 @@ import 'playback_proxy.dart';
 import 'report_plan.dart';
 import 'subtitles.dart';
 import 'tuner_player.dart';
+import 'youtube_tuning.dart';
 import '../server/media_server.dart';
 import '../reporting/error_reports.dart';
+import '../reporting/startup_trail.dart';
 import '../l10n/tr.dart';
 
 enum TunerStatus {
@@ -55,13 +59,16 @@ class Tuner extends ChangeNotifier {
         _clock = clock ?? DateTime.now,
         _proxy = proxy ?? (player == null && !PlaybackProxy.disabled ? PlaybackProxy() : null) {
     _diagnostics = PlaybackDiagnostics.start(
-        app.storage.root, media, app.analyzerDebugState, () => status == TunerStatus.playing && !paused,
+        app.storage.root, media, app.analyzerDebugState,
+        () => status == TunerStatus.playing && !paused && channel?.isYouTube != true,
         active: () => channel != null);
     if (_diagnostics != null) debugPrint('Playback diagnostics: ${_diagnostics!.path}');
     _subscriptions.addAll([
       // Tuned in once the picture moves: mpv reports "playing" (and not
       // "buffering") right after an open, seconds before the first frame.
       media.positionStream.listen(_onPosition),
+      // A share's conversion whose picture stalls (smb-conversion D8).
+      media.bufferingStream.listen(_onBuffering),
       media.completedStream.listen((completed) {
         if (!completed || status != TunerStatus.playing) return;
         // A stream given up while paused opens again at the resume.
@@ -162,6 +169,17 @@ class Tuner extends ChangeNotifier {
 
   final AppState app;
   final TunerPlayer media;
+
+  /// YouTube channels play in YouTube's own player (youtube-playback), not
+  /// in [media].
+  late final youTube = YouTubeTuning(
+    clock: viewNow,
+    onPlaying: _youTubePlaying,
+    onEnding: (itemId) => unawaited(_youTubeEnding(itemId)),
+    onSkip: (itemId, why) => unawaited(_youTubeSkip(itemId, why)),
+    onRefusedPlayer: () => _youTubeStopped(tr.youTubeRefusedPlayer),
+    onNoWebView: () => _youTubeStopped(tr.youTubeNeedsWebView),
+  );
   final DateTime Function() _clock;
 
   /// The schedule's time for the picture on screen: the clock, but behind
@@ -461,12 +479,18 @@ class Tuner extends ChangeNotifier {
       for (final delta in const [1, -1]) {
         final neighbor = list[(index + delta) % list.length];
         // Live channels have nothing to decide or read ahead.
-        if (!neighbor.isLive) programs.add(app.scheduleFor(neighbor)?.programAt(now));
+        if (neighbor.isYouTube) {
+          // YouTube's player readies it, without playing (channel-preload).
+          final p = app.scheduleFor(neighbor)?.playbackAt(now);
+          if (p?.item case final item? when !ch.isYouTube) youTube.cueNeighbour(ServerSet.rawId(item.sourceId), p!.positionAt(now));
+        } else if (!neighbor.isLive) {
+          programs.add(app.scheduleFor(neighbor)?.programAt(now));
+        }
       }
     }
     return [
       for (final p in programs)
-        if (p?.item case final item? when item.kind != MediaKind.commercial) p!,
+        if (p?.item case final item? when item.kind != MediaKind.commercial && item.kind != MediaKind.youtubeVideo) p!,
     ];
   }
 
@@ -476,7 +500,7 @@ class Tuner extends ChangeNotifier {
     final now = _clock();
     final out = <String, MediaEntry>{};
     void add(MediaEntry? item) {
-      if (item != null && item.kind != MediaKind.commercial && out.length < _fillsPerPass) {
+      if (item != null && item.kind != MediaKind.commercial && item.kind != MediaKind.youtubeVideo && out.length < _fillsPerPass) {
         out.putIfAbsent(item.sourceId, () => item);
       }
     }
@@ -534,7 +558,7 @@ class Tuner extends ChangeNotifier {
   Future<void> tune(Channel ch, {ViewingPlace? at}) async {
     tunes++;
     // A sleep timer's fade that was cancelled never leaves a channel quiet.
-    unawaited(media.setVolume(1));
+    unawaited(setVolume(1));
     // A party's drift nudge never outlives it (watch-together D3).
     unawaited(media.setSpeed(1));
     // Tuning a channel is schedule mode again (watch-together D2).
@@ -588,6 +612,19 @@ class Tuner extends ChangeNotifier {
   /// keeps their place.
   Future<void> _retuneInPlace() async {
     if (channel != null) await _playCurrent(++_generation, trigger: 'retune', exact: shifted);
+  }
+
+  /// A quality picked in the player (player-options): when the cap in effect
+  /// is no longer [before], what's on re-opens under the new one exactly at
+  /// the viewing position (a keyframe join would replay seconds already
+  /// seen). A viewer behind stays behind, a paused one stays paused there,
+  /// and a live channel re-opens its stream. YouTube chooses its own
+  /// quality, so it plays on.
+  Future<void> applyQuality(int? before) async {
+    final ch = channel;
+    if (ch == null || ch.isYouTube || app.capInEffect == before) return;
+    _diagnostics?.event('quality ${app.capInEffect ?? 'original'} (was ${before ?? 'original'})');
+    await _playCurrent(++_generation, trigger: 'quality', quiet: true, exact: true);
   }
 
   /// After a schedule change that keeps the program on air (e.g. a new break
@@ -740,6 +777,12 @@ class Tuner extends ChangeNotifier {
   /// arrive). A conversion that has to draw in a different track, or none,
   /// opens again where it is.
   Future<void> _applyCaptions() async {
+    // YouTube's own captions, in the app's language (youtube-playback).
+    if (channel?.isYouTube == true) {
+      shownSubtitle = null;
+      youTube.setCaptions(captions, _youTubeCaptionLanguage);
+      return;
+    }
     if (isLive || _live != null) {
       shownSubtitle = null;
       await media.setSubtitles(captions ? const StreamCaptions() : null);
@@ -889,7 +932,7 @@ class Tuner extends ChangeNotifier {
   /// [quiet]: a move within the channel (timeshift), with no channel number
   /// shown. [exact]: landing exactly on the viewing time, not on a keyframe.
   Future<void> _playCurrent(int generation,
-      {bool atSegmentEnd = false, String? trigger, bool quiet = false, bool exact = false}) async {
+      {bool atSegmentEnd = false, String? trigger, bool quiet = false, bool exact = false, String? youTubeEnded}) async {
     _subtitleReopenPending = false;
     _programEnd?.cancel();
     _cancelPrefetch();
@@ -904,6 +947,14 @@ class Tuner extends ChangeNotifier {
     // Whatever was preloaded goes before anything else opens.
     await _dropPreload();
     if (generation != _generation) return;
+    if (ch.isYouTube) {
+      await _closeLive();
+      if (generation != _generation) return;
+      await _playYouTube(generation, ch, atSegmentEnd: atSegmentEnd, ended: youTubeEnded);
+      return;
+    }
+    // Any other channel: YouTube's player stops.
+    youTube.wantVideo(null);
     if (ch.isLive) {
       await _playLive(generation, ch);
       return;
@@ -1087,6 +1138,105 @@ class Tuner extends ChangeNotifier {
       final report = _report;
       if (report != null && startAt > report.reached) report.reached = startAt;
     }
+  }
+
+  // ---- YouTube channels (youtube-playback) ------------------------------------
+
+  /// What's on the YouTube channel [ch] now, handed to YouTube's player,
+  /// which starts it once its frame is seen. No breaks, no conversions, no
+  /// reports: the schedule only says which video and where in it.
+  /// [ended]: that item's video has ended, so the one after it goes on even
+  /// if the schedule gives it a moment more.
+  Future<void> _playYouTube(int generation, Channel ch, {required bool atSegmentEnd, String? ended}) async {
+    _stopTranscode();
+    await media.stop();
+    if (generation != _generation) return;
+    // A revoked or expired sign-in: off the air until signed in again (D11).
+    if (app.servers.byKey(ch.youtube!.serverKey)?.state == ServerState.needsSignIn) {
+      program = null;
+      segment = null;
+      error = tr.signInToYouTubeAgain;
+      youTube.wantVideo(null);
+      _setStatus(TunerStatus.offAir);
+      return;
+    }
+    final schedule = this.schedule;
+    if (schedule == null) {
+      program = null;
+      segment = null;
+      error = tr.noVideosYet;
+      youTube.wantVideo(null);
+      _setStatus(TunerStatus.offAir);
+      return;
+    }
+    final now = viewNow();
+    var current = schedule.playbackAt(now);
+    if (current.end.difference(now) < const Duration(seconds: 4) || (ended != null && current.item?.id == ended)) {
+      current = schedule.playbackAt(current.end);
+    }
+    final startAt = current.positionAt(now);
+    _setOnNow(generation, ch, schedule, current, now, startAt, null);
+    final item = current.item;
+    if (item == null) {
+      error = tr.noVideosYet;
+      youTube.wantVideo(null);
+      _setStatus(TunerStatus.offAir);
+      return;
+    }
+    _changingChannel = !atSegmentEnd;
+    _setStatus(TunerStatus.tuning);
+    youTube.setCaptions(captions, _youTubeCaptionLanguage);
+    _diagnostics?.event('youtube ${ServerSet.rawId(item.id)} from ${startAt.inSeconds}s');
+    // The video's start on the schedule, the same whenever it's asked for:
+    // early at its predecessor's end or at its slot, it plays on unbroken.
+    youTube.wantVideo((
+      videoId: ServerSet.rawId(item.sourceId),
+      itemId: item.id,
+      videoStart: current.start.subtract(current.itemFrom),
+    ));
+    notifyListeners();
+  }
+
+  /// YouTube's caption language: the app's, as YouTube writes it (`zh-Hant`).
+  String get _youTubeCaptionLanguage => tr.localeName.replaceAll('_', '-');
+
+  /// The sound's volume (0–1), on whichever player plays: the sleep
+  /// timer's fade (YouTube's player takes it as setVolume, D8).
+  Future<void> setVolume(double volume) async {
+    await media.setVolume(volume);
+    await youTube.player.setVolume((volume * 100).round());
+  }
+
+  void _youTubePlaying() {
+    if (channel?.isYouTube != true || status == TunerStatus.playing) return;
+    _setStatus(TunerStatus.playing);
+  }
+
+  /// [itemId]'s video played to its end: the next one goes on now, not
+  /// when its slot starts, so YouTube's end screen is up only while it loads.
+  Future<void> _youTubeEnding(String itemId) async {
+    final ch = channel;
+    if (ch == null || !ch.isYouTube || paused) return;
+    await _playCurrent(++_generation, atSegmentEnd: true, trigger: 'youtube end', youTubeEnded: itemId);
+  }
+
+  /// A video that won't play: the channel goes on with the next one at once,
+  /// and a refused one is left out from the next refresh.
+  Future<void> _youTubeSkip(String itemId, YouTubeSkip why) async {
+    final ch = channel;
+    if (ch == null || !ch.isYouTube) return;
+    _diagnostics?.event('youtube ${why.name} $itemId: skipping');
+    await app.skipYouTubeVideo(ch, itemId, refused: why == YouTubeSkip.refused);
+    if (channel?.id == ch.id) await retune();
+  }
+
+  /// YouTube refused the player, or there's no WebView: the channel shows
+  /// why.
+  void _youTubeStopped(String message) {
+    if (channel?.isYouTube != true) return;
+    youTube.wantVideo(null);
+    error = message;
+    _setStatus(TunerStatus.error);
   }
 
   /// Hands over to the next segment at [end].
@@ -1421,6 +1571,7 @@ class Tuner extends ChangeNotifier {
       }
     }
     _diagnostics?.firstPicture();
+    StartupTrail.step('first picture');
     _setStatus(TunerStatus.playing);
     // A conversion that has to draw in other subtitles opens again now
     // that its job surely runs (so stopping it can't miss).
@@ -1607,7 +1758,7 @@ class Tuner extends ChangeNotifier {
     try {
       await call();
     } on Object catch (e) {
-      debugPrint('Jellyfin request failed: $e');
+      debugPrint('Server request failed: $e');
     }
   }
 
@@ -1835,6 +1986,16 @@ class Tuner extends ChangeNotifier {
     }));
   }
 
+  /// The picture stalled while playing: a conversion on this device of a
+  /// share's file counts it against its kind of picture.
+  void _onBuffering(bool buffering) {
+    final job = _active;
+    if (!buffering || job == null || job.directStream || status != TunerStatus.playing) return;
+    final c = job.client;
+    final share = c is KeyedServer ? c.inner : c;
+    if (share is SmbServer) unawaited(share.conversionStalled(ServerSet.rawId(job.item.sourceId)));
+  }
+
   /// Stops the active transcode job, if any. Tuning doesn't wait for the
   /// server to answer.
   void _stopTranscode() {
@@ -1935,7 +2096,7 @@ class Tuner extends ChangeNotifier {
   /// on.
   bool get canTimeshift {
     final ch = channel;
-    return ch != null && !ch.isLive && (app.settings.playback.pauseAndRewind || inParty);
+    return ch != null && !ch.isLive && !ch.isYouTube && (app.settings.playback.pauseAndRewind || inParty);
   }
 
   /// Where key presses have moved to, shown at once (null: none pending).
@@ -2028,6 +2189,17 @@ class Tuner extends ChangeNotifier {
   /// Holds the picture and silences the sound. Only what's playing pauses:
   /// off-air, stand-by, error and tuning states don't.
   Future<void> pause() async {
+    // A YouTube channel's Pause stops the player; Resume joins the schedule
+    // again (youtube-playback).
+    if (channel?.isYouTube == true) {
+      if (paused || status != TunerStatus.playing || !app.settings.playback.pauseAndRewind) return;
+      _frozen = viewNow();
+      _pausedWall = _clock();
+      _programEnd?.cancel();
+      youTube.hold(true);
+      notifyListeners();
+      return;
+    }
     if (!canTimeshift || paused || status != TunerStatus.playing) return;
     _pin();
     _frozen = _seekTarget ?? viewNow();
@@ -2084,6 +2256,13 @@ class Tuner extends ChangeNotifier {
   Future<void> resume() async {
     final frozen = _frozen;
     if (frozen == null) return;
+    if (channel?.isYouTube == true) {
+      _frozen = null;
+      _pausedWall = null;
+      youTube.hold(false);
+      await retune();
+      return;
+    }
     final now = _clock();
     if (now.difference(frozen) > maxBehind) {
       await goLive(notice: backToLiveNotice);
@@ -2690,6 +2869,7 @@ class Tuner extends ChangeNotifier {
     s.pictured = true;
     s.startTimer?.cancel();
     _diagnostics?.firstPicture();
+    StartupTrail.step('first picture');
     if (s.attempt > 0) _diagnostics?.event('live: reconnected on attempt ${s.attempt}');
     liveMessage = null;
     error = null;
@@ -2865,7 +3045,10 @@ class Tuner extends ChangeNotifier {
 
   /// A segment is open (opening or playing).
   bool get _segmentOpen =>
-      segment?.item != null && (status == TunerStatus.tuning || status == TunerStatus.playing);
+      segment?.item != null &&
+      (status == TunerStatus.tuning || status == TunerStatus.playing) &&
+      // YouTube's own player plays YouTube channels, not the media player.
+      channel?.isYouTube != true;
 
   /// Samples mpv once a second while a segment is open.
   void _syncSampler() {
@@ -2994,6 +3177,9 @@ class Tuner extends ChangeNotifier {
     _liveBoundary?.cancel();
     await _closeLive(wait: true);
     await media.stop();
+    youTube
+      ..wantVideo(null)
+      ..hold(false);
     // Nothing plays (Android: out of sight): no pings, no fills.
     _fillDue = false;
     if (_proxyReady != null) unawaited(_proxy!.setBackground(true).catchError((Object _) {}));
@@ -3005,6 +3191,7 @@ class Tuner extends ChangeNotifier {
 
   @override
   void dispose() {
+    youTube.dispose();
     _liveBoundary?.cancel();
     unawaited(_closeLive());
     _programEnd?.cancel();

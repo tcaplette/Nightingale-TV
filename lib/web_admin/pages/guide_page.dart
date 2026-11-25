@@ -39,10 +39,27 @@ class _GuidePageState extends State<GuidePage> {
               {'from': from.toUtc().toIso8601String(), 'hours': '$hours'}))! as Map<String, Object?>,
           builder: (context, data, _) {
             final channels = (data['channels'] as List).cast<Map<String, Object?>>();
+            _colors = data['colors'] as Map?;
             return wide ? _grid(context, channels, from, hours) : _list(context, channels);
           },
         );
       });
+
+  /// The profile's server colours (guide-server-colors), when it shows them.
+  Map? _colors;
+
+  /// The key: each source's colour and name.
+  Widget _key(BuildContext context) {
+    final sources = (_colors?['sources'] as List? ?? const []).cast<Map>();
+    return Wrap(spacing: 16, runSpacing: 4, children: [
+      for (final s in sources)
+        Row(mainAxisSize: MainAxisSize.min, children: [
+          Container(width: 14, height: 14, decoration: BoxDecoration(color: hexColor(s['hex']), shape: BoxShape.circle)),
+          const SizedBox(width: 6),
+          Text('${s['name']}'),
+        ]),
+    ]);
+  }
 
   Widget _grid(BuildContext context, List<Map<String, Object?>> channels, DateTime from, int hours) {
     final scheme = Theme.of(context).colorScheme;
@@ -66,6 +83,7 @@ class _GuidePageState extends State<GuidePage> {
             onPressed: _offset + span >= 24 ? null : () => setState(() => _offset += span),
           ),
         ]),
+        if (_colors != null) ...[const SizedBox(height: 4), _key(context)],
         const SizedBox(height: 8),
         Expanded(
           child: LayoutBuilder(builder: (context, size) {
@@ -125,14 +143,16 @@ class _GuidePageState extends State<GuidePage> {
                                 child: Container(
                                   padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
                                   decoration: BoxDecoration(
-                                    color: a['offAir'] == true ? scheme.surfaceContainerLow : scheme.secondaryContainer,
+                                    color: a['offAir'] == true
+                                        ? scheme.surfaceContainerLow
+                                        : hexColor(a['color']) ?? scheme.secondaryContainer,
                                     borderRadius: BorderRadius.circular(6),
                                   ),
                                   child: Text(
                                     a['title'] as String,
                                     maxLines: 2,
                                     overflow: TextOverflow.ellipsis,
-                                    style: TextStyle(color: scheme.onSecondaryContainer, fontSize: 13),
+                                    style: TextStyle(color: hexColor(a['color']) != null ? Colors.white : scheme.onSecondaryContainer, fontSize: 13),
                                   ),
                                 ),
                               ),
@@ -165,6 +185,7 @@ class _GuidePageState extends State<GuidePage> {
         ],
         onChanged: (id) => setState(() => _channel = id),
       ),
+      if (_colors != null) ...[const SizedBox(height: 8), _key(context)],
       const SizedBox(height: 8),
       for (final a in airings)
         () {
@@ -172,7 +193,15 @@ class _GuidePageState extends State<GuidePage> {
           final end = DateTime.parse(a['end'] as String).toLocal();
           return ListTile(
             contentPadding: EdgeInsets.zero,
-            leading: SizedBox(width: 72, child: Text(formatTime(start))),
+            leading: SizedBox(
+                width: 72,
+                child: Row(children: [
+                  if (hexColor(a['color']) case final c?) ...[
+                    Container(width: 10, height: 10, decoration: BoxDecoration(color: c, shape: BoxShape.circle)),
+                    const SizedBox(width: 4),
+                  ],
+                  Flexible(child: Text(formatTime(start))),
+                ])),
             title: Text(a['title'] as String),
             subtitle: Text(_describe(a, start, end)),
           );

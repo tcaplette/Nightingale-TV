@@ -36,6 +36,7 @@ extension _ServersApi on SetupServer {
             'episodes': counts[s.key]?.episodes ?? 0,
             'movies': counts[s.key]?.movies ?? 0,
             'songs': counts[s.key]?.songs ?? 0,
+            if (s.kind == ServerKind.youtube) 'youtubeChannels': app.youTubeChannels.where((c) => c.youtube!.serverKey == s.key).length,
           }
       ],
       'order': app.servers.order,

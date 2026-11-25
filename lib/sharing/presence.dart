@@ -553,11 +553,15 @@ String? presenceTitle(ScheduledProgram? program) {
   final item = program?.item;
   if (program == null || item == null) return null;
   if (program.isLive && item.id.contains('@gap')) return null;
+  // A home video's name never leaves the device.
+  if (item.isHome) return null;
   final t = switch (item.kind) {
     // Never the episode's own title; nothing for a show without a name
     // (the library files those under a placeholder).
     MediaKind.episode => item.seriesName == SeriesEntry.unknownName ? null : item.seriesName,
     MediaKind.movie => item.title,
+    // A YouTube channel's video, as for any program (youtube-subscriptions D13).
+    MediaKind.youtubeVideo => item.title,
     _ => null,
   };
   return t == null || t.trim().isEmpty ? null : (t.length > 200 ? t.substring(0, 200) : t);

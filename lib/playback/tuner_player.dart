@@ -3,6 +3,7 @@ import 'dart:collection';
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:media_kit/media_kit.dart';
@@ -14,6 +15,7 @@ import 'playback_diagnostics.dart';
 import 'caption_size.dart';
 import 'caption_style.dart';
 import 'subtitles.dart';
+import 'video_look.dart';
 
 /// Volume leveling (volume-leveling spec, design D1) as an FFmpeg filter
 /// graph: a slow RMS compressor with linked channels (threshold -40 dBFS,
@@ -91,9 +93,28 @@ abstract class TunerPlayer implements PlayerReadings {
   Future<void> setSubtitles(SubtitleChoice? choice);
   Future<void> dispose();
 
-  /// The video, fitted in the space by [fit] with black around it, with the
-  /// captions over it and never cropped.
+  /// The video, fitted in the space by [fit] with black around it; with the
+  /// captions over it, never cropped, unless [onVideoLayer].
   Widget buildVideo({BoxFit fit = BoxFit.contain});
+
+  /// Whether the video shows on a system layer below Flutter's, through the
+  /// hole [buildVideo] leaves (system-video-layer D3): nothing that isolates
+  /// what it wraps (an opacity, a colour filter) may go round it, and
+  /// [buildCaptions] goes over it.
+  bool get onVideoLayer;
+
+  /// For a player that is [onVideoLayer]: the CRT effects of the channel on
+  /// the air that change its video, and whether they're drawn where the
+  /// picture is now (the guide's preview draws none).
+  void setVideoLook(VideoLook look, {bool drawn = true});
+
+  /// Whether the video playing has the effects [setVideoLook] asks for: a
+  /// stream can be one they can't be applied to (HDR, on some devices).
+  ValueListenable<bool> get videoLookApplied;
+
+  /// The captions of a player that is [onVideoLayer], over its video in the
+  /// same space.
+  Widget buildCaptions();
 
   /// Seconds of media read ahead of the playback position (null when it
   /// can't be read): for prefetch and index-fill timing.
@@ -612,6 +633,18 @@ class MediaKitTunerPlayer implements TunerPlayer {
       await c.close();
     }
   }
+
+  @override
+  bool get onVideoLayer => false;
+
+  @override
+  void setVideoLook(VideoLook look, {bool drawn = true}) {}
+
+  @override
+  final ValueNotifier<bool> videoLookApplied = ValueNotifier(true);
+
+  @override
+  Widget buildCaptions() => const SizedBox.shrink();
 
   @override
   Widget buildVideo({BoxFit fit = BoxFit.contain}) => ValueListenableBuilder<List<_Deck>>(

@@ -27,6 +27,11 @@ void main() {
     expect(page, contains('s.language !== LANG'));
   });
 
+  test('the pages declare a full language tag', () {
+    expect(runInLanguage('zh-Hant-HK', remotePageHtml), contains('<html lang="zh-Hant-HK">'));
+    expect(runInLanguage('zh-Hans', transferPageHtml), contains('<html lang="zh-Hans">'));
+  });
+
   test('the transfer page is translated', () {
     expect(runInLanguage('it', transferPageHtml), contains('Scarica backup'));
   });

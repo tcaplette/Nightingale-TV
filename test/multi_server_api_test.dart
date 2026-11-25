@@ -50,9 +50,9 @@ void main() {
                   client: address.contains('plex') ? plex.client : FakeServer('Home', items: fakeItems(), serverId: 's1').client,
                   info: ServerInfo(
                       url: address,
-                      name: address.contains('plex') ? 'Basement' : 'Home',
+                      name: address.contains('plex') ? plex.name : 'Home',
                       version: '10.11',
-                      id: address.contains('plex') ? 'p2' : 's1'),
+                      id: address.contains('plex') ? plex.serverId : 's1'),
                 )));
     await setup.start();
     await household.start();
@@ -81,6 +81,56 @@ void main() {
     }
   }
 
+  test("adding a server ends with its guide colour: the suggestion selected, colours in use named, a choice kept; closing keeps the suggestion", () async {
+    final base = '/api/v1/profiles/${id()}/servers';
+    await admin.post(base, {'action': 'start'});
+    await admin.post(base, {'action': 'connect', 'address': 'plex.example'});
+    await admin.post(base, {'action': 'choosePassword'});
+    var step = (await admin.post(base, {'action': 'password', 'user': 'dad', 'password': 'pw'})).json! as Map;
+    expect(step['stage'], 'color');
+    expect(step['finished'], isFalse);
+    final color = step['color'] as Map;
+    expect(color['key'], 's2');
+    expect(color['name'], 'Basement');
+    // A Jellyfin server's colour is purple: the main server has it, so the
+    // next unused one is suggested.
+    final palette = (color['palette'] as List).cast<Map>();
+    expect([for (final c in palette) c['name']], [for (final c in ServerColor.palette) c.name]);
+    expect(palette.firstWhere((c) => c['name'] == 'purple'), containsPair('usedBy', 'Home'));
+    expect(color['selected'], isNot('purple'));
+    expect(palette.firstWhere((c) => c['name'] == color['selected']).containsKey('usedBy'), isFalse);
+    expect(palette.first['hex'], matches(RegExp(r'^#[0-9a-f]{6}$')));
+    // An unknown colour is refused, and the step stays.
+    var r = await admin.post(base, {'action': 'color', 'name': 'yellow'});
+    expect(r.status, 400);
+    step = (await admin.post(base, {'action': 'step'})).json! as Map;
+    expect(step['stage'], 'color');
+    step = (await admin.post(base, {'action': 'color', 'name': 'wine'})).json! as Map;
+    expect(step['finished'], isTrue);
+    final a = await app();
+    expect(a.serverColors['s2']!.name, 'wine');
+    expect(a.settings.serverColors['s2'], 'wine');
+    expect(((await admin.get('/api/v1/profiles/${id()}/colors')).json! as Map)['sources'], contains(containsPair('color', 'wine')));
+
+    // A second add, closed on the colour step: added, with its suggestion.
+    plex = FakeServer('Attic', items: renamed(fakeItems(shows: const {'Yak': 2}), 'q'), url: 'http://attic.plex.example', serverId: 'p3');
+    await admin.post(base, {'action': 'start'});
+    await admin.post(base, {'action': 'connect', 'address': 'attic.plex.example'});
+    await admin.post(base, {'action': 'choosePassword'});
+    step = (await admin.post(base, {'action': 'password', 'user': 'dad', 'password': 'pw'})).json! as Map;
+    expect(step['stage'], 'color');
+    final suggested = (step['color'] as Map)['selected'];
+    expect(suggested, isNot(anyOf('purple', 'wine')));
+    r = await admin.post(base, {'action': 'cancel'});
+    expect(r.status, 200, reason: '${r.json}');
+    expect(a.servers.all, hasLength(3));
+    expect(a.settings.serverColors['s3'], suggested);
+    // The added servers' libraries are read in the background.
+    for (var i = 0; i < 500 && a.isRefreshingLibrary; i++) {
+      await Future<void>.delayed(const Duration(milliseconds: 10));
+    }
+  });
+
   test('adding a server with its sign-in steps, then order, quality limit and remove; no token is ever sent', () async {
     final bodies = <String>[];
     Future<Answer> keep(Future<Answer> a) async {
@@ -102,6 +152,10 @@ void main() {
     expect(step['stage'], 'method');
     await keep(admin.post(base, {'action': 'choosePassword'}));
     step = (await keep(admin.post(base, {'action': 'password', 'user': 'dad', 'password': 'pw'}))).json! as Map;
+    // Its guide colour last (server-color-on-add).
+    expect(step['stage'], 'color');
+    expect(step['finished'], isFalse);
+    step = (await keep(admin.post(base, {'action': 'color', 'name': 'green'}))).json! as Map;
     expect(step['finished'], isTrue);
     await waitForRefresh(await app());
 

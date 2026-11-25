@@ -1,15 +1,18 @@
 
 part of '../setup_server.dart';
 
-/// Export settings and the server's saved backups (admin-api), admin-only.
+/// Export settings and the server's backups (admin-api), admin-only: when
+/// the automatic backup was written, and the undo point (backup-simplify
+/// D9). Any other backup name is not found.
 extension _AdminApi on SetupServer {
   List<ApiRoute> get _adminRoutes => [
         ApiRoute('GET', 'export', Access.admin, (r) async => _exportJson(), revision: Revision.household),
         ApiRoute('PUT', 'export', Access.admin, _setExportSettings, revision: Revision.household),
         ApiRoute('GET', 'backups', Access.admin, (r) => _backups()),
-        ApiRoute('GET', 'backups/{name}', Access.admin, _downloadSaved),
-        ApiRoute('DELETE', 'backups/{name}', Access.admin, _deleteSaved, checkIfMatch: false),
-        ApiRoute('POST', 'backups/{name}/restore', Access.admin, _restoreSaved),
+        ApiRoute('GET', 'backups/{name}', Access.admin, _downloadUndo),
+        ApiRoute('DELETE', 'backups/{name}', Access.admin, (r) async => throw ApiError(HttpStatus.notFound, tr.noSuchBackup),
+            checkIfMatch: false),
+        ApiRoute('POST', 'backups/{name}/restore', Access.admin, _restoreUndo),
       ];
 
   ExportService get _export =>
@@ -58,33 +61,41 @@ extension _AdminApi on SetupServer {
     return _exportJson();
   }
 
-  // ---- Saved backups ---------------------------------------------------------------
+  // ---- Backups ---------------------------------------------------------------
 
   BackupStore get _store => household.backups?.store ?? (throw ApiError(HttpStatus.notFound, tr.backupsAreOff));
 
-  Future<StoredBackup> _saved(String name) async =>
-      (await _store.list()).where((b) => b.name == name).firstOrNull ??
-      (throw ApiError(HttpStatus.notFound, tr.noSuchBackup));
+  /// The undo point, by its one name; any other name is not found.
+  Future<StoredBackup> _undoPoint(String name) async =>
+      (name == 'undo' ? await _store.undo() : null) ?? (throw ApiError(HttpStatus.notFound, tr.noSuchBackup));
 
-  Future<Object?> _backups() async => {
-        'backups': [
-          for (final b in await _store.list())
-            {
-              'name': b.name,
-              'createdAt': b.createdAt.toUtc().toIso8601String(),
-              'when': formatMoment(b.createdAt.toLocal()),
-              'kind': b.kindLabel,
-              'device': b.archive.device,
-              'size': b.size,
-              'profiles': b.summary.profiles,
-              'channels': b.summary.channels,
-              'blocks': b.summary.blocks,
-            },
-        ],
+  static Map<String, Object?> _summaryJson(StoredBackup b) => {
+        'createdAt': b.createdAt.toUtc().toIso8601String(),
+        'when': formatMoment(b.createdAt.toLocal()),
+        'device': b.archive.device,
+        'profiles': b.summary.profiles,
+        'channels': b.summary.channels,
+        'blocks': b.summary.blocks,
       };
 
-  Future<Object?> _downloadSaved(ApiRequest r) async {
-    final b = await _saved(r['name']);
+  Future<Object?> _backups() async {
+    final latest = await _store.latest();
+    final undo = await _store.undo();
+    return {
+      'latest': latest == null ? null : _summaryJson(latest),
+      'undo': undo == null
+          ? null
+          : {
+              ..._summaryJson(undo),
+              'reason': undo.reason,
+              'subject': undo.archive.subject,
+              'label': undo.undoLabel,
+            },
+    };
+  }
+
+  Future<Object?> _downloadUndo(ApiRequest r) async {
+    final b = await _undoPoint(r['name']);
     final bytes = await _store.read(b);
     r.response.headers
       ..contentType = ContentType('application', 'octet-stream')
@@ -94,14 +105,10 @@ extension _AdminApi on SetupServer {
     return ApiRequest.handled;
   }
 
-  Future<Object?> _deleteSaved(ApiRequest r) async {
-    await _store.delete(await _saved(r['name']));
-    return _backups();
-  }
-
-  /// Restores a saved backup through the core restore path.
-  Future<Object?> _restoreSaved(ApiRequest r) async {
-    final b = await _saved(r['name']);
+  /// Restores the undo point through the core restore path, which saves
+  /// the setup here as the new undo point first.
+  Future<Object?> _restoreUndo(ApiRequest r) async {
+    final b = await _undoPoint(r['name']);
     await _restoreBytes(await _store.read(b), by: r.account);
     return _status(r);
   }

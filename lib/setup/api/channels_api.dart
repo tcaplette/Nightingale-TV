@@ -54,6 +54,8 @@ extension _ChannelsApi on SetupServer {
       ...c.toJson(),
       'playlist': const <String>[],
       'view': {
+        // As the TV shows it: a generated name in the request's language.
+        'name': c.displayName,
         'playlistLength': c.playlist.length,
         'auto': c.auto,
         'music': c.isMusic,
@@ -150,16 +152,19 @@ extension _ChannelsApi on SetupServer {
         number: has('number') && want.number != ch.number ? want.number : null,
         hidden: has('hidden') && want.hidden != ch.hidden ? want.hidden : null,
         favorite: has('favorite') && want.favorite != ch.favorite ? want.favorite : null,
-        order: has('order') && want.order != ch.order && !ch.isLive ? want.order : null,
+        order: has('order') && want.order != ch.order && !ch.isLive && !ch.isYouTube ? want.order : null,
         icon: has('icon') && json(want.icon.toJson()) != json(ch.icon.toJson()) ? want.icon : null);
-    if (has('logoMode') && want.logoMode != ch.logoMode) await app.setChannelLogoMode(ch, want.logoMode);
-    if (has('retro') && want.retro != ch.retro) await app.setChannelRetro(ch, want.retro);
+    // A YouTube channel has no logo, retro look, breaks or premieres
+    // (youtube-subscriptions D7).
+    if (has('logoMode') && want.logoMode != ch.logoMode && !ch.isYouTube) await app.setChannelLogoMode(ch, want.logoMode);
+    if (has('retro') && want.retro != ch.retro && !ch.isYouTube) await app.setChannelRetro(ch, want.retro);
     if ((has('commercialPlan') || body.containsKey('commercials')) &&
         !ch.isLive &&
+        !ch.isYouTube &&
         json(want.commercialPlan?.toJson()) != json(ch.commercialPlan?.toJson())) {
       await app.setChannelPlan(ch, want.commercialPlan);
     }
-    if (has('premieres') && want.premieres != ch.premieres && !ch.isLive) {
+    if (has('premieres') && want.premieres != ch.premieres && !ch.isLive && !ch.isYouTube) {
       await app.setChannelPremieres(ch, want.premieres);
     }
     if (has('slot') && want.slotRule != ch.slotRule && ch.playsPrograms) {
@@ -237,16 +242,16 @@ extension _ChannelsApi on SetupServer {
     return {'ok': true};
   }
 
-  /// Reset lineup: a safety backup first; if it can't be saved, nothing is
+  /// Reset lineup: the undo point first; if it can't be saved, nothing is
   /// reset.
   Future<Object?> _resetChannels(ApiRequest r) async {
     final app = await _app(r['id'], library: true);
     try {
       await app.resetChannels();
     } on BackupException catch (e) {
-      throw ApiError(HttpStatus.conflict, tr.couldntSaveASafety(e.message));
+      throw ApiError(HttpStatus.conflict, tr.couldntSaveBackupNothingReset(e.message));
     } on Object catch (e) {
-      throw ApiError(HttpStatus.conflict, tr.couldntSaveASafety(e));
+      throw ApiError(HttpStatus.conflict, tr.couldntSaveBackupNothingReset(e));
     }
     return _channels(r);
   }
@@ -355,9 +360,12 @@ extension _ChannelsApi on SetupServer {
     final hours = (int.tryParse(r.query['hours'] ?? '') ?? 6).clamp(1, maxGuideHours);
     final to = from.add(Duration(hours: hours));
     String iso(DateTime t) => t.toUtc().toIso8601String();
+    final colors = app.guideColorsOn;
     return {
       'from': iso(from),
       'to': iso(to),
+      // Server colours (guide-server-colors), with the key.
+      if (colors) 'colors': _colorsJson(app),
       'channels': [
         for (final c in app.channels)
           {
@@ -380,6 +388,8 @@ extension _ChannelsApi on SetupServer {
                     if (p.isMusicHour) 'songs': p.songs!.length,
                     if (p.endsEarly) 'endsEarly': true,
                     'breaks': ?_breaksOf(schedule, p),
+                    if (colors)
+                      if (app.sourceKeyOf(c, p) case final key?) ...{'source': key, 'color': _SharesApi._hex(app.serverColors[key]?.cell)},
                   },
             ],
           },

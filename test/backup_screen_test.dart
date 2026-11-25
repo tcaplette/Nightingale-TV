@@ -39,6 +39,8 @@ void main() {
   tearDown(() {
     BackupArchive.useIsolate = true;
     BackupFiles.debugAvailable = null;
+    BackupFiles.debugSave = null;
+    BackupFiles.debugOpen = null;
   });
 
   /// Lets the screen's file work finish: real I/O between frames.
@@ -58,9 +60,11 @@ void main() {
     expect(done(), isTrue, reason: 'still waiting');
   }
 
-  /// Mom and Kids, Mom watching, with a backup made by you; then Mom's
-  /// first channel renamed, so a restore shows.
-  Future<void> setUpHousehold(WidgetTester tester, {String watching = 'Mom'}) async {
+  /// Mom and Kids, Mom watching, backed up, with an undo point saved for
+  /// [undoReason] (none when null); then Mom's first channel renamed, so a
+  /// restore shows.
+  Future<void> setUpHousehold(WidgetTester tester,
+      {String watching = 'Mom', String? undoReason = BackupReason.beforeReset, String? undoSubject}) async {
     // Wider than the TV's 1920: the test font is wider than Barlow, and the
     // button row would wrap.
     tester.view.physicalSize = const Size(3200, 4000);
@@ -70,7 +74,8 @@ void main() {
       dir = await Directory.systemTemp.createTemp('nightingale_tv_backup_screen');
       await writeHousehold(dir, momAndKids(), fakeLibrary());
       h = await openHousehold(dir);
-      await h.backups!.backUp(BackupReason.manual);
+      await h.backups!.automaticCheck();
+      if (undoReason != null) await h.backups!.saveUndoPoint(undoReason, subject: undoSubject);
       await h.select(h.profiles.firstWhere((p) => p.name == watching));
       final first = h.app!.allChannels.first;
       originalName = first.name;
@@ -96,23 +101,9 @@ void main() {
     await settle(tester);
   }
 
-  /// The focused button's label, "row" for a backup in the list.
-  String? focused() {
-    final context = FocusManager.instance.primaryFocus?.context;
-    if (context == null) return null;
-    final button = context.findAncestorWidgetOfExactType<TvButton>();
-    if (button != null) return button.label;
-    String? row;
-    context.visitAncestorElements((e) {
-      final key = e.widget.key;
-      if (key is ValueKey<String> && key.value.endsWith(BackupStore.extension)) {
-        row = 'row';
-        return false;
-      }
-      return true;
-    });
-    return row;
-  }
+  /// The focused button's label.
+  String? focused() =>
+      FocusManager.instance.primaryFocus?.context?.findAncestorWidgetOfExactType<TvButton>()?.label;
 
   Future<void> press(WidgetTester tester, LogicalKeyboardKey key) async {
     await tester.sendKeyEvent(key);
@@ -125,43 +116,54 @@ void main() {
     return (channels!.first as Map)['name'] as String?;
   }
 
-  testWidgets('the remote moves through the buttons, then the backups', (tester) async {
+  /// Every file under `backups/`, with its size and time.
+  Future<Map<String, String>> backupFiles(WidgetTester tester) async => (await tester.runAsync(() async {
+        final root = h.backups!.store.dir;
+        return {
+          for (final f in root.listSync(recursive: true))
+            if (f is File) f.path.substring(root.path.length): '${f.lengthSync()} ${f.lastModifiedSync()}',
+        };
+      }))!;
+
+  const buttons = ['Save to a file', 'Open a backup file', 'Use your phone or computer', 'Undo lineup reset'];
+
+  testWidgets('the screen: last backed up, four buttons, no list; the remote moves through them', (tester) async {
     await setUpHousehold(tester);
     await show(tester, const BackupScreen());
-    expect(find.textContaining('Last backup: today'), findsOneWidget);
-    expect(find.textContaining('(made by you)'), findsOneWidget);
-    expect(find.text('Made by you'), findsOneWidget);
-    expect(focused(), 'Back up now');
-    await press(tester, LogicalKeyboardKey.arrowRight);
-    expect(focused(), 'Open a backup file');
-    await press(tester, LogicalKeyboardKey.arrowRight);
+    expect(find.textContaining('Last backed up: today'), findsOneWidget);
+    expect([for (final b in tester.widgetList<TvButton>(find.byType(TvButton))) b.label], buttons);
+    expect(find.textContaining('Made by you'), findsNothing);
+    expect(find.text('Back up now'), findsNothing);
+    expect(focused(), 'Save to a file');
+    for (final label in buttons.skip(1)) {
+      await press(tester, LogicalKeyboardKey.arrowRight);
+      expect(focused(), label);
+    }
+    await press(tester, LogicalKeyboardKey.arrowLeft);
     expect(focused(), 'Use your phone or computer');
-    await press(tester, LogicalKeyboardKey.arrowDown);
-    expect(focused(), 'row');
-    await press(tester, LogicalKeyboardKey.arrowUp);
-    expect(focused(), isNot('row'));
-
-    // Back up now keeps its focus while it works and after.
-    await press(tester, LogicalKeyboardKey.arrowLeft);
-    await press(tester, LogicalKeyboardKey.arrowLeft);
-    expect(focused(), 'Back up now');
-    await tester.sendKeyEvent(LogicalKeyboardKey.enter);
-    await tester.pump();
-    expect(focused(), 'Back up now');
-    await settleUntil(tester, () => find.text('Made by you').evaluate().length == 2);
-    expect(focused(), 'Back up now');
   });
 
-  testWidgets('a backup is restored with the remote alone', (tester) async {
+  testWidgets('the Undo button names the action, and is gone with no undo point', (tester) async {
+    await setUpHousehold(tester, undoReason: BackupReason.beforeDelete, undoSubject: 'Kids');
+    await show(tester, const BackupScreen());
+    expect(find.widgetWithText(TvButton, 'Undo deleting Kids'), findsOneWidget);
+    await tester.runAsync(() => h.backups!.store.undoFile.delete());
+    await show(tester, const SizedBox());
+    await show(tester, const BackupScreen());
+    expect(find.widgetWithText(TvButton, 'Undo deleting Kids'), findsNothing);
+    expect([for (final b in tester.widgetList<TvButton>(find.byType(TvButton))) b.label], buttons.take(3));
+  });
+
+  testWidgets('Undo lineup reset with the remote alone, then Undo restore', (tester) async {
     await setUpHousehold(tester);
     await show(tester, const BackupScreen());
-    await press(tester, LogicalKeyboardKey.arrowDown);
-    expect(focused(), 'row');
-    await press(tester, LogicalKeyboardKey.enter);
-    expect(focused(), 'Restore');
+    for (var i = 0; i < 3; i++) {
+      await press(tester, LogicalKeyboardKey.arrowRight);
+    }
+    expect(focused(), 'Undo lineup reset');
     await press(tester, LogicalKeyboardKey.enter);
     await settle(tester);
-    expect(find.textContaining('Restore the backup from'), findsOneWidget);
+    expect(find.textContaining('Undo lineup reset · '), findsOneWidget);
     expect(find.textContaining('Your current setup is backed up first.'), findsOneWidget);
     expect(find.textContaining('Mom, Kids · '), findsOneWidget);
     expect(focused(), 'Cancel');
@@ -173,18 +175,19 @@ void main() {
 
     expect(await firstChannelName(tester), originalName);
     expect(h.profiles.map((p) => p.name), ['Mom', 'Kids']);
-    final kinds = await tester.runAsync(() async => [for (final b in await h.backups!.store.list()) b.kind]);
-    expect(kinds, contains(BackupReason.beforeRestore));
+    final undo = await tester.runAsync(() => h.backups!.store.undo());
+    expect(undo!.undoLabel, 'Undo restore');
   });
 
-  testWidgets('Cancel has focus, and Cancel or Back leave everything as it was', (tester) async {
+  testWidgets('an opened file goes to the confirmation; Cancel or Back leave everything as it was', (tester) async {
     await setUpHousehold(tester);
+    final file = (await tester.runAsync(() => h.backups!.build(BackupReason.manual)))!.bytes;
+    BackupFiles.debugOpen = () async => file;
     await show(tester, const BackupScreen());
+    final before = await backupFiles(tester);
+
     Future<void> openConfirmation() async {
-      await tester.tap(find.byKey(ValueKey(
-          (await tester.runAsync(() => h.backups!.store.list()))!.firstWhere((b) => b.kind == BackupReason.manual).name)));
-      await settle(tester);
-      await tester.tap(find.widgetWithText(TvButton, 'Restore'));
+      await tester.tap(find.widgetWithText(TvButton, 'Open a backup file'));
       await settle(tester);
       expect(find.textContaining('Restore the backup from'), findsOneWidget);
       expect(focused(), 'Cancel');
@@ -192,14 +195,15 @@ void main() {
 
     await openConfirmation();
     await press(tester, LogicalKeyboardKey.enter);
+    await settle(tester);
     expect(find.textContaining('Restore the backup from'), findsNothing);
     await openConfirmation();
     await press(tester, LogicalKeyboardKey.escape);
+    await settle(tester);
     expect(find.textContaining('Restore the backup from'), findsNothing);
 
     expect(await firstChannelName(tester), 'Renamed');
-    final kinds = await tester.runAsync(() async => [for (final b in await h.backups!.store.list()) b.kind]);
-    expect(kinds, [BackupReason.manual]);
+    expect(await backupFiles(tester), before, reason: 'nothing kept');
   });
 
   testWidgets('an air mouse points at and clicks, and touch taps', (tester) async {
@@ -207,44 +211,45 @@ void main() {
     FocusManager.instance.highlightStrategy = FocusHighlightStrategy.alwaysTraditional;
     addTearDown(() => FocusManager.instance.highlightStrategy = FocusHighlightStrategy.automatic);
     await setUpHousehold(tester);
+    final saved = <String, Uint8List>{};
+    BackupFiles.debugSave = (name, bytes) async {
+      saved[name] = bytes;
+      return true;
+    };
     await show(tester, const BackupScreen());
     final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
     addTearDown(mouse.removePointer);
     await mouse.addPointer(location: Offset.zero);
-    await mouse.moveTo(tester.getCenter(find.widgetWithText(TvButton, 'Use your phone or computer')));
-    await tester.pump();
-    expect(focused(), 'Use your phone or computer');
-    await mouse.moveTo(tester.getCenter(find.widgetWithText(TvButton, 'Back up now')));
-    await tester.pump();
-    expect(focused(), 'Back up now');
-    await mouse.down(tester.getCenter(find.widgetWithText(TvButton, 'Back up now')));
+    for (final label in buttons.reversed) {
+      await mouse.moveTo(tester.getCenter(find.widgetWithText(TvButton, label)));
+      await tester.pump();
+      expect(focused(), label);
+    }
+    // Save to a file: a fresh backup with the rename in it.
+    await mouse.down(tester.getCenter(find.widgetWithText(TvButton, 'Save to a file')));
     await mouse.up();
-    await settleUntil(tester, () => find.text('Made by you').evaluate().length == 2);
+    await settleUntil(tester, () => saved.isNotEmpty);
+    expect(saved.keys.single, matches(RegExp(r'^nightingale-tv-\d{4}-\d\d-\d\d-\d{4}\.ntvbackup$')));
+    expect(BackupArchive.check(saved.values.single).profiles[mom.id]!.channels.toString(), contains('Renamed'));
 
-    // Touch: a tap on a backup opens its actions; Delete, then confirm.
-    final names = (await tester.runAsync(() => h.backups!.store.list()))!;
-    await tester.tap(find.byKey(ValueKey(names.first.name)));
+    // Touch: a tap on Undo opens its confirmation.
+    await tester.tap(find.widgetWithText(TvButton, 'Undo lineup reset'));
     await settle(tester);
-    expect(find.widgetWithText(TvButton, 'Save to file'), findsOneWidget);
-    await tester.tap(find.widgetWithText(TvButton, 'Delete'));
+    expect(find.textContaining('Undo lineup reset · '), findsOneWidget);
+    await tester.tap(find.widgetWithText(TvButton, 'Cancel'));
     await settle(tester);
-    expect(find.text('Delete this backup?'), findsOneWidget);
-    await tester.tap(find.widgetWithText(TvButton, 'Delete'));
-    await settleUntil(tester, () => find.text('Made by you').evaluate().length == 1);
+    expect(find.textContaining('Undo lineup reset · '), findsNothing);
   });
 
-  testWidgets('without a file picker, Save to file and Open a backup file are hidden', (tester) async {
+  testWidgets('without a file picker, Save to a file and Open a backup file are hidden', (tester) async {
     BackupFiles.debugAvailable = false;
     await setUpHousehold(tester);
     await show(tester, const BackupScreen());
+    expect(find.widgetWithText(TvButton, 'Save to a file'), findsNothing);
     expect(find.widgetWithText(TvButton, 'Open a backup file'), findsNothing);
-    expect(find.widgetWithText(TvButton, 'Use your phone or computer'), findsOneWidget);
-    final names = (await tester.runAsync(() => h.backups!.store.list()))!;
-    await tester.tap(find.byKey(ValueKey(names.first.name)));
-    await settle(tester);
-    expect(find.widgetWithText(TvButton, 'Restore'), findsOneWidget);
-    expect(find.widgetWithText(TvButton, 'Save to file'), findsNothing);
-    expect(find.widgetWithText(TvButton, 'Delete'), findsOneWidget);
+    expect(focused(), 'Use your phone or computer');
+    await press(tester, LogicalKeyboardKey.arrowRight);
+    expect(focused(), 'Undo lineup reset');
   });
 
   testWidgets('the transfer dialog shows an address and a code, with Close focused', (tester) async {
@@ -292,9 +297,7 @@ void main() {
       await writeHousehold(old, momAndKids(), fakeLibrary());
       final bytes = (await (await openHousehold(old, start: false)).backups!.build(BackupReason.daily)).bytes;
       fresh = await Directory('${dir.path}/fresh').create();
-      final store = BackupStore(Directory('${fresh.path}/backups'));
-      await store.cloudDir.create(recursive: true);
-      await store.cloudCopy.writeAsBytes(bytes);
+      await BackupStore(Directory('${fresh.path}/backups')).writeLatest(bytes);
       h = await openHousehold(fresh);
     });
     addTearDown(() => tester.runAsync(() => dir.delete(recursive: true)));

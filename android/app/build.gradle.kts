@@ -131,6 +131,15 @@ android {
         resValues = true
     }
 
+    // FFmpeg's programs (tool/build_ffmpeg_android.sh) run from the native
+    // library folder, so the libraries are unpacked there at install; a
+    // build without them works, and converts nothing (smb-conversion).
+    packaging {
+        jniLibs {
+            useLegacyPackaging = true
+        }
+    }
+
     // JVM tests (android/app/src/test) run Media3's audio classes, which
     // touch android.jar's stubs; those return defaults instead of throwing.
     testOptions {
@@ -148,6 +157,8 @@ dependencies {
     // Live TV sources' rtsp:// streams (live-playback, "M3U streams").
     implementation("androidx.media3:media3-exoplayer-rtsp:1.11.1")
     implementation("androidx.media3:media3-datasource-okhttp:1.11.1")
+    // The CRT effects on the video (VideoEffects.kt).
+    implementation("androidx.media3:media3-effect:1.11.1")
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
     // FileProvider, for handing a setup to the other app (InstallSwitching.kt).
     implementation("androidx.core:core:1.16.0")
@@ -158,12 +169,13 @@ dependencies {
     testImplementation("junit:junit:4.13.2")
 }
 
-// Error reports (error-reporting D1): sentry_flutter brings the Sentry Android
-// SDK for Java/Kotlin crashes and freezes. Its NDK part is left out, so native
-// crash handling is off and the APK carries no libsentry.so.
-configurations.all {
-    exclude(group = "io.sentry", module = "sentry-android-ndk")
-}
+// Error reports (crash-visibility D1): sentry_flutter brings the Sentry Android
+// SDK for Java/Kotlin crashes and freezes, and its NDK part (sentry-native's
+// in-process signal handler, libsentry.so + libsentry-android.so) for native
+// crashes in the engine, the player, codecs and drivers. A native crash is
+// written on the device and sent on the next launch with its signal and
+// module + offset frames; GlitchTip can't symbolicate them, so
+// tool/symbolize_event.py names the libapp.so and libflutter.so frames.
 
 gradle.taskGraph.whenReady {
     // packageFreeRelease, signPlayReleaseBundle and the like (one per flavor).

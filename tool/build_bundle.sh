@@ -12,6 +12,8 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 tool/check_version.sh
+# Converting files of SMB shares on the device (smb-conversion).
+tool/build_ffmpeg_android.sh
 source tool/store_checks.sh
 source tool/debug_files.sh
 store_refuse_test_defines error_reporting.env
@@ -27,6 +29,9 @@ DEFINES=()
 # or your own: sharing.env.example, SELF_HOSTING.md); without it the app is
 # built with no sharing at all.
 [[ -f sharing.env ]] && DEFINES+=(--dart-define-from-file=sharing.env)
+# YouTube's shared Google client (youtube-subscriptions D4).
+source tool/youtube_client.sh
+youtube_client_check
 
 if [[ ! -f android/key.properties ]]; then
   echo "android/key.properties is missing, so there's no key to sign the store bundle with." >&2
@@ -95,6 +100,7 @@ cp build/app/outputs/bundle/playRelease/app-play-release.aab "$dest"
 store_check_bundle "$dest" "${VERSION#*+}"
 echo "Checking debug files:"
 debug_files_check_android "$dest" "$SYMBOLS"
+debug_files_engine "$DIST/symbols"
 
 echo "Built:"
 echo "  $dest ($(du -h "$dest" | cut -f1))"

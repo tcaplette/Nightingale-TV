@@ -1,0 +1,5 @@
+# The screen tests let real async work (files, the fake servers) run in
+# short real-time slices. With one test file per core, a loaded machine
+# starves those slices and different screen tests fail on each run, so at
+# most 4 files run at once.
+concurrency: 4

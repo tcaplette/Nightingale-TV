@@ -106,7 +106,8 @@ class _ChannelGroupsScreenState extends State<ChannelGroupsScreen> {
             const SizedBox(width: 12),
             down,
             const SizedBox(width: 12),
-            SizedBox(width: 190, child: shown),
+            // Its own width: every row's label is the same, so they line up.
+            shown,
           ],
         ],
       );

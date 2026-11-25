@@ -11,6 +11,8 @@
 #
 # If host networking clashes with other ports on this machine, use
 # docker-compose.bridge.yml instead.
+# Convert for other TVs (web admin → Servers) listens on port 8487 when it's
+# on, and TVs find it over SSDP.
 services:
   nightingale-tv:
     image: ghcr.io/tcaplette/nightingale-tv-server:latest

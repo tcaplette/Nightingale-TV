@@ -16,6 +16,9 @@ import 'backup_archive.dart';
 import '../server/media_server.dart';
 import '../server/server_set.dart';
 import '../server/server_clients.dart';
+import '../server/smb/secret_store.dart';
+import '../server/youtube/google_sign_in.dart';
+import '../server/youtube/youtube_client_config.dart';
 import '../l10n/tr.dart';
 import '../reporting/error_reports.dart';
 
@@ -35,7 +38,7 @@ class RestorePlan {
   final bool backsUpFirst;
 }
 
-/// Restores a backup over the household (D5): checked, a safety backup
+/// Restores a backup over the household (D5): checked, an undo point
 /// first, then staged in `restore.tmp/` and swapped in under a journal, so
 /// a crash at any moment leaves the old setup or the new one, never a mix.
 class BackupRestorer {
@@ -49,6 +52,10 @@ class BackupRestorer {
   final Future<void> Function(ServerSession session) _signOut;
 
   static Future<void> _logout(ServerSession session) async {
+    // A share's sign-in is its password on this device, which goes with
+    // the profile's folder. YouTube's is revoked from its token, read before
+    // the folder goes ([_youTubeRevokes]).
+    if (session.kind == ServerKind.smb || session.kind == ServerKind.youtube) return;
     final client = sessionClient(session, deviceName: PlatformInfo.deviceName);
     try {
       await client.logout();
@@ -59,6 +66,61 @@ class BackupRestorer {
 
   /// Sign-ins on this device that the restore doesn't keep (D6).
   final _dropped = <ServerSession>[];
+
+  /// The dropped YouTube sign-ins' refresh tokens and clients, revoked once
+  /// the restore is done (youtube-subscriptions D12).
+  final _youTubeRevokes = <({String token, GoogleClient client})>[];
+
+  /// [session] is dropped; a YouTube one's token is read from [storage]
+  /// now, while its secrets are still there.
+  Future<void> _drop(ServerSession session, AppStorage storage) async {
+    _dropped.add(session);
+    if (session.kind != ServerKind.youtube) return;
+    try {
+      final values = await SecretStore(storage).values(session.accessToken);
+      final refresh = values?['refresh'];
+      final id = session.clientId, secret = values?['clientSecret'];
+      final client = id == null ? GoogleClient.shared : secret == null ? null : GoogleClient(id: id, secret: secret, own: true);
+      if (refresh != null && client != null) _youTubeRevokes.add((token: refresh, client: client));
+    } on Object catch (e) {
+      debugPrint('A replaced YouTube sign-in can not be read: ${e.runtimeType}');
+    }
+  }
+
+  /// [channels] as this device restores them: no more than
+  /// [AppState.youTubeSharedLimit] YouTube channels on Nightingale TV's
+  /// client, the first by number; channels of servers in [ownClient] (the
+  /// user's own Google client) all stay (youtube-shared-client D6). On the
+  /// Docker server every YouTube server signs in again with the user's own
+  /// client, so all of them stay (docker-youtube D4).
+  List<Object?> _restoredChannels(List<Object?> channels, Set<String> ownClient) {
+    final youTube = [
+      for (final c in channels)
+        if (c is Map<String, Object?> && c['youtube'] != null) c
+    ]..sort((a, b) => ((a['number'] as num?) ?? 0).compareTo((b['number'] as num?) ?? 0));
+    bool own(Map<String, Object?> c) =>
+        household.serverMode ||
+        switch (c['youtube']) {
+          {'server': final String key} => ownClient.contains(key),
+          _ => false,
+        };
+    final keep = {...youTube.where(own), ...youTube.where((c) => !own(c)).take(AppState.youTubeSharedLimit)};
+    return [
+      for (final c in channels)
+        if (c is! Map<String, Object?> || c['youtube'] == null || keep.contains(c)) c
+    ];
+  }
+
+  /// The YouTube servers that come back on the user's own Google client:
+  /// a kept sign-in here by its own client, else the backup's mark.
+  static Set<String> _ownClientKeys(ProfileBackup part, Map<String, ServerSession> sessionsHere) => {
+        for (final s in (part.servers?['servers'] as List? ?? const []).whereType<Map<String, Object?>>())
+          if (s['key'] case final String key
+              when sessionsHere[key]?.serverId != null && sessionsHere[key]!.serverId == s['serverId']
+                  ? sessionsHere[key]!.clientId != null
+                  : s['ownClient'] == true)
+            key,
+      };
 
   static const _staging = 'restore.tmp';
   static const _journal = 'restore.json';
@@ -100,10 +162,10 @@ class BackupRestorer {
     return kept;
   }
 
-  /// Checks [bytes] (D4), saves a "before-restore" backup, and replaces the
+  /// Checks [bytes] (D4), saves the undo point ("before-restore"), and replaces the
   /// household with the backup's, reloading it in place. Throws
   /// [BackupException] with nothing changed when the backup is turned down
-  /// or the safety backup can't be saved. [beforeClosing] runs once both
+  /// or the undo point can't be saved. [beforeClosing] runs once both
   /// are done, just before everything closes (the screen stops playback).
   Future<void> restore(List<int> bytes, {Future<void> Function()? beforeClosing}) async {
     final archive = BackupArchive.check(bytes);
@@ -111,7 +173,7 @@ class BackupRestorer {
     // A first run (Welcome back, or sign-in on a new install) has nothing
     // to keep.
     if (!await household.hasNothingToKeep()) {
-      await household.backups?.safetyBackup(BackupReason.beforeRestore);
+      await household.backups?.saveUndoPoint(BackupReason.beforeRestore);
     }
     PlaybackDiagnostics.note('BACKUP', 'restore: checked and backed up in ${watch.elapsedMilliseconds} ms');
     await beforeClosing?.call();
@@ -130,6 +192,11 @@ class BackupRestorer {
     }
     PlaybackDiagnostics.note('BACKUP', 'restore: started again in ${watch.elapsedMilliseconds} ms');
     household.notice.value = tr.restoredTheBackup(formatMoment(archive.createdAt.toLocal()));
+    for (final r in [..._youTubeRevokes]) {
+      final signIn = GoogleDeviceSignIn(r.client);
+      unawaited(signIn.revoke(r.token).whenComplete(signIn.close));
+    }
+    _youTubeRevokes.clear();
     // In the background: an unreachable server never holds up a restore.
     for (final session in [..._dropped]) {
       unawaited(_signOut(session).then((_) {}, onError: (Object e) => debugPrint('Couldn\'t sign out a replaced profile: $e')));
@@ -170,12 +237,14 @@ class BackupRestorer {
         final session = await storage.readRaw('session.json');
         if (session is! Map<String, Object?>) continue;
         try {
-          _dropped.add(ServerSession.fromJson(session));
+          await _drop(ServerSession.fromJson(session), storage);
         } on Object {
           // Unreadable: nothing to sign out.
         }
         // Its added servers' sign-ins go with it (multi-server).
-        _dropped.addAll(_addedSessions(await storage.readRaw(ServerSet.file)).values);
+        for (final s in _addedSessions(await storage.readRaw(ServerSet.file)).values) {
+          await _drop(s, storage);
+        }
       }
     }
     await Directory('${staging.path}/profiles').create();
@@ -197,19 +266,37 @@ class BackupRestorer {
       } else if (settingsHere != null) {
         await out.writeJson('settings.json', settingsHere);
       }
-      if (part.channels case final channels?) await out.writeJson('channels.json', channels);
+      if (part.channels case final channels?) {
+        final sessions = kept.contains(id) ? _addedSessions(await current.readRaw(ServerSet.file)) : const <String, ServerSession>{};
+        await out.writeJson('channels.json', _restoredChannels(channels, _ownClientKeys(part, sessions)));
+      }
       if (part.blocks case final blocks?) await out.writeJson('blocks.json', blocks);
       // Live TV sources and their picked files; their channels and guide are
       // fetched again at the next start (live-tv-sources).
       if (part.liveSources case final live?) await out.writeJson(LiveSourceStore.fileName, live, private: true);
-      if (part.liveFiles.isNotEmpty) {
+      if (part.liveFiles.isNotEmpty || part.leftOut.isNotEmpty) {
         final files = Directory('${dir.path}/${LiveSourceStore.filesFolder}');
         await files.create();
         for (final e in part.liveFiles.entries) {
           // Checked against ProfileBackup.liveFileName: no path leaves the folder.
           await _unpack(e.value, File('${files.path}/${e.key}'));
         }
+        // A file the backup left out (backup-simplify D7) stays if this
+        // device has it; otherwise its source asks for it again.
+        for (final name in part.leftOut) {
+          final mine = File('${here.path}/${LiveSourceStore.filesFolder}/$name');
+          if (await mine.exists()) await mine.copy('${files.path}/$name');
+        }
       }
+      // Its shares' folders and history; their passwords are this
+      // device's own, kept for sign-ins that stay.
+      if (part.smb case final smb?) await out.writeJson('smb_shares.json', smb);
+      for (final e in part.smbHistory.entries) {
+        // Checked against ProfileBackup.smbHistoryName: no path leaves the folder.
+        await out.writeJson('smb_history/${e.key}', e.value);
+      }
+      final secrets = File('${here.path}/smb_secrets.json');
+      if (await secrets.exists()) await secrets.copy('${dir.path}/smb_secrets.json');
       if (kept.contains(id)) {
         await out.writeJson('session.json', await current.readRaw('session.json'), private: true);
         final library = File('${here.path}/library.json');
@@ -279,7 +366,7 @@ class BackupRestorer {
     }
     // Signed in here, but not to what the backup has under that key.
     for (final MapEntry(:key, value: session) in sessionsHere.entries) {
-      if (!kept.contains(key)) _dropped.add(session);
+      if (!kept.contains(key)) await _drop(session, current);
     }
     if (servers.isEmpty) return;
     await out.writeJson(

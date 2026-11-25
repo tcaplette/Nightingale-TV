@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import 'fonts.dart';
+
 /// Design tokens for a guide look. Every screen reads colors and type from
 /// here, so new themes (Retro, Midnight Blue, Glass, ...) are just new
 /// instances of this class.
@@ -72,6 +74,7 @@ class GuideTheme extends ThemeExtension<GuideTheme> {
   TextStyle display(double size, {FontWeight weight = FontWeight.w700, Color? color}) =>
       TextStyle(
         fontFamily: displayFont,
+        fontFamilyFallback: cjkFontFallback,
         fontSize: size,
         fontWeight: weight,
         color: color ?? text,
@@ -80,6 +83,7 @@ class GuideTheme extends ThemeExtension<GuideTheme> {
 
   TextStyle body(double size, {FontWeight weight = FontWeight.w500, Color? color}) => TextStyle(
         fontFamily: bodyFont,
+        fontFamilyFallback: cjkFontFallback,
         fontSize: size,
         fontWeight: weight,
         color: color ?? text,
@@ -107,8 +111,11 @@ class GuideTheme extends ThemeExtension<GuideTheme> {
       useMaterial3: true,
       colorScheme: scheme,
       fontFamily: bodyFont,
+      fontFamilyFallback: cjkFontFallback,
       scaffoldBackgroundColor: backgroundBottom,
       extensions: [this],
+      // Any platform not named has Flutter's default for Android and Linux.
+      pageTransitionsTheme: const PageTransitionsTheme(builders: {TargetPlatform.android: _CoveredStaysStill()}),
       focusColor: focus.withValues(alpha: 0.25),
       textSelectionTheme: TextSelectionThemeData(
         cursorColor: focus,
@@ -143,6 +150,27 @@ class GuideTheme extends ThemeExtension<GuideTheme> {
 
   @override
   GuideTheme lerp(covariant GuideTheme? other, double t) => t < 0.5 ? this : (other ?? this);
+}
+
+/// Android's page transition with the screen being covered left still: moved
+/// or faded, it would be in a layer of its own, and the hole its picture shows
+/// through would go black (system-video-layer D3). The new screen comes and
+/// goes as ever.
+class _CoveredStaysStill extends PageTransitionsBuilder {
+  const _CoveredStaysStill();
+
+  static const _page = PredictiveBackPageTransitionsBuilder();
+
+  @override
+  Duration get transitionDuration => _page.transitionDuration;
+
+  @override
+  Duration get reverseTransitionDuration => _page.reverseTransitionDuration;
+
+  @override
+  Widget buildTransitions<T>(PageRoute<T> route, BuildContext context, Animation<double> animation,
+          Animation<double> secondaryAnimation, Widget child) =>
+      _page.buildTransitions(route, context, animation, kAlwaysDismissedAnimation, child);
 }
 
 extension GuideThemeContext on BuildContext {

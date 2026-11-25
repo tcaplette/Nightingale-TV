@@ -16,12 +16,17 @@ class DeviceEffects extends ChangeNotifier {
   AppStorage? _storage;
   bool _on = true;
   bool _shaderTurnedOff = false;
+  bool _videoFailed = false;
 
   /// Off turns off every CRT effect here.
   bool get on => _on;
 
   /// Curvature and glow couldn't keep up: off until the app restarts.
   bool get shaderTurnedOff => _shaderTurnedOff;
+
+  /// The player couldn't apply the effects to the video: none change it, and
+  /// the colour, curvature and glow are off, until the app restarts.
+  bool get videoFailed => _videoFailed;
 
   Future<void> load(AppStorage storage) async {
     _storage = storage;
@@ -43,11 +48,21 @@ class DeviceEffects extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// The video can't have the effects here, so nothing over it has the ones
+  /// it would match.
+  void videoEffectsFailed() {
+    if (_videoFailed) return;
+    _videoFailed = true;
+    _shaderTurnedOff = true;
+    notifyListeners();
+  }
+
   @visibleForTesting
   void reset() {
     _storage = null;
     _on = true;
     _shaderTurnedOff = false;
+    _videoFailed = false;
     notifyListeners();
   }
 }

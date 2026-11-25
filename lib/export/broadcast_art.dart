@@ -5,6 +5,7 @@ import 'dart:ui' as ui;
 
 import 'package:crypto/crypto.dart';
 import 'package:flutter/material.dart';
+import '../channels/channel_initials.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:http/http.dart' as http;
 
@@ -338,10 +339,5 @@ class BroadcastArt implements LogoSource {
     }
   }
 
-  static String _initials(String name) {
-    final words = name.split(RegExp(r'\s+')).where((w) => w.isNotEmpty).toList();
-    if (words.isEmpty) return 'TV';
-    if (words.length == 1) return words.first.substring(0, words.first.length.clamp(0, 4));
-    return words.take(3).map((w) => w[0]).join().toUpperCase();
-  }
+  static String _initials(String name) => channelInitials(name, none: 'TV');
 }

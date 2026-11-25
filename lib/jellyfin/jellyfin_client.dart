@@ -560,7 +560,7 @@ class JellyfinClient implements MediaServer {
         'ContainerProfiles': const [],
         'CodecProfiles': const [],
         'SubtitleProfiles': [
-          for (final format in const ['srt', 'subrip', 'ass', 'ssa', 'vtt']) {'Format': format, 'Method': tr.externalLabel},
+          for (final format in const ['srt', 'subrip', 'ass', 'ssa', 'vtt']) {'Format': format, 'Method': 'External'},
         ],
       };
 
@@ -688,6 +688,7 @@ class JellyfinClient implements MediaServer {
             id: '${(m['Index'] as num).toInt()}',
             codec: codec,
             language: normalizeLanguage(m['Language'] as String?),
+            languageTag: m['Language'] as String?,
             title: switch ((m['Title'] as String?)?.trim()) { final t? when t.isNotEmpty => t, _ => null },
             isDefault: m['IsDefault'] == true,
             isForced: m['IsForced'] == true,

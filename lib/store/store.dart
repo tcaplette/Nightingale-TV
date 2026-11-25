@@ -4,9 +4,10 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
 import '../data/app_storage.dart';
+import '../platform/platform_info.dart';
 
 /// The stand-in store's mode (play-unlock D7): `buy`, `pending`, `cancel`,
-/// `error` or `offline`; empty for the real store. Release builds never set
+/// `error`, `offline` or `redeem`; empty for the real store. Release builds never set
 /// it (tool/build_apk.sh and tool/build_bundle.sh refuse to).
 const fakeStoreMode = String.fromEnvironment('NTV_FAKE_STORE');
 
@@ -74,17 +75,30 @@ abstract class Store {
   /// Purchases that change on their own, such as a pending one completing.
   Stream<StoreState> get changes;
 
+  /// Takes the user to where a Play promo code is redeemed
+  /// (play-promo-codes D1, D3). False when it couldn't be opened (typical on
+  /// a TV), so the app says where to redeem instead. A redeemed code comes
+  /// back as an ordinary purchase: through [changes] while the app runs, or
+  /// from the next [query].
+  Future<bool> redeem();
+
   void dispose();
 }
+
+/// Play's page for redeeming a promo code.
+const playRedeemUrl = 'https://play.google.com/redeem';
 
 /// Google Play, through the play flavor's StoreBridge.kt. The free flavor's
 /// stub answers that there's no store.
 class PlayStore implements Store {
-  PlayStore({MethodChannel? channel}) : _channel = channel ?? const MethodChannel('nightingale_tv/store') {
+  PlayStore({MethodChannel? channel, Future<bool> Function(String url)? openUrl})
+      : _channel = channel ?? const MethodChannel('nightingale_tv/store'),
+        _openUrl = openUrl ?? PlatformInfo.openUrl {
     _channel.setMethodCallHandler(_onCall);
   }
 
   final MethodChannel _channel;
+  final Future<bool> Function(String url) _openUrl;
   final _changes = StreamController<StoreState>.broadcast();
   Completer<BuyResult>? _buying;
 
@@ -120,6 +134,9 @@ class PlayStore implements Store {
     return buying.future;
   }
 
+  @override
+  Future<bool> redeem() => _openUrl(playRedeemUrl);
+
   Future<void> _onCall(MethodCall call) async {
     if (call.method != 'purchaseChanged') return;
     final m = (call.arguments as Map<Object?, Object?>?) ?? const {};
@@ -153,7 +170,7 @@ class FakeStore implements Store {
   static const price = r'$4.99';
   static const file = 'store/fake_store.json';
 
-  /// buy, pending, cancel, error or offline.
+  /// buy, pending, cancel, error, offline or redeem.
   final String mode;
   final AppStorage _storage;
 
@@ -192,6 +209,16 @@ class FakeStore implements Store {
       default:
         return const BuyResult(BuyOutcome.error);
     }
+  }
+
+  /// In mode `redeem`, a code "redeemed on another device": owned from now
+  /// on, but nothing tells the app, so only the next query (Check my
+  /// purchase again, a return to the foreground, a start) finds it. Never
+  /// opens anything, so the app says where to redeem.
+  @override
+  Future<bool> redeem() async {
+    if (mode == 'redeem') await _storage.writeJson(file, {'owned': true});
+    return false;
   }
 
   @override

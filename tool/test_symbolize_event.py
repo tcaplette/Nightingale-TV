@@ -73,5 +73,44 @@ class Parsing(unittest.TestCase):
         self.assertIsNone(se.build_id(b'not an elf file'))
 
 
+class NativeCrash(unittest.TestCase):
+    """crash-visibility D1: naming a native crash's libraries."""
+
+    FREE = Path('/d/symbols/libapp-arm64-v8a.debug')
+    PLAY = Path('/d/symbols/play/libapp-arm64-v8a.debug')
+    FILES = {'aa': FREE, 'bb': PLAY}
+
+    def test_library_and_abi_from_an_apk_path(self):
+        path = '/data/app/~~x==/com.app-y==/base.apk!/lib/x86_64/libflutter.so'
+        self.assertEqual(se.library_name(path), 'libflutter.so')
+        self.assertEqual(se.abi_from_path(path), 'x86_64')
+        self.assertEqual(se.library_name('/apex/com.android.runtime/lib64/bionic/libc.so'), 'libc.so')
+
+    def test_the_apk_build_id_decides(self):
+        self.assertEqual(se.choose_libapp(self.FILES, 'arm64-v8a', {'bb'}, True)[0], self.PLAY)
+        self.assertIsNone(se.choose_libapp(self.FILES, 'arm64-v8a', {'cc'}, True)[0])
+
+    def test_else_how_it_was_installed_decides(self):
+        self.assertEqual(se.choose_libapp(self.FILES, 'arm64-v8a', set(), True)[0], self.FREE)
+        self.assertEqual(se.choose_libapp(self.FILES, 'arm64-v8a', set(), False)[0], self.PLAY)
+        self.assertIsNone(se.choose_libapp({'aa': self.FREE}, 'arm64-v8a', set(), False)[0], 'never the other flavor')
+
+    def test_unknown_install_takes_only_a_single_candidate(self):
+        self.assertIsNone(se.choose_libapp(self.FILES, 'arm64-v8a', set(), None)[0])
+        self.assertEqual(se.choose_libapp({'aa': self.FREE}, 'arm64-v8a', set(), None)[0], self.FREE)
+        self.assertIsNone(se.choose_libapp(self.FILES, 'x86_64', set(), None)[0])
+
+    def test_the_engine_must_be_known_to_match(self):
+        self.assertIsNone(se.engine_mismatch('ee', None, {'ee'}))
+        self.assertIsNone(se.engine_mismatch('ee', 'ee', set()))
+        self.assertIn('another engine', se.engine_mismatch('ee', None, {'ff'}))
+        self.assertIn('--apk', se.engine_mismatch('ee', None, set()))
+        self.assertIn("isn't the engine's", se.engine_mismatch('ee', 'ff', {'ee'}))
+
+    def test_sideloaded_tag(self):
+        self.assertIs(se.sideloaded({'tags': [{'key': 'isSideLoaded', 'value': 'true'}]}), True)
+        self.assertIsNone(se.sideloaded({'tags': []}))
+
+
 if __name__ == '__main__':
     sys.exit(unittest.main())

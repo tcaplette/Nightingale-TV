@@ -99,25 +99,38 @@ abstract final class IndexBuilder {
   /// The index saved at [path] ([LibraryIndex.fromJson]), re-keyed when
   /// [rekey]; null when the file is missing or isn't an index. Read and
   /// decoded in the worker.
-  static Future<LibraryIndex?> saved(String path, {bool rekey = false}) async {
-    LibraryIndex? read() {
+  static Future<LibraryIndex?> saved(String path, {bool rekey = false}) async =>
+      (await savedRead(path, rekey: rekey)).index;
+
+  /// [saved], with the path it took (crash-visibility D4): `saved` (the
+  /// index was used), `missing` (no file) or `unreadable (<type>)` (with the
+  /// exception type, never the content). Reading is unchanged: a corrupt
+  /// file or one that isn't an object gives no index, and an error from
+  /// [LibraryIndex.fromJson] is still thrown, by [SavedIndexRead.index].
+  static Future<SavedIndexRead> savedRead(String path, {bool rekey = false}) async {
+    SavedIndexRead read() {
       final file = File(path);
-      if (!file.existsSync()) return null;
+      if (!file.existsSync()) return const SavedIndexRead._(null, 'missing');
       final Object? json;
       try {
         json = jsonDecode(file.readAsStringSync());
-      } on FormatException {
+      } on FormatException catch (e) {
         // A corrupt file is treated as missing, as AppStorage.readJson does.
-        return null;
+        return SavedIndexRead._(null, 'unreadable (${e.runtimeType})');
       }
-      if (json is! Map<String, Object?>) return null;
-      final index = LibraryIndex.fromJson(json);
-      return rekey ? index.rekeyed() : index;
+      if (json is! Map<String, Object?>) return SavedIndexRead._(null, 'unreadable (not an object: ${json.runtimeType})');
+      try {
+        final index = LibraryIndex.fromJson(json);
+        return SavedIndexRead._(rekey ? index.rekeyed() : index, 'saved');
+      } on Object catch (e, stack) {
+        // As text: the read comes back from the worker isolate.
+        return SavedIndexRead._(null, 'unreadable (${e.runtimeType})', e, StackTrace.fromString('$stack'));
+      }
     }
 
-    final index = useIsolate ? await Isolate.run(read, debugName: 'saved index') : read();
-    if (index != null) _note(index.scanNotes);
-    return index;
+    final result = useIsolate ? await Isolate.run(read, debugName: 'saved index') : read();
+    if (result._index case final index?) _note(index.scanNotes);
+    return result;
   }
 
   /// [index] re-keyed ([LibraryIndex.rekeyed]): only its shows and
@@ -222,5 +235,24 @@ abstract final class IndexBuilder {
     }
     inbox.close();
     Isolate.exit(reply, ('result', build(lists)));
+  }
+}
+
+/// A saved index read (crash-visibility D4): the index, and which path the
+/// launch took.
+class SavedIndexRead {
+  const SavedIndexRead._(this._index, this.path, [this._error, this._stack]);
+
+  final LibraryIndex? _index;
+
+  /// `saved`, `missing` or `unreadable (<type>)`.
+  final String path;
+  final Object? _error;
+  final StackTrace? _stack;
+
+  /// The index, or null when there's none; throws what reading it threw.
+  LibraryIndex? get index {
+    if (_error case final e?) Error.throwWithStackTrace(e, _stack ?? StackTrace.empty);
+    return _index;
   }
 }

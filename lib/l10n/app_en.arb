@@ -142,25 +142,6 @@
       }
     }
   },
-  "madeByYou": "Made by you",
-  "fromNightingaleTv": "From Nightingale TV (own build)",
-  "fromNightingaleTv2": "From Nightingale TV",
-  "movingToNightingale": "Moving to Nightingale TV (own build)",
-  "movingToNightingaleTv": "Moving to Nightingale TV",
-  "fromAFile": "From a file",
-  "beforeLineupCleanup": "Before lineup cleanup",
-  "beforeUpdate": "Before update",
-  "beforeDeleting": "Before deleting {subject}",
-  "@beforeDeleting": {
-    "placeholders": {
-      "subject": {
-        "type": "Object"
-      }
-    }
-  },
-  "beforeDeletingA": "Before deleting a profile",
-  "beforeReset": "Before reset",
-  "beforeRestore": "Before restore",
   "automatic": "Automatic",
   "nc1718": "NC-17 / 18 and up",
   "tvMaR": "TV-MA / R and up",
@@ -262,7 +243,7 @@
   "graphicsCardVaapi": "Graphics card (VAAPI)",
   "signInTo": "Sign in to this profile on the TV to export its channels.",
   "signInToThis": "Sign in to this profile here to export its channels.",
-  "portIsIn": "Port {port} is in use by another program. Pick another port, then update it in Plex or Jellyfin.",
+  "portIsIn": "Port {port} is in use by another program. Pick another port, then update it in Plex, Jellyfin or Emby.",
   "@portIsIn": {
     "placeholders": {
       "port": {
@@ -502,6 +483,14 @@
   "captionsOff": "Captions off",
   "guest": "Guest",
   "thereHasTo": "There has to be at least one grown-up profile.",
+  "kidProfilesNeedPins": "While there are kid profiles, every grown-up profile needs a PIN so kids can't switch into it. Set a PIN on {names}.",
+  "@kidProfilesNeedPins": {
+    "placeholders": {
+      "names": {
+        "type": "Object"
+      }
+    }
+  },
   "switchToAnother": "Switch to another profile before deleting this one.",
   "me": "Me",
   "couldntOpenA": "Couldn't open a network port for the remote.",
@@ -669,8 +658,8 @@
   "thoseArentPremiere": "Those aren't premiere settings.",
   "theLogoMode": "The logo mode is always, nowAndThen or off.",
   "thatIsntAPicture": "That isn't a picture in the custom logos folder.",
-  "couldntSaveASafety": "Couldn't save a safety backup first, so nothing was reset: {e}",
-  "@couldntSaveASafety": {
+  "couldntSaveBackupNothingReset": "Couldn't save a backup first, so nothing was reset: {e}",
+  "@couldntSaveBackupNothingReset": {
     "placeholders": {
       "e": {
         "type": "Object"
@@ -808,6 +797,21 @@
       }
     }
   },
+  "listSeparator": ", ",
+  "@listSeparator": {
+    "description": "Between names in a list, before the last one joined by \"and\": \", \" in English, \"、\" in Japanese and Chinese."
+  },
+  "labelValue": "{label}: {value}",
+  "@labelValue": {
+    "placeholders": {
+      "label": {
+        "type": "Object"
+      },
+      "value": {
+        "type": "Object"
+      }
+    }
+  },
   "restore": "Restore",
   "liveTvExportMoves": "Live TV export moves to this device; turn it off on the old one.",
   "willNeedTo": "{need} will need to sign in to their server again.",
@@ -829,44 +833,10 @@
     }
   },
   "delete": "Delete",
-  "saveToFile": "Save to file",
-  "madeOn": "Made on {device}",
-  "@madeOn": {
-    "placeholders": {
-      "device": {
-        "type": "Object"
-      }
-    }
-  },
+  "saveToFile": "Save to a file",
   "moveOkSelectEsc": "▲▼◀▶ Move    OK Select    ESC Back",
   "backupRestore": "Backup & restore",
-  "backups": "BACKUPS",
-  "backUpNow": "Back up now",
-  "aBackupHolds": "A backup holds every profile with its channels, blocks, commercials and settings, and is made every day something changes. Sign-in passwords are never in it.",
-  "lastBackup": "Last backup: {toLocal} ({kindLabel}).",
-  "@lastBackup": {
-    "placeholders": {
-      "toLocal": {
-        "type": "Object"
-      },
-      "kindLabel": {
-        "type": "Object"
-      }
-    }
-  },
-  "noBackupsYet": "No backups yet.",
-  "itCantBe": "{toLocal} · {kindLabel}. It can't be brought back.",
-  "@itCantBe": {
-    "placeholders": {
-      "toLocal": {
-        "type": "Object"
-      },
-      "kindLabel": {
-        "type": "Object"
-      }
-    }
-  },
-  "deleteThisBackup": "Delete this backup?",
+  "aBackupHolds": "A backup holds every profile with its channels, blocks, commercials and settings. It's kept up to date as things change. Sign-in passwords are never in it.",
   "couldntSaveThe": "Couldn't save the backup: {e}",
   "@couldntSaveThe": {
     "placeholders": {
@@ -1427,6 +1397,10 @@
       }
     }
   },
+  "fullStop": ".",
+  "@fullStop": {
+    "description": "Ends a sentence built from pieces: \".\" in English, \"。\" in Japanese and Chinese."
+  },
   "longCommercialVideos": "Long commercial videos without chapters can't be split on this device",
   "installFfmpegTo": "Install ffmpeg to split long commercial videos",
   "picturesOnThis": "Pictures on this device, newest first. Big ones are shrunk to 512 px.",
@@ -1831,9 +1805,9 @@
   "quality": "QUALITY",
   "lineups": "LINEUPS",
   "liveTvExport2": "Live TV export",
-  "automaticDiscoveryIsnt": "Automatic discovery isn't available on this PC. Add the tuner in Plex or Jellyfin by its address.",
+  "automaticDiscoveryIsnt": "Automatic discovery isn't available on this PC. Add the tuner in Plex, Jellyfin or Emby by its address.",
   "anyoneOnYour": "Anyone on your home network can watch this lineup.",
-  "watchYourChannels": "Watch your channels in Plex, Jellyfin or any IPTV app on your home network. Nightingale TV has to stay open for them to play.",
+  "watchYourChannels": "Watch your channels in Plex, Jellyfin, Emby or any IPTV app on your home network. Nightingale TV has to stay open for them to play.",
   "offline": "Offline",
   "online": "Online",
   "added": "Added",
@@ -1870,7 +1844,7 @@
   "connect": "Connect",
   "serverAddress": "Server address",
   "connectToYour": "Connect to your server",
-  "nightingaleTvTurns": "Nightingale TV turns your Jellyfin, Emby or Plex library into always-on channels with a program guide. Flip around and catch whatever is on.",
+  "nightingaleTvTurns": "Nightingale TV turns your videos into always-on channels with a program guide. Connect Jellyfin, Emby, Plex, YouTube or an SMB share, such as a NAS. Flip around and catch whatever is on.",
   "yourLibraryOn": "Your library.\nOn the air, 24/7.",
   "welcomeToNightingale": "Welcome to Nightingale TV",
   "signInFor": "Sign in for {name}",
@@ -2250,10 +2224,29 @@
       }
     }
   },
+  "decadesGenres": "{decades} {genres}",
+  "@decadesGenres": {
+    "placeholders": {
+      "decades": {
+        "type": "Object"
+      },
+      "genres": {
+        "type": "Object"
+      }
+    }
+  },
   "settingUpYour": "Setting up your channels",
   "couldntLoadYour": "Couldn't load your library",
   "upNext": "Up next: {title}",
   "@upNext": {
+    "placeholders": {
+      "title": {
+        "type": "Object"
+      }
+    }
+  },
+  "firstUp": "First up: {title}",
+  "@firstUp": {
     "placeholders": {
       "title": {
         "type": "Object"
@@ -2408,23 +2401,6 @@
   "download": "Download",
   "itReplacesThe": "It replaces the profiles, channels and settings here.",
   "restoreThisBackup": "Restore this backup?",
-  "backupActions": "Backup actions",
-  "channels6": "{profiles} · {channels} channels · {device}",
-  "@channels6": {
-    "placeholders": {
-      "profiles": {
-        "type": "Object"
-      },
-      "channels": {
-        "type": "Object"
-      },
-      "device": {
-        "type": "Object"
-      }
-    }
-  },
-  "noneYetOne": "None yet. One is saved each day the household changes.",
-  "savedOnThe": "Saved on the server",
   "restoring": "Restoring…",
   "restoreFromAFile": "Restore from a file…",
   "downloadABackup": "Download a backup now",
@@ -3374,26 +3350,6 @@
   "programsPlayBack": "Programs play back to back, with no breaks.",
   "everyShowFills": "Every show fills a half-hour slot (an hour or more for long ones), so the guide stays on the clock.",
   "chooseHowLong": "Choose how long each break is, how often shows break, and which pool each break draws from.",
-  "kindSentenceAutomatic": "automatic",
-  "kindSentenceBeforeRestore": "before restore",
-  "kindSentenceBeforeReset": "before reset",
-  "kindSentenceBeforeDeletingAProfile": "before deleting a profile",
-  "kindSentenceBeforeDeleting": "before deleting {subject}",
-  "@kindSentenceBeforeDeleting": {
-    "placeholders": {
-      "subject": {
-        "type": "Object"
-      }
-    }
-  },
-  "kindSentenceBeforeUpdate": "before update",
-  "kindSentenceBeforeLineupCleanup": "before lineup cleanup",
-  "kindSentenceFromAFile": "from a file",
-  "kindSentenceMovingToOfficial": "moving to Nightingale TV",
-  "kindSentenceMovingToOwnBuild": "moving to Nightingale TV (own build)",
-  "kindSentenceFromOfficial": "from Nightingale TV",
-  "kindSentenceFromOwnBuild": "from Nightingale TV (own build)",
-  "kindSentenceMadeByYou": "made by you",
   "copyAction": "Copy",
   "channelKidsZone": "Kids Zone",
   "channelToonTv": "Toon TV",
@@ -3597,6 +3553,14 @@
   "everyShow2": "every show",
   "decades": "Decades",
   "decadesHeading": "DECADES",
+  "decadeYears": "{decade}s",
+  "@decadeYears": {
+    "placeholders": {
+      "decade": {
+        "type": "Object"
+      }
+    }
+  },
   "channelActionTv": "Action TV",
   "channelSciFiTv": "Sci-Fi TV",
   "channelFantasyTv": "Fantasy TV",
@@ -3640,6 +3604,13 @@
   "sendErrorReportsFrom": "Send error reports from this device",
   "errorReportsExplain": "When something goes wrong, Nightingale TV sends its developer a short report: the error, the app version, the kind of device, and the last few screens and channel numbers. Server addresses, passwords and keys, names and file paths are taken out before it's sent. Titles and what you watch are never sent.",
   "errorReportsOff": "Turn this off and nothing is sent from this device; reports waiting to go are deleted.",
+  "recentReports": "Recent reports",
+  "reportKindTest": "Test",
+  "reportKindVideo": "Video report",
+  "reportKindError": "Error",
+  "reportKindExit": "Unexpected exit",
+  "reportKindSlowStart": "Slow start",
+  "errorReportsAutomatic": "A report is also sent by itself after the app closed unexpectedly or started slowly, with the screens, channels, start-up steps and memory figures from just before.",
   "sendATestReport": "Send a test report",
   "lastReportId": "Last report ID: {id}",
   "@lastReportId": {
@@ -3718,6 +3689,9 @@
   },
   "unlock": "Unlock",
   "checkMyPurchaseAgain": "Check my purchase again",
+  "redeemPlayCode": "Redeem a Play code",
+  "redeemCodeTitle": "Redeem a code",
+  "redeemCodeText": "Redeem your code at play.google.com/redeem on a phone or computer, signed in with the Google account this device uses. Then pick Check my purchase again.",
   "noPurchaseFound": "No purchase found",
   "noPurchaseFoundText": "No purchase of Nightingale TV was found for the Google account on this device. If you've just bought it, try again in a moment.",
   "purchaseNotCompleted": "Purchase not completed",
@@ -4274,5 +4248,723 @@
         "type": "Object"
       }
     }
-  }
+  },
+  "smbGuestsRefused": "This computer doesn't let guests in. Enter a user name and password.",
+  "@smbGuestsRefused": {
+    "description": "SMB sign-in: the host refuses guest sign-ins by its own rules (as opposed to a wrong password)."
+  },
+  "smbNoAccess": "No access",
+  "@smbNoAccess": {
+    "description": "SMB: the user may not open this share or folder."
+  },
+  "smbShareGone": "{name} isn't there any more.",
+  "@smbShareGone": {
+    "description": "SMB: the share (or a folder of it) no longer exists. name is the share's name.",
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "smbReadingFiles": "Reading the files on {name}…",
+  "@smbReadingFiles": {
+    "description": "Status while the first files of a new share are read for their lengths. name is the share's name.",
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "smbScanningFolders": "Scanning {name}: {count} folders…",
+  "@smbScanningFolders": {
+    "description": "Status while a share's folders are listed.",
+    "placeholders": {
+      "name": {
+        "type": "String"
+      },
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "smbShareOnHost": "{share} on {host}",
+  "@smbShareOnHost": {
+    "description": "A share's default name: the share and the computer it is on (\"media on NAS\").",
+    "placeholders": {
+      "share": {
+        "type": "String"
+      },
+      "host": {
+        "type": "String"
+      }
+    }
+  },
+  "smbNotAnAddress": "That isn't a share's address. Type it as smb://computer/share or \\\\computer\\share.",
+  "@smbNotAnAddress": {
+    "description": "SMB sign-in: the typed address can't be read."
+  },
+  "smbCantReach": "Couldn't reach {host}.",
+  "@smbCantReach": {
+    "description": "SMB: the computer doesn't answer. host is its name or address.",
+    "placeholders": {
+      "host": {
+        "type": "String"
+      }
+    }
+  },
+  "smbAnotherShare": "That's another share than {name}.",
+  "@smbAnotherShare": {
+    "description": "Signing a share in again found a different share at the address.",
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "smbMapOne": "Choose what at least one folder holds.",
+  "@smbMapOne": {
+    "description": "SMB folder mapping: Done pressed with no folder mapped."
+  },
+  "smbShareButton": "SMB share",
+  "@smbShareButton": {
+    "description": "Sign-in: the button that adds a shared folder (SMB, Samba, Windows file sharing) instead of a media server."
+  },
+  "smbFindTitle": "Add a share",
+  "@smbFindTitle": {
+    "description": "Title of the step that finds SMB hosts on the network."
+  },
+  "smbFindHelp": "Pick a computer or NAS, or type its share's address.",
+  "@smbFindHelp": {
+    "description": "Under the SMB find step's title."
+  },
+  "smbAddress": "Share address",
+  "@smbAddress": {
+    "description": "Label of the field for an SMB address."
+  },
+  "smbSearching": "Looking for computers…",
+  "@smbSearching": {
+    "description": "Shown while SMB hosts are being looked for."
+  },
+  "smbSearchAgain": "Search again",
+  "@smbSearchAgain": {
+    "description": "Button: look for SMB hosts again."
+  },
+  "smbNoneFound": "No computers found. Type the share's address.",
+  "@smbNoneFound": {
+    "description": "No SMB host answered on the network."
+  },
+  "smbSharesOn": "Shares on {host}",
+  "@smbSharesOn": {
+    "description": "Title of the list of a computer's shares.",
+    "placeholders": {
+      "host": {
+        "type": "String"
+      }
+    }
+  },
+  "smbNoShares": "{host} has no shares you can open.",
+  "@smbNoShares": {
+    "description": "A computer lists no shares.",
+    "placeholders": {
+      "host": {
+        "type": "String"
+      }
+    }
+  },
+  "smbOld": "SMB1: old and not encrypted",
+  "@smbOld": {
+    "description": "Note on a share whose computer only speaks the oldest SMB version."
+  },
+  "smbSignInTo": "Sign in to {host}",
+  "@smbSignInTo": {
+    "description": "Title of the SMB sign-in step.",
+    "placeholders": {
+      "host": {
+        "type": "String"
+      }
+    }
+  },
+  "smbDomain": "Domain (optional)",
+  "@smbDomain": {
+    "description": "Optional Windows domain field on the SMB sign-in step."
+  },
+  "smbAsGuest": "Connect as guest",
+  "@smbAsGuest": {
+    "description": "Button: open the share without a user name."
+  },
+  "smbWhatsIn": "What's in {share}?",
+  "@smbWhatsIn": {
+    "description": "Title of the folder mapping step.",
+    "placeholders": {
+      "share": {
+        "type": "String"
+      }
+    }
+  },
+  "smbMapHelp": "Choose what each folder holds. Folders left at Nothing are ignored; a folder inside a chosen one can have its own choice. OK on a folder's name opens it.",
+  "@smbMapHelp": {
+    "description": "Help on the folder mapping step."
+  },
+  "smbTypeNone": "Nothing",
+  "@smbTypeNone": {
+    "description": "A folder mapped to no content type."
+  },
+  "smbTypeTv": "TV shows",
+  "@smbTypeTv": {
+    "description": "Folder content type."
+  },
+  "smbTypeMovies": "Movies",
+  "@smbTypeMovies": {
+    "description": "Folder content type."
+  },
+  "smbTypeMusic": "Music",
+  "@smbTypeMusic": {
+    "description": "Folder content type."
+  },
+  "smbTypeMusicVideos": "Music videos",
+  "@smbTypeMusicVideos": {
+    "description": "Folder content type."
+  },
+  "smbTypeHome": "Home videos",
+  "@smbTypeHome": {
+    "description": "Folder content type."
+  },
+  "smbTypeCommercials": "Commercials",
+  "@smbTypeCommercials": {
+    "description": "Folder content type: clips for commercial breaks."
+  },
+  "smbTypeBumpers": "Bumpers",
+  "@smbTypeBumpers": {
+    "description": "Folder content type: clips that frame commercial breaks."
+  },
+  "smbAsAbove": "{type} (as above)",
+  "@smbAsAbove": {
+    "description": "A folder that takes the type of the mapped folder around it.",
+    "placeholders": {
+      "type": {
+        "type": "String"
+      }
+    }
+  },
+  "smbUp": "Up a folder",
+  "@smbUp": {
+    "description": "Button: show the folder above on the mapping step."
+  },
+  "smbHistoryName": "History name",
+  "@smbHistoryName": {
+    "description": "Field: the name a share's watched history is kept under."
+  },
+  "smbHistoryHelp": "TVs using the same history name share play counts and resume points. They are kept in a hidden .nightingale folder on the share; nothing else on it is changed.",
+  "@smbHistoryHelp": {
+    "description": "Explains where a share's history is kept."
+  },
+  "smbKeepLocal": "Keep history on this device",
+  "@smbKeepLocal": {
+    "description": "Toggle: don't write history to the share."
+  },
+  "smbReadOnly": "This share is read-only: history is kept on this device.",
+  "@smbReadOnly": {
+    "description": "A share that can't be written to."
+  },
+  "smbFoldersDone": "Done",
+  "@smbFoldersDone": {
+    "description": "Finish mapping a share's folders."
+  },
+  "smbFilesLeft": "Reading {count} files",
+  "@smbFilesLeft": {
+    "description": "Servers: how many files of a share are still being read for their lengths.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "smbHistoryOnShare": "History: on the share, as \"{name}\"",
+  "@smbHistoryOnShare": {
+    "description": "Servers: where a share's watched history is kept.",
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "smbHistoryOnDevice": "History: on this device",
+  "@smbHistoryOnDevice": {
+    "description": "Servers: a share's history is kept on this device by choice."
+  },
+  "smbHistoryReadOnly": "History: on this device (the share is read-only)",
+  "@smbHistoryReadOnly": {
+    "description": "Servers: the share can't be written to."
+  },
+  "smbFolders": "Folders",
+  "@smbFolders": {
+    "description": "Servers: the button that opens a share's folder mapping."
+  },
+  "smbCantPlay": "Can't play ({count})",
+  "@smbCantPlay": {
+    "description": "Servers: the button listing files of a share nothing can play.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "smbCantPlayTitle": "Can't play · {name}",
+  "@smbCantPlayTitle": {
+    "description": "Title of the list of files nothing can play.",
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "smbCantPlayHelp": "These files aren't scheduled. Check again after fixing a file, or after pairing a Nightingale TV that converts.",
+  "@smbCantPlayHelp": {
+    "description": "Help on the Can't play list."
+  },
+  "smbCheckAgain": "Check again",
+  "@smbCheckAgain": {
+    "description": "Button: check every listed file again."
+  },
+  "smbCantPlayNone": "Every file can be played.",
+  "@smbCantPlayNone": {
+    "description": "The Can't play list is empty."
+  },
+  "smbReasonDamaged": "Damaged",
+  "@smbReasonDamaged": {
+    "description": "Why a file can't play: it can't be read."
+  },
+  "smbReasonNoVideo": "No video in it",
+  "@smbReasonNoVideo": {
+    "description": "Why a file can't play: it holds no picture."
+  },
+  "smbReasonTooMuch": "Too much for this device, and no other Nightingale TV to convert it",
+  "@smbReasonTooMuch": {
+    "description": "Why a file can't play."
+  },
+  "smbRenameTitle": "Rename {name}",
+  "@smbRenameTitle": {
+    "description": "Title of the dialog that renames a share.",
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "smbFoldersTitle": "Folders · {name}",
+  "@smbFoldersTitle": {
+    "description": "Title of a share's folder mapping screen.",
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "smbSave": "Save",
+  "@smbSave": {
+    "description": "Saves a share's folders."
+  },
+  "smbQualityNote": "A share's files are converted to fit by another Nightingale TV when one is paired; with none, they play as they are, since converting on this device wouldn't use less of the network.",
+  "@smbQualityNote": {
+    "description": "Quality limit screen of a share."
+  },
+  "smbHomeCantShare": "Home videos can't be shared",
+  "@smbHomeCantShare": {
+    "description": "Share channels: why a channel of only home videos has no check box."
+  },
+  "smbHomeVideo": "Home video",
+  "@smbHomeVideo": {
+    "description": "Sent in place of a home video's name in a watch party."
+  },
+  "licencesTitle": "Licences",
+  "@licencesTitle": {
+    "description": "Menu item and screen listing the open-source software the app is built with, and their licences."
+  },
+  "licencesHelp": "Nightingale TV is free software under the GNU GPL 3. It's built with this software, each under its own licence.",
+  "@licencesHelp": {
+    "description": "Help at the top of the licences screen."
+  },
+  "colorPurple": "Purple",
+  "@colorPurple": {
+    "description": "A guide colour for a server."
+  },
+  "colorGreen": "Green",
+  "@colorGreen": {
+    "description": "A guide colour for a server."
+  },
+  "colorAmber": "Amber brown",
+  "@colorAmber": {
+    "description": "A guide colour for a server."
+  },
+  "colorTeal": "Teal",
+  "@colorTeal": {
+    "description": "A guide colour for a server."
+  },
+  "colorMagenta": "Magenta",
+  "@colorMagenta": {
+    "description": "A guide colour for a server."
+  },
+  "colorOlive": "Olive",
+  "@colorOlive": {
+    "description": "A guide colour for a server."
+  },
+  "colorSlate": "Slate",
+  "@colorSlate": {
+    "description": "A guide colour for a server."
+  },
+  "colorCocoa": "Cocoa",
+  "@colorCocoa": {
+    "description": "A guide colour for a server."
+  },
+  "colorWine": "Wine",
+  "@colorWine": {
+    "description": "A guide colour for a server."
+  },
+  "guideColor": "Guide colour",
+  "@guideColor": {
+    "description": "Button: the colour a server's programs have in the guide."
+  },
+  "guideColorTitle": "Guide colour · {name}",
+  "@guideColorTitle": {
+    "description": "Title of the screen picking a server's guide colour.",
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "guideColorHelp": "Programs from this server have this colour in the guide.",
+  "@guideColorHelp": {
+    "description": "Help on the guide colour screen."
+  },
+  "guideColorUsedBy": "{color} · {name}",
+  "@guideColorUsedBy": {
+    "description": "A colour another server already has.",
+    "placeholders": {
+      "color": {
+        "type": "String"
+      },
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "serverColorsSetting": "Server colours in the guide",
+  "@serverColorsSetting": {
+    "description": "Toggle: colour each program by the server it plays from."
+  },
+  "serverColorsHelp": "Each program has the colour of the server it plays from, with a key under the guide.",
+  "@serverColorsHelp": {
+    "description": "Under the server colours toggle."
+  },
+  "playsFrom": "From {name}",
+  "@playsFrom": {
+    "description": "Guide info panel: the server the highlighted program plays from.",
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "convertForOthers": "Convert for other TVs",
+  "@convertForOthers": {
+    "description": "Setting on the Linux app and Docker server: convert share files for paired TVs that can't play them."
+  },
+  "convertForOthersHelp": "TVs that can't play a file from a share ask this computer to convert it. It needs the same share in one of its profiles, and only converts files in that share's mapped folders.",
+  "@convertForOthersHelp": {
+    "description": "Help on the Convert for other TVs screen."
+  },
+  "convertCode": "Pairing code: {code}",
+  "@convertCode": {
+    "description": "The 6-digit code a TV enters to pair with this computer.",
+    "placeholders": {
+      "code": {
+        "type": "String"
+      }
+    }
+  },
+  "convertPairedTvs": "Paired TVs",
+  "@convertPairedTvs": {
+    "description": "Heading of the list of TVs paired for converting."
+  },
+  "convertNoTvs": "No TV is paired yet.",
+  "@convertNoTvs": {
+    "description": "Empty list of paired TVs."
+  },
+  "convertHelpers": "Convert on other Nightingale TVs",
+  "@convertHelpers": {
+    "description": "Servers: the screen for pairing a computer that converts files this device can't play."
+  },
+  "convertHelpersHelp": "A Nightingale TV on a computer or the Docker server can convert files from shares that this device can't play, or not fast enough. Turn on Convert for other TVs there, then pair with the code it shows.",
+  "@convertHelpersHelp": {
+    "description": "Help on the helpers screen."
+  },
+  "convertFind": "Find on the network",
+  "@convertFind": {
+    "description": "Button: look for Nightingale TVs that convert."
+  },
+  "convertTypeAddress": "Type its address",
+  "@convertTypeAddress": {
+    "description": "Button: pair with a helper by its address."
+  },
+  "convertAddress": "Address of the Nightingale TV",
+  "@convertAddress": {
+    "description": "Title of the prompt for a helper's address."
+  },
+  "convertEnterCode": "Code shown on {name}",
+  "@convertEnterCode": {
+    "description": "Title of the prompt for a helper's pairing code.",
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "convertWrongCode": "That code isn't right, or {name} didn't answer.",
+  "@convertWrongCode": {
+    "description": "Pairing with a helper failed.",
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "convertNoneFound": "No Nightingale TV that converts was found. Check that Convert for other TVs is on there, or type its address.",
+  "@convertNoneFound": {
+    "description": "Finding helpers found none."
+  },
+  "convertAddShareOn": "Add {share} on {name}",
+  "@convertAddShareOn": {
+    "description": "A paired helper lacks one of this profile's shares.",
+    "placeholders": {
+      "share": {
+        "type": "String"
+      },
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "convertNotAnswering": "{name} isn't answering",
+  "@convertNotAnswering": {
+    "description": "A paired helper doesn't answer.",
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "convertPair": "Pair",
+  "@convertPair": {
+    "description": "Button: pair with a helper found on the network."
+  },
+  "serverKindsHelp": "You can add Jellyfin, Emby, Plex, YouTube and SMB shares (a NAS, or a computer's shared folder).",
+  "@serverKindsHelp": {
+    "description": "Servers screen, above Add a server: the kinds of server that can be added. Jellyfin, Emby, Plex, SMB and NAS aren't translated."
+  },
+  "youTube": "YouTube",
+  "youTubeTerms": "By signing in you agree to YouTube's Terms of Service and the Nightingale TV privacy policy.",
+  "youTubeTermsOfService": "YouTube Terms of Service",
+  "privacyPolicy": "Privacy policy",
+  "youTubeEnterCode": "On your phone or computer, go to {address} and enter this code.",
+  "@youTubeEnterCode": {
+    "placeholders": {
+      "address": {
+        "type": "String"
+      }
+    }
+  },
+  "openGoogleDevice": "Open google.com/device",
+  "signInWasCancelled": "Sign-in was cancelled",
+  "youTubeChannelsTitle": "YouTube channels",
+  "youTubePickedOf": "{count} of {limit}",
+  "@youTubePickedOf": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      },
+      "limit": {
+        "type": "int"
+      }
+    }
+  },
+  "notSubscribed": "Not subscribed",
+  "searchSubscriptions": "Search your subscriptions",
+  "noSubscriptions": "This account has no subscriptions",
+  "noSubscriptionsMatch": "No subscription matches",
+  "removeYouTubeChannels": "Remove {names} from the guide?",
+  "@removeYouTubeChannels": {
+    "placeholders": {
+      "names": {
+        "type": "String"
+      }
+    }
+  },
+  "youTubeChannelCount": "{count, plural, =1{1 channel} other{{count} channels}}",
+  "@youTubeChannelCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "googleClient": "Google client",
+  "googleClientShared": "Nightingale TV's",
+  "googleClientOwn": "Your own",
+  "youTubeDailyLimit": "YouTube's daily limit is reached. New videos come after {time}.",
+  "@youTubeDailyLimit": {
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  },
+  "useMyOwnClient": "Use my own client",
+  "signInToYouTubeAgain": "Sign in to YouTube again",
+  "ownClientTitle": "Your own Google client",
+  "clientId": "Client ID",
+  "clientSecret": "Client secret",
+  "openClientFile": "Open file",
+  "clientFileNotRead": "That file isn't a Google client file",
+  "useThisClient": "Use this client",
+  "useSharedClient": "Use Nightingale TV's client",
+  "ownClientStep1": "Open console.cloud.google.com and create a project.",
+  "ownClientStep2": "Turn on YouTube Data API v3.",
+  "ownClientStep3": "Set up the OAuth consent screen with the youtube.readonly scope.",
+  "ownClientStep4": "Set its publishing status to In production.",
+  "ownClientStep5": "Create an OAuth client of the type TVs and Limited Input devices.",
+  "ownClientStep6": "Enter its Client ID and Client secret here, or open its downloaded file.",
+  "ownClientGuide": "The full guide: {address}",
+  "@ownClientGuide": {
+    "placeholders": {
+      "address": {
+        "type": "String"
+      }
+    }
+  },
+  "clientRefused": "Google didn't accept this client. It must be of the type TVs and Limited Input devices.",
+  "noVideosYet": "No videos yet",
+  "youTubeRefusedPlayer": "YouTube didn't accept this player",
+  "youTubeNeedsWebView": "YouTube needs Android System WebView",
+  "getItFromPlayStore": "Get it from the Play Store: {address}",
+  "@getItFromPlayStore": {
+    "placeholders": {
+      "address": {
+        "type": "String"
+      }
+    }
+  },
+  "youTubeChannelSource": "YouTube channel: {title}",
+  "@youTubeChannelSource": {
+    "placeholders": {
+      "title": {
+        "type": "String"
+      }
+    }
+  },
+  "publishedOn": "Published {date}",
+  "@publishedOn": {
+    "placeholders": {
+      "date": {
+        "type": "String"
+      }
+    }
+  },
+  "youTubeCantBeShared": "YouTube channels can't be shared",
+  "youTubeAlreadyRemovedQuota": "Try again after YouTube's daily limit resets.",
+  "youTubeAccount": "YouTube account",
+  "couldNotReachGoogle": "Google couldn't be reached. Try again.",
+  "youTubeDailyLimitShort": "YouTube's daily limit is reached.",
+  "youTubeNoBreaks": "YouTube channels have no breaks.",
+  "youTubeNoBlocks": "YouTube channels can't have programming blocks.",
+  "youTubeAccessNeeded": "Nightingale TV needs to see your YouTube subscriptions. Enter the new code and allow it.",
+  "youTubeRemoveBody": "Its channels leave the lineup, and Nightingale TV's access to your YouTube account ends.",
+  "playerQuality": "Quality",
+  "playerQualityValue": "Quality: {value}",
+  "@playerQualityValue": {
+    "placeholders": {
+      "value": {
+        "type": "String"
+      }
+    }
+  },
+  "playerQualityAuto": "Auto",
+  "playerQualityOriginal": "Original",
+  "playerQualityMbps": "{mbps} Mbps",
+  "@playerQualityMbps": {
+    "placeholders": {
+      "mbps": {
+        "type": "int"
+      }
+    }
+  },
+  "youTubeNoClient": "This build has no YouTube client. Its README says how to add one.",
+  "youTubeSharedLimit": "Nightingale TV's client allows {limit} YouTube channels. For more, use your own Google client in Servers → YouTube → Google client.",
+  "@youTubeSharedLimit": {
+    "placeholders": {
+      "limit": {
+        "type": "int"
+      }
+    }
+  },
+  "youTubeSharedTooMany": "Nightingale TV's client allows {limit} YouTube channels. Remove some in Channels first.",
+  "@youTubeSharedTooMany": {
+    "placeholders": {
+      "limit": {
+        "type": "int"
+      }
+    }
+  },
+  "lastBackedUp": "Last backed up: {when}",
+  "@lastBackedUp": {
+    "placeholders": {
+      "when": {
+        "type": "Object"
+      }
+    }
+  },
+  "notBackedUpYet": "Not backed up yet.",
+  "undoRestore": "Undo restore",
+  "undoLineupReset": "Undo lineup reset",
+  "undoDeleting": "Undo deleting {name}",
+  "@undoDeleting": {
+    "placeholders": {
+      "name": {
+        "type": "Object"
+      }
+    }
+  },
+  "undoDeletingAProfile": "Undo deleting a profile",
+  "undoUpdate": "Undo update",
+  "undoLineupCleanup": "Undo lineup cleanup",
+  "undoTitle": "{action} · {time}",
+  "@undoTitle": {
+    "placeholders": {
+      "action": {
+        "type": "Object"
+      },
+      "time": {
+        "type": "Object"
+      }
+    }
+  },
+  "undoPointSaved": "Saved {when}: {profiles}",
+  "@undoPointSaved": {
+    "placeholders": {
+      "when": {
+        "type": "Object"
+      },
+      "profiles": {
+        "type": "Object"
+      }
+    }
+  },
+  "pickThePlaylistFileAgain": "Pick the playlist file again",
+  "pickTheGuideFileAgain": "Pick the guide file again",
+  "playlistFileNotOnDevice": "The playlist file isn't on this device",
+  "guideFileNotOnDevice": "The guide file isn't on this device",
+  "youTubeServerOwnClient": "Server mode uses your own Google client.",
+  "uploadJsonFile": "Upload JSON file",
+  "continueStep": "Continue",
+  "watchNoChannels": "This profile has no YouTube channels. Add YouTube in Servers."
 }

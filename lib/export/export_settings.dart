@@ -34,7 +34,7 @@ enum ExportEncoderChoice {
 }
 
 /// One profile's export: whether it's on, and the address and tuner identity
-/// Plex and Jellyfin remember it by. Kept while export is off, so turning it
+/// Plex, Jellyfin and Emby remember it by. Kept while export is off, so turning it
 /// back on finds the same device in the same place.
 class ProfileExport {
   const ProfileExport({required this.exported, required this.port, required this.deviceId, required this.deviceAuth});

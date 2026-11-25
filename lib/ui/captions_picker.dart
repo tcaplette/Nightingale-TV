@@ -39,7 +39,7 @@ String captionsButtonLabel(Tuner tuner) {
 /// all work it (TvToggle rows). True when a track row was chosen.
 Future<bool> showCaptionsPicker(BuildContext context, Tuner tuner) async {
   // The program's tracks are asked for now, captions on or off.
-  final loading = tuner.isLive ? null : tuner.loadSubtitleTracks();
+  final loading = tuner.isLive || tuner.channel?.isYouTube == true ? null : tuner.loadSubtitleTracks();
   final chosen = await showDialog<_Choice>(
     context: context,
     barrierColor: Colors.black87,
@@ -51,7 +51,7 @@ Future<bool> showCaptionsPicker(BuildContext context, Tuner tuner) async {
   if (chosen == null) return false;
   switch (chosen) {
     case _Off():
-      if (tuner.isLive) {
+      if (tuner.isLive || tuner.channel?.isYouTube == true) {
         await tuner.setCaptions(false);
       } else {
         await tuner.pickSubtitle(null);
@@ -95,7 +95,9 @@ class _CaptionsDialog extends StatelessWidget {
     void row(Widget child) => rows.addAll([Align(alignment: Alignment.centerLeft, child: child), const SizedBox(height: 10)]);
     void note(String text) => row(TvToggle(label: text, radio: true, on: false, onPressed: null));
 
-    if (tuner.isLive) {
+    // Live and YouTube channels: their own captions, Off or On.
+    final ownCaptions = tuner.isLive || tuner.channel?.isYouTube == true;
+    if (ownCaptions) {
       row(TvToggle(label: tr.off, radio: true, on: !on, autofocus: !on, onPressed: () => Navigator.pop(context, const _Off())));
       row(TvToggle(label: tr.onLabel2, radio: true, on: on, autofocus: on, onPressed: () => Navigator.pop(context, const _LiveOn())));
     } else {
@@ -151,6 +153,8 @@ class _CaptionsDialog extends StatelessWidget {
                 children: [
                   Text(tr.captions, style: g.display(48, weight: FontWeight.w800)),
                   const SizedBox(height: 24),
+                  // YouTube draws its own captions: no size here.
+                  if (tuner.channel?.isYouTube != true) ...[
                   Text(tr.size, style: g.display(30, weight: FontWeight.w700)),
                   const SizedBox(height: 14),
                   if (tuner.captionsBurnedIn)
@@ -180,6 +184,7 @@ class _CaptionsDialog extends StatelessWidget {
                     ),
                   ],
                   const SizedBox(height: 28),
+                  ],
                   ...rows,
                 ],
               ),

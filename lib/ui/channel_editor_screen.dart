@@ -306,7 +306,10 @@ class _ChannelEditorScreenState extends State<ChannelEditorScreen> {
                     style: g.display(portrait ? 40 : 56, weight: FontWeight.w800),
                   ),
                   Text(
-                    ch.isLive
+                    ch.isYouTube
+                        // Its source is its YouTube channel (youtube-subscriptions D7).
+                        ? [tr.youTubeChannelSource(app.youTubeTitleOf(ch)), tr.programs(ch.playlist.length)].join(' · ')
+                        : ch.isLive
                         ? [
                             tr.liveLabel,
                             if (live != null) live.source.name,
@@ -401,8 +404,8 @@ class _ChannelEditorScreenState extends State<ChannelEditorScreen> {
             ],
           ),
         ],
-        if (!ch.blockOnly && !ch.isLive) const SizedBox(height: 16),
-        if (!ch.blockOnly && !ch.isLive)
+        if (!ch.blockOnly && !ch.isLive && !ch.isYouTube) const SizedBox(height: 16),
+        if (!ch.blockOnly && !ch.isLive && !ch.isYouTube)
           Wrap(
             spacing: 16,
             runSpacing: 16,
@@ -423,7 +426,7 @@ class _ChannelEditorScreenState extends State<ChannelEditorScreen> {
             ],
           ),
         if (ch.playsPrograms) ..._slotControls(context, ch),
-        if (!ch.isLive) ...[
+        if (!ch.isLive && !ch.isYouTube) ...[
         const SizedBox(height: 28),
         Text(tr.commercials2, style: g.display(24, weight: FontWeight.w800, color: g.accent)),
         const SizedBox(height: 10),
@@ -466,6 +469,8 @@ class _ChannelEditorScreenState extends State<ChannelEditorScreen> {
           ],
         ),
         ],
+        // Nothing is drawn over a YouTube picture: no logo on it.
+        if (!ch.isYouTube) ...[
         const SizedBox(height: 28),
         Text(tr.channelLogo, style: g.display(24, weight: FontWeight.w800, color: g.accent)),
         const SizedBox(height: 10),
@@ -488,7 +493,8 @@ class _ChannelEditorScreenState extends State<ChannelEditorScreen> {
               ),
           ],
         ),
-        if (!ch.blockOnly && !ch.isMusic && !ch.isLive) ...[
+        ],
+        if (!ch.blockOnly && !ch.isMusic && !ch.isLive && !ch.isYouTube) ...[
           const SizedBox(height: 16),
           TvToggle(
             label: tr.newEpisodePremieres,
@@ -518,7 +524,7 @@ class _ChannelEditorScreenState extends State<ChannelEditorScreen> {
             ),
           ],
         ),
-        ChannelRetroSection(channel: ch),
+        if (!ch.isYouTube) ChannelRetroSection(channel: ch),
       ],
     );
   }

@@ -213,7 +213,7 @@ class SleepTimer extends ChangeNotifier {
       _say(minutes != null ? tr.sleepInMin(minutes) : tr.sleepAtEnd);
       _tick();
     }
-    if (wasFading) unawaited(tuner.media.setVolume(1));
+    if (wasFading) unawaited(tuner.setVolume(1));
     notifyListeners();
   }
 
@@ -252,7 +252,7 @@ class SleepTimer extends ChangeNotifier {
     choice = SleepChoice.off;
     deadline = null;
     phase = SleepPhase.idle;
-    if (wasFading) unawaited(tuner.media.setVolume(1));
+    if (wasFading) unawaited(tuner.setVolume(1));
     _note('cancel by $by');
     if (!hidden && hadTimer) _say(tr.sleepTimerOff);
     notifyListeners();
@@ -342,7 +342,7 @@ class SleepTimer extends ChangeNotifier {
     notifyListeners();
     _fade = Timer.periodic(fadeLength ~/ fadeSteps, (_) {
       _step++;
-      unawaited(tuner.media.setVolume(1 - _step / fadeSteps));
+      unawaited(tuner.setVolume(1 - _step / fadeSteps));
       if (_step >= fadeSteps) _sleep();
     });
   }
@@ -359,7 +359,7 @@ class SleepTimer extends ChangeNotifier {
     notifyListeners();
     _sleeping = () async {
       await tuner.stop();
-      await tuner.media.setVolume(1);
+      await tuner.setVolume(1);
       _note('stop, channel ${sleptOn?.number ?? '-'}');
       await _keepScreenOn(false);
     }();

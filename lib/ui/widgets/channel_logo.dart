@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import '../../channels/channel_initials.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
 import '../../app_scope.dart';
@@ -85,11 +86,7 @@ class ChannelLogo extends StatelessWidget {
         size: size,
       );
 
-  static String _initials(String name) {
-    final words = name.split(RegExp(r'\s+')).where((w) => w.isNotEmpty).toList();
-    if (words.length == 1) return words.first.substring(0, words.first.length.clamp(0, 4));
-    return words.take(3).map((w) => w[0]).join().toUpperCase();
-  }
+  static String _initials(String name) => channelInitials(name, none: tr.tv);
 }
 
 /// A generic TV-station style badge: short call letters on a shape.

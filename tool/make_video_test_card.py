@@ -3,14 +3,15 @@
 
 Draws a 1920x1080 card, encodes it into three 1 s, 24 fps clips with one
 keyframe, signalled BT.709 limited range (h264 High, hevc Main, hevc10
-Main10), decodes each again with ffmpeg and writes what each should measure
+Main10), and, at 720x480 in BT.601 limited range, an MPEG-2 one (a width
+decoders pad), decodes each again with ffmpeg and writes what each should measure
 to card_expected.json. The measurement is design D2's, ported line for line
 from lib/reporting/picture_measure.dart; test/picture_measure_test.dart
 checks the two agree on the decoded h264 card, which this also writes as a
 PNG fixture.
 
   tool/make_video_test_card.py [--out assets/video_test]
-      [--fixture test/fixtures/video_test/card_h264.png]
+      [--fixture test/fixtures/video_test/card_h264.png] [--only mpeg2 ...]
 
 Needs Pillow, numpy and ffmpeg with libx264 and libx265.
 """
@@ -51,7 +52,23 @@ CLIPS = {
                  '-x265-params', 'log-level=error:keyint=24:min-keyint=24:scenecut=0:bframes=0:'
                                  'colorprim=bt709:transfer=bt709:colormatrix=bt709:range=limited'],
     },
+    'mpeg2': {
+        'pix_fmt': 'yuv420p',
+        'size': (720, 480),
+        'matrix': 'bt601',
+        'extension': 'ts',
+        'args': ['-c:v', 'mpeg2video', '-q:v', '2', '-g', '24', '-bf', '0', '-color_primaries', 'smpte170m',
+                 '-color_trc', 'smpte170m', '-colorspace', 'smpte170m', '-f', 'mpegts'],
+    },
 }
+
+
+def size_of(clip):
+    return clip.get('size', (W, H))
+
+
+def file_of(name):
+    return f"{name}.{CLIPS[name].get('extension', 'mp4')}"
 
 
 def draw_card():
@@ -133,19 +150,20 @@ def run(cmd):
 def encode(png, out, clip):
     run(['ffmpeg', '-v', 'error', '-y', '-loop', '1', '-framerate', str(FPS), '-i', png,
          '-frames:v', str(FRAMES),
-         '-vf', 'scale=out_color_matrix=bt709:out_range=tv:flags=accurate_rnd+full_chroma_int,'
+         '-vf', f"scale=out_color_matrix={clip.get('matrix', 'bt709')}:out_range=tv:flags=accurate_rnd+full_chroma_int,"
                 'format=' + clip['pix_fmt'],
          '-color_primaries', 'bt709', '-color_trc', 'bt709', '-colorspace', 'bt709', '-color_range', 'tv',
          *clip['args'], '-an', '-movflags', '+faststart', out])
 
 
-def decode_first_frame(path):
-    """The clip's first frame, as RGB, converted with BT.709 limited range."""
+def decode_first_frame(path, clip):
+    """The clip's first frame, as RGB, converted with its matrix, limited range."""
     raw = run(['ffmpeg', '-v', 'error', '-i', path, '-frames:v', '1',
-               '-vf', 'scale=in_color_matrix=bt709:in_range=tv:out_range=pc:'
+               '-vf', f"scale=in_color_matrix={clip.get('matrix', 'bt709')}:in_range=tv:out_range=pc:"
                       'flags=accurate_rnd+full_chroma_int:sws_dither=none,format=rgb24',
                '-f', 'rawvideo', '-'])
-    return np.frombuffer(raw, np.uint8).reshape(H, W, 3)
+    w, h = size_of(clip)
+    return np.frombuffer(raw, np.uint8).reshape(h, w, 3)
 
 
 def main():
@@ -153,29 +171,36 @@ def main():
     p = argparse.ArgumentParser()
     p.add_argument('--out', default=os.path.join(root, 'assets', 'video_test'))
     p.add_argument('--fixture', default=os.path.join(root, 'test', 'fixtures', 'video_test', 'card_h264.png'))
+    p.add_argument('--only', nargs='*', default=list(CLIPS), help='make these again and keep the others')
     args = p.parse_args()
     os.makedirs(args.out, exist_ok=True)
     os.makedirs(os.path.dirname(args.fixture), exist_ok=True)
 
     card = draw_card()
     expected = {'width': W, 'height': H, 'tolerance': 14, 'detailTolerance': 0.25, 'cards': {}}
+    figures = os.path.join(args.out, 'card_expected.json')
+    if set(args.only) != set(CLIPS) and os.path.exists(figures):
+        with open(figures) as f:
+            expected = json.load(f)
     with tempfile.TemporaryDirectory() as tmp:
-        png = os.path.join(tmp, 'card.png')
-        Image.fromarray(card).save(png)
         for name, clip in CLIPS.items():
-            out = os.path.join(args.out, name + '.mp4')
+            if name not in args.only:
+                continue
+            png = os.path.join(tmp, name + '.png')
+            Image.fromarray(card).resize(size_of(clip), Image.BOX).save(png)
+            out = os.path.join(args.out, file_of(name))
             encode(png, out, clip)
-            frame = decode_first_frame(out)
+            frame = decode_first_frame(out, clip)
             m = measure(frame)
             expected['cards'][name] = {
-                'file': name + '.mp4',
+                'file': file_of(name),
                 'bitDepth': 10 if name == 'hevc10' else 8,
                 **m,
             }
             if name == 'h264':
                 Image.fromarray(frame).save(args.fixture, optimize=True)
             print(f'{name}: {os.path.getsize(out)} bytes, detail {m["detail"]}')
-    with open(os.path.join(args.out, 'card_expected.json'), 'w') as f:
+    with open(figures, 'w') as f:
         json.dump(expected, f, indent=1)
         f.write('\n')
     # The fixture's own measurement, for the Dart parity test.

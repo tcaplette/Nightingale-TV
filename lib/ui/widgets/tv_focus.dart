@@ -216,7 +216,7 @@ class _TvTextFieldState extends State<TvTextField> with WidgetsBindingObserver {
         enableSuggestions: false,
         keyboardType: widget.keyboardType,
         style: context.guide.body(30),
-        decoration: InputDecoration(labelText: widget.label, hintText: widget.hint),
+        decoration: InputDecoration(labelText: widget.label, hintText: widget.hint, hintMaxLines: 3),
         onTap: _tv ? _startEditing : null,
         onTapAlwaysCalled: _tv,
         // On the pointer's release, not its press: the layout mustn't jump
@@ -330,6 +330,7 @@ class TvButton extends StatelessWidget {
     this.expand = false,
     this.danger = false,
     this.maxLines = 1,
+    this.shrinkLabel = false,
     this.badge = 0,
   });
 
@@ -345,9 +346,13 @@ class TvButton extends StatelessWidget {
   final bool expand;
   final bool danger;
 
-  /// Lines a long label may wrap to before it's cut short (a phone held
-  /// upright).
+  /// Lines a long label may wrap to before it's cut short. On a phone held
+  /// upright it's at least two, so a long label wraps rather than being cut.
   final int maxLines;
+
+  /// A label too wide for a fixed-width button (a keypad key) is drawn
+  /// smaller to fit, rather than cut short.
+  final bool shrinkLabel;
 
   @override
   Widget build(BuildContext context) {
@@ -382,10 +387,16 @@ class TvButton extends StatelessWidget {
                   const SizedBox(width: 14),
                 ],
                 Flexible(
-                  child: Text(label,
-                      maxLines: maxLines,
-                      overflow: TextOverflow.ellipsis,
-                      style: g.display(30, weight: FontWeight.w600, color: fg)),
+                  child: shrinkLabel
+                      ? FittedBox(
+                          fit: BoxFit.scaleDown,
+                          child: Text(label, maxLines: 1, style: g.display(30, weight: FontWeight.w600, color: fg)),
+                        )
+                      : Text(label,
+                          maxLines: portrait ? max(maxLines, 2) : maxLines,
+                          textAlign: expand ? TextAlign.center : TextAlign.start,
+                          overflow: TextOverflow.ellipsis,
+                          style: g.display(30, weight: FontWeight.w600, color: fg)),
                 ),
                 if (badge > 0) ...[
                   const SizedBox(width: 14),
@@ -603,11 +614,28 @@ class _TvPageState extends State<TvPage> {
                   else
                     SizedBox(width: layout.gutter),
                   if (widget.leading case final leading?) ...[leading, const SizedBox(width: 16)],
+                  // A title too long for one line (新エピソードの初回放送)
+                  // takes two smaller lines rather than being cut short.
                   Expanded(
-                    child: Text(widget.title.toUpperCase(),
+                    child: LayoutBuilder(builder: (context, box) {
+                      final title = widget.title.toUpperCase();
+                      final big = g.display(40, weight: FontWeight.w800, color: g.accent);
+                      // Measured as the title is drawn: with the inherited
+                      // style (its letter spacing) under its own.
+                      final painter = TextPainter(
+                        text: TextSpan(text: title, style: DefaultTextStyle.of(context).style.merge(big)),
+                        textDirection: Directionality.of(context),
+                        locale: Localizations.maybeLocaleOf(context),
+                        textScaler: MediaQuery.textScalerOf(context),
                         maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: g.display(40, weight: FontWeight.w800, color: g.accent)),
+                      )..layout(maxWidth: box.maxWidth);
+                      final long = painter.didExceedMaxLines;
+                      painter.dispose();
+                      return Text(title,
+                          maxLines: long ? 2 : 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: long ? g.display(30, weight: FontWeight.w800, color: g.accent) : big);
+                    }),
                   ),
                   SizedBox(width: layout.gutter),
                 ],

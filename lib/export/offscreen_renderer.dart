@@ -4,6 +4,7 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 
+import '../l10n/tr.dart';
 import '../theme/tv_theme.dart';
 
 /// Draws a widget into a PNG without putting it on screen: the TV's cards
@@ -37,9 +38,16 @@ abstract final class OffscreenRenderer {
           data: MediaQueryData(size: logicalSize, devicePixelRatio: pixelRatio),
           child: Directionality(
             textDirection: TextDirection.ltr,
-            child: Theme(
-              data: GuideTheme.cableGuide.toThemeData(),
-              child: Material(type: MaterialType.transparency, child: SizedBox.fromSize(size: logicalSize, child: child)),
+            // The language's own character shapes (cjk-languages D4): text
+            // takes its paragraph locale from here. The widgets delegate
+            // loads synchronously, so the first build has the locale.
+            child: Localizations(
+              locale: localeOf(currentLanguage),
+              delegates: const [DefaultWidgetsLocalizations.delegate],
+              child: Theme(
+                data: GuideTheme.cableGuide.toThemeData(),
+                child: Material(type: MaterialType.transparency, child: SizedBox.fromSize(size: logicalSize, child: child)),
+              ),
             ),
           ),
         ),

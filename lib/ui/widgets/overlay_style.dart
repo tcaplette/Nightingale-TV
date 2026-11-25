@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../channels/channel.dart';
 import '../../channels/retro.dart';
+import '../../theme/fonts.dart';
 import '../../theme/tv_theme.dart';
 import 'retro_frame.dart';
 import '../../l10n/tr.dart';
@@ -109,7 +110,7 @@ class OverlayStyle {
   /// pixel font doesn't.
   TextStyle _vcrText(double size, Color? color) => TextStyle(
         fontFamily: vcrFont,
-        fontFamilyFallback: const ['Barlow'],
+        fontFamilyFallback: const ['Barlow', ...cjkFontFallback],
         fontSize: size * 1.15,
         height: 1.05,
         color: color ?? text,

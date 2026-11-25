@@ -216,8 +216,10 @@ class _ProfileTile extends StatelessWidget {
           children: [
             avatar,
             const SizedBox(height: 20),
+            // Two lines for a long label (プロフィールを追加) rather than cut short.
             Text(label,
-                maxLines: 1,
+                maxLines: 2,
+                textAlign: TextAlign.center,
                 overflow: TextOverflow.ellipsis,
                 style: g.display(36, weight: FontWeight.w700, color: focused ? g.text : g.textDim)),
             Text(detail ?? '', style: g.body(22, color: g.accent)),
@@ -430,7 +432,7 @@ class _ProfileEditorScreenState extends State<ProfileEditorScreen> {
                 children: [
                   for (final r in KidRating.values)
                     TvToggle(
-                      label: '${r.label}: ${r.description}',
+                      label: tr.labelValue(r.label, r.description),
                       radio: true,
                       on: _draft.rating == r,
                       onPressed: () => _update(() => _draft.rating = r),

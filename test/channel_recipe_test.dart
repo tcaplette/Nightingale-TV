@@ -186,8 +186,8 @@ void main() {
     test('partly matched: counts, and the sender order kept', () {
       final receiver = serverLibrary('plex', missing: {2, 5});
       final m = RecipeMatcher(receiver).match(recipe);
-      expect((m.matched, m.total), (5, 8), reason: 'two episodes missing, and the yearless movie never matches');
-      expect(m.playlist, ['plex-e1', 'plex-e3', 'plex-e4', 'plex-e6', 'plex-matrix']);
+      expect((m.matched, m.total), (6, 8), reason: 'two episodes missing');
+      expect(m.playlist, ['plex-e1', 'plex-e3', 'plex-e4', 'plex-e6', 'plex-matrix', 'plex-home']);
     });
 
     test('a renamed show matches by provider id', () {
@@ -201,8 +201,8 @@ void main() {
       final r = ChannelRecipe.fromChannel(channelOf(bare), const [], bare);
       final receiver = serverLibrary('plex', showIds: const {}, matrixIds: const {});
       final m = RecipeMatcher(receiver).match(r);
-      expect(m.playlist, [for (var i = 1; i <= 6; i++) 'plex-e$i', 'plex-matrix']);
-      expect((m.matched, m.total), (7, 8), reason: 'the movie without a year never matches by title');
+      expect(m.playlist, [for (var i = 1; i <= 6; i++) 'plex-e$i', 'plex-matrix', 'plex-home']);
+      expect((m.matched, m.total), (8, 8), reason: 'the yearless movie matches by title and length (smb-sources)');
     });
 
     test('provider ids only: a show and a movie under other names', () {
@@ -242,13 +242,21 @@ void main() {
     test('the same provider with another id is a different title', () {
       final receiver = serverLibrary('plex', matrixIds: const {'Tmdb': '604'}, showIds: const {'Tvdb': '1'});
       final m = RecipeMatcher(receiver).match(recipe);
-      expect(m.playlist, isEmpty);
+      // Only the yearless movie, which no provider describes, matches.
+      expect(m.playlist, ['plex-home']);
     });
 
-    test('a movie without a year never matches by title', () {
-      final receiver = serverLibrary('plex', matrix: false);
-      final m = RecipeMatcher(receiver).match(recipe);
-      expect(m.playlist, isNot(contains('plex-home')));
+    test('a movie without a year matches by title and length, only when one does (smb-sources)', () {
+      expect(RecipeMatcher(serverLibrary('plex', matrix: false)).match(recipe).playlist, contains('plex-home'));
+      final twice = LibraryIndex(
+          series: const [],
+          episodes: const [],
+          movies: [
+            for (final id in ['x1', 'x2'])
+              MediaEntry(id: id, kind: MediaKind.movie, title: 'Home Video', runtime: const Duration(minutes: 40)),
+          ],
+          fetchedAt: DateTime(2026));
+      expect(RecipeMatcher(twice).match(recipe).playlist, isEmpty);
     });
 
     test('episodes without numbers match by title within the show', () {

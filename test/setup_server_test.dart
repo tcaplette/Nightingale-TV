@@ -181,14 +181,18 @@ void main() {
       }
     });
 
-    test('every page response has the CSP, nosniff and no-referrer headers', () async {
+    test("every page response has the CSP, nosniff and an origin-only referrer for other sites", () async {
       await openWithBundle();
       for (final path in ['/', '/setup?token=abc', '/flutter_bootstrap.js', '/canvaskit/canvaskit.wasm', '/x/y']) {
         final r = await client.get(path);
         expect(r.headers.value('content-security-policy'), WebFiles.contentSecurityPolicy, reason: path);
         expect(r.headers.value('content-security-policy'), contains("connect-src 'self' blob:;"));
         expect(r.headers.value('x-content-type-options'), 'nosniff', reason: path);
-        expect(r.headers.value('referrer-policy'), 'no-referrer', reason: path);
+        // YouTube's embed refuses a page with no referrer (docker-youtube D5);
+        // other sites never get a path or the setup token.
+        expect(r.headers.value('referrer-policy'), 'strict-origin-when-cross-origin', reason: path);
+        expect(r.headers.value('content-security-policy'), contains('frame-src https://www.youtube.com;'));
+        expect(r.headers.value('content-security-policy'), contains('https://www.youtube.com https://s.ytimg.com;'));
       }
     });
 

@@ -9,6 +9,7 @@ import 'package:nightingale_tv/l10n/tr.dart';
 import 'package:nightingale_tv/reporting/error_reports.dart';
 import 'package:nightingale_tv/platform/platform_info.dart';
 import 'package:nightingale_tv/reporting/report_switch.dart';
+import 'package:nightingale_tv/reporting/session_record.dart';
 import 'package:nightingale_tv/reporting/video_report.dart';
 import 'package:nightingale_tv/theme/tv_theme.dart';
 import 'package:nightingale_tv/ui/error_reports_screen.dart';
@@ -140,6 +141,48 @@ void main() {
 
     await press(tester, LogicalKeyboardKey.arrowUp);
     expect(focused(), 'back');
+  });
+
+  testWidgets('recent reports: newest first, kind, time and short ID; focus moves as before', (tester) async {
+    await show(tester, android: true);
+    final now = DateTime.now();
+    final record = ErrorReports.session!;
+    for (final (i, kind) in ['error', 'exit', 'slowStart'].indexed) {
+      record.addReport(RecentReport(kind: kind, at: now.subtract(Duration(minutes: 10 - i)), id: '${i}a${i}b${i}c${i}d0000111122223333'));
+    }
+    await settle(tester);
+    expect(find.text(tr.recentReports), findsOneWidget);
+    expect(find.text(tr.errorReportsAutomatic), findsOneWidget);
+    final lines = [
+      for (final t in tester.widgetList<Text>(find.byType(Text)))
+        if (t.data != null && t.data!.contains('  ·  ')) t.data!,
+    ];
+    expect(lines, hasLength(3));
+    expect(lines.first, startsWith(tr.reportKindSlowStart), reason: 'newest first');
+    expect(lines.first, endsWith('2a2b2c2d'));
+    expect(lines[1], startsWith(tr.reportKindExit));
+    expect(lines.last, startsWith(tr.reportKindError));
+    // D-pad: the list takes no focus; the controls are as before.
+    expect(focused(), tr.sendErrorReportsFrom);
+    await press(tester, LogicalKeyboardKey.arrowDown);
+    expect(focused(), tr.sendATestReport);
+    await press(tester, LogicalKeyboardKey.arrowDown);
+    expect(focused(), tr.sendAVideoReport);
+    await press(tester, LogicalKeyboardKey.arrowDown);
+    expect(focused(), tr.sendAVideoReport, reason: 'nothing below the last button takes focus');
+    await press(tester, LogicalKeyboardKey.arrowUp);
+    await press(tester, LogicalKeyboardKey.arrowUp);
+    await press(tester, LogicalKeyboardKey.arrowUp);
+    expect(focused(), 'back');
+    // A test report joins the list at the top.
+    await tester.tap(find.text(tr.sendATestReport), kind: PointerDeviceKind.touch);
+    await settle(tester);
+    final after = [
+      for (final t in tester.widgetList<Text>(find.byType(Text)))
+        if (t.data != null && t.data!.contains('  ·  ')) t.data!,
+    ];
+    expect(after, hasLength(4));
+    expect(after.first, startsWith(tr.reportKindTest));
   });
 
   testWidgets('pointer and touch: tapping the switch and the button', (tester) async {

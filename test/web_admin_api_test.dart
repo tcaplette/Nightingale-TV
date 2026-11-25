@@ -16,6 +16,15 @@ import 'package:nightingale_tv/setup/api/routes.dart';
 import 'package:nightingale_tv/setup/setup_server.dart';
 import 'package:nightingale_tv/setup/web_files.dart';
 
+import 'package:nightingale_tv/server/server_set.dart';
+import 'package:nightingale_tv/server/sign_in_flow.dart';
+import 'package:nightingale_tv/server/youtube/google_sign_in.dart';
+import 'package:nightingale_tv/server/youtube/youtube_api.dart';
+import 'package:nightingale_tv/server/youtube/youtube_client_config.dart';
+
+import '../integration_test/fake_google.dart';
+import 'backup_fixtures.dart';
+import 'fixtures.dart';
 import 'setup_client.dart';
 
 /// The web admin's API beyond docker-server-core (docker-web-admin groups
@@ -466,7 +475,7 @@ void main() {
       }
     });
 
-    test('adding a user counts as a change for the daily backup', () async {
+    test('adding a user counts as a change for the automatic backup', () async {
       await family();
       final first = await household.backups!.build(BackupReason.daily);
       await accounts.addUser(name: 'kim', role: Role.user, password: 'kims password');
@@ -553,7 +562,262 @@ void main() {
       await h.closeAll();
     });
   });
+  group('YouTube on the server (docker-youtube 2.1, 2.2)', () {
+    late FakeGoogle google;
+    final mom = momAndKids().first;
+    const ownBody = {'clientId': 'own-client', 'clientSecret': 'own-client-secret'};
+
+    setUp(() async {
+      google = await FakeGoogle.start();
+      GoogleEndpoints.override = GoogleEndpoints(oauth: google.url, api: google.url);
+      GoogleClient.ownOnlyOverride = true;
+      for (var i = 0; i < 45; i++) {
+        final id = 'UC${i.toString().padLeft(2, '0')}';
+        google.channels[id] = FakeChannel(id, 'Channel ${i.toString().padLeft(2, '0')}',
+            videos: [FakeVideo('v${i}a', length: const Duration(minutes: 10)), FakeVideo('v${i}b', length: const Duration(minutes: 12))]);
+      }
+      google.accounts['mom'] = FakeAccount('mom', title: 'Mom Cooks', subscriptions: [for (var i = 44; i >= 0; i--) 'UC${i.toString().padLeft(2, '0')}']);
+      // Mom, signed in to a Jellyfin server, on a server-mode household.
+      for (final c in clients) {
+        c.close();
+      }
+      clients.clear();
+      await setup.stop();
+      await household.closeAll();
+      accounts.close();
+      await dir.delete(recursive: true);
+      dir = await Directory.systemTemp.createTemp('nightingale_tv_web_admin_yt');
+      await writeHousehold(dir, [mom], fakeLibrary());
+      household = Household(await AppStorage.at(dir), runAnalysis: false, serverMode: true);
+      household.backups = BackupScheduler(household, BackupStore(Directory('${dir.path}/backups')));
+      accounts = await Accounts.load(dir);
+      setup = SetupServer(household, accounts,
+          port: 0,
+          web: WebFiles(Directory('${dir.path}/no_web')),
+          youTubeSignInFlow: (app, again) =>
+              SignInFlow(app, adding: again == null && app.session != null, againKey: again)
+                ..googleDelay = (_) => Future<void>.delayed(const Duration(milliseconds: 5)));
+      await setup.start();
+      await household.start();
+      admin = Client(setup.boundPort!);
+      clients.add(admin);
+      await firstAdmin();
+    });
+
+    tearDown(() async {
+      final app = household.appFor(mom.id) ?? await household.appForSetup(mom.id);
+      for (var i = 0; app != null && i < 500 && app.refreshing; i++) {
+        await Future<void>.delayed(const Duration(milliseconds: 10));
+      }
+      await google.close();
+      GoogleEndpoints.override = null;
+      GoogleClient.ownOnlyOverride = null;
+    });
+
+    String base() => '/api/v1/profiles/${mom.id}';
+
+    Future<void> idle(AppState app) async {
+      for (var i = 0; i < 1500 && app.refreshing; i++) {
+        await Future<void>.delayed(const Duration(milliseconds: 10));
+      }
+    }
+
+    /// Every file under the data folder but the encrypted secrets.
+    String everyFile() => [
+          for (final f in dir.listSync(recursive: true).whereType<File>())
+            if (!f.path.endsWith('smb_secrets.json') && !f.path.endsWith('smb_key')) latin1.decode(f.readAsBytesSync())
+        ].join('\n');
+
+    /// Starts a sign-in with the own client and approves it as Mom: the
+    /// server's key once the long wait says done.
+    Future<({String run, String key, Map done})> signIn({bool keepColorStep = false}) async {
+      final start = await admin.post('${base()}/youtube/start', ownBody);
+      expect(start.status, 200, reason: '${start.json}');
+      final run = (start.json! as Map)['run'] as String;
+      google.approveAs = 'mom';
+      final done = (await admin.get('${base()}/youtube/start/$run?code=${(start.json! as Map)['userCode']}')).json! as Map;
+      expect(done['state'], 'done', reason: '$done');
+      // Closed on the colour step: the server keeps its suggestion.
+      if (!keepColorStep && done['color'] != null) await admin.call('DELETE', '${base()}/youtube/start/$run');
+      return (run: run, key: done['serverKey'] as String, done: done);
+    }
+
+    test('a sign-in without a client is refused, and nothing goes to Google', () async {
+      for (final body in [const <String, Object?>{}, {'clientId': 'own-client'}, {'clientId': ' ', 'clientSecret': 'x'}]) {
+        final r = await admin.post('${base()}/youtube/start', body);
+        expect(r.status, 400);
+        expect(r.json, {'error': 'Server mode uses your own Google client.'});
+      }
+      expect(google.requests, isEmpty);
+    });
+
+    test('a Desktop client is refused with Google\'s reason', () async {
+      final r = await admin.post('${base()}/youtube/start', {'clientId': 'desktop-client', 'clientSecret': 'desktop-secret'});
+      expect(r.status, 400);
+      expect((r.json! as Map)['error'], "Google didn't accept this client. It must be of the type TVs and Limited Input devices.");
+    });
+
+    test('start gives the code; an expired code is replaced; cancel ends the wait', () async {
+      google.codeLife = const Duration(milliseconds: 1);
+      final start = (await admin.post('${base()}/youtube/start', ownBody)).json! as Map;
+      expect(start['userCode'], isNotEmpty);
+      expect(start['verificationUrl'], 'https://www.google.com/device');
+      expect(DateTime.parse(start['expiresAt'] as String).isUtc, isTrue);
+      google.codeLife = const Duration(minutes: 30);
+      final expired = (await admin.get('${base()}/youtube/start/${start['run']}?code=${start['userCode']}')).json! as Map;
+      expect(expired['state'], 'expired');
+      expect(expired['userCode'], isNot(start['userCode']));
+      expect((await admin.get('${base()}/youtube/start/nope?code=x')).status, 404);
+      final cancelled = await admin.call('DELETE', '${base()}/youtube/start/${start['run']}');
+      expect(cancelled.json, {'state': 'cancelled'});
+      expect((await admin.get('${base()}/youtube/start/${start['run']}')).status, 404);
+    });
+
+    test('Deny on Google\'s page: the wait says cancelled', () async {
+      final start = (await admin.post('${base()}/youtube/start', ownBody)).json! as Map;
+      google.deny = true;
+      final r = (await admin.get('${base()}/youtube/start/${start['run']}?code=${start['userCode']}')).json! as Map;
+      expect(r['state'], 'cancelled');
+      expect(r['error'], 'Sign-in was cancelled');
+    });
+
+    test('sign-in, 40 picks (no limit), the colour, a refresh on the own client, and what\'s on now; no secret anywhere',
+        () async {
+      final bodies = <String>[];
+      final signedIn = await signIn(keepColorStep: true);
+      final key = signedIn.key;
+      expect(key, isNot('main'));
+      final app = (await household.appForSetup(mom.id))!;
+      expect(app.servers.byKey(key)!.session!.clientId, 'own-client');
+      if (app.guideColorsOn) {
+        expect((signedIn.done['color'] as Map)['key'], key);
+        final c = await admin.post('${base()}/youtube/start/${signedIn.run}/color', {'name': 'wine'});
+        expect(c.status, 200, reason: '${c.json}');
+        expect(app.serverColors[key]!.name, 'wine');
+      }
+      final subs = await admin.get('${base()}/servers/$key/youtube/channels');
+      bodies.add(utf8.decode(subs.bytes));
+      final list = ((subs.json! as Map)['subscriptions'] as List).cast<Map>();
+      expect(list, hasLength(45));
+      expect(list.first['title'], 'Channel 00');
+      expect(list.every((s) => s['checked'] == false), isTrue);
+      final picks = [for (final s in list.take(40)) s['id']];
+      final put = await admin.edit('PUT', '${base()}/servers/$key/youtube/channels',
+          body: {'ids': picks}, revisionOf: '${base()}/logo');
+      bodies.add(utf8.decode(put.bytes));
+      expect(put.status, 200, reason: '${put.json}');
+      expect((put.json! as Map)['channels'], hasLength(40));
+      expect(app.youTubeChannels, hasLength(40));
+      // The refresh the picks start fetches the videos on the own client.
+      for (var i = 0; i < 1500 && (app.refreshing || app.library.youtubeVideos.isEmpty); i++) {
+        await Future<void>.delayed(const Duration(milliseconds: 10));
+      }
+      expect(app.library.youtubeVideos, isNotEmpty);
+      final watch = await admin.get('${base()}/youtube/channels');
+      bodies.add(utf8.decode(watch.bytes));
+      final channels = ((watch.json! as Map)['channels'] as List).cast<Map>();
+      expect(channels, hasLength(40));
+      final first = channels.firstWhere((c) => c['now'] != null);
+      final now = await admin.get('${base()}/youtube/${first['id']}/now');
+      bodies.add(utf8.decode(now.bytes));
+      final on = now.json! as Map;
+      expect(on['videoId'], matches(RegExp(r'^v\d+[ab]$')));
+      expect(on['offsetSeconds'], isA<int>());
+      expect(on['next'], isA<Map>());
+      // Unchecking two: the rest stay.
+      final again = await admin.edit('PUT', '${base()}/servers/$key/youtube/channels',
+          body: {'ids': picks.skip(2).toList()}, revisionOf: '${base()}/logo');
+      expect(((again.json! as Map)['channels'] as List), hasLength(38));
+      // No refresh token or client secret in any answer, file or log line.
+      final tokens = google.refreshTokens.keys.toList();
+      expect(tokens, isNotEmpty);
+      final everything = [...bodies, everyFile(), log.join('\n')].join('\n');
+      for (final secret in [...tokens, 'own-client-secret']) {
+        expect(everything, isNot(contains(secret)), reason: secret);
+      }
+      expect(File('${dir.path}/profiles/${mom.id}/smb_secrets.json').existsSync(), isTrue);
+      expect(File('${dir.path}/profiles/${mom.id}/servers.json').readAsStringSync(), contains('"clientId":"own-client"'));
+    });
+
+    test("what's on now: the offset is how long ago the scheduled video started", () async {
+      final signedIn = await signIn();
+      final app = (await household.appForSetup(mom.id))!;
+      await app.setYouTubePicks(signedIn.key, [const YouTubeSubscription(channelId: 'UC00', title: 'Channel 00')]);
+      for (var i = 0; i < 1500 && (app.refreshing || app.library.youtubeVideos.isEmpty); i++) {
+        await Future<void>.delayed(const Duration(milliseconds: 10));
+      }
+      final ch = app.youTubeChannels.single;
+      final on = app.scheduleFor(ch)!.playbackAt(DateTime.now());
+      final videoStart = on.start.subtract(on.itemFrom);
+      setup.clock = () => videoStart.add(const Duration(seconds: 125));
+      // Within the first video (10 or 12 minutes long), 125 s in.
+      final r = (await admin.get('${base()}/youtube/${ch.id}/now')).json! as Map;
+      expect(r['offsetSeconds'], 125);
+      expect(r['videoId'], ServerSet.rawId(on.item!.sourceId));
+      expect(DateTime.parse(r['endsAt'] as String), on.end.toUtc());
+      expect((r['next'] as Map)['videoId'], isNot(r['videoId']));
+      // Reported ended: the next one, from its start.
+      final next = (await admin.get('${base()}/youtube/${ch.id}/now?ended=${r['videoId']}')).json! as Map;
+      expect(next['videoId'], (r['next'] as Map)['videoId']);
+    });
+
+    test('a new client on the YouTube server signs it in again under the same key', () async {
+      final signedIn = await signIn();
+      final start = await admin.post('${base()}/servers/${signedIn.key}/youtube/client', ownBody);
+      expect(start.status, 200, reason: '${start.json}');
+      final run = (start.json! as Map)['run'];
+      final done = (await admin.get('${base()}/youtube/start/$run?code=${(start.json! as Map)['userCode']}')).json! as Map;
+      expect(done, containsPair('serverKey', signedIn.key));
+      expect((await admin.post('${base()}/servers/main/youtube/client', ownBody)).status, 400);
+      expect((await admin.post('${base()}/servers/s9/youtube/client', ownBody)).status, 404);
+    });
+
+    test("a restored YouTube server needs sign-in: Watch says so, and Sign in again asks for the own client", () async {
+      final signedIn = await signIn();
+      final app = (await household.appForSetup(mom.id))!;
+      await idle(app);
+      // Google ended the grant (as a restore's server does without a token).
+      google.revokeAccount('mom');
+      await app.youtube.serverOf(signedIn.key)!.checkSession().catchError((_) {});
+      await app.refreshLibrary(background: true).catchError((_) {});
+      for (var i = 0; i < 200 && app.servers.byKey(signedIn.key)!.state != ServerState.needsSignIn; i++) {
+        await Future<void>.delayed(const Duration(milliseconds: 10));
+      }
+      expect(app.servers.byKey(signedIn.key)!.state, ServerState.needsSignIn);
+      final notes = ((await admin.get('${base()}/youtube/channels')).json! as Map)['notes'] as List;
+      expect(notes.single, containsPair('kind', 'signIn'));
+      final picker = await admin.get('${base()}/servers/${signedIn.key}/youtube/channels');
+      expect(picker.status, 409);
+      expect((picker.json! as Map)['needs'], 'signIn');
+      // The TV's own sign-in step for it opens the client form here.
+      final step = (await admin.post('${base()}/servers/${signedIn.key}/sign-in', {'action': 'start'})).json! as Map;
+      expect(step['stage'], 'youtubeClient');
+    });
+
+    test('the daily limit: the picker and Watch say so', () async {
+      final signedIn = await signIn();
+      google.quotaExceeded = true;
+      final r = await admin.get('${base()}/servers/${signedIn.key}/youtube/channels');
+      expect(r.status, 429);
+      expect((r.json! as Map)['error'], "YouTube's daily limit is reached.");
+      expect((r.json! as Map)['until'], isA<String>());
+      final notes = ((await admin.get('${base()}/youtube/channels')).json! as Map)['notes'] as List;
+      expect(notes.single, containsPair('kind', 'dailyLimit'));
+    });
+
+    test("a kid profile's YouTube setup needs a grown-up's PIN", () async {
+      final ava = household.newProfile()
+        ..name = 'Ava'
+        ..kind = ProfileKind.kid;
+      await household.saveProfile(ava);
+      final c = await user('lee', {ava.id});
+      final r = await c.post('/api/v1/profiles/${ava.id}/youtube/start', ownBody);
+      expect(r.status, 403);
+      expect((r.json! as Map)['needs'], 'grownUp');
+    });
+  });
 }
+
 
 extension<T> on T {
   void let(void Function(T) f) => f(this);

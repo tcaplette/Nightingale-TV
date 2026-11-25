@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 
+import '../theme/fonts.dart';
 import '../ui/widgets/nightingale_mark.dart';
 import 'api_client.dart';
 import 'language.dart';
@@ -17,6 +18,7 @@ import 'pages/server_page.dart';
 import 'pages/servers_page.dart';
 import 'pages/sign_in_page.dart';
 import 'pages/users_page.dart';
+import 'pages/watch_page.dart';
 import 'session.dart';
 import 'widgets/common.dart';
 import '../l10n/tr.dart';
@@ -70,8 +72,8 @@ class _WebAdminAppState extends State<WebAdminApp> {
         child: MaterialApp.router(
           title: 'Nightingale TV',
           debugShowCheckedModeBanner: false,
-          locale: Locale(webLanguage.language),
-          supportedLocales: [for (final l in supportedLanguages) Locale(l)],
+          locale: localeOf(webLanguage.language),
+          supportedLocales: [for (final l in supportedLanguages) localeOf(l)],
           localizationsDelegates: const [
             GlobalMaterialLocalizations.delegate,
             GlobalWidgetsLocalizations.delegate,
@@ -93,6 +95,7 @@ ThemeData webAdminTheme(Brightness brightness) => ThemeData(
       brightness: brightness,
       colorSchemeSeed: const Color(0xFFFFD23F),
       fontFamily: 'Barlow',
+      fontFamilyFallback: cjkFontFallback,
       visualDensity: VisualDensity.standard,
       materialTapTargetSize: MaterialTapTargetSize.padded,
       inputDecorationTheme: const InputDecorationThemeData(helperMaxLines: 3, errorMaxLines: 3),
@@ -189,6 +192,13 @@ class WebRouter extends RouterDelegate<Uri> with ChangeNotifier, PopNavigatorRou
         _afterSignIn = null;
         go(next == null || next.path == '/sign-in' ? '/' : next.toString());
       });
+    } else if (segments case ['profiles', final id, 'watch', final cid]) {
+      // A YouTube channel in the whole window, outside the shell.
+      if (session.profileId != id && session.profileById(id) != null) {
+        WidgetsBinding.instance.addPostFrameCallback((_) => session.select(id));
+      }
+      page = ProfileGate(
+          profileId: id, child: WatchPlayerPage(key: ValueKey('watch/$id/$cid'), profileId: id, channelId: cid));
     } else {
       page = Shell(location: location, child: _pageFor(segments));
     }
@@ -241,6 +251,7 @@ class WebRouter extends RouterDelegate<Uri> with ChangeNotifier, PopNavigatorRou
             ['live', final sid] => LiveChannelsPage(key: key, profileId: id, sourceId: sid),
             ['library'] => LibraryPage(key: key, profileId: id),
             ['servers'] => ServersPage(key: key, profileId: id),
+            ['watch'] => WatchPage(key: key, profileId: id),
             _ => const NotFound(),
           },
         );
@@ -266,6 +277,7 @@ class _Destination {
 List<_Destination> get _destinations => [
   _Destination(tr.channels5, null, 'channels', profile: true),
   _Destination(tr.guide2, Icons.view_timeline_outlined, 'guide', profile: true),
+  _Destination(tr.watch, Icons.smart_display_outlined, 'watch', profile: true),
   _Destination(tr.programmingBlocks, Icons.event_note_outlined, 'blocks', profile: true),
   _Destination(tr.channelGroups, Icons.folder_outlined, 'groups', profile: true),
   _Destination(tr.commercials, Icons.campaign_outlined, 'commercials', profile: true),
@@ -313,44 +325,48 @@ class Shell extends StatelessWidget {
         final nav = Drawer(
           width: 300,
           child: SafeArea(
-            child: ListView(padding: const EdgeInsets.symmetric(horizontal: 12), children: [
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 20, 16, 4),
-                child: Row(children: [
-                  NightingaleMark(height: 24, color: scheme.primary),
-                  const SizedBox(width: 12),
-                  Flexible(child: Text('Nightingale TV', style: Theme.of(context).textTheme.titleLarge)),
-                ]),
-              ),
-              const Padding(padding: EdgeInsets.fromLTRB(4, 8, 4, 8), child: ProfileSwitcher()),
-              for (final (i, d) in shown.indexed) ...[
-                if (i > 0 && shown[i - 1].profile && !d.profile) const Divider(indent: 16, endIndent: 16),
+            // Every item built, not a lazy list: Tab reaches them all.
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 20, 16, 4),
+                  child: Row(children: [
+                    NightingaleMark(height: 24, color: scheme.primary),
+                    const SizedBox(width: 12),
+                    Flexible(child: Text('Nightingale TV', style: Theme.of(context).textTheme.titleLarge)),
+                  ]),
+                ),
+                const Padding(padding: EdgeInsets.fromLTRB(4, 8, 4, 8), child: ProfileSwitcher()),
+                for (final (i, d) in shown.indexed) ...[
+                  if (i > 0 && shown[i - 1].profile && !d.profile) const Divider(indent: 16, endIndent: 16),
+                  ListTile(
+                    leading: d.icon == null ? const NightingaleTv(height: 24) : Icon(d.icon),
+                    title: Text(d.label),
+                    selected: i == selected,
+                    selectedColor: scheme.onSecondaryContainer,
+                    selectedTileColor: scheme.secondaryContainer,
+                    shape: const StadiumBorder(),
+                    onTap: () {
+                      if (MediaQuery.sizeOf(context).width < wide) Navigator.of(context).maybePop();
+                      open(i);
+                    },
+                  ),
+                ],
+                const Divider(indent: 16, endIndent: 16),
+                const WebLanguageButton(asTile: true),
                 ListTile(
-                  leading: d.icon == null ? const NightingaleTv(height: 24) : Icon(d.icon),
-                  title: Text(d.label),
-                  selected: i == selected,
-                  selectedColor: scheme.onSecondaryContainer,
-                  selectedTileColor: scheme.secondaryContainer,
+                  leading: const Icon(Icons.logout),
+                  title: Text(tr.signOut3(session.userName)),
                   shape: const StadiumBorder(),
-                  onTap: () {
-                    if (MediaQuery.sizeOf(context).width < wide) Navigator.of(context).maybePop();
-                    open(i);
+                  onTap: () async {
+                    await session.signOut();
+                    if (context.mounted) context.go('/');
                   },
                 ),
-              ],
-              const Divider(indent: 16, endIndent: 16),
-              const WebLanguageButton(asTile: true),
-              ListTile(
-                leading: const Icon(Icons.logout),
-                title: Text(tr.signOut3(session.userName)),
-                shape: const StadiumBorder(),
-                onTap: () async {
-                  await session.signOut();
-                  if (context.mounted) context.go('/');
-                },
-              ),
-              const SizedBox(height: 16),
-            ]),
+                const SizedBox(height: 16),
+              ]),
+            ),
           ),
         );
         return LayoutBuilder(builder: (context, size) {

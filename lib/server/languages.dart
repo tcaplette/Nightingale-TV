@@ -46,7 +46,7 @@ const _names = {
   'rus': 'Russian', 'sin': 'Sinhala', 'slo': 'Slovak', 'slv': 'Slovenian', 'som': 'Somali', 'spa': 'Spanish',
   'srp': 'Serbian', 'swa': 'Swahili', 'swe': 'Swedish', 'tam': 'Tamil', 'tel': 'Telugu', 'tgk': 'Tajik',
   'tgl': 'Tagalog', 'tha': 'Thai', 'tib': 'Tibetan', 'tur': 'Turkish', 'ukr': 'Ukrainian', 'urd': 'Urdu',
-  'uzb': 'Uzbek', 'vie': 'Vietnamese', 'wel': 'Welsh', 'yid': 'Yiddish', 'yor': 'Yoruba', 'zul': 'Zulu',
+  'uzb': 'Uzbek', 'vie': 'Vietnamese', 'wel': 'Welsh', 'yid': 'Yiddish', 'yor': 'Yoruba', 'yue': 'Cantonese', 'zul': 'Zulu',
 };
 
 /// Codes that name no language.

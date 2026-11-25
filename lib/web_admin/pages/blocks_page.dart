@@ -7,6 +7,7 @@ import '../../channels/program_block.dart';
 import '../../ui/format.dart';
 import '../api_client.dart';
 import '../app.dart';
+import '../../l10n/generated_names.dart';
 import '../widgets/common.dart';
 import '../widgets/source_editor.dart';
 import '../../l10n/tr.dart';
@@ -44,7 +45,7 @@ class BlocksPage extends StatelessWidget {
                 Card(
                   margin: const EdgeInsets.only(bottom: 8),
                   child: ListTile(
-                    title: Text((b['title'] as String).isEmpty ? tr.untitledBlock : b['title'] as String),
+                    title: Text((b['title'] as String).isEmpty ? tr.untitledBlock : ((b['view'] as Map)['title'] ?? b['title']) as String),
                     subtitle: Text([
                       if (b['generated'] != null) fromTheLineupLabel,
                       (b['view'] as Map)['describe'],
@@ -133,7 +134,7 @@ class _BlockEditorPageState extends State<BlockEditorPage> {
         _kidProfile = kid;
         _followChannel = follow;
         if (follow) _copyChannel(block, block.channelId);
-        _title.text = block.title;
+        _title.text = displayBlockTitle(block.title);
         _lineupMode = block.hasLineup;
         _catalog = catalog;
         _error = null;

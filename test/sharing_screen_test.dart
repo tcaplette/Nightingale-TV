@@ -350,7 +350,11 @@ void main() {
     expect(find.textContaining('your share profile (@mom_tv)'), findsOneWidget);
     expect(focused(), 'Cancel');
     await tester.tap(find.text('Delete').last);
-    await settle(tester, 8);
+    // The delete goes through real requests: wait for it, within 5 s, as a
+    // busy machine (the full suite) takes longer.
+    for (var i = 0; i < 250 && find.text('Your sharing account was deleted.').evaluate().isEmpty; i++) {
+      await settle(tester, 1);
+    }
     expect(find.text('Your sharing account was deleted.'), findsOneWidget);
     await press(tester, LogicalKeyboardKey.enter, 6);
     expect(focused(), 'Set up');

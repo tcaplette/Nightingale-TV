@@ -1,6 +1,8 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+
+import '../playback/youtube_player.dart' show YouTubeObstacle;
 import 'package:flutter/services.dart';
 
 import '../app_scope.dart';
@@ -186,7 +188,8 @@ class _SleepOverlayState extends State<SleepOverlay> {
         ),
         if (prompting)
           Positioned.fill(
-            child: ColoredBox(
+            child: YouTubeObstacle(
+              child: ColoredBox(
               color: Colors.black.withValues(alpha: 0.55),
               child: Center(
                 child: Padding(
@@ -194,6 +197,7 @@ class _SleepOverlayState extends State<SleepOverlay> {
                   child: StillWatchingPrompt(seconds: still.secondsLeft, onKeepWatching: () => _input('button')),
                 ),
               ),
+            ),
             ),
           ),
         if (_taking || _pointerHold != null)
@@ -207,7 +211,7 @@ class _SleepOverlayState extends State<SleepOverlay> {
                 onPointerMove: (e) => _pointer('pointer move'),
                 onPointerSignal: (e) => _pointer('pointer signal'),
                 onPointerPanZoomStart: (e) => _pointer('pointer pan'),
-                child: asleep ? const SleepScreen() : const SizedBox.expand(),
+                child: asleep ? const YouTubeObstacle(child: SleepScreen()) : const SizedBox.expand(),
               ),
             ),
           ),
@@ -222,7 +226,8 @@ class _SleepOverlayState extends State<SleepOverlay> {
                     padding: const EdgeInsets.symmetric(horizontal: 32),
                     // Fading: no count left to show.
                     child: Center(
-                        child: SleepWarning(seconds: phase == SleepPhase.fading ? null : timer.secondsLeft)))),
+                        child: YouTubeObstacle(
+                            child: SleepWarning(seconds: phase == SleepPhase.fading ? null : timer.secondsLeft))))),
           )
         else if (_toast != null && !asleep)
           Positioned(
@@ -231,7 +236,8 @@ class _SleepOverlayState extends State<SleepOverlay> {
             top: top,
             child: IgnorePointer(
                 child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 32), child: Center(child: SleepToast(_toast!)))),
+                    padding: const EdgeInsets.symmetric(horizontal: 32),
+                    child: Center(child: YouTubeObstacle(child: SleepToast(_toast!))))),
           ),
       ],
     );

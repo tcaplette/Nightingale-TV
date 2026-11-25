@@ -30,14 +30,14 @@ class BackupException implements Exception {
   String toString() => message;
 }
 
-/// Why a backup was made. The names are what backup files and the store's
-/// file names hold.
+/// Why a backup was made, as its header says. Older versions wrote other
+/// reasons too ("file", "from-official"…); any reason string still opens.
 abstract final class BackupReason {
+  /// The automatic backup.
   static const daily = 'daily';
-  static const manual = 'manual';
 
-  /// Opened from a file or uploaded from a phone (the store's kind only).
-  static const file = 'file';
+  /// Made when asked for: Save to a file, a download.
+  static const manual = 'manual';
   static const beforeRestore = 'before-restore';
   static const beforeReset = 'before-reset';
   static const beforeDelete = 'before-delete';
@@ -51,21 +51,20 @@ abstract final class BackupReason {
   static const movingToOfficial = 'moving-official';
   static const movingToOwnBuild = 'moving-own-build';
 
-  /// Handed over by that other app (the store's kind only, like [file]).
-  static const fromOfficial = 'from-official';
-  static const fromOwnBuild = 'from-own-build';
-
-  static const all = [
-    daily, manual, file, beforeRestore, beforeReset, beforeDelete, beforeUpgrade, beforeLineupCleanup,
-    movingToOfficial, movingToOwnBuild, fromOfficial, fromOwnBuild,
-  ];
-
-  /// From elsewhere (a file, a phone, the other app), so not necessarily
-  /// what's set up here.
-  static bool isReceived(String reason) => reason == file || reason.startsWith('from-');
-
-  /// Safety backups, taken right before a big change.
+  /// Undo points, saved right before a big change.
   static bool isSafety(String reason) => reason.startsWith('before-');
+}
+
+/// Which picked Live TV files a backup carries (backup-simplify D6).
+enum PickedFiles {
+  /// Every one: Save to a file, downloads, the install hand-over, undo
+  /// points.
+  all,
+
+  /// The automatic backup, which Android may copy to the cloud: no guide
+  /// files, and playlists, smallest first, while it stays under
+  /// [BackupArchive.automaticBudget].
+  automatic,
 }
 
 /// What a backup holds, for lists and confirmations.
@@ -91,7 +90,16 @@ class BackupSummary {
 /// signs in. Never its sign-in token or its Jellyfin device id.
 class ProfileBackup {
   const ProfileBackup(
-      {this.settings, this.channels, this.blocks, this.signIn, this.servers, this.liveSources, this.liveFiles = const {}});
+      {this.settings,
+      this.channels,
+      this.blocks,
+      this.signIn,
+      this.servers,
+      this.liveSources,
+      this.liveFiles = const {},
+      this.leftOut = const [],
+      this.smb,
+      this.smbHistory = const {}});
 
   /// `settings.json` without `installId`.
   final Map<String, Object?>? settings;
@@ -113,6 +121,22 @@ class ProfileBackup {
   final Map<String, Object?>? liveSources;
   final Map<String, String> liveFiles;
 
+  /// Picked files the automatic backup left out (backup-simplify D6), by
+  /// name. Their sources keep the name and ask for the file again.
+  final List<String> leftOut;
+
+  /// The profile's shares (smb-sources): `smb_shares.json` as saved (each
+  /// share's folders, history name and where history is kept). Never a
+  /// password, and never what was read of the shares' files.
+  final Map<String, Object?>? smb;
+
+  /// The history kept on the device for each share, by file name
+  /// (`smb_history/<name>`): this profile's own viewings only.
+  final Map<String, Object?> smbHistory;
+
+  /// Names a share's history file is saved under.
+  static final smbHistoryName = RegExp(r'^[0-9a-f]{20}\.json$');
+
   String? get serverId => signIn?['serverId'] as String?;
 
   Map<String, Object?> toJson() => {
@@ -123,6 +147,9 @@ class ProfileBackup {
         'servers': ?servers,
         'liveSources': ?liveSources,
         if (liveFiles.isNotEmpty) 'liveFiles': liveFiles,
+        if (leftOut.isNotEmpty) 'leftOut': leftOut,
+        'smb': ?smb,
+        if (smbHistory.isNotEmpty) 'smbHistory': smbHistory,
       };
 
   static ProfileBackup fromJson(Object? json) {
@@ -135,6 +162,12 @@ class ProfileBackup {
       servers: json['servers'] as Map<String, Object?>?,
       liveSources: json['liveSources'] as Map<String, Object?>?,
       liveFiles: (json['liveFiles'] as Map?)?.cast<String, String>() ?? const {},
+      leftOut: (json['leftOut'] as List?)?.cast<String>() ?? const [],
+      smb: json['smb'] as Map<String, Object?>?,
+      smbHistory: {
+        for (final e in ((json['smbHistory'] as Map?) ?? const {}).cast<String, Object?>().entries)
+          if (smbHistoryName.hasMatch(e.key)) e.key: e.value,
+      },
     );
   }
 
@@ -174,6 +207,11 @@ class ProfileBackup {
       'serverId': ?session['serverId'],
       'userId': ?session['userId'],
       'userName': session['userName'],
+      // A share signed in as a guest connects again without asking.
+      if (kind == ServerKind.smb && (session['userId'] == 'guest' || session['guest'] == true)) 'guest': true,
+      // YouTube with its own Google client: its screen comes first on the
+      // restore, since the secret never goes in a backup.
+      if (kind == ServerKind.youtube && (session['clientId'] != null || session['ownClient'] == true)) 'ownClient': true,
     };
   }
 }
@@ -257,8 +295,30 @@ class BackupArchive {
   ];
 
   /// What the content is, without when, why or where it was made: equal
-  /// fingerprints mean nothing changed.
-  late final String fingerprint = sha256.convert(utf8.encode(jsonEncode(_canonical(_content())))).toString();
+  /// fingerprints mean nothing changed. Where each profile was watching
+  /// (its last channel and guide tab) and which picked files were left out
+  /// don't count (backup-simplify D3, D6).
+  late final String fingerprint = sha256.convert(utf8.encode(jsonEncode(_canonical(_fingerprinted())))).toString();
+
+  /// Settings that change by watching, not by setting anything up.
+  static const viewingPlace = ['lastChannelId', 'guideTab'];
+
+  Map<String, Object?> _fingerprinted() {
+    final content = _content();
+    return {
+      ...content,
+      'profiles': {
+        for (final e in profiles.entries)
+          e.key: {
+            ...e.value.toJson(),
+            'settings': ?switch (e.value.settings) {
+              final s? => {...s}..removeWhere((k, _) => viewingPlace.contains(k)),
+              null => null,
+            },
+          }..remove('leftOut'),
+      },
+    };
+  }
 
   BackupSummary get summary => BackupSummary(
         profiles: [
@@ -414,7 +474,7 @@ class BackupArchive {
             LiveSource.fromJson(s as Map<String, Object?>);
           }
         }
-        for (final name in part.liveFiles.keys) {
+        for (final name in [...part.liveFiles.keys, ...part.leftOut]) {
           if (!ProfileBackup.liveFileName.hasMatch(name)) throw FormatException('live file');
         }
       } on Object {
@@ -458,21 +518,105 @@ class BackupArchive {
   /// analysis results, caches or logs. Pending writes must be flushed first.
   ///
   /// [server] is the server's account section (server mode only).
+  ///
+  /// [pickedFiles] says which picked Live TV files go in (D6).
   static Future<BuiltBackup> build(Directory root,
-      {required String reason, required String device, String? subject, DateTime? createdAt, Map<String, Object?>? server}) {
+      {required String reason,
+      required String device,
+      String? subject,
+      DateTime? createdAt,
+      Map<String, Object?>? server,
+      PickedFiles pickedFiles = PickedFiles.all}) {
     final path = root.path;
     final at = (createdAt ?? DateTime.now()).toUtc();
     Future<BuiltBackup> work() async {
-      final archive =
-          await _read(Directory(path), reason: reason, device: device, subject: subject, createdAt: at, server: server);
-      return BuiltBackup(archive.encode(), archive.fingerprint, archive.summary, at);
+      var archive = await _read(Directory(path),
+          reason: reason, device: device, subject: subject, createdAt: at, server: server, pickedFiles: pickedFiles);
+      var bytes = archive.encode();
+      // Over the budget: the largest playlist left goes, until it fits.
+      while (pickedFiles == PickedFiles.automatic && bytes.length >= automaticBudget) {
+        final largest = [
+          for (final p in archive.profiles.entries)
+            for (final f in p.value.liveFiles.entries) (profile: p.key, name: f.key, size: f.value.length),
+        ]..sort((a, b) => b.size.compareTo(a.size));
+        if (largest.isEmpty) break;
+        archive = archive._leavingOut(largest.first.profile, largest.first.name);
+        bytes = archive.encode();
+      }
+      return BuiltBackup(bytes, archive.fingerprint, archive.summary, at);
     }
 
     return useIsolate ? Isolate.run(work, debugName: 'backup') : work();
   }
 
+  /// A channel as a backup keeps it: a YouTube channel without its videos,
+  /// which are YouTube's data, fetched again after the restore
+  /// (youtube-subscriptions D6).
+  static Object? withoutYouTubeData(Object? channel) =>
+      channel is Map<String, Object?> && channel['youtube'] != null ? {...channel, 'playlist': const <String>[]} : channel;
+
+  /// A profile's on-device history of its shares: its own viewings, never
+  /// what it last read of other devices'.
+  static Future<Map<String, Object?>> _smbHistory(Directory profile) async {
+    final out = <String, Object?>{};
+    final dir = Directory('${profile.path}/smb_history');
+    if (!await dir.exists()) return out;
+    await for (final f in dir.list()) {
+      final name = f.uri.pathSegments.last;
+      if (f is! File || !ProfileBackup.smbHistoryName.hasMatch(name)) continue;
+      try {
+        final json = jsonDecode(await f.readAsString());
+        if (json is Map<String, Object?> && json['mine'] is Map) out[name] = {'mine': json['mine']};
+      } on FormatException {
+        // Unreadable: not kept.
+      }
+    }
+    return out;
+  }
+
+  /// The most the automatic backup may be (D6): headroom under Android
+  /// Auto Backup's 25 MB.
+  static const automaticBudget = 20 * 1024 * 1024;
+
+  /// This backup with profile [id]'s picked file [name] left out.
+  BackupArchive _leavingOut(String id, String name) {
+    final p = profiles[id]!;
+    return BackupArchive(
+      version: version,
+      createdAt: createdAt,
+      reason: reason,
+      device: device,
+      subject: subject,
+      householdProfiles: householdProfiles,
+      export: export,
+      remote: remote,
+      profiles: {
+        ...profiles,
+        id: ProfileBackup(
+          settings: p.settings,
+          channels: p.channels,
+          blocks: p.blocks,
+          signIn: p.signIn,
+          servers: p.servers,
+          liveSources: p.liveSources,
+          liveFiles: {...p.liveFiles}..remove(name),
+          leftOut: [...p.leftOut, name],
+          smb: p.smb,
+          smbHistory: p.smbHistory,
+        ),
+      },
+      logos: logos,
+      server: server,
+    );
+  }
+
   static Future<BackupArchive> _read(Directory root,
-      {required String reason, required String device, String? subject, required DateTime createdAt, Map<String, Object?>? server}) async {
+      {required String reason,
+      required String device,
+      String? subject,
+      required DateTime createdAt,
+      Map<String, Object?>? server,
+      required PickedFiles pickedFiles}) async {
     final top = AppStorage.existing(root);
     final household = await top.readRaw('profiles.json');
     final list = household is List ? household.cast<Object?>() : const <Object?>[];
@@ -486,25 +630,35 @@ class BackupArchive {
       final blocks = await storage.readRaw('blocks.json');
       final live = await storage.readRaw(LiveSourceStore.fileName);
       final liveFiles = <String, String>{};
+      final leftOut = <String>[];
       if (live is Map<String, Object?>) {
         for (final s in live['sources'] as List? ?? const []) {
           if (s is! Map<String, Object?>) continue;
-          for (final name in [s['playlistFile'], s['guideFile']]) {
+          for (final (name, guide) in [(s['playlistFile'], false), (s['guideFile'], true)]) {
             if (name is! String || !ProfileBackup.liveFileName.hasMatch(name)) continue;
             final f = File('${storage.root.path}/${LiveSourceStore.filesFolder}/$name');
-            if (await f.exists()) liveFiles[name] = base64.encode(gzip.encode(await f.readAsBytes()));
+            if (!await f.exists()) continue;
+            // The automatic backup never carries a guide file (D6).
+            if (guide && pickedFiles == PickedFiles.automatic) {
+              leftOut.add(name);
+              continue;
+            }
+            liveFiles[name] = base64.encode(gzip.encode(await f.readAsBytes()));
           }
         }
       }
       profiles[id] = ProfileBackup(
         settings: settings is Map<String, Object?> ? ({...settings}..remove('installId')) : null,
-        channels: channels is List ? channels.cast<Object?>() : null,
+        channels: channels is List ? [for (final c in channels) withoutYouTubeData(c)] : null,
         blocks: blocks is List ? blocks.cast<Object?>() : null,
         signIn: ProfileBackup.hintFrom(await storage.readRaw('session.json')) ??
             ProfileBackup.hintFrom(await storage.readRaw(signInHintFile)),
         servers: ProfileBackup.serversFrom(await storage.readRaw(ServerSet.file)),
         liveSources: live is Map<String, Object?> ? live : null,
+        smb: switch (await storage.readRaw('smb_shares.json')) { final Map<String, Object?> m => m, _ => null },
+        smbHistory: await _smbHistory(storage.root),
         liveFiles: liveFiles,
+        leftOut: leftOut,
       );
     }
     final logos = <String, Uint8List>{};

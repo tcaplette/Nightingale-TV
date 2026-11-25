@@ -6,6 +6,7 @@ import 'package:nightingale_tv/backup/backup_scheduler.dart';
 import 'package:nightingale_tv/backup/backup_store.dart';
 import 'package:nightingale_tv/data/app_storage.dart';
 import 'package:nightingale_tv/library/library_index.dart';
+import 'package:nightingale_tv/l10n/language_controller.dart';
 import 'package:nightingale_tv/profiles/household.dart';
 import 'package:nightingale_tv/profiles/profile.dart';
 
@@ -69,8 +70,8 @@ Future<void> writeHousehold(Directory root, List<Profile> profiles, LibraryIndex
 }
 
 /// The household in [root], making backups into `backups/`, started.
-Future<Household> openHousehold(Directory root, {bool start = true}) async {
-  final h = Household(await AppStorage.at(root), runAnalysis: false);
+Future<Household> openHousehold(Directory root, {bool start = true, LanguageController? language}) async {
+  final h = Household(await AppStorage.at(root), runAnalysis: false, language: language);
   h.backups = BackupScheduler(h, BackupStore(Directory('${root.path}/backups')));
   if (start) await h.start();
   return h;

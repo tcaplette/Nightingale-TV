@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
@@ -10,6 +11,9 @@ import 'language_arb_support.dart';
 
 /// Values that are rightly the same as English: names, codes, numbers.
 const _sameAsEnglish = <String>{
+  ', ',
+  // The undo point's confirmation title: its action and time (backup-simplify).
+  '{action} · {time}',
   '12 Mbps · 1080p',
   '4 Mbps · 720p',
   '40 Mbps · 4K',
@@ -24,8 +28,9 @@ const _sameAsEnglish = <String>{
   'Alternative',
   'Animation',
   'Arcade',
+  // Quality YouTube chooses (player-options): 'Auto' in YouTube's own menus.
+  'Auto',
   'Avatar',
-  'BACKUPS',
   'Backups',
   'Badges',
   'CH +',
@@ -59,19 +64,23 @@ const _sameAsEnglish = <String>{
   'LIVE',
   'Late Night',
   'Latin',
+  'Licences',
   'Live',
   'Live · {source}',
   'M Menu',
   'MID-ROLL',
+  'Magenta',
   'Menu',
   'Mid-roll',
   'Mystery',
   'NIGHTINGALE TV GUIDE',
+  'NEW',
   'Name',
   'Natural',
   'OK',
   'Offline',
   'Oldies',
+  'Olive',
   'Online',
   'Original',
   'PIN',
@@ -113,14 +122,22 @@ const _sameAsEnglish = <String>{
   'Warm',
   'Western',
   'XMLTV',
+  'YouTube',
   'http://…/playlist.m3u',
+  'http://provider.example/get.php?username=…&type=m3u_plus',
   '{clips, plural, =1{{name}  ·  {clips} clip} other{{name}  ·  {clips} clips}}',
+  '{color} · {name}',
   '{commercialBreakLabel} in {left}',
   '{date}, {time}',
+  '{mbps} Mbps',
   '{decade} TV',
   '{decade} {genre} TV',
+  '{decade}s',
+  '{decades} {genres}',
   '{inMinutes} min',
   '{inMinutes} minutes',
+  '{label}: {value}',
+  '.',
   '{n, plural, =1{{n} clip} other{{n} clips}}',
   '{name} (collection)',
   '{name} ({kind} {number})',
@@ -130,7 +147,11 @@ const _sameAsEnglish = <String>{
   '{toStringAsFixed} Mbps',
 };
 
-const _translated = ['de', 'fr', 'es', 'pt', 'it'];
+final _translated = [for (final l in supportedLanguages) if (l != 'en') l];
+
+/// The bundled Japanese and Chinese font (cjk-languages D2).
+const _cjkFont = 'assets/fonts/NotoSansCJK-UI-Regular.otf';
+const _cjkFontBold = 'assets/fonts/NotoSansCJK-UI-Bold.otf';
 
 Set<String> _placeholders(String message) {
   final found = <String>{};
@@ -223,10 +244,10 @@ void main() {
     });
   }
 
-  test('the bundled fonts can draw every character the translations use', () {
+  test('the bundled Latin fonts can draw every character the Latin-script translations use', () {
     final english = (en.values.whereType<String>().join()).runes.toSet();
     final used = <int, String>{};
-    for (final language in _translated) {
+    for (final language in _translated.where((l) => !isCjk(l))) {
       final arb = readArb(language);
       for (final k in keys) {
         for (final c in (arb[k] as String).runes) {
@@ -241,5 +262,48 @@ void main() {
       expect(missing, isEmpty, reason: font.path);
     }
     expect(supportedLanguages, contains('pt'));
+  });
+
+  test('the bundled CJK font has every character the Japanese and Chinese text uses', () {
+    final english = (en.values.whereType<String>().join()).runes.toSet();
+    final used = <int, String>{};
+    for (final language in _translated.where(isCjk)) {
+      final arb = readArb(language);
+      for (final k in keys) {
+        for (final c in (arb[k] as String).runes) {
+          if (!english.contains(c)) used[c] = '$language $k';
+        }
+      }
+    }
+    // The picker lists every language by its own name, in every language.
+    for (final MapEntry(:key, :value) in languageNativeNames.entries.where((e) => isCjk(e.key))) {
+      for (final c in value.runes) {
+        if (!english.contains(c)) used[c] = 'the language name of $key';
+      }
+    }
+    // Caption language names in Japanese and Chinese.
+    for (final language in _translated.where(isCjk)) {
+      for (final MapEntry(:key, :value) in languageNameMaps[language]!.entries) {
+        for (final c in value.runes) {
+          if (!english.contains(c)) used[c] = '$language caption name $key';
+        }
+      }
+    }
+    expect(used, isNotEmpty);
+    for (final font in [_cjkFont, _cjkFontBold]) {
+      final chars = _fontCharacters(font);
+      final missing = [
+        for (final e in used.entries)
+          if (!chars.contains(e.key)) '${String.fromCharCode(e.key)} (U+${e.key.toRadixString(16).toUpperCase()}) in ${e.value}',
+      ];
+      expect(missing, isEmpty, reason: '$font is out of date: run python3 tool/subset_cjk_font.py');
+    }
+  });
+
+  test('the CJK font records where it came from', () {
+    final record = jsonDecode(File('assets/fonts/NotoSansCJK-UI.json').readAsStringSync()) as Map<String, dynamic>;
+    expect(record['source'], contains('Noto Sans CJK'));
+    expect((record['sha256'] as Map).keys, containsAll(['Regular', 'Bold']));
+    expect(File('assets/fonts/OFL-NotoSansCJK.txt').readAsStringSync(), contains('SIL Open Font License'));
   });
 }

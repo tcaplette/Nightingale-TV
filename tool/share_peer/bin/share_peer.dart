@@ -90,14 +90,14 @@ String _requireTestEmail() {
   return e;
 }
 
-/// A test account's address: NTV_TEST_EMAIL with "-<tag>" inserted before the @.
+/// A test account's address: NTV_TEST_EMAIL with `-<tag>` inserted before the @.
 String _taggedEmail(String tag) {
   final e = _requireTestEmail();
   final at = e.indexOf('@');
   return '${e.substring(0, at)}-$tag${e.substring(at)}';
 }
 
-/// "@<domain>" of NTV_TEST_EMAIL, for the "no email in profile rows" check.
+/// `@<domain>` of NTV_TEST_EMAIL, for the "no email in profile rows" check.
 String _testDomain() {
   final e = _requireTestEmail();
   return e.substring(e.indexOf('@'));

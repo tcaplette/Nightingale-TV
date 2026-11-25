@@ -59,19 +59,27 @@ class _LanguagePickerState extends State<_LanguagePicker> {
         padding: EdgeInsets.all(dialogPadding(context)),
         child: SizedBox(
           width: dialogWidth(context, 720, padding: dialogPadding(context)),
-          child: dialogBody(
-            context,
-            FocusTraversalGroup(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(tr.languageTitle, style: g.display(48, weight: FontWeight.w800)),
-                  const SizedBox(height: 24),
-                  _row(g, tr.languageAutomatic, null),
-                  for (final language in supportedLanguages) _row(g, languageNativeNames[language]!, language),
-                ],
-              ),
+          // The title stays; the languages scroll under it when they don't
+          // all fit, and a focused row scrolls itself into view.
+          child: FocusTraversalGroup(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(tr.languageTitle, style: g.display(48, weight: FontWeight.w800)),
+                const SizedBox(height: 24),
+                Flexible(
+                  child: SingleChildScrollView(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        _row(g, tr.languageAutomatic, null),
+                        for (final language in supportedLanguages) _row(g, languageNativeNames[language]!, language),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
             ),
           ),
         ),

@@ -10,9 +10,13 @@ import '../app_state.dart';
 import '../channels/channel.dart';
 import '../channels/channel_groups.dart';
 import '../channels/schedule.dart';
+import '../library/library_index.dart' show MediaKind;
+import '../live/live_source.dart';
 import '../platform/platform_info.dart';
+import '../server/media_server.dart' show ImageKind;
 import '../playback/sleep_timer.dart';
 import '../playback/tuner.dart';
+import '../playback/youtube_player.dart';
 import '../sharing/presence.dart';
 import '../sharing/share_client.dart';
 import '../theme/tv_theme.dart';
@@ -394,6 +398,7 @@ class _GuideViewState extends State<GuideView> with SingleTickerProviderStateMix
       final painter = TextPainter(
         text: TextSpan(text: '${c.number}', style: _GuideRow.numberStyle(g)),
         textDirection: TextDirection.ltr,
+        locale: localeOf(currentLanguage),
       )..layout();
       if (painter.width > widest) widest = painter.width;
       painter.dispose();
@@ -413,6 +418,10 @@ class _GuideViewState extends State<GuideView> with SingleTickerProviderStateMix
     if (_row >= channels.length) _setRow(channels.length - 1, channels.length);
     final focusedChannel = channels.isEmpty ? null : channels[_row];
     final focusedProgram = _focusedProgram(channels);
+    // Server colours (guide-server-colors): only with two or more sources.
+    final colorsOn = app.guideColorsOn;
+    final focusedSource =
+        colorsOn && focusedChannel != null && focusedProgram != null ? app.sourceKeyOf(focusedChannel, focusedProgram) : null;
 
     return Focus(
       focusNode: _focus,
@@ -436,6 +445,9 @@ class _GuideViewState extends State<GuideView> with SingleTickerProviderStateMix
                     child: _InfoPanel(
                       channel: focusedChannel,
                       program: focusedProgram,
+                      source: focusedSource == null
+                          ? null
+                          : (color: app.serverColors[focusedSource], name: app.sourceName(focusedSource) ?? ''),
                       now: _now,
                       headerFocus: _headerFocus,
                       onMenu: widget.onMenu,
@@ -503,6 +515,7 @@ class _GuideViewState extends State<GuideView> with SingleTickerProviderStateMix
                           _GuideRow(
                             channel: channels[i],
                             schedule: app.scheduleFor(channels[i]),
+                            colorOf: colorsOn ? (p) => app.colorOf(channels[i], p) : null,
                             // One highlight at a time: the Menu button, the tabs or the grid.
                             focused: i == _row && !_menuFocused && !_tabsFocused,
                             focusedProgram: i == _row && !_menuFocused && !_tabsFocused ? focusedProgram : null,
@@ -553,9 +566,14 @@ class _GuideViewState extends State<GuideView> with SingleTickerProviderStateMix
               height: 56,
               color: g.header,
               alignment: Alignment.center,
+              padding: colorsOn ? const EdgeInsets.symmetric(horizontal: 40) : null,
               child: Row(
-                mainAxisSize: MainAxisSize.min,
+                mainAxisSize: colorsOn ? MainAxisSize.max : MainAxisSize.min,
                 children: [
+                  if (colorsOn) ...[
+                    Expanded(child: GuideColorKey(entries: guideKeyEntries(app))),
+                    const SizedBox(width: 24),
+                  ],
                   Text(tr.channelsTabsTime, style: g.body(22, color: g.textDim)),
                   _HintLink(text: tr.escBackTo, onTap: widget.onClose),
                   Text('     ', style: g.body(22)),
@@ -595,13 +613,15 @@ String musicHourSongs(ScheduledProgram hour, DateTime now) {
   final songs = [for (final s in hour.songs ?? const <ScheduledProgram>[]) if (s.end.isAfter(now)) s];
   if (songs.isEmpty) return '';
   final upcoming = hour.isOnAt(now) ? songs.skip(1) : songs;
-  return '${hour.isOnAt(now) ? 'Up next' : 'First up'}: ${[for (final s in upcoming.take(4)) s.title].join(' · ')}';
+  final titles = [for (final s in upcoming.take(4)) s.title].join(' · ');
+  return hour.isOnAt(now) ? tr.upNext(titles) : tr.firstUp(titles);
 }
 
 class _InfoPanel extends StatelessWidget {
   const _InfoPanel({
     required this.channel,
     required this.program,
+    this.source,
     required this.now,
     required this.headerFocus,
     required this.onMenu,
@@ -613,6 +633,9 @@ class _InfoPanel extends StatelessWidget {
   final Channel? channel;
   final ScheduledProgram? program;
   final DateTime now;
+
+  /// The server the program plays from, when the guide shows colours.
+  final ({ServerColor? color, String name})? source;
 
   /// The highlighted header button: 0 Menu, then Sleep, if it's there, and
   /// Back.
@@ -712,6 +735,12 @@ class _InfoPanel extends StatelessWidget {
                     style: g.display(58, weight: FontWeight.w800),
                   ),
                 ),
+                if (source case final s?) ...[
+                  const SizedBox(width: 18),
+                  ColorSwatchDot(color: s.color?.cell ?? g.cell, size: 26),
+                  const SizedBox(width: 10),
+                  Text(tr.playsFrom(s.name), style: g.body(26, weight: FontWeight.w600, color: g.textDim)),
+                ],
               ],
             ),
             const SizedBox(height: 6),
@@ -729,12 +758,37 @@ class _InfoPanel extends StatelessWidget {
             const SizedBox(height: 10),
             if (p.isOnAt(now)) ...[_ProgressBar(program: p, now: now), const SizedBox(height: 12)],
             Expanded(
-              child: Text(
-                p.isMusicHour ? musicHourSongs(p, now) : p.item?.overview ?? '',
-                maxLines: 3,
-                overflow: TextOverflow.ellipsis,
-                style: g.body(25, color: g.textDim),
-              ),
+              child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Expanded(
+                  child: Text(
+                    [
+                      // YouTube's daily limit, on its channels (D11).
+                      if (_youTubeLimited(context, ch)) tr.youTubeDailyLimitShort,
+                      p.isMusicHour ? musicHourSongs(p, now) : p.item?.overview ?? '',
+                    ].where((s) => s.isNotEmpty).join('\n'),
+                    maxLines: 3,
+                    overflow: TextOverflow.ellipsis,
+                    style: g.body(25, color: g.textDim),
+                  ),
+                ),
+                // A YouTube video's thumbnail (youtube-subscriptions D7).
+                if (p.item case final item? when item.kind == MediaKind.youtubeVideo)
+                  if (AppScope.read(context).servers.clientFor(item.id) case final client?)
+                    Padding(
+                      padding: const EdgeInsets.only(left: 20),
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(g.radius),
+                        child: Image.network(
+                          client.imageUri(item.id, ImageKind.primary).toString(),
+                          key: ValueKey(item.id),
+                          height: 112,
+                          width: 200,
+                          fit: BoxFit.cover,
+                          errorBuilder: (_, _, _) => const SizedBox.shrink(),
+                        ),
+                      ),
+                    ),
+              ]),
             ),
           ] else
             Text(tr.nothingScheduled, style: g.display(48)),
@@ -742,6 +796,14 @@ class _InfoPanel extends StatelessWidget {
       ),
     );
   }
+}
+
+/// Whether [ch] is a YouTube channel whose server is held off by YouTube's
+/// daily limit.
+bool _youTubeLimited(BuildContext context, Channel? ch) {
+  final ref = ch?.youtube;
+  if (ref == null) return false;
+  return AppScope.read(context).youtube.serverOf(ref.serverKey)?.quotaBlockedUntil != null;
 }
 
 /// A key hint in the bottom bar that can also be clicked.
@@ -837,13 +899,24 @@ class _Preview extends StatelessWidget {
                 listenable: Listenable.merge([tuner, AppScope.read(context)]),
                 builder: (context, _) {
                   final app = AppScope.read(context), ch = tuner.channel;
+                  // YouTube's player in the box, nothing over it
+                  // (youtube-playback D9); at YouTube's smallest size at least.
+                  if (ch != null && ch.isYouTube) {
+                    return YouTubeFrame(
+                      active: (tuner.status == TunerStatus.tuning || tuner.status == TunerStatus.playing) &&
+                          tuner.youTube.want != null,
+                      grow: true,
+                      onVisible: tuner.youTube.setVisible,
+                    );
+                  }
                   final retro = ch == null ? const ResolvedRetro() : app.retroFor(ch);
                   return RetroFrame(
                     retro: retro,
                     icon: ch?.icon,
                     app: app,
                     effects: false,
-                    child: tuner.media.buildVideo(fit: RetroFrame.fitFor(retro.shape)),
+                    media: tuner.media,
+                    child: const SizedBox.shrink(),
                   );
                 },
               ),
@@ -1041,7 +1114,11 @@ class _GuideRow extends StatelessWidget {
     required this.onHoverProgram,
     required this.onTap,
     this.watchers = const [],
+    this.colorOf,
   });
+
+  /// Each program's server colour; null when the guide shows none.
+  final ServerColor? Function(ScheduledProgram program)? colorOf;
 
   static TextStyle numberStyle(GuideTheme g) => g.display(40, weight: FontWeight.w800, color: g.accent);
 
@@ -1077,6 +1154,17 @@ class _GuideRow extends StatelessWidget {
     double x(DateTime t) =>
         gridWidth *
         (t.difference(windowStart).inMilliseconds / window.inMilliseconds).clamp(0.0, 1.0);
+    // The channel's colours: one per server, most programs first, up to four.
+    final colorOf = this.colorOf;
+    final tints = colorOf == null ? const <ServerColor?>[] : [for (final p in programs) colorOf(p)];
+    final bandsOfColor = <ServerColor>[];
+    if (colorOf != null) {
+      final count = <ServerColor, int>{};
+      for (final t in tints) {
+        if (t != null) count[t] = (count[t] ?? 0) + 1;
+      }
+      bandsOfColor.addAll((count.keys.toList()..sort((a, b) => count[b]!.compareTo(count[a]!))).take(4));
+    }
     // One labeled band across each programming block's time slot.
     final bands = <({String title, DateTime start, DateTime end})>[];
     for (final p in programs) {
@@ -1103,7 +1191,18 @@ class _GuideRow extends StatelessWidget {
                 width: channelColumnWidth,
                 margin: const EdgeInsets.only(bottom: 3),
                 padding: const EdgeInsets.symmetric(horizontal: 16),
-                color: focused ? g.cellBorder : g.channelColumn,
+                decoration: bandsOfColor.isEmpty
+                    ? BoxDecoration(color: focused ? g.cellBorder : g.channelColumn)
+                    : BoxDecoration(
+                        // A band of each server's colour; focused, the
+                        // lighter look is its border.
+                        gradient: LinearGradient(colors: [
+                          for (final c in bandsOfColor) ...[c.cell, c.cell]
+                        ], stops: [
+                          for (var i = 0; i < bandsOfColor.length; i++) ...[i / bandsOfColor.length, (i + 1) / bandsOfColor.length]
+                        ]),
+                        border: focused ? Border.all(color: g.cellBorder, width: 4) : null,
+                      ),
                 child: Row(
                   children: [
                     SizedBox(
@@ -1165,6 +1264,7 @@ class _GuideRow extends StatelessWidget {
                     bottom: 0,
                     child: _ProgramCell(
                       program: p,
+                      tint: tints.isEmpty ? null : tints[i],
                       focused: focusedProgram != null && focusedProgram!.start == p.start,
                       alternate: i.isOdd,
                       continuesLeft: p.start.isBefore(windowStart),
@@ -1217,7 +1317,11 @@ class _ProgramCell extends StatelessWidget {
     required this.onHover,
     required this.onTap,
     this.watching,
+    this.tint,
   });
+
+  /// The colour of the server it plays from (guide-server-colors).
+  final ServerColor? tint;
 
   /// Height of the programming block label above a block's cells.
   static const bandHeight = 22.0;
@@ -1248,7 +1352,11 @@ class _ProgramCell extends StatelessWidget {
         child: Container(
           margin: EdgeInsets.only(bottom: 3, left: 3, top: inBlock ? bandHeight : 0),
           decoration: BoxDecoration(
-            color: focused ? g.focus : (alternate ? g.cellAlt : g.cell),
+            color: focused
+                ? g.focus
+                : tint != null
+                    ? (alternate ? tint!.alternate : tint!.cell)
+                    : (alternate ? g.cellAlt : g.cell),
             border: focused ? Border.all(color: Colors.white, width: 3) : null,
           ),
           alignment: Alignment.centerLeft,
@@ -1332,3 +1440,107 @@ class _NowLine extends StatelessWidget {
     );
   }
 }
+
+/// A colour as a round swatch.
+class ColorSwatchDot extends StatelessWidget {
+  const ColorSwatchDot({super.key, required this.color, this.size = 22});
+
+  final Color color;
+  final double size;
+
+  @override
+  Widget build(BuildContext context) => Container(
+        width: size,
+        height: size,
+        decoration: BoxDecoration(color: color, shape: BoxShape.circle, border: Border.all(color: Colors.white70, width: 2)),
+      );
+}
+
+/// The sources the guide's key lists: servers with programs in the library,
+/// and M3U sources with chosen channels, each with its colour.
+List<({ServerColor color, String name})> guideKeyEntries(AppState app) {
+  final counts = app.serverCounts();
+  final colors = app.serverColors;
+  return [
+    for (final s in app.colorSources)
+      if (colors[s.key] case final c?)
+        if (s.key.startsWith('live:')
+            ? app.live.sources.any((src) => 'live:${src.id}' == s.key && src.chosen.isNotEmpty)
+            : (counts[s.key] != null ||
+                // A YouTube server with channels (youtube-subscriptions).
+                app.youTubeChannels.any((c) => c.youtube!.serverKey == s.key) ||
+                app.live.sources.any((src) => src.kind == LiveSourceKind.server && app.servers.byServerId(src.serverId)?.key == s.key)))
+          (color: c, name: s.name)
+  ];
+}
+
+/// The guide's key (guide-server-colors): each source's colour and name.
+/// Too long for its line, names are shortened first, then the last ones
+/// left out for "+N".
+class GuideColorKey extends StatelessWidget {
+  const GuideColorKey({super.key, required this.entries, this.fontSize = 22});
+
+  final List<({ServerColor color, String name})> entries;
+  final double fontSize;
+
+  static const _gap = 24.0, _dot = 22.0, _dotGap = 8.0, _shortest = 90.0;
+
+  /// How many of the names [widths] wide fit [maxWidth], each at most [cap]
+  /// wide, "+N" ([plusWidth] of the number left out) following: names are
+  /// shortened first, down to a few letters, then the last ones left out.
+  static ({int shown, double cap}) fit(List<double> widths, double maxWidth, double Function(int left) plusWidth) {
+    const per = _dot + _dotGap + _gap;
+    final all = widths.length;
+    double plus(int n) => n < all ? plusWidth(all - n) : 0;
+    double need(int n, double c) {
+      var sum = plus(n);
+      for (var i = 0; i < n; i++) {
+        sum += per + (widths[i] < c ? widths[i] : c);
+      }
+      return sum;
+    }
+
+    var shown = all;
+    while (shown > 0 && need(shown, double.infinity) > maxWidth) {
+      final room = (maxWidth - per * shown - plus(shown)) / shown;
+      // Names capped at the room left fill the line: done. (Measured
+      // again, the sum can come out a hair over it in floating point.)
+      if (room >= _shortest) return (shown: shown, cap: room);
+      shown--;
+    }
+    return (shown: shown, cap: double.infinity);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final g = context.guide;
+    final style = g.body(fontSize, weight: FontWeight.w600, color: g.text);
+    return LayoutBuilder(builder: (context, box) {
+      double widthOf(String t) {
+        final painter = TextPainter(text: TextSpan(text: t, style: style), textDirection: TextDirection.ltr, maxLines: 1)..layout();
+        final w = painter.width;
+        painter.dispose();
+        return w;
+      }
+
+      final (:shown, :cap) = fit([for (final e in entries) widthOf(e.name)], box.maxWidth, (left) => widthOf('+$left'));
+      return ClipRect(
+        child: Row(
+          children: [
+            for (var i = 0; i < shown; i++) ...[
+              ColorSwatchDot(color: entries[i].color.cell, size: _dot),
+              const SizedBox(width: _dotGap),
+              ConstrainedBox(
+                constraints: BoxConstraints(maxWidth: cap.isFinite ? cap : double.infinity),
+                child: Text(entries[i].name, maxLines: 1, softWrap: false, overflow: TextOverflow.ellipsis, style: style),
+              ),
+              const SizedBox(width: _gap),
+            ],
+            if (shown < entries.length) Text('+${entries.length - shown}', style: style),
+          ],
+        ),
+      );
+    });
+  }
+}
+

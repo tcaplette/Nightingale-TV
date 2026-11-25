@@ -1,6 +1,8 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
@@ -10,6 +12,7 @@ import 'package:nightingale_tv/server/emby_client.dart';
 import 'package:nightingale_tv/server/media_server.dart';
 import 'package:nightingale_tv/server/plex/plex_account.dart';
 import 'package:nightingale_tv/server/plex/plex_connections.dart';
+import 'package:nightingale_tv/server/smb/smb_discovery.dart';
 import 'package:nightingale_tv/ui/login_screen.dart';
 import 'package:nightingale_tv/ui/widgets/tv_focus.dart';
 
@@ -124,6 +127,63 @@ void main() {
       await tester.pump();
     }
   }
+
+  // The connect step: the address field, Connect, Sign in with Plex, then
+  // SMB share (server-kinds-wording).
+  final smbButton = find.byKey(const ValueKey('smb-share'));
+  String? focusedButton() => FocusManager.instance.primaryFocus?.context?.findAncestorWidgetOfExactType<TvButton>()?.label;
+
+  /// The sign-in screen with share finding on a fake that finds nothing.
+  Future<void> openForShares(WidgetTester tester, Size size) async {
+    setWindow(tester, size);
+    h = await PortraitHarness.start(tester);
+    await h.show(tester, LoginScreen(adding: true, prepareFlow: (f) => f.newDiscovery = _NoHosts.new));
+    await tester.pump();
+  }
+
+  testWidgets('SMB share is a plain button right under Sign in with Plex', (tester) async {
+    await openForShares(tester, const Size(1920, 1080));
+    expect(tester.takeException(), isNull, reason: 'nothing overflows on a TV');
+    final plex = tester.getRect(find.widgetWithText(TvButton, 'Sign in with Plex'));
+    final smb = tester.getRect(smbButton);
+    expect(smb.top, greaterThan(plex.bottom));
+    expect(smb.top - plex.bottom, lessThan(40), reason: 'directly under it');
+    expect(tester.widget<TvButton>(smbButton).label, 'SMB share');
+  });
+
+  testWidgets('the SMB share button opens the share step by D-pad', (tester) async {
+    await openForShares(tester, const Size(1920, 1080));
+    for (var i = 0; i < 5 && focusedButton() != 'SMB share'; i++) {
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+      await tester.pump();
+    }
+    expect(focusedButton(), 'SMB share');
+    await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+    await tester.pump();
+    await tester.pump();
+    expect(find.text('Add a share'), findsOneWidget);
+  });
+
+  for (final (name, at) in [
+    ('its edge', (Rect r) => r.centerLeft + const Offset(4, 0)),
+    ('its label', (Rect r) => r.center),
+  ]) {
+    testWidgets('a tap on the SMB share button at $name opens the share step', (tester) async {
+      await openForShares(tester, const Size(1920, 1080));
+      await tester.tapAt(at(tester.getRect(smbButton)));
+      await tester.pump();
+      await tester.pump();
+      expect(find.text('Add a share'), findsOneWidget);
+    });
+  }
+
+  testWidgets('on the narrowest phone the SMB share button is whole and on screen', (tester) async {
+    await openForShares(tester, narrowPhone);
+    expect(tester.takeException(), isNull);
+    final paragraph = tester.renderObject<RenderParagraph>(find.descendant(of: smbButton, matching: find.text('SMB share')));
+    expect(paragraph.didExceedMaxLines, isFalse);
+    expect(tester.getRect(smbButton).right, lessThanOrEqualTo(narrowPhone.width));
+  });
 
   testWidgets('a Jellyfin address keeps its steps: method, then password', (tester) async {
     await open(tester,
@@ -383,4 +443,22 @@ void main() {
     expect(await pickWith({relay}), relay);
     expect(await pickWith({}), isNull);
   });
+}
+
+/// Share finding that finds no hosts.
+class _NoHosts extends SmbDiscovery {
+  final _out = StreamController<List<SmbHost>>.broadcast();
+
+  @override
+  Stream<List<SmbHost>> get hosts => _out.stream;
+  @override
+  List<SmbHost> get current => const [];
+  @override
+  bool get running => false;
+  @override
+  Future<void> start() async {}
+  @override
+  Future<void> stop() async {}
+  @override
+  Future<void> dispose() => _out.close();
 }

@@ -20,6 +20,7 @@ import 'package:nightingale_tv/export/export_service.dart';
 import 'package:nightingale_tv/export/export_settings.dart';
 import 'package:nightingale_tv/export/ssdp_responder.dart';
 import 'package:nightingale_tv/jellyfin/jellyfin_client.dart';
+import 'package:nightingale_tv/live/live_tv_manager.dart';
 import 'package:nightingale_tv/playback/device_effects.dart';
 import 'package:nightingale_tv/platform/platform_info.dart';
 import 'package:nightingale_tv/profiles/household.dart';
@@ -107,42 +108,49 @@ void main() {
   Future<String?> installIdOf(Directory root, String id) async =>
       (await storageOf(root, id).readRaw('settings.json') as Map?)?['installId'] as String?;
 
-  group('automatic and safety backups', () {
+  group('the automatic backup and the undo point', () {
     late Household h;
     setUp(() async {
       await writeHousehold(dir, momAndKids(), fakeLibrary());
       h = await open(dir);
     });
 
-    Future<List<StoredBackup>> stored() => h.backups!.store.list();
-
-    test('an unchanged household saves nothing; a renamed channel saves a daily', () async {
-      expect(await h.backups!.dailyCheck(), isNotNull);
-      expect(await h.backups!.dailyCheck(), isNull);
-      expect(await stored(), hasLength(1));
+    test('an unchanged household saves nothing; a renamed channel rewrites it', () async {
+      expect(await h.backups!.automaticCheck(), isNotNull);
+      expect(await h.backups!.automaticCheck(), isNull);
 
       await h.select(mom);
       final ch = h.app!.allChannels.first;
       await h.app!.updateChannel(ch, name: 'Renamed');
-      final daily = await h.backups!.dailyCheck();
-      expect(daily!.kind, BackupReason.daily);
-      final names = [for (final c in daily.archive.profiles[mom.id]!.channels!) (c as Map)['name']];
+      final latest = await h.backups!.automaticCheck();
+      expect(latest!.reason, BackupReason.daily);
+      final names = [for (final c in latest.archive.profiles[mom.id]!.channels!) (c as Map)['name']];
       expect(names, contains('Renamed'));
-      expect(await stored(), hasLength(2));
+      expect(await h.backups!.store.undo(), isNull);
     });
 
-    test('reset, delete and a settings upgrade each save their kind first', () async {
+    test('tuning a channel doesn\'t count as a change', () async {
+      await h.select(mom);
+      expect(await h.backups!.automaticCheck(), isNotNull);
+      for (final ch in h.app!.allChannels.take(5)) {
+        await h.app!.setLastChannel(ch);
+      }
+      await h.app!.setGuideTab('favorites');
+      expect(await h.backups!.automaticCheck(), isNull);
+    });
+
+    test('reset, delete and a settings upgrade each save the undo point first', () async {
       await h.select(mom);
       await h.app!.resetChannels();
-      expect((await stored()).first.kind, BackupReason.beforeReset);
+      expect((await h.backups!.store.undo())!.undoLabel, 'Undo lineup reset');
 
-      // Delete needs a change since the last backup to save another.
+      // Delete needs a change since the undo point to save another.
       await h.app!.updateChannel(h.app!.allChannels.first, name: 'Changed');
       final kids = h.profiles.last;
       await h.deleteProfile(kids);
-      final before = (await stored()).first;
-      expect(before.kind, BackupReason.beforeDelete);
-      expect(before.kindLabel, 'Before deleting Kids');
+      final before = (await h.backups!.store.undo())!;
+      expect(before.reason, BackupReason.beforeDelete);
+      expect(before.undoLabel, 'Undo deleting Kids');
       expect(before.archive.summary.profiles, ['Mom', 'Kids']);
 
       // Settings saved before break plans: upgraded on loading.
@@ -155,13 +163,13 @@ void main() {
       await storageOf(dir, mom.id).flush();
       await h.select(mom);
       // Settings this old also predate show identity: the lineup cleanup
-      // saves its own backup after the upgrade's (lineup-dedup D7).
-      final kinds = [for (final b in await stored()) b.kind];
-      expect(kinds.take(2), [BackupReason.beforeLineupCleanup, BackupReason.beforeUpgrade]);
-      final upgrade = (await stored()).firstWhere((b) => b.kind == BackupReason.beforeUpgrade);
-      // It holds the settings as they were before the upgrade.
-      expect(upgrade.archive.profiles[mom.id]!.settings!['commercialsEnabled'], isTrue);
+      // saves its undo point after the upgrade's (lineup-dedup D7), which
+      // it replaces.
+      final undo = (await h.backups!.store.undo())!;
+      expect(undo.undoLabel, 'Undo lineup cleanup');
       expect((await storageOf(dir, mom.id).readRaw('settings.json') as Map)['commercialPlan'], isNotNull);
+      expect(Directory('${dir.path}/backups').listSync().whereType<File>().map((f) => f.uri.pathSegments.last),
+          ['undo.ntvbackup']);
     });
 
     test('a store that can\'t be written refuses the reset and the delete', () async {
@@ -179,9 +187,43 @@ void main() {
       expect(h.profiles, hasLength(2));
       expect(await Directory('${dir.path}/profiles/${h.profiles.last.id}').exists(), isTrue);
     });
+
+    test('undo of a reset, then undo of that undo', () async {
+      await h.select(mom);
+      final before = [for (final c in h.app!.allChannels) c.name];
+      await h.app!.updateChannel(h.app!.allChannels.first, name: 'Mine');
+      final mine = [for (final c in h.app!.allChannels) c.name];
+      await h.app!.resetChannels();
+      final reset = [for (final c in h.app!.allChannels) c.name];
+      expect(reset, isNot(mine));
+      expect(before, isNot(mine));
+
+      final undo = (await h.backups!.store.undo())!;
+      expect(undo.undoLabel, 'Undo lineup reset');
+      await BackupRestorer(h).restore(await h.backups!.store.read(undo));
+      await h.select(h.profiles.firstWhere((p) => p.id == mom.id));
+      expect([for (final c in h.app!.allChannels) c.name], mine);
+
+      final again = (await h.backups!.store.undo())!;
+      expect(again.undoLabel, 'Undo restore');
+      await BackupRestorer(h).restore(await h.backups!.store.read(again));
+      await h.select(h.profiles.firstWhere((p) => p.id == mom.id));
+      expect([for (final c in h.app!.allChannels) c.name], reset);
+    });
+
+    test('undo of a profile delete brings it back', () async {
+      final kids = h.profiles.last;
+      await h.deleteProfile(kids);
+      expect(h.profiles.map((p) => p.name), ['Mom']);
+      final undo = (await h.backups!.store.undo())!;
+      expect(undo.undoLabel, 'Undo deleting Kids');
+      await BackupRestorer(h).restore(await h.backups!.store.read(undo));
+      expect(h.profiles.map((p) => p.name), ['Mom', 'Kids']);
+      expect((await h.backups!.store.undo())!.undoLabel, 'Undo restore');
+    });
   });
 
-  group('the daily check\'s timing', () {
+  group('the automatic check\'s timing', () {
     late Household h;
     late _CountingScheduler scheduler;
     final launchIdle = AppState.launchIdleWait;
@@ -198,7 +240,7 @@ void main() {
       scheduler.dispose();
     });
 
-    test('waits for the launch\'s picture, then repeats every 24 hours', () {
+    test('waits for the launch\'s picture, then repeats every 6 hours', () {
       fakeAsync((async) {
         scheduler.start();
         async.elapse(const Duration(minutes: 1));
@@ -208,11 +250,11 @@ void main() {
         expect(scheduler.checks, 0);
         async.elapse(const Duration(seconds: 1));
         expect(scheduler.checks, 1, reason: '15 s after the picture');
-        async.elapse(const Duration(hours: 23));
+        async.elapse(const Duration(hours: 5));
         expect(scheduler.checks, 1);
         async.elapse(const Duration(hours: 1));
         expect(scheduler.checks, 2);
-        async.elapse(const Duration(hours: 24));
+        async.elapse(const Duration(hours: 6));
         expect(scheduler.checks, 3);
       });
     });
@@ -226,6 +268,24 @@ void main() {
         expect(scheduler.checks, 1);
         async.elapse(const Duration(hours: 1));
         expect(scheduler.checks, 1);
+      });
+    });
+
+    test('going to the background checks, at most once a minute', () {
+      addTearDown(() => BackupScheduler.now = DateTime.now);
+      fakeAsync((async) {
+        BackupScheduler.now = async.getClock(DateTime(2026, 11, 24)).now;
+        scheduler.wentToBackground();
+        expect(scheduler.checks, 0, reason: 'not before it starts');
+        scheduler.start();
+        scheduler.wentToBackground();
+        expect(scheduler.checks, 1);
+        async.elapse(const Duration(seconds: 30));
+        scheduler.wentToBackground();
+        expect(scheduler.checks, 1);
+        async.elapse(const Duration(seconds: 31));
+        scheduler.wentToBackground();
+        expect(scheduler.checks, 2);
       });
     });
   });
@@ -242,11 +302,11 @@ void main() {
       await app.setSlotRule(ch, SlotRule(length: const Duration(minutes: 30), tail: TailMode.offline, offlineImage: image));
       final now = DateTime.now();
       final onAir = app.scheduleFor(ch)!.playbackAt(now);
-      final backup = (await h.backups!.backUp(BackupReason.manual))!;
+      final backup = (await h.backups!.build(BackupReason.manual));
 
       await app.deleteUserChannel(ch);
       await File('${dir.path}/logos/$image').delete();
-      final bytes = await h.backups!.store.read(backup);
+      final bytes = backup.bytes;
       expect(BackupArchive.check(bytes).logos.keys, contains(image));
       await BackupRestorer(h).restore(bytes);
       await h.select(h.profiles.first);
@@ -269,11 +329,11 @@ void main() {
       await app.setGlobalPlan(BreakPlan(mode: BreakMode.custom, roles: roles));
       final ch = app.allChannels.first;
       await app.setChannelPlan(ch, BreakPlan(mode: BreakMode.custom, roles: roles.withBumpers(null, none: true)));
-      final backup = (await h.backups!.backUp(BackupReason.manual))!;
+      final backup = (await h.backups!.build(BackupReason.manual));
 
       await app.setPoolKind(pool, PoolKind.commercials);
       await app.setChannelPlan(ch, null);
-      await BackupRestorer(h).restore(await h.backups!.store.read(backup));
+      await BackupRestorer(h).restore(backup.bytes);
       await h.select(h.profiles.first);
 
       expect(h.app!.poolById(pool.id)!.kind, PoolKind.bumpers);
@@ -301,8 +361,8 @@ void main() {
       await DeviceEffects.instance.load(h.root);
       await DeviceEffects.instance.setOn(false);
       await h.root.flush();
-      final backup = (await h.backups!.backUp(BackupReason.manual))!;
-      final bytes = await h.backups!.store.read(backup);
+      final backup = (await h.backups!.build(BackupReason.manual));
+      final bytes = backup.bytes;
       expect(utf8.decode(bytes, allowMalformed: true), isNot(contains('device_effects')));
 
       await app.setMainRetro(const RetroSettings());
@@ -326,8 +386,8 @@ void main() {
       await ReportSwitch.instance.setOn(false);
       await ReportSwitch.instance.sent('3fa9c2d1e4b5469788c0a1b2c3d4e5f6');
       await h.root.flush();
-      final backup = (await h.backups!.backUp(BackupReason.manual))!;
-      final bytes = await h.backups!.store.read(backup);
+      final backup = (await h.backups!.build(BackupReason.manual));
+      final bytes = backup.bytes;
       final text = utf8.decode(bytes, allowMalformed: true);
       expect(text, isNot(contains('error_reports')));
       expect(text, isNot(contains('3fa9c2d1')));
@@ -349,8 +409,8 @@ void main() {
       await h.select(mom);
       await h.app!.setGuideRange(5);
       await h.root.flush();
-      final backup = (await h.backups!.backUp(BackupReason.manual))!;
-      final bytes = await h.backups!.store.read(backup);
+      final backup = (await h.backups!.build(BackupReason.manual));
+      final bytes = backup.bytes;
 
       await h.app!.setGuideRange(3);
       await BackupRestorer(h).restore(bytes);
@@ -363,7 +423,7 @@ void main() {
       await writeHousehold(dir, momAndKids(), fakeLibrary(), logos: 1);
       final h = await open(dir);
       final installIds = {for (final p in momAndKids()) p.id: await installIdOf(dir, p.id)};
-      final backup = (await h.backups!.backUp(BackupReason.manual))!;
+      final backup = (await h.backups!.build(BackupReason.manual));
 
       await h.select(mom);
       final first = h.app!.allChannels.first;
@@ -372,14 +432,14 @@ void main() {
       await File('${dir.path}/logos/${logoNameFor(9)}').writeAsBytes(fakeLogo(200));
 
       final restorer = BackupRestorer(h);
-      final archive = BackupArchive.check(await h.backups!.store.read(backup));
+      final archive = BackupArchive.check(backup.bytes);
       final plan = await restorer.plan(archive);
       expect(plan.needPassword, isEmpty);
-      await restorer.restore(await h.backups!.store.read(backup));
+      await restorer.restore(backup.bytes);
 
       expect(h.notice.value, startsWith('Restored the backup from '));
       expect(h.profiles.map((p) => p.name), ['Mom', 'Kids']);
-      expect((await h.backups!.store.list()).map((b) => b.kind), contains(BackupReason.beforeRestore));
+      expect((await h.backups!.store.undo())!.reason, BackupReason.beforeRestore);
       for (final p in momAndKids()) {
         final session = await storageOf(dir, p.id).readRaw('session.json') as Map;
         expect(session['accessToken'], tokenFor(p.id));
@@ -437,14 +497,14 @@ void main() {
       final numbers = {for (final c in app.allChannels) if (c.isLive) c.live!.key: c.number};
       await app.storage.flush();
 
-      final backup = (await h.backups!.backUp(BackupReason.manual))!;
-      final archive = BackupArchive.check(await h.backups!.store.read(backup));
+      final backup = (await h.backups!.build(BackupReason.manual));
+      final archive = BackupArchive.check(backup.bytes);
       final part = archive.profiles[mom.id]!;
       expect((part.liveSources!['sources'] as List).single, containsPair('name', 'Files'));
       expect(part.liveFiles.keys, unorderedEquals([source.playlistFile, source.guideFile]));
       expect(archive.summary.channels, archive.profiles.values.fold(0, (n, p) => n + (p.channels?.length ?? 0)) + 2,
           reason: 'the chosen live channels count');
-      final text = utf8.decode(BackupArchive.gunzip(await h.backups!.store.read(backup)));
+      final text = utf8.decode(BackupArchive.gunzip(backup.bytes));
       expect(text, isNot(contains('The News')), reason: 'no cached guide data');
       expect(text, isNot(contains('live_cache')));
 
@@ -454,7 +514,7 @@ void main() {
       await Directory('${profileDir.path}/live_cache').delete(recursive: true);
       await File('${profileDir.path}/live_sources.json').delete();
 
-      await BackupRestorer(h).restore(await h.backups!.store.read(backup));
+      await BackupRestorer(h).restore(backup.bytes);
       expect(await Directory('${profileDir.path}/live_cache').exists(), isFalse);
       await h.select(h.profiles.first);
       final again = h.app!;
@@ -468,6 +528,89 @@ void main() {
       expect(news.favorite, isTrue);
       expect(again.settings.groups.single.channelIds, [news.id]);
       expect(again.scheduleFor(news)!.programAt(DateTime.now()).title, 'The News');
+    });
+
+    test('the automatic backup leaves the picked guide out: channels and numbers stay, the card asks for the file, '
+        'and picking it brings the guide back', () async {
+      await writeHousehold(dir, momAndKids(), fakeLibrary());
+      final h = await open(dir);
+      await h.select(mom);
+      final app = h.app!;
+      final picked = Directory('${dir.path}/picked')..createSync();
+      final m3u = File('${picked.path}/list.m3u')
+        ..writeAsStringSync('#EXTM3U\n${[
+          for (final n in ['2.1', '4.1']) '#EXTINF:-1 tvg-id="c$n" tvg-chno="$n",Channel $n\nhttp://p/$n.ts',
+        ].join('\n')}\n');
+      final now = DateTime.now().toUtc();
+      String t(DateTime d) => '${d.year}${'${d.month}'.padLeft(2, '0')}${'${d.day}'.padLeft(2, '0')}'
+          '${'${d.hour}'.padLeft(2, '0')}0000 +0000';
+      final start = DateTime.utc(now.year, now.month, now.day, now.hour);
+      final guide = File('${picked.path}/guide.xml')
+        ..writeAsStringSync('<tv><channel id="c4.1"><display-name>Channel 4.1</display-name></channel>'
+            '<programme start="${t(start)}" stop="${t(start.add(const Duration(hours: 3)))}" channel="c4.1">'
+            '<title>The News</title></programme></tv>');
+      final source = await app.addM3uSource(
+          name: 'Files',
+          playlist: (name: 'list.m3u', path: m3u.path, bytes: null),
+          guide: (name: 'guide.xml', path: guide.path, bytes: null));
+      await app.chooseLiveChannels(source, {'c2.1', 'c4.1'});
+      while (app.live.isRefreshing(source)) {
+        await Future<void>.delayed(const Duration(milliseconds: 10));
+      }
+      final numbers = {for (final c in app.allChannels) if (c.isLive) c.live!.key: c.number};
+      await app.storage.flush();
+
+      final automatic = await h.backups!.build(BackupReason.daily, pickedFiles: PickedFiles.automatic);
+      final part = BackupArchive.check(automatic.bytes).profiles[mom.id]!;
+      expect(part.liveFiles.keys, [source.playlistFile]);
+      expect(part.leftOut, [source.guideFile]);
+
+      // A new device: none of the sources, files or cache.
+      final profileDir = storageOf(dir, mom.id).root;
+      await Directory('${profileDir.path}/live_files').delete(recursive: true);
+      await Directory('${profileDir.path}/live_cache').delete(recursive: true);
+      await File('${profileDir.path}/live_sources.json').delete();
+
+      await BackupRestorer(h).restore(automatic.bytes);
+      await h.select(h.profiles.first);
+      final again = h.app!;
+      final restored = again.live.sources.single;
+      expect(restored.guideFile, source.guideFile, reason: 'the name is kept');
+      await again.refreshLiveSource(restored);
+      expect(again.live.entryFor(restored).state.lastError, isNull, reason: 'a missing guide is not a failed refresh');
+      expect(again.live.missingFile(restored), LiveFileMissing.guide);
+      final live = [for (final c in again.allChannels) if (c.isLive) c];
+      expect({for (final c in live) c.live!.key: c.number}, numbers);
+      final news = live.firstWhere((c) => c.live!.key == 'c4.1');
+      expect(again.scheduleFor(news)!.programAt(DateTime.now()).title, isNot('The News'));
+
+      // Edit → pick the guide file: the guide comes back.
+      await again.editM3uSource(restored, guide: (name: 'guide.xml', path: guide.path, bytes: null));
+      while (again.live.isRefreshing(restored)) {
+        await Future<void>.delayed(const Duration(milliseconds: 10));
+      }
+      await again.refreshLiveSource(restored, channels: false);
+      expect(again.live.missingFile(restored), isNull);
+      final back = again.allChannels.firstWhere((c) => c.live?.key == 'c4.1');
+      expect(again.scheduleFor(back)!.programAt(DateTime.now()).title, 'The News');
+    });
+
+    test('a backup that left out a file this device still has keeps the device\'s copy', () async {
+      await writeHousehold(dir, momAndKids(), fakeLibrary());
+      final h = await open(dir);
+      final profileDir = storageOf(dir, mom.id).root;
+      final files = Directory('${profileDir.path}/live_files')..createSync();
+      File('${files.path}/src1-playlist.m3u').writeAsStringSync('#EXTM3U\n#EXTINF:-1,One\nhttp://p/1.ts\n');
+      File('${files.path}/src1-guide.xml').writeAsStringSync('<tv/>');
+      await storageOf(dir, mom.id).writeJson('live_sources.json', {
+        'sources': [
+          {'id': 'src1', 'kind': 'm3u', 'name': 'Files', 'playlistFile': 'src1-playlist.m3u', 'guideFile': 'src1-guide.xml'},
+        ],
+      });
+      await storageOf(dir, mom.id).flush();
+      final automatic = await h.backups!.build(BackupReason.daily, pickedFiles: PickedFiles.automatic);
+      await BackupRestorer(h).restore(automatic.bytes);
+      expect(File('${profileDir.path}/live_files/src1-guide.xml').readAsStringSync(), '<tv/>');
     });
 
     test('sign-ins the restore drops are signed out of Jellyfin; kept ones aren\'t', () async {
@@ -517,7 +660,7 @@ void main() {
       final before = await File('${dir.path}/profiles.json').readAsString();
       await expectLater(BackupRestorer(h).restore(utf8.encode('nope')), throwsA(isA<BackupException>()));
       expect(await File('${dir.path}/profiles.json').readAsString(), before);
-      expect(await h.backups!.store.list(), isEmpty);
+      expect(await h.backups!.store.undo(), isNull);
     });
 
     group('on a new device', () {
@@ -662,6 +805,54 @@ void main() {
         expect(await storageOf(newTv, mom.id).readRaw(AppState.signInHintFile), isNull);
       });
 
+      test('a restored M3U source is there right after the sign-in, on any server, asking for its left-out guide',
+          () async {
+        final profileDir = storageOf(oldTv, mom.id);
+        final files = Directory('${profileDir.root.path}/live_files')..createSync(recursive: true);
+        File('${files.path}/src1-playlist.m3u')
+            .writeAsStringSync('#EXTM3U\n#EXTINF:-1 tvg-id="c1" tvg-chno="5",Five\nhttp://p/5.ts\n');
+        File('${files.path}/src1-guide.xml').writeAsStringSync('<tv/>');
+        await profileDir.writeJson('live_sources.json', {
+          'sources': [
+            {
+              'id': 'src1',
+              'kind': 'm3u',
+              'name': 'Files',
+              'playlistFile': 'src1-playlist.m3u',
+              'guideFile': 'src1-guide.xml',
+              'chosen': {'c1': {'number': 905}},
+            },
+          ],
+        });
+        await profileDir.flush();
+        final old = await open(oldTv);
+        bytes = (await old.backups!.build(BackupReason.daily, pickedFiles: PickedFiles.automatic)).bytes;
+        old.leave();
+
+        final launchIdle = AppState.launchIdleWait;
+        AppState.launchIdleWait = const Duration(milliseconds: 50);
+        addTearDown(() => AppState.launchIdleWait = launchIdle);
+        for (final server in ['s1', 'another-server']) {
+          final device = await Directory('${dir.path}/new-$server').create();
+          final h = await open(device);
+          await BackupRestorer(h).restore(bytes);
+          await h.select(h.profileById(mom.id)!);
+          final app = h.app!;
+          expect(app.phase, AppPhase.signedOut);
+          await app.completeSignIn(_session(server), _server());
+          final source = app.live.sources.single;
+          expect(source.name, 'Files', reason: server);
+          expect(app.live.missingFile(source), LiveFileMissing.guide, reason: server);
+          // Its playlist is read once the sign-in's launch settles, without
+          // starting the app again.
+          for (var i = 0; i < 100 && app.live.entryFor(source).channels.isEmpty; i++) {
+            await Future<void>.delayed(const Duration(milliseconds: 20));
+          }
+          expect(app.live.entryFor(source).channels.map((c) => c.key), ['c1'], reason: server);
+          h.leave();
+        }
+      });
+
       test('Live TV export settings come back with their tuner ids and ports', () async {
         final export = ExportSettings.off
             .copyWith(enabled: true)
@@ -713,13 +904,13 @@ void main() {
       await service.setPort(mom.id, backupPort);
       await service.setEnabled(true);
       final deviceId = service.settings.profiles[mom.id]!.deviceId;
-      final backup = (await h.backups!.backUp(BackupReason.manual))!;
+      final backup = (await h.backups!.build(BackupReason.manual));
       // …then moved to another, and streaming there.
       final laterPort = await freePort();
       await service.setPort(mom.id, laterPort);
       expect(service.serverOf(mom.id)!.port, laterPort);
 
-      await BackupRestorer(h).restore(await h.backups!.store.read(backup));
+      await BackupRestorer(h).restore(backup.bytes);
       expect(service.settings.profiles[mom.id]!.port, backupPort);
       expect(service.settings.profiles[mom.id]!.deviceId, deviceId);
       expect(service.serverOf(mom.id)!.port, backupPort);
@@ -776,15 +967,15 @@ void main() {
       final old = await Directory('${dir.path}/old').create();
       await writeHousehold(old, momAndKids(), fakeLibrary());
       final h = await openHousehold(old, start: false);
-      bytes = (await h.backups!.build(BackupReason.daily)).bytes;
+      bytes = (await h.backups!.build(BackupReason.daily, pickedFiles: PickedFiles.automatic)).bytes;
       fresh = await Directory('${dir.path}/fresh').create();
-      // Android brought back only the cloud copy.
+      // Android brought back the automatic backup.
       final store = BackupStore(Directory('${fresh.path}/backups'));
       await store.cloudDir.create(recursive: true);
-      await store.cloudCopy.writeAsBytes(bytes);
+      await store.latestFile.writeAsBytes(bytes);
     });
 
-    test('Welcome back offers the newest backup, and Restore it restores it', () async {
+    test('Welcome back offers the automatic backup, and Restore it restores it', () async {
       final h = await open(fresh);
       expect(h.started, isTrue);
       expect(h.welcomeBack, isNotNull);
@@ -796,19 +987,22 @@ void main() {
       expect(h.welcomeBack, isNull);
       expect(h.profiles.map((p) => p.name), ['Mom', 'Kids']);
       // Nothing to keep from an empty first run.
-      expect((await h.backups!.store.list()).map((b) => b.kind), isNot(contains(BackupReason.beforeRestore)));
+      expect(await h.backups!.store.undo(), isNull);
     });
 
-    test('Start fresh makes a first profile and keeps the backups', () async {
+    test('Start fresh makes a first profile and keeps the automatic backup until it is replaced', () async {
       final h = await open(fresh);
       await h.startFresh();
       expect(h.welcomeBack, isNull);
       expect(h.profiles, hasLength(1));
       expect(h.app, isNotNull);
-      expect(await h.backups!.store.list(), hasLength(1));
+      expect(await h.backups!.store.latest(), isNotNull);
+      // A first profile that hasn't signed in has nothing to keep yet.
+      expect(await h.backups!.automaticCheck(), isNull);
+      expect((await h.backups!.store.latest())!.summary.profiles, ['Mom', 'Kids']);
     });
 
-    test('a new install offers a restore at sign-in, and backs up nothing first', () async {
+    test('a new install offers a restore at sign-in, and saves no undo point first', () async {
       final h = await open(await Directory('${dir.path}/new-install').create());
       expect(h.welcomeBack, isNull);
       expect(h.firstRun, isTrue);
@@ -817,7 +1011,8 @@ void main() {
       await BackupRestorer(h).restore(bytes);
       expect(h.profiles.map((p) => p.name), ['Mom', 'Kids']);
       expect(h.firstRun, isFalse);
-      expect(await h.backups!.store.list(), isEmpty);
+      expect(await h.backups!.store.undo(), isNull);
+      expect(await h.backups!.store.latest(), isNull);
       // From now on a restore keeps what's here first.
       expect(await h.hasNothingToKeep(), isFalse);
       expect((await BackupRestorer(h).plan(BackupArchive.check(bytes))).backsUpFirst, isTrue);
@@ -825,9 +1020,10 @@ void main() {
 
     test('a new install that hasn\'t signed in makes no backups', () async {
       final h = await open(await Directory('${dir.path}/empty-install').create());
-      expect(await h.backups!.dailyCheck(), isNull);
-      expect(await h.backups!.backUp(BackupReason.manual), isNull);
-      expect(await h.backups!.store.list(), isEmpty);
+      expect(await h.backups!.automaticCheck(), isNull);
+      expect(await h.backups!.saveUndoPoint(BackupReason.beforeReset), isNull);
+      expect(await h.backups!.store.latest(), isNull);
+      expect(await h.backups!.store.undo(), isNull);
     });
 
     test('an existing setup isn\'t a first run', () async {
@@ -858,7 +1054,7 @@ class _CountingScheduler extends BackupScheduler {
   int checks = 0;
 
   @override
-  Future<StoredBackup?> dailyCheck() async {
+  Future<StoredBackup?> automaticCheck() async {
     checks++;
     return null;
   }

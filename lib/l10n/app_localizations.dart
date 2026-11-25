@@ -10,7 +10,9 @@ import 'app_localizations_en.dart';
 import 'app_localizations_es.dart';
 import 'app_localizations_fr.dart';
 import 'app_localizations_it.dart';
+import 'app_localizations_ja.dart';
 import 'app_localizations_pt.dart';
+import 'app_localizations_zh.dart';
 
 // ignore_for_file: type=lint
 
@@ -103,7 +105,15 @@ abstract class AppLocalizations {
     Locale('es'),
     Locale('fr'),
     Locale('it'),
+    Locale('ja'),
     Locale('pt'),
+    Locale('zh'),
+    Locale.fromSubtags(languageCode: 'zh', scriptCode: 'Hant'),
+    Locale.fromSubtags(
+      languageCode: 'zh',
+      countryCode: 'HK',
+      scriptCode: 'Hant',
+    ),
   ];
 
   /// No description provided for @onlyChannelsYou.
@@ -375,78 +385,6 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Couldn\'t save a backup first: {e}'**
   String couldntSaveA(Object e);
-
-  /// No description provided for @madeByYou.
-  ///
-  /// In en, this message translates to:
-  /// **'Made by you'**
-  String get madeByYou;
-
-  /// No description provided for @fromNightingaleTv.
-  ///
-  /// In en, this message translates to:
-  /// **'From Nightingale TV (own build)'**
-  String get fromNightingaleTv;
-
-  /// No description provided for @fromNightingaleTv2.
-  ///
-  /// In en, this message translates to:
-  /// **'From Nightingale TV'**
-  String get fromNightingaleTv2;
-
-  /// No description provided for @movingToNightingale.
-  ///
-  /// In en, this message translates to:
-  /// **'Moving to Nightingale TV (own build)'**
-  String get movingToNightingale;
-
-  /// No description provided for @movingToNightingaleTv.
-  ///
-  /// In en, this message translates to:
-  /// **'Moving to Nightingale TV'**
-  String get movingToNightingaleTv;
-
-  /// No description provided for @fromAFile.
-  ///
-  /// In en, this message translates to:
-  /// **'From a file'**
-  String get fromAFile;
-
-  /// No description provided for @beforeLineupCleanup.
-  ///
-  /// In en, this message translates to:
-  /// **'Before lineup cleanup'**
-  String get beforeLineupCleanup;
-
-  /// No description provided for @beforeUpdate.
-  ///
-  /// In en, this message translates to:
-  /// **'Before update'**
-  String get beforeUpdate;
-
-  /// No description provided for @beforeDeleting.
-  ///
-  /// In en, this message translates to:
-  /// **'Before deleting {subject}'**
-  String beforeDeleting(Object subject);
-
-  /// No description provided for @beforeDeletingA.
-  ///
-  /// In en, this message translates to:
-  /// **'Before deleting a profile'**
-  String get beforeDeletingA;
-
-  /// No description provided for @beforeReset.
-  ///
-  /// In en, this message translates to:
-  /// **'Before reset'**
-  String get beforeReset;
-
-  /// No description provided for @beforeRestore.
-  ///
-  /// In en, this message translates to:
-  /// **'Before restore'**
-  String get beforeRestore;
 
   /// No description provided for @automatic.
   ///
@@ -913,7 +851,7 @@ abstract class AppLocalizations {
   /// No description provided for @portIsIn.
   ///
   /// In en, this message translates to:
-  /// **'Port {port} is in use by another program. Pick another port, then update it in Plex or Jellyfin.'**
+  /// **'Port {port} is in use by another program. Pick another port, then update it in Plex, Jellyfin or Emby.'**
   String portIsIn(Object port);
 
   /// No description provided for @anotherProfileAlready.
@@ -1372,6 +1310,12 @@ abstract class AppLocalizations {
   /// **'There has to be at least one grown-up profile.'**
   String get thereHasTo;
 
+  /// No description provided for @kidProfilesNeedPins.
+  ///
+  /// In en, this message translates to:
+  /// **'While there are kid profiles, every grown-up profile needs a PIN so kids can\'t switch into it. Set a PIN on {names}.'**
+  String kidProfilesNeedPins(Object names);
+
   /// No description provided for @switchToAnother.
   ///
   /// In en, this message translates to:
@@ -1750,11 +1694,11 @@ abstract class AppLocalizations {
   /// **'That isn\'t a picture in the custom logos folder.'**
   String get thatIsntAPicture;
 
-  /// No description provided for @couldntSaveASafety.
+  /// No description provided for @couldntSaveBackupNothingReset.
   ///
   /// In en, this message translates to:
-  /// **'Couldn\'t save a safety backup first, so nothing was reset: {e}'**
-  String couldntSaveASafety(Object e);
+  /// **'Couldn\'t save a backup first, so nothing was reset: {e}'**
+  String couldntSaveBackupNothingReset(Object e);
 
   /// No description provided for @theKindIs.
   ///
@@ -2170,6 +2114,18 @@ abstract class AppLocalizations {
   /// **'{namesCount} and {last}'**
   String and(Object namesCount, Object last);
 
+  /// Between names in a list, before the last one joined by "and": ", " in English, "、" in Japanese and Chinese.
+  ///
+  /// In en, this message translates to:
+  /// **', '**
+  String get listSeparator;
+
+  /// No description provided for @labelValue.
+  ///
+  /// In en, this message translates to:
+  /// **'{label}: {value}'**
+  String labelValue(Object label, Object value);
+
   /// No description provided for @restore.
   ///
   /// In en, this message translates to:
@@ -2215,14 +2171,8 @@ abstract class AppLocalizations {
   /// No description provided for @saveToFile.
   ///
   /// In en, this message translates to:
-  /// **'Save to file'**
+  /// **'Save to a file'**
   String get saveToFile;
-
-  /// No description provided for @madeOn.
-  ///
-  /// In en, this message translates to:
-  /// **'Made on {device}'**
-  String madeOn(Object device);
 
   /// No description provided for @moveOkSelectEsc.
   ///
@@ -2236,47 +2186,11 @@ abstract class AppLocalizations {
   /// **'Backup & restore'**
   String get backupRestore;
 
-  /// No description provided for @backups.
-  ///
-  /// In en, this message translates to:
-  /// **'BACKUPS'**
-  String get backups;
-
-  /// No description provided for @backUpNow.
-  ///
-  /// In en, this message translates to:
-  /// **'Back up now'**
-  String get backUpNow;
-
   /// No description provided for @aBackupHolds.
   ///
   /// In en, this message translates to:
-  /// **'A backup holds every profile with its channels, blocks, commercials and settings, and is made every day something changes. Sign-in passwords are never in it.'**
+  /// **'A backup holds every profile with its channels, blocks, commercials and settings. It\'s kept up to date as things change. Sign-in passwords are never in it.'**
   String get aBackupHolds;
-
-  /// No description provided for @lastBackup.
-  ///
-  /// In en, this message translates to:
-  /// **'Last backup: {toLocal} ({kindLabel}).'**
-  String lastBackup(Object toLocal, Object kindLabel);
-
-  /// No description provided for @noBackupsYet.
-  ///
-  /// In en, this message translates to:
-  /// **'No backups yet.'**
-  String get noBackupsYet;
-
-  /// No description provided for @itCantBe.
-  ///
-  /// In en, this message translates to:
-  /// **'{toLocal} · {kindLabel}. It can\'t be brought back.'**
-  String itCantBe(Object toLocal, Object kindLabel);
-
-  /// No description provided for @deleteThisBackup.
-  ///
-  /// In en, this message translates to:
-  /// **'Delete this backup?'**
-  String get deleteThisBackup;
 
   /// No description provided for @couldntSaveThe.
   ///
@@ -3526,6 +3440,12 @@ abstract class AppLocalizations {
   /// **' ({waiting} waiting).'**
   String waiting(Object waiting);
 
+  /// Ends a sentence built from pieces: "." in English, "。" in Japanese and Chinese.
+  ///
+  /// In en, this message translates to:
+  /// **'.'**
+  String get fullStop;
+
   /// No description provided for @longCommercialVideos.
   ///
   /// In en, this message translates to:
@@ -4417,7 +4337,7 @@ abstract class AppLocalizations {
   /// No description provided for @automaticDiscoveryIsnt.
   ///
   /// In en, this message translates to:
-  /// **'Automatic discovery isn\'t available on this PC. Add the tuner in Plex or Jellyfin by its address.'**
+  /// **'Automatic discovery isn\'t available on this PC. Add the tuner in Plex, Jellyfin or Emby by its address.'**
   String get automaticDiscoveryIsnt;
 
   /// No description provided for @anyoneOnYour.
@@ -4429,7 +4349,7 @@ abstract class AppLocalizations {
   /// No description provided for @watchYourChannels.
   ///
   /// In en, this message translates to:
-  /// **'Watch your channels in Plex, Jellyfin or any IPTV app on your home network. Nightingale TV has to stay open for them to play.'**
+  /// **'Watch your channels in Plex, Jellyfin, Emby or any IPTV app on your home network. Nightingale TV has to stay open for them to play.'**
   String get watchYourChannels;
 
   /// No description provided for @offline.
@@ -4567,7 +4487,7 @@ abstract class AppLocalizations {
   /// No description provided for @nightingaleTvTurns.
   ///
   /// In en, this message translates to:
-  /// **'Nightingale TV turns your Jellyfin, Emby or Plex library into always-on channels with a program guide. Flip around and catch whatever is on.'**
+  /// **'Nightingale TV turns your videos into always-on channels with a program guide. Connect Jellyfin, Emby, Plex, YouTube or an SMB share, such as a NAS. Flip around and catch whatever is on.'**
   String get nightingaleTvTurns;
 
   /// No description provided for @yourLibraryOn.
@@ -5746,6 +5666,12 @@ abstract class AppLocalizations {
   /// **'{genresCount} or {last}'**
   String or(Object genresCount, Object last);
 
+  /// No description provided for @decadesGenres.
+  ///
+  /// In en, this message translates to:
+  /// **'{decades} {genres}'**
+  String decadesGenres(Object decades, Object genres);
+
   /// No description provided for @settingUpYour.
   ///
   /// In en, this message translates to:
@@ -5763,6 +5689,12 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Up next: {title}'**
   String upNext(Object title);
+
+  /// No description provided for @firstUp.
+  ///
+  /// In en, this message translates to:
+  /// **'First up: {title}'**
+  String firstUp(Object title);
 
   /// No description provided for @backTo.
   ///
@@ -6027,30 +5959,6 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Restore this backup?'**
   String get restoreThisBackup;
-
-  /// No description provided for @backupActions.
-  ///
-  /// In en, this message translates to:
-  /// **'Backup actions'**
-  String get backupActions;
-
-  /// No description provided for @channels6.
-  ///
-  /// In en, this message translates to:
-  /// **'{profiles} · {channels} channels · {device}'**
-  String channels6(Object profiles, Object channels, Object device);
-
-  /// No description provided for @noneYetOne.
-  ///
-  /// In en, this message translates to:
-  /// **'None yet. One is saved each day the household changes.'**
-  String get noneYetOne;
-
-  /// No description provided for @savedOnThe.
-  ///
-  /// In en, this message translates to:
-  /// **'Saved on the server'**
-  String get savedOnThe;
 
   /// No description provided for @restoring.
   ///
@@ -7750,84 +7658,6 @@ abstract class AppLocalizations {
   /// **'Choose how long each break is, how often shows break, and which pool each break draws from.'**
   String get chooseHowLong;
 
-  /// No description provided for @kindSentenceAutomatic.
-  ///
-  /// In en, this message translates to:
-  /// **'automatic'**
-  String get kindSentenceAutomatic;
-
-  /// No description provided for @kindSentenceBeforeRestore.
-  ///
-  /// In en, this message translates to:
-  /// **'before restore'**
-  String get kindSentenceBeforeRestore;
-
-  /// No description provided for @kindSentenceBeforeReset.
-  ///
-  /// In en, this message translates to:
-  /// **'before reset'**
-  String get kindSentenceBeforeReset;
-
-  /// No description provided for @kindSentenceBeforeDeletingAProfile.
-  ///
-  /// In en, this message translates to:
-  /// **'before deleting a profile'**
-  String get kindSentenceBeforeDeletingAProfile;
-
-  /// No description provided for @kindSentenceBeforeDeleting.
-  ///
-  /// In en, this message translates to:
-  /// **'before deleting {subject}'**
-  String kindSentenceBeforeDeleting(Object subject);
-
-  /// No description provided for @kindSentenceBeforeUpdate.
-  ///
-  /// In en, this message translates to:
-  /// **'before update'**
-  String get kindSentenceBeforeUpdate;
-
-  /// No description provided for @kindSentenceBeforeLineupCleanup.
-  ///
-  /// In en, this message translates to:
-  /// **'before lineup cleanup'**
-  String get kindSentenceBeforeLineupCleanup;
-
-  /// No description provided for @kindSentenceFromAFile.
-  ///
-  /// In en, this message translates to:
-  /// **'from a file'**
-  String get kindSentenceFromAFile;
-
-  /// No description provided for @kindSentenceMovingToOfficial.
-  ///
-  /// In en, this message translates to:
-  /// **'moving to Nightingale TV'**
-  String get kindSentenceMovingToOfficial;
-
-  /// No description provided for @kindSentenceMovingToOwnBuild.
-  ///
-  /// In en, this message translates to:
-  /// **'moving to Nightingale TV (own build)'**
-  String get kindSentenceMovingToOwnBuild;
-
-  /// No description provided for @kindSentenceFromOfficial.
-  ///
-  /// In en, this message translates to:
-  /// **'from Nightingale TV'**
-  String get kindSentenceFromOfficial;
-
-  /// No description provided for @kindSentenceFromOwnBuild.
-  ///
-  /// In en, this message translates to:
-  /// **'from Nightingale TV (own build)'**
-  String get kindSentenceFromOwnBuild;
-
-  /// No description provided for @kindSentenceMadeByYou.
-  ///
-  /// In en, this message translates to:
-  /// **'made by you'**
-  String get kindSentenceMadeByYou;
-
   /// No description provided for @copyAction.
   ///
   /// In en, this message translates to:
@@ -8572,6 +8402,12 @@ abstract class AppLocalizations {
   /// **'DECADES'**
   String get decadesHeading;
 
+  /// No description provided for @decadeYears.
+  ///
+  /// In en, this message translates to:
+  /// **'{decade}s'**
+  String decadeYears(Object decade);
+
   /// No description provided for @channelActionTv.
   ///
   /// In en, this message translates to:
@@ -8667,6 +8503,48 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Turn this off and nothing is sent from this device; reports waiting to go are deleted.'**
   String get errorReportsOff;
+
+  /// No description provided for @recentReports.
+  ///
+  /// In en, this message translates to:
+  /// **'Recent reports'**
+  String get recentReports;
+
+  /// No description provided for @reportKindTest.
+  ///
+  /// In en, this message translates to:
+  /// **'Test'**
+  String get reportKindTest;
+
+  /// No description provided for @reportKindVideo.
+  ///
+  /// In en, this message translates to:
+  /// **'Video report'**
+  String get reportKindVideo;
+
+  /// No description provided for @reportKindError.
+  ///
+  /// In en, this message translates to:
+  /// **'Error'**
+  String get reportKindError;
+
+  /// No description provided for @reportKindExit.
+  ///
+  /// In en, this message translates to:
+  /// **'Unexpected exit'**
+  String get reportKindExit;
+
+  /// No description provided for @reportKindSlowStart.
+  ///
+  /// In en, this message translates to:
+  /// **'Slow start'**
+  String get reportKindSlowStart;
+
+  /// No description provided for @errorReportsAutomatic.
+  ///
+  /// In en, this message translates to:
+  /// **'A report is also sent by itself after the app closed unexpectedly or started slowly, with the screens, channels, start-up steps and memory figures from just before.'**
+  String get errorReportsAutomatic;
 
   /// No description provided for @sendATestReport.
   ///
@@ -8841,6 +8719,24 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Check my purchase again'**
   String get checkMyPurchaseAgain;
+
+  /// No description provided for @redeemPlayCode.
+  ///
+  /// In en, this message translates to:
+  /// **'Redeem a Play code'**
+  String get redeemPlayCode;
+
+  /// No description provided for @redeemCodeTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Redeem a code'**
+  String get redeemCodeTitle;
+
+  /// No description provided for @redeemCodeText.
+  ///
+  /// In en, this message translates to:
+  /// **'Redeem your code at play.google.com/redeem on a phone or computer, signed in with the Google account this device uses. Then pick Check my purchase again.'**
+  String get redeemCodeText;
 
   /// No description provided for @noPurchaseFound.
   ///
@@ -9801,6 +9697,1032 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Invited {names}'**
   String partyInvited(Object names);
+
+  /// SMB sign-in: the host refuses guest sign-ins by its own rules (as opposed to a wrong password).
+  ///
+  /// In en, this message translates to:
+  /// **'This computer doesn\'t let guests in. Enter a user name and password.'**
+  String get smbGuestsRefused;
+
+  /// SMB: the user may not open this share or folder.
+  ///
+  /// In en, this message translates to:
+  /// **'No access'**
+  String get smbNoAccess;
+
+  /// SMB: the share (or a folder of it) no longer exists. name is the share's name.
+  ///
+  /// In en, this message translates to:
+  /// **'{name} isn\'t there any more.'**
+  String smbShareGone(String name);
+
+  /// Status while the first files of a new share are read for their lengths. name is the share's name.
+  ///
+  /// In en, this message translates to:
+  /// **'Reading the files on {name}…'**
+  String smbReadingFiles(String name);
+
+  /// Status while a share's folders are listed.
+  ///
+  /// In en, this message translates to:
+  /// **'Scanning {name}: {count} folders…'**
+  String smbScanningFolders(String name, int count);
+
+  /// A share's default name: the share and the computer it is on ("media on NAS").
+  ///
+  /// In en, this message translates to:
+  /// **'{share} on {host}'**
+  String smbShareOnHost(String share, String host);
+
+  /// SMB sign-in: the typed address can't be read.
+  ///
+  /// In en, this message translates to:
+  /// **'That isn\'t a share\'s address. Type it as smb://computer/share or \\\\computer\\share.'**
+  String get smbNotAnAddress;
+
+  /// SMB: the computer doesn't answer. host is its name or address.
+  ///
+  /// In en, this message translates to:
+  /// **'Couldn\'t reach {host}.'**
+  String smbCantReach(String host);
+
+  /// Signing a share in again found a different share at the address.
+  ///
+  /// In en, this message translates to:
+  /// **'That\'s another share than {name}.'**
+  String smbAnotherShare(String name);
+
+  /// SMB folder mapping: Done pressed with no folder mapped.
+  ///
+  /// In en, this message translates to:
+  /// **'Choose what at least one folder holds.'**
+  String get smbMapOne;
+
+  /// Sign-in: the button that adds a shared folder (SMB, Samba, Windows file sharing) instead of a media server.
+  ///
+  /// In en, this message translates to:
+  /// **'SMB share'**
+  String get smbShareButton;
+
+  /// Title of the step that finds SMB hosts on the network.
+  ///
+  /// In en, this message translates to:
+  /// **'Add a share'**
+  String get smbFindTitle;
+
+  /// Under the SMB find step's title.
+  ///
+  /// In en, this message translates to:
+  /// **'Pick a computer or NAS, or type its share\'s address.'**
+  String get smbFindHelp;
+
+  /// Label of the field for an SMB address.
+  ///
+  /// In en, this message translates to:
+  /// **'Share address'**
+  String get smbAddress;
+
+  /// Shown while SMB hosts are being looked for.
+  ///
+  /// In en, this message translates to:
+  /// **'Looking for computers…'**
+  String get smbSearching;
+
+  /// Button: look for SMB hosts again.
+  ///
+  /// In en, this message translates to:
+  /// **'Search again'**
+  String get smbSearchAgain;
+
+  /// No SMB host answered on the network.
+  ///
+  /// In en, this message translates to:
+  /// **'No computers found. Type the share\'s address.'**
+  String get smbNoneFound;
+
+  /// Title of the list of a computer's shares.
+  ///
+  /// In en, this message translates to:
+  /// **'Shares on {host}'**
+  String smbSharesOn(String host);
+
+  /// A computer lists no shares.
+  ///
+  /// In en, this message translates to:
+  /// **'{host} has no shares you can open.'**
+  String smbNoShares(String host);
+
+  /// Note on a share whose computer only speaks the oldest SMB version.
+  ///
+  /// In en, this message translates to:
+  /// **'SMB1: old and not encrypted'**
+  String get smbOld;
+
+  /// Title of the SMB sign-in step.
+  ///
+  /// In en, this message translates to:
+  /// **'Sign in to {host}'**
+  String smbSignInTo(String host);
+
+  /// Optional Windows domain field on the SMB sign-in step.
+  ///
+  /// In en, this message translates to:
+  /// **'Domain (optional)'**
+  String get smbDomain;
+
+  /// Button: open the share without a user name.
+  ///
+  /// In en, this message translates to:
+  /// **'Connect as guest'**
+  String get smbAsGuest;
+
+  /// Title of the folder mapping step.
+  ///
+  /// In en, this message translates to:
+  /// **'What\'s in {share}?'**
+  String smbWhatsIn(String share);
+
+  /// Help on the folder mapping step.
+  ///
+  /// In en, this message translates to:
+  /// **'Choose what each folder holds. Folders left at Nothing are ignored; a folder inside a chosen one can have its own choice. OK on a folder\'s name opens it.'**
+  String get smbMapHelp;
+
+  /// A folder mapped to no content type.
+  ///
+  /// In en, this message translates to:
+  /// **'Nothing'**
+  String get smbTypeNone;
+
+  /// Folder content type.
+  ///
+  /// In en, this message translates to:
+  /// **'TV shows'**
+  String get smbTypeTv;
+
+  /// Folder content type.
+  ///
+  /// In en, this message translates to:
+  /// **'Movies'**
+  String get smbTypeMovies;
+
+  /// Folder content type.
+  ///
+  /// In en, this message translates to:
+  /// **'Music'**
+  String get smbTypeMusic;
+
+  /// Folder content type.
+  ///
+  /// In en, this message translates to:
+  /// **'Music videos'**
+  String get smbTypeMusicVideos;
+
+  /// Folder content type.
+  ///
+  /// In en, this message translates to:
+  /// **'Home videos'**
+  String get smbTypeHome;
+
+  /// Folder content type: clips for commercial breaks.
+  ///
+  /// In en, this message translates to:
+  /// **'Commercials'**
+  String get smbTypeCommercials;
+
+  /// Folder content type: clips that frame commercial breaks.
+  ///
+  /// In en, this message translates to:
+  /// **'Bumpers'**
+  String get smbTypeBumpers;
+
+  /// A folder that takes the type of the mapped folder around it.
+  ///
+  /// In en, this message translates to:
+  /// **'{type} (as above)'**
+  String smbAsAbove(String type);
+
+  /// Button: show the folder above on the mapping step.
+  ///
+  /// In en, this message translates to:
+  /// **'Up a folder'**
+  String get smbUp;
+
+  /// Field: the name a share's watched history is kept under.
+  ///
+  /// In en, this message translates to:
+  /// **'History name'**
+  String get smbHistoryName;
+
+  /// Explains where a share's history is kept.
+  ///
+  /// In en, this message translates to:
+  /// **'TVs using the same history name share play counts and resume points. They are kept in a hidden .nightingale folder on the share; nothing else on it is changed.'**
+  String get smbHistoryHelp;
+
+  /// Toggle: don't write history to the share.
+  ///
+  /// In en, this message translates to:
+  /// **'Keep history on this device'**
+  String get smbKeepLocal;
+
+  /// A share that can't be written to.
+  ///
+  /// In en, this message translates to:
+  /// **'This share is read-only: history is kept on this device.'**
+  String get smbReadOnly;
+
+  /// Finish mapping a share's folders.
+  ///
+  /// In en, this message translates to:
+  /// **'Done'**
+  String get smbFoldersDone;
+
+  /// Servers: how many files of a share are still being read for their lengths.
+  ///
+  /// In en, this message translates to:
+  /// **'Reading {count} files'**
+  String smbFilesLeft(int count);
+
+  /// Servers: where a share's watched history is kept.
+  ///
+  /// In en, this message translates to:
+  /// **'History: on the share, as \"{name}\"'**
+  String smbHistoryOnShare(String name);
+
+  /// Servers: a share's history is kept on this device by choice.
+  ///
+  /// In en, this message translates to:
+  /// **'History: on this device'**
+  String get smbHistoryOnDevice;
+
+  /// Servers: the share can't be written to.
+  ///
+  /// In en, this message translates to:
+  /// **'History: on this device (the share is read-only)'**
+  String get smbHistoryReadOnly;
+
+  /// Servers: the button that opens a share's folder mapping.
+  ///
+  /// In en, this message translates to:
+  /// **'Folders'**
+  String get smbFolders;
+
+  /// Servers: the button listing files of a share nothing can play.
+  ///
+  /// In en, this message translates to:
+  /// **'Can\'t play ({count})'**
+  String smbCantPlay(int count);
+
+  /// Title of the list of files nothing can play.
+  ///
+  /// In en, this message translates to:
+  /// **'Can\'t play · {name}'**
+  String smbCantPlayTitle(String name);
+
+  /// Help on the Can't play list.
+  ///
+  /// In en, this message translates to:
+  /// **'These files aren\'t scheduled. Check again after fixing a file, or after pairing a Nightingale TV that converts.'**
+  String get smbCantPlayHelp;
+
+  /// Button: check every listed file again.
+  ///
+  /// In en, this message translates to:
+  /// **'Check again'**
+  String get smbCheckAgain;
+
+  /// The Can't play list is empty.
+  ///
+  /// In en, this message translates to:
+  /// **'Every file can be played.'**
+  String get smbCantPlayNone;
+
+  /// Why a file can't play: it can't be read.
+  ///
+  /// In en, this message translates to:
+  /// **'Damaged'**
+  String get smbReasonDamaged;
+
+  /// Why a file can't play: it holds no picture.
+  ///
+  /// In en, this message translates to:
+  /// **'No video in it'**
+  String get smbReasonNoVideo;
+
+  /// Why a file can't play.
+  ///
+  /// In en, this message translates to:
+  /// **'Too much for this device, and no other Nightingale TV to convert it'**
+  String get smbReasonTooMuch;
+
+  /// Title of the dialog that renames a share.
+  ///
+  /// In en, this message translates to:
+  /// **'Rename {name}'**
+  String smbRenameTitle(String name);
+
+  /// Title of a share's folder mapping screen.
+  ///
+  /// In en, this message translates to:
+  /// **'Folders · {name}'**
+  String smbFoldersTitle(String name);
+
+  /// Saves a share's folders.
+  ///
+  /// In en, this message translates to:
+  /// **'Save'**
+  String get smbSave;
+
+  /// Quality limit screen of a share.
+  ///
+  /// In en, this message translates to:
+  /// **'A share\'s files are converted to fit by another Nightingale TV when one is paired; with none, they play as they are, since converting on this device wouldn\'t use less of the network.'**
+  String get smbQualityNote;
+
+  /// Share channels: why a channel of only home videos has no check box.
+  ///
+  /// In en, this message translates to:
+  /// **'Home videos can\'t be shared'**
+  String get smbHomeCantShare;
+
+  /// Sent in place of a home video's name in a watch party.
+  ///
+  /// In en, this message translates to:
+  /// **'Home video'**
+  String get smbHomeVideo;
+
+  /// Menu item and screen listing the open-source software the app is built with, and their licences.
+  ///
+  /// In en, this message translates to:
+  /// **'Licences'**
+  String get licencesTitle;
+
+  /// Help at the top of the licences screen.
+  ///
+  /// In en, this message translates to:
+  /// **'Nightingale TV is free software under the GNU GPL 3. It\'s built with this software, each under its own licence.'**
+  String get licencesHelp;
+
+  /// A guide colour for a server.
+  ///
+  /// In en, this message translates to:
+  /// **'Purple'**
+  String get colorPurple;
+
+  /// A guide colour for a server.
+  ///
+  /// In en, this message translates to:
+  /// **'Green'**
+  String get colorGreen;
+
+  /// A guide colour for a server.
+  ///
+  /// In en, this message translates to:
+  /// **'Amber brown'**
+  String get colorAmber;
+
+  /// A guide colour for a server.
+  ///
+  /// In en, this message translates to:
+  /// **'Teal'**
+  String get colorTeal;
+
+  /// A guide colour for a server.
+  ///
+  /// In en, this message translates to:
+  /// **'Magenta'**
+  String get colorMagenta;
+
+  /// A guide colour for a server.
+  ///
+  /// In en, this message translates to:
+  /// **'Olive'**
+  String get colorOlive;
+
+  /// A guide colour for a server.
+  ///
+  /// In en, this message translates to:
+  /// **'Slate'**
+  String get colorSlate;
+
+  /// A guide colour for a server.
+  ///
+  /// In en, this message translates to:
+  /// **'Cocoa'**
+  String get colorCocoa;
+
+  /// A guide colour for a server.
+  ///
+  /// In en, this message translates to:
+  /// **'Wine'**
+  String get colorWine;
+
+  /// Button: the colour a server's programs have in the guide.
+  ///
+  /// In en, this message translates to:
+  /// **'Guide colour'**
+  String get guideColor;
+
+  /// Title of the screen picking a server's guide colour.
+  ///
+  /// In en, this message translates to:
+  /// **'Guide colour · {name}'**
+  String guideColorTitle(String name);
+
+  /// Help on the guide colour screen.
+  ///
+  /// In en, this message translates to:
+  /// **'Programs from this server have this colour in the guide.'**
+  String get guideColorHelp;
+
+  /// A colour another server already has.
+  ///
+  /// In en, this message translates to:
+  /// **'{color} · {name}'**
+  String guideColorUsedBy(String color, String name);
+
+  /// Toggle: colour each program by the server it plays from.
+  ///
+  /// In en, this message translates to:
+  /// **'Server colours in the guide'**
+  String get serverColorsSetting;
+
+  /// Under the server colours toggle.
+  ///
+  /// In en, this message translates to:
+  /// **'Each program has the colour of the server it plays from, with a key under the guide.'**
+  String get serverColorsHelp;
+
+  /// Guide info panel: the server the highlighted program plays from.
+  ///
+  /// In en, this message translates to:
+  /// **'From {name}'**
+  String playsFrom(String name);
+
+  /// Setting on the Linux app and Docker server: convert share files for paired TVs that can't play them.
+  ///
+  /// In en, this message translates to:
+  /// **'Convert for other TVs'**
+  String get convertForOthers;
+
+  /// Help on the Convert for other TVs screen.
+  ///
+  /// In en, this message translates to:
+  /// **'TVs that can\'t play a file from a share ask this computer to convert it. It needs the same share in one of its profiles, and only converts files in that share\'s mapped folders.'**
+  String get convertForOthersHelp;
+
+  /// The 6-digit code a TV enters to pair with this computer.
+  ///
+  /// In en, this message translates to:
+  /// **'Pairing code: {code}'**
+  String convertCode(String code);
+
+  /// Heading of the list of TVs paired for converting.
+  ///
+  /// In en, this message translates to:
+  /// **'Paired TVs'**
+  String get convertPairedTvs;
+
+  /// Empty list of paired TVs.
+  ///
+  /// In en, this message translates to:
+  /// **'No TV is paired yet.'**
+  String get convertNoTvs;
+
+  /// Servers: the screen for pairing a computer that converts files this device can't play.
+  ///
+  /// In en, this message translates to:
+  /// **'Convert on other Nightingale TVs'**
+  String get convertHelpers;
+
+  /// Help on the helpers screen.
+  ///
+  /// In en, this message translates to:
+  /// **'A Nightingale TV on a computer or the Docker server can convert files from shares that this device can\'t play, or not fast enough. Turn on Convert for other TVs there, then pair with the code it shows.'**
+  String get convertHelpersHelp;
+
+  /// Button: look for Nightingale TVs that convert.
+  ///
+  /// In en, this message translates to:
+  /// **'Find on the network'**
+  String get convertFind;
+
+  /// Button: pair with a helper by its address.
+  ///
+  /// In en, this message translates to:
+  /// **'Type its address'**
+  String get convertTypeAddress;
+
+  /// Title of the prompt for a helper's address.
+  ///
+  /// In en, this message translates to:
+  /// **'Address of the Nightingale TV'**
+  String get convertAddress;
+
+  /// Title of the prompt for a helper's pairing code.
+  ///
+  /// In en, this message translates to:
+  /// **'Code shown on {name}'**
+  String convertEnterCode(String name);
+
+  /// Pairing with a helper failed.
+  ///
+  /// In en, this message translates to:
+  /// **'That code isn\'t right, or {name} didn\'t answer.'**
+  String convertWrongCode(String name);
+
+  /// Finding helpers found none.
+  ///
+  /// In en, this message translates to:
+  /// **'No Nightingale TV that converts was found. Check that Convert for other TVs is on there, or type its address.'**
+  String get convertNoneFound;
+
+  /// A paired helper lacks one of this profile's shares.
+  ///
+  /// In en, this message translates to:
+  /// **'Add {share} on {name}'**
+  String convertAddShareOn(String share, String name);
+
+  /// A paired helper doesn't answer.
+  ///
+  /// In en, this message translates to:
+  /// **'{name} isn\'t answering'**
+  String convertNotAnswering(String name);
+
+  /// Button: pair with a helper found on the network.
+  ///
+  /// In en, this message translates to:
+  /// **'Pair'**
+  String get convertPair;
+
+  /// Servers screen, above Add a server: the kinds of server that can be added. Jellyfin, Emby, Plex, SMB and NAS aren't translated.
+  ///
+  /// In en, this message translates to:
+  /// **'You can add Jellyfin, Emby, Plex, YouTube and SMB shares (a NAS, or a computer\'s shared folder).'**
+  String get serverKindsHelp;
+
+  /// No description provided for @youTube.
+  ///
+  /// In en, this message translates to:
+  /// **'YouTube'**
+  String get youTube;
+
+  /// No description provided for @youTubeTerms.
+  ///
+  /// In en, this message translates to:
+  /// **'By signing in you agree to YouTube\'s Terms of Service and the Nightingale TV privacy policy.'**
+  String get youTubeTerms;
+
+  /// No description provided for @youTubeTermsOfService.
+  ///
+  /// In en, this message translates to:
+  /// **'YouTube Terms of Service'**
+  String get youTubeTermsOfService;
+
+  /// No description provided for @privacyPolicy.
+  ///
+  /// In en, this message translates to:
+  /// **'Privacy policy'**
+  String get privacyPolicy;
+
+  /// No description provided for @youTubeEnterCode.
+  ///
+  /// In en, this message translates to:
+  /// **'On your phone or computer, go to {address} and enter this code.'**
+  String youTubeEnterCode(String address);
+
+  /// No description provided for @openGoogleDevice.
+  ///
+  /// In en, this message translates to:
+  /// **'Open google.com/device'**
+  String get openGoogleDevice;
+
+  /// No description provided for @signInWasCancelled.
+  ///
+  /// In en, this message translates to:
+  /// **'Sign-in was cancelled'**
+  String get signInWasCancelled;
+
+  /// No description provided for @youTubeChannelsTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'YouTube channels'**
+  String get youTubeChannelsTitle;
+
+  /// No description provided for @youTubePickedOf.
+  ///
+  /// In en, this message translates to:
+  /// **'{count} of {limit}'**
+  String youTubePickedOf(int count, int limit);
+
+  /// No description provided for @notSubscribed.
+  ///
+  /// In en, this message translates to:
+  /// **'Not subscribed'**
+  String get notSubscribed;
+
+  /// No description provided for @searchSubscriptions.
+  ///
+  /// In en, this message translates to:
+  /// **'Search your subscriptions'**
+  String get searchSubscriptions;
+
+  /// No description provided for @noSubscriptions.
+  ///
+  /// In en, this message translates to:
+  /// **'This account has no subscriptions'**
+  String get noSubscriptions;
+
+  /// No description provided for @noSubscriptionsMatch.
+  ///
+  /// In en, this message translates to:
+  /// **'No subscription matches'**
+  String get noSubscriptionsMatch;
+
+  /// No description provided for @removeYouTubeChannels.
+  ///
+  /// In en, this message translates to:
+  /// **'Remove {names} from the guide?'**
+  String removeYouTubeChannels(String names);
+
+  /// No description provided for @youTubeChannelCount.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 channel} other{{count} channels}}'**
+  String youTubeChannelCount(int count);
+
+  /// No description provided for @googleClient.
+  ///
+  /// In en, this message translates to:
+  /// **'Google client'**
+  String get googleClient;
+
+  /// No description provided for @googleClientShared.
+  ///
+  /// In en, this message translates to:
+  /// **'Nightingale TV\'s'**
+  String get googleClientShared;
+
+  /// No description provided for @googleClientOwn.
+  ///
+  /// In en, this message translates to:
+  /// **'Your own'**
+  String get googleClientOwn;
+
+  /// No description provided for @youTubeDailyLimit.
+  ///
+  /// In en, this message translates to:
+  /// **'YouTube\'s daily limit is reached. New videos come after {time}.'**
+  String youTubeDailyLimit(String time);
+
+  /// No description provided for @useMyOwnClient.
+  ///
+  /// In en, this message translates to:
+  /// **'Use my own client'**
+  String get useMyOwnClient;
+
+  /// No description provided for @signInToYouTubeAgain.
+  ///
+  /// In en, this message translates to:
+  /// **'Sign in to YouTube again'**
+  String get signInToYouTubeAgain;
+
+  /// No description provided for @ownClientTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Your own Google client'**
+  String get ownClientTitle;
+
+  /// No description provided for @clientId.
+  ///
+  /// In en, this message translates to:
+  /// **'Client ID'**
+  String get clientId;
+
+  /// No description provided for @clientSecret.
+  ///
+  /// In en, this message translates to:
+  /// **'Client secret'**
+  String get clientSecret;
+
+  /// No description provided for @openClientFile.
+  ///
+  /// In en, this message translates to:
+  /// **'Open file'**
+  String get openClientFile;
+
+  /// No description provided for @clientFileNotRead.
+  ///
+  /// In en, this message translates to:
+  /// **'That file isn\'t a Google client file'**
+  String get clientFileNotRead;
+
+  /// No description provided for @useThisClient.
+  ///
+  /// In en, this message translates to:
+  /// **'Use this client'**
+  String get useThisClient;
+
+  /// No description provided for @useSharedClient.
+  ///
+  /// In en, this message translates to:
+  /// **'Use Nightingale TV\'s client'**
+  String get useSharedClient;
+
+  /// No description provided for @ownClientStep1.
+  ///
+  /// In en, this message translates to:
+  /// **'Open console.cloud.google.com and create a project.'**
+  String get ownClientStep1;
+
+  /// No description provided for @ownClientStep2.
+  ///
+  /// In en, this message translates to:
+  /// **'Turn on YouTube Data API v3.'**
+  String get ownClientStep2;
+
+  /// No description provided for @ownClientStep3.
+  ///
+  /// In en, this message translates to:
+  /// **'Set up the OAuth consent screen with the youtube.readonly scope.'**
+  String get ownClientStep3;
+
+  /// No description provided for @ownClientStep4.
+  ///
+  /// In en, this message translates to:
+  /// **'Set its publishing status to In production.'**
+  String get ownClientStep4;
+
+  /// No description provided for @ownClientStep5.
+  ///
+  /// In en, this message translates to:
+  /// **'Create an OAuth client of the type TVs and Limited Input devices.'**
+  String get ownClientStep5;
+
+  /// No description provided for @ownClientStep6.
+  ///
+  /// In en, this message translates to:
+  /// **'Enter its Client ID and Client secret here, or open its downloaded file.'**
+  String get ownClientStep6;
+
+  /// No description provided for @ownClientGuide.
+  ///
+  /// In en, this message translates to:
+  /// **'The full guide: {address}'**
+  String ownClientGuide(String address);
+
+  /// No description provided for @clientRefused.
+  ///
+  /// In en, this message translates to:
+  /// **'Google didn\'t accept this client. It must be of the type TVs and Limited Input devices.'**
+  String get clientRefused;
+
+  /// No description provided for @noVideosYet.
+  ///
+  /// In en, this message translates to:
+  /// **'No videos yet'**
+  String get noVideosYet;
+
+  /// No description provided for @youTubeRefusedPlayer.
+  ///
+  /// In en, this message translates to:
+  /// **'YouTube didn\'t accept this player'**
+  String get youTubeRefusedPlayer;
+
+  /// No description provided for @youTubeNeedsWebView.
+  ///
+  /// In en, this message translates to:
+  /// **'YouTube needs Android System WebView'**
+  String get youTubeNeedsWebView;
+
+  /// No description provided for @getItFromPlayStore.
+  ///
+  /// In en, this message translates to:
+  /// **'Get it from the Play Store: {address}'**
+  String getItFromPlayStore(String address);
+
+  /// No description provided for @youTubeChannelSource.
+  ///
+  /// In en, this message translates to:
+  /// **'YouTube channel: {title}'**
+  String youTubeChannelSource(String title);
+
+  /// No description provided for @publishedOn.
+  ///
+  /// In en, this message translates to:
+  /// **'Published {date}'**
+  String publishedOn(String date);
+
+  /// No description provided for @youTubeCantBeShared.
+  ///
+  /// In en, this message translates to:
+  /// **'YouTube channels can\'t be shared'**
+  String get youTubeCantBeShared;
+
+  /// No description provided for @youTubeAlreadyRemovedQuota.
+  ///
+  /// In en, this message translates to:
+  /// **'Try again after YouTube\'s daily limit resets.'**
+  String get youTubeAlreadyRemovedQuota;
+
+  /// No description provided for @youTubeAccount.
+  ///
+  /// In en, this message translates to:
+  /// **'YouTube account'**
+  String get youTubeAccount;
+
+  /// No description provided for @couldNotReachGoogle.
+  ///
+  /// In en, this message translates to:
+  /// **'Google couldn\'t be reached. Try again.'**
+  String get couldNotReachGoogle;
+
+  /// No description provided for @youTubeDailyLimitShort.
+  ///
+  /// In en, this message translates to:
+  /// **'YouTube\'s daily limit is reached.'**
+  String get youTubeDailyLimitShort;
+
+  /// No description provided for @youTubeNoBreaks.
+  ///
+  /// In en, this message translates to:
+  /// **'YouTube channels have no breaks.'**
+  String get youTubeNoBreaks;
+
+  /// No description provided for @youTubeNoBlocks.
+  ///
+  /// In en, this message translates to:
+  /// **'YouTube channels can\'t have programming blocks.'**
+  String get youTubeNoBlocks;
+
+  /// No description provided for @youTubeAccessNeeded.
+  ///
+  /// In en, this message translates to:
+  /// **'Nightingale TV needs to see your YouTube subscriptions. Enter the new code and allow it.'**
+  String get youTubeAccessNeeded;
+
+  /// No description provided for @youTubeRemoveBody.
+  ///
+  /// In en, this message translates to:
+  /// **'Its channels leave the lineup, and Nightingale TV\'s access to your YouTube account ends.'**
+  String get youTubeRemoveBody;
+
+  /// No description provided for @playerQuality.
+  ///
+  /// In en, this message translates to:
+  /// **'Quality'**
+  String get playerQuality;
+
+  /// No description provided for @playerQualityValue.
+  ///
+  /// In en, this message translates to:
+  /// **'Quality: {value}'**
+  String playerQualityValue(String value);
+
+  /// No description provided for @playerQualityAuto.
+  ///
+  /// In en, this message translates to:
+  /// **'Auto'**
+  String get playerQualityAuto;
+
+  /// No description provided for @playerQualityOriginal.
+  ///
+  /// In en, this message translates to:
+  /// **'Original'**
+  String get playerQualityOriginal;
+
+  /// No description provided for @playerQualityMbps.
+  ///
+  /// In en, this message translates to:
+  /// **'{mbps} Mbps'**
+  String playerQualityMbps(int mbps);
+
+  /// No description provided for @youTubeNoClient.
+  ///
+  /// In en, this message translates to:
+  /// **'This build has no YouTube client. Its README says how to add one.'**
+  String get youTubeNoClient;
+
+  /// No description provided for @youTubeSharedLimit.
+  ///
+  /// In en, this message translates to:
+  /// **'Nightingale TV\'s client allows {limit} YouTube channels. For more, use your own Google client in Servers → YouTube → Google client.'**
+  String youTubeSharedLimit(int limit);
+
+  /// No description provided for @youTubeSharedTooMany.
+  ///
+  /// In en, this message translates to:
+  /// **'Nightingale TV\'s client allows {limit} YouTube channels. Remove some in Channels first.'**
+  String youTubeSharedTooMany(int limit);
+
+  /// No description provided for @lastBackedUp.
+  ///
+  /// In en, this message translates to:
+  /// **'Last backed up: {when}'**
+  String lastBackedUp(Object when);
+
+  /// No description provided for @notBackedUpYet.
+  ///
+  /// In en, this message translates to:
+  /// **'Not backed up yet.'**
+  String get notBackedUpYet;
+
+  /// No description provided for @undoRestore.
+  ///
+  /// In en, this message translates to:
+  /// **'Undo restore'**
+  String get undoRestore;
+
+  /// No description provided for @undoLineupReset.
+  ///
+  /// In en, this message translates to:
+  /// **'Undo lineup reset'**
+  String get undoLineupReset;
+
+  /// No description provided for @undoDeleting.
+  ///
+  /// In en, this message translates to:
+  /// **'Undo deleting {name}'**
+  String undoDeleting(Object name);
+
+  /// No description provided for @undoDeletingAProfile.
+  ///
+  /// In en, this message translates to:
+  /// **'Undo deleting a profile'**
+  String get undoDeletingAProfile;
+
+  /// No description provided for @undoUpdate.
+  ///
+  /// In en, this message translates to:
+  /// **'Undo update'**
+  String get undoUpdate;
+
+  /// No description provided for @undoLineupCleanup.
+  ///
+  /// In en, this message translates to:
+  /// **'Undo lineup cleanup'**
+  String get undoLineupCleanup;
+
+  /// No description provided for @undoTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'{action} · {time}'**
+  String undoTitle(Object action, Object time);
+
+  /// No description provided for @undoPointSaved.
+  ///
+  /// In en, this message translates to:
+  /// **'Saved {when}: {profiles}'**
+  String undoPointSaved(Object when, Object profiles);
+
+  /// No description provided for @pickThePlaylistFileAgain.
+  ///
+  /// In en, this message translates to:
+  /// **'Pick the playlist file again'**
+  String get pickThePlaylistFileAgain;
+
+  /// No description provided for @pickTheGuideFileAgain.
+  ///
+  /// In en, this message translates to:
+  /// **'Pick the guide file again'**
+  String get pickTheGuideFileAgain;
+
+  /// No description provided for @playlistFileNotOnDevice.
+  ///
+  /// In en, this message translates to:
+  /// **'The playlist file isn\'t on this device'**
+  String get playlistFileNotOnDevice;
+
+  /// No description provided for @guideFileNotOnDevice.
+  ///
+  /// In en, this message translates to:
+  /// **'The guide file isn\'t on this device'**
+  String get guideFileNotOnDevice;
+
+  /// No description provided for @youTubeServerOwnClient.
+  ///
+  /// In en, this message translates to:
+  /// **'Server mode uses your own Google client.'**
+  String get youTubeServerOwnClient;
+
+  /// No description provided for @uploadJsonFile.
+  ///
+  /// In en, this message translates to:
+  /// **'Upload JSON file'**
+  String get uploadJsonFile;
+
+  /// No description provided for @continueStep.
+  ///
+  /// In en, this message translates to:
+  /// **'Continue'**
+  String get continueStep;
+
+  /// No description provided for @watchNoChannels.
+  ///
+  /// In en, this message translates to:
+  /// **'This profile has no YouTube channels. Add YouTube in Servers.'**
+  String get watchNoChannels;
 }
 
 class _AppLocalizationsDelegate
@@ -9819,7 +10741,9 @@ class _AppLocalizationsDelegate
     'es',
     'fr',
     'it',
+    'ja',
     'pt',
+    'zh',
   ].contains(locale.languageCode);
 
   @override
@@ -9827,6 +10751,24 @@ class _AppLocalizationsDelegate
 }
 
 AppLocalizations lookupAppLocalizations(Locale locale) {
+  // Lookup logic when language+script+country codes are specified.
+  switch (locale.toString()) {
+    case 'zh_Hant_HK':
+      return AppLocalizationsZhHantHk();
+  }
+
+  // Lookup logic when language+script codes are specified.
+  switch (locale.languageCode) {
+    case 'zh':
+      {
+        switch (locale.scriptCode) {
+          case 'Hant':
+            return AppLocalizationsZhHant();
+        }
+        break;
+      }
+  }
+
   // Lookup logic when only language code is specified.
   switch (locale.languageCode) {
     case 'de':
@@ -9839,8 +10781,12 @@ AppLocalizations lookupAppLocalizations(Locale locale) {
       return AppLocalizationsFr();
     case 'it':
       return AppLocalizationsIt();
+    case 'ja':
+      return AppLocalizationsJa();
     case 'pt':
       return AppLocalizationsPt();
+    case 'zh':
+      return AppLocalizationsZh();
   }
 
   throw FlutterError(
